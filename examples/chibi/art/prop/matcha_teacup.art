@@ -45,6 +45,7 @@ layer saucer pivot:512,800
       let p = polar(sqrt(rand(.3 .95 seed:k)) rand(0 360))
       circle rand(1.2 2.4) at:512+296*p.x,800+54*p.y fill:tea.clay.0 a:.5
     fx rim 4 dir:1,1 color:tea.rim a:.45
+    fx grain .04 scale:2.5
     fx outline 4.5 color:tea.clay.line
   layer leaf pivot:262,832
     curve 282,826 318,806 362,810 376,822 340,840 300,840 closed fill:tea.matcha name:leaf_blade
@@ -89,6 +90,7 @@ layer saucer pivot:512,800
       ellipse 194,40 at:512,480 fill:none stroke:tea.cream.line,2.5 a:.8
       curve 334,498 420,524 520,530 stroke:tea.cream.4,4 a:.9 blur:1
       fx rim 5 dir:1,1 color:tea.rim a:.5
+      fx grain .035 scale:2
       fx outline 6 color:tea.cream.line
     layer foam pivot:512,486
       intersect fill:none name:foam_top
@@ -102,6 +104,7 @@ layer saucer pivot:512,800
           circle rand(1.5 3.5 seed:k) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55
         ellipse 40,7 at:430,476 fill:tea.foam_hi a:.7 blur:3
         fx inner 0,9 blur:5 color:tea.matcha.0
+        fx grain .06 scale:1.5
       layer steam_l pivot:462,466
         _wisp [462,462 434,398 470,330 440,262 456,206] w:[6 22 26 18 4]
       layer steam_r pivot:570,466
