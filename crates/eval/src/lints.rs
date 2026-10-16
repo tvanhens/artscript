@@ -55,6 +55,13 @@ fn stmt_exprs<'a>(st: &'a Stmt, out: &mut Vec<(&'a Expr, Span)>, skip_palettes: 
             named(params, out);
             body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes));
         }
+        StmtKind::Finish { params, body, .. } => {
+            named(params, out);
+            for line in body {
+                line.args.iter().for_each(|a| out.push((a, line.span)));
+                named(&line.named, out);
+            }
+        }
         StmtKind::Shader { params, .. } => named(params, out),
         StmtKind::Let { value, .. } => out.push((value, st.span)),
         StmtKind::Check { expr, named: ns, .. } => {
@@ -73,6 +80,10 @@ fn stmt_exprs<'a>(st: &'a Stmt, out: &mut Vec<(&'a Expr, Span)>, skip_palettes: 
             args.iter().for_each(|a| out.push((a, st.span)));
             named(ns, out);
             body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes));
+        }
+        StmtKind::Fx(line) => {
+            line.args.iter().for_each(|a| out.push((a, st.span)));
+            named(&line.named, out);
         }
         StmtKind::SlotFill { body, .. } => body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes)),
         StmtKind::Patch { named: ns, .. } => named(ns, out),
@@ -132,6 +143,9 @@ fn idents(stmts: &[Stmt], out: &mut HashSet<String>) {
                         out.insert(n.clone());
                     }
                     verbs(body, out);
+                }
+                StmtKind::Fx(line) => {
+                    out.insert(line.op.clone());
                 }
                 StmtKind::Def { body, .. } | StmtKind::SlotFill { body, .. } | StmtKind::Each { body, .. } | StmtKind::Rule { body, .. } => {
                     verbs(body, out)

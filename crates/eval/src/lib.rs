@@ -7,6 +7,7 @@ mod checks;
 pub mod color;
 mod eval;
 mod explain;
+mod fx;
 mod geom;
 mod lints;
 mod paint;

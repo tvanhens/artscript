@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use crate::Diagnostic;
-use crate::ast::{BinOp, CheckKind, Directive, Expr, File, Named, Span, Stmt, StmtKind, UnOp};
+use crate::ast::{
+    BinOp, CheckKind, Directive, Expr, File, FxLine, Named, Span, Stmt, StmtKind, UnOp,
+};
 use crate::lex::{self, Kw, Line, SizePart, Tok};
 
 const PREC_IF: u8 = 1;
@@ -185,6 +187,7 @@ impl<'a> Parser<'a> {
             Tok::Kw(Kw::Use) => self.parse_use(),
             Tok::Kw(Kw::Palette) => self.parse_palette(),
             Tok::Kw(Kw::Style) => self.parse_style(),
+            Tok::Kw(Kw::Finish) => self.parse_finish(),
             Tok::Kw(Kw::Def) => self.parse_def(),
             Tok::Kw(Kw::Rule) => self.parse_rule(),
             Tok::Kw(Kw::Let) => self.parse_let(),
@@ -208,6 +211,8 @@ impl<'a> Parser<'a> {
             Tok::Ident(name) => {
                 if self.is_slot() {
                     self.parse_slot(name)
+                } else if name == "fx" {
+                    self.parse_fx()
                 } else {
                     self.parse_node(name)
                 }
@@ -294,9 +299,54 @@ impl<'a> Parser<'a> {
                 "write `style name key:value`",
             );
         }
-        self.no_block(indent);
+        self.reject_block(
+            indent,
+            "a style takes named keys only, not a block",
+            "declare `finish <name>` with this block and write `fx <name>` under the node",
+        );
         Stmt {
             kind: StmtKind::Style { name, named },
+            span,
+        }
+    }
+
+    fn parse_finish(&mut self) -> Stmt {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, params) = self.parse_items(false);
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "finish parameters are named arguments",
+                "write `finish name key:value`",
+            );
+        }
+        let stmts = self.parse_block(indent, span.line);
+        let empty = stmts.is_empty();
+        let mut body = Vec::new();
+        for st in stmts {
+            match st.kind {
+                StmtKind::Fx(line) => body.push(line),
+                _ => self.errors.push(
+                    Diagnostic::error("E0101", st.span, "a finish holds only `fx` lines")
+                        .with_fix("move this line under the node, or write it as `fx <effect> …`"),
+                ),
+            }
+        }
+        if empty && !self.line_failed {
+            self.errors.push(
+                Diagnostic::error(
+                    "E0101",
+                    span,
+                    format!("finish `{name}` needs an indented block of `fx` lines"),
+                )
+                .with_fix(format!("indent `fx` lines under `finish {name}`")),
+            );
+        }
+        Stmt {
+            kind: StmtKind::Finish { name, params, body },
             span,
         }
     }
@@ -693,6 +743,38 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_fx(&mut self) -> Stmt {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let op = match self.cur().map(|t| t.kind.clone()) {
+            Some(Tok::Ident(s)) if !self.is_named() => {
+                let at = self.cur_span();
+                self.bump();
+                self.reject_reserved(&s, at);
+                s
+            }
+            _ => {
+                self.fail_here(
+                    "expected an effect name after `fx`",
+                    "write `fx shadow 0,6 blur:8`",
+                );
+                String::new()
+            }
+        };
+        let (args, named) = self.parse_items(false);
+        self.no_block(indent);
+        Stmt {
+            kind: StmtKind::Fx(FxLine {
+                op,
+                args,
+                named,
+                span,
+            }),
+            span,
+        }
+    }
+
     fn parse_items(&mut self, colon_value: bool) -> (Vec<Expr>, Vec<Named>) {
         let mut args = Vec::new();
         let mut named = Vec::new();
@@ -827,6 +909,14 @@ impl<'a> Parser<'a> {
     }
 
     fn no_block(&mut self, indent: usize) {
+        self.reject_block(
+            indent,
+            "this statement cannot have an indented block",
+            "dedent the following lines",
+        );
+    }
+
+    fn reject_block(&mut self, indent: usize, message: &str, fix: &str) {
         loop {
             let next = self.li + 1;
             if next >= self.lines.len() || self.lines[next].indent <= indent {
@@ -834,11 +924,7 @@ impl<'a> Parser<'a> {
             }
             self.enter(next);
             let span = self.cur_span();
-            self.fail(
-                span,
-                "this statement cannot have an indented block",
-                "dedent the following lines",
-            );
+            self.fail(span, message, fix);
             self.ti = self.lines[self.li].tokens.len();
         }
     }

@@ -6,14 +6,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke,
+    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::{BinOp, Expr, File, Named, Span, Stmt, StmtKind, UnOp};
+use artscript_syntax::ast::{BinOp, Expr, File, FxLine, Named, Span, Stmt, StmtKind, UnOp};
 
 use crate::checks::{CheckState, Pending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
+use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
@@ -63,7 +63,7 @@ const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"]
 /// A node's block split by role: effects, inline `fill:`/`stroke:`/`mask:` lines, a `mask:` block,
 /// and the drawable rest.
 struct Body<'s> {
-    fx: Vec<&'s Stmt>,
+    fx: Vec<&'s FxLine>,
     inline: Vec<&'s Stmt>,
     mask: Option<&'s [Stmt]>,
     rest: Vec<Stmt>,
@@ -188,7 +188,7 @@ pub(crate) struct Evaluator<'a> {
     seed_count: u64,
 }
 
-fn ident_of(e: &Expr) -> Option<&str> {
+pub(crate) fn ident_of(e: &Expr) -> Option<&str> {
     match e {
         Expr::Ident(s) => Some(s),
         _ => None,
@@ -446,6 +446,7 @@ impl<'a> Evaluator<'a> {
                 module.own.borrow_mut().push(format!("style:{name}"));
                 Ok(())
             }
+            StmtKind::Finish { name, params, body } => self.declare_finish(module, name, params, body, st.span),
             StmtKind::Def { name, params, body } => {
                 let mut needs = Vec::new();
                 let mut ps = Vec::new();
@@ -505,7 +506,7 @@ impl<'a> Evaluator<'a> {
             StmtKind::Let { .. } => Ok(()),
             _ if entry => Ok(()),
             _ => Err(fail("E0204", "a library may only hold declarations at its top level")
-                .note("allowed: use, palette, style, def, rule, let")
+                .note("allowed: use, palette, style, finish, def, rule, let")
                 .fix("wrap the drawing in a `def` and place it from an entry file")),
         }
     }
@@ -533,12 +534,16 @@ impl<'a> Evaluator<'a> {
         }
         let exports = m.exports();
         let styles = m.styles.borrow().clone();
+        let finishes = m.finishes.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
                 module.globals.borrow_mut().insert(k, v);
             }
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
+            }
+            for (k, f) in finishes.into_iter().filter(|(k, _)| !k.starts_with('_')) {
+                module.finishes.borrow_mut().insert(k, f);
             }
             return Ok(());
         }
@@ -547,6 +552,8 @@ impl<'a> Evaluator<'a> {
                 module.globals.borrow_mut().insert(item.clone(), v.clone());
             } else if let Some(s) = styles.get(item) {
                 module.styles.borrow_mut().insert(item.clone(), s.clone());
+            } else if let Some(f) = finishes.get(item) {
+                module.finishes.borrow_mut().insert(item.clone(), f.clone());
             } else {
                 let names: Vec<String> = exports.iter().map(|(k, _)| k.clone()).collect();
                 return Err(fail("E0212", format!("`{path}` does not export `{item}`"))
@@ -557,7 +564,7 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn module_scope(&self, module: &Rc<Module>) -> Scope {
+    pub(crate) fn module_scope(&self, module: &Rc<Module>) -> Scope {
         let t = new_table();
         Scope {
             env: Vec::new(),
@@ -693,6 +700,9 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             StmtKind::Node { verb, args, named, body } => self.eval_node(st, verb, args, named, body, sc, out),
+            StmtKind::Fx(_) => {
+                Err(fail("E0333", "`fx` applies to the node it is nested under").fix("indent the `fx` line under a shape, layer or instance"))
+            }
             StmtKind::SlotFill { name, .. } if name == "mask" => Ok(()),
             StmtKind::SlotFill { name, .. } => Err(fail("E0331", format!("slot fill `{name}:` is only valid under a component call"))
                 .fix("indent it under the component that exposes the slot")),
@@ -703,7 +713,7 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope, skip_pos: usize) -> R<Args> {
+    pub(crate) fn eval_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope, skip_pos: usize) -> R<Args> {
         let mut out = Args { pos: Vec::new(), named: Vec::new() };
         for e in args.iter().skip(skip_pos) {
             out.pos.push(self.expr(e, sc)?);
@@ -721,7 +731,12 @@ impl<'a> Evaluator<'a> {
     fn style_named(&mut self, name: &str, sc: &Scope) -> R<Vec<(String, Value)>> {
         let style = sc.module.styles.borrow().get(name).cloned().ok_or_else(|| {
             let names: Vec<String> = sc.module.styles.borrow().keys().cloned().collect();
-            fail("E0307", format!("no style `{name}`")).note(format!("styles: {}", names.join(", "))).fix("declare `style name key:value` or import it")
+            let f = fail("E0307", format!("no style `{name}`")).note(format!("styles: {}", names.join(", ")));
+            if sc.module.finishes.borrow().contains_key(name) {
+                f.note(format!("`{name}` is a finish")).fix(format!("write `fx {name}` under the node"))
+            } else {
+                f.fix("declare `style name key:value` or import it")
+            }
         })?;
         let module = self.modules.get(&style.module).cloned().unwrap_or(sc.module.clone());
         let msc = self.module_scope(&module);
@@ -801,7 +816,7 @@ impl<'a> Evaluator<'a> {
         let mut parts = Body { fx: Vec::new(), inline: Vec::new(), mask: None, rest: Vec::new() };
         for st in body {
             match &st.kind {
-                StmtKind::Node { verb, .. } if verb == "fx" => parts.fx.push(st),
+                StmtKind::Fx(line) => parts.fx.push(line),
                 StmtKind::Node { verb, .. } if matches!(verb.as_str(), "fill" | "stroke" | "mask") => parts.inline.push(st),
                 StmtKind::SlotFill { name, body } if name == "mask" => parts.mask = Some(body.as_slice()),
                 _ => parts.rest.push(st.clone()),
@@ -822,9 +837,6 @@ impl<'a> Evaluator<'a> {
         out: &mut Siblings,
     ) -> R<()> {
         match verb {
-            "fx" => {
-                return Err(fail("E0333", "`fx` applies to the node it is nested under").fix("indent the `fx` line under a shape, layer or instance"));
-            }
             "fill" | "stroke" | "mask" => return Ok(()),
             "anchor" => return self.anchor(args, sc),
             "slot" => return self.slot(st, args, named, body, sc, out),
@@ -862,6 +874,10 @@ impl<'a> Evaluator<'a> {
                 f = f.note(format!("components in scope: {}", comps.join(", ")));
             }
             return Err(f.fix(format!("check the spelling, or `use` the library that defines `{verb}`")));
+        }
+        if let Some(n) = named.iter().find(|n| n.key == "finish") {
+            let name = ident_of(&n.value).unwrap_or("<name>");
+            return Err(fail("E0339", "`finish:` is not a node key").fix(format!("write `fx {name}` under the node")));
         }
         let explicit = named.iter().find(|n| n.key == "name").and_then(|n| ident_of(&n.value)).map(str::to_string);
         let positional_name = matches!(verb, "layer" | "group").then(|| args.first().and_then(ident_of).map(str::to_string)).flatten();
@@ -1018,15 +1034,8 @@ impl<'a> Evaluator<'a> {
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = sc.child(&path, sc.frame, world);
-        for f in fx {
-            match self.effect(f, &fx_scope, fill_key, &path) {
-                Ok(e) => node.effects.push(e),
-                Err(e) => {
-                    let file = sc.file().to_string();
-                    self.report(e, &file, f.span, &path);
-                }
-            }
-        }
+        let sites: Vec<FxSite> = fx.iter().map(|line| FxSite { line, scope: &fx_scope }).collect();
+        node.effects = self.lower_fx(&sites, &path, fill_key);
         self.mask(&mut node, &a, mask_block, sc, world)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
@@ -1333,96 +1342,40 @@ impl<'a> Evaluator<'a> {
         Ok(Shape { geometry, fill, stroke: Some(Stroke { paint, width: w as f32, cap, join, dash }), blur, children: vec![] })
     }
 
-    fn effect(&mut self, st: &Stmt, sc: &Scope, f: Rgba, path: &str) -> R<Effect> {
-        let StmtKind::Node { args, named, .. } = &st.kind else { unreachable!() };
-        let op_name = args.first().and_then(ident_of).ok_or_else(|| fail("E0320", "`fx` needs an effect name").fix("write `fx shadow 0,6 blur:8`"))?;
-        let input_of = |e: &Expr, ev: &mut Self| -> R<EffectInput> {
-            Ok(match e {
-                Expr::Ident(s) if s == "self" => EffectInput::Source,
-                Expr::Ident(s) => EffectInput::Named(s.clone()),
-                Expr::Ref(_) => match ev.expr(e, sc)? {
-                    Value::Ref(r) => EffectInput::Node(r.record.path.clone()),
-                    _ => EffectInput::Previous,
-                },
-                _ => return Err(fail("E0320", "an effect input is `self`, a name, or `@node`")),
-            })
-        };
-        let rest: Vec<Expr> = args[1..].to_vec();
-        let plain_named: Vec<Named> = named.iter().filter(|n| n.key != "of" && n.key != "as").cloned().collect();
-        let a = if op_name == "merge" {
-            self.eval_args(&[], &plain_named, sc, 0)?
-        } else {
-            self.eval_args(&rest, &plain_named, sc, 0)?
-        };
-        let alpha = a.num("a").unwrap_or(1.0);
-        let color = |default: Rgba| -> R<artscript_ir::Color> {
-            let c = match a.get("color") {
-                Some(v) => v.color().ok_or_else(|| fail("E0320", "`color:` expects a color"))?.rgba,
-                None => default,
-            };
-            Ok(c.with_alpha(c.a * alpha).to_ir())
-        };
-        let n0 = a.pos.first().and_then(Value::num);
-        let offset = a.pos.first().and_then(Value::vec2).filter(|_| !matches!(a.pos.first(), Some(Value::Num(_))));
-        let op = match op_name {
-            "blur" => EffectOp::Blur { sigma: n0.or(a.num("blur")).unwrap_or(4.0) as f32 },
-            "shadow" | "inner" => {
-                let (dx, dy) = offset.unwrap_or((0.0, 4.0));
-                let blur = a.num("blur").unwrap_or(4.0) as f32;
-                let c = color(color::step(f, -2.0, DEFAULT_HUE_STEP).with_alpha(0.35))?;
-                if op_name == "shadow" {
-                    EffectOp::Shadow { dx: dx as f32, dy: dy as f32, blur, color: c }
-                } else {
-                    EffectOp::Inner { dx: dx as f32, dy: dy as f32, blur, color: c }
-                }
-            }
-            "glow" => EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))? },
-            "rim" => {
-                let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
-                let rim = color::from_oklch(color::Lch { l: 0.86, c: 0.05, h: 265.0 }, 1.0);
-                EffectOp::Rim { width: n0.unwrap_or(3.0) as f32, dir: Point::new(dir.0 as f32, dir.1 as f32), color: color(rim)? }
-            }
-            "adjust" => EffectOp::Adjust {
-                hue: a.num("hue").unwrap_or(0.0) as f32,
-                sat: a.num("sat").unwrap_or(0.0) as f32,
-                light: a.num("light").unwrap_or(0.0) as f32,
-            },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
-            "grain" => {
-                let extra = a.num("seed").unwrap_or(0.0) as u64;
-                EffectOp::Grain {
-                    strength: n0.unwrap_or(0.05) as f32,
-                    scale: a.num("scale").unwrap_or(1.5) as f32,
-                    seed: seed::node_seed(sc.file(), &format!("{path}#grain"), extra) as u32,
-                }
-            }
-            "merge" => {
-                let inputs = rest.iter().map(|e| input_of(e, self)).collect::<R<Vec<_>>>()?;
-                let alphas = match a.get("a") {
-                    Some(v) => v.items().map(|xs| xs.iter().filter_map(Value::num).map(|x| x as f32).collect()).unwrap_or_else(|| vec![v.num().unwrap_or(1.0) as f32]),
-                    None => vec![1.0; inputs.len()],
-                };
-                EffectOp::Merge { inputs, alphas }
-            }
-            "bevel" | "displace" | "halftone" | "posterize" => {
-                return Err(fail("E0391", format!("`fx {op_name}` is a Phase 2 effect, not yet implemented in v0.1"))
-                    .fix("use blur, shadow, inner, glow, rim, adjust, outline or grain"));
-            }
-            other => {
-                return Err(fail("E0391", format!("unknown effect `{other}`"))
-                    .note("effects: blur shadow inner glow rim adjust outline grain merge")
-                    .fix("pick one of the listed effects"));
-            }
-        };
-        let input = match named.iter().find(|n| n.key == "of") {
-            Some(n) => input_of(&n.value, self)?,
-            None => EffectInput::Previous,
-        };
-        let name = named.iter().find(|n| n.key == "as").and_then(|n| ident_of(&n.value)).map(str::to_string);
-        Ok(Effect { op, input, name })
-    }
-
     // ---------------------------------------------------------------- components
+
+    /// Binds named params in order. A given value wins and must be the kind of its default.
+    /// Otherwise the default evaluates in `module` with the earlier params bound.
+    pub(crate) fn bind_params(
+        &mut self,
+        owner: &str,
+        params: &[Named],
+        module: &Rc<Module>,
+        given: &[(String, Value)],
+        span: Span,
+    ) -> R<Vec<(String, Value)>> {
+        let def_scope = self.module_scope(module);
+        let mut env: Vec<(String, Value)> = Vec::new();
+        for p in params {
+            let mut dsc = def_scope.clone();
+            dsc.env = env.clone();
+            let default = self.expr(&p.value, &dsc);
+            let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
+                Some((_, v)) => {
+                    if let Ok(d) = &default
+                        && !d.accepts(v)
+                    {
+                        return Err(fail("E0320", format!("`{}` of `{owner}` expects {}, got {}", p.key, d.kind(), v.kind()))
+                            .fix(format!("pass {} like `{}:{}`", d.kind(), p.key, d.show())));
+                    }
+                    v.clone()
+                }
+                None => default.map_err(|f| f.note(format!("in the default of `{}` ({}:{})", p.key, module.path, span.line)))?,
+            };
+            env.push((p.key.clone(), value));
+        }
+        Ok(env)
+    }
 
     #[allow(clippy::too_many_arguments)]
     fn instance(
@@ -1531,7 +1484,7 @@ impl<'a> Evaluator<'a> {
                         matched: Cell::new(false),
                     });
                 }
-                StmtKind::Node { verb, .. } if verb == "fx" => block_fx.push(b),
+                StmtKind::Fx(line) => block_fx.push(line),
                 StmtKind::Node { verb, args, .. } if verb == "mask" => {
                     if let Some(e) = args.first() {
                         let v = self.expr(e, sc)?;
@@ -1581,15 +1534,12 @@ impl<'a> Evaluator<'a> {
         let mut node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: false, children });
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(&path, body_scope.frame, world);
-        for (fst, scope) in body_fx.iter().map(|s| (*s, &fx_scope)).chain(block_fx.iter().map(|s| (*s, &*sc))) {
-            match self.effect(fst, scope, f, &path) {
-                Ok(e) => node.effects.push(e),
-                Err(e) => {
-                    let file = scope.file().to_string();
-                    self.report(e, &file, fst.span, &path);
-                }
-            }
-        }
+        let sites: Vec<FxSite> = body_fx
+            .iter()
+            .map(|line| FxSite { line, scope: &fx_scope })
+            .chain(block_fx.iter().map(|line| FxSite { line, scope: &*sc }))
+            .collect();
+        node.effects = self.lower_fx(&sites, &path, f);
         self.mask(&mut node, &node_args, mask_block, sc, world)?;
         let z = self.finish_node(&mut node, &node_args)?;
         let reg_name = name.unwrap_or(comp.name.clone());

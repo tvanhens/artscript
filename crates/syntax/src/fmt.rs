@@ -1,4 +1,4 @@
-use crate::ast::{BinOp, CheckKind, Expr, File, Named, Stmt, StmtKind, UnOp};
+use crate::ast::{BinOp, CheckKind, Expr, File, FxLine, Named, Stmt, StmtKind, UnOp};
 use crate::lex::{self, Comment};
 
 pub fn format_file(file: &File) -> String {
@@ -87,6 +87,16 @@ impl<'a> Printer<'a> {
                     &join_head("style", name, &[], named),
                 );
             }
+            StmtKind::Finish { name, params, body } => {
+                self.emit(
+                    stmt.span.line,
+                    indent,
+                    &join_head("finish", name, &[], params),
+                );
+                for line in body {
+                    self.emit(line.span.line, indent + 1, &fx_head(line));
+                }
+            }
             StmtKind::Def { name, params, body } => {
                 self.emit(stmt.span.line, indent, &join_head("def", name, &[], params));
                 self.stmts(body, indent + 1);
@@ -172,6 +182,9 @@ impl<'a> Printer<'a> {
             } => {
                 self.emit(stmt.span.line, indent, &join_head("", verb, args, named));
                 self.stmts(body, indent + 1);
+            }
+            StmtKind::Fx(line) => {
+                self.emit(stmt.span.line, indent, &fx_head(line));
             }
             StmtKind::SlotFill { name, body } => {
                 self.emit(stmt.span.line, indent, &format!("{name}:"));
@@ -351,6 +364,10 @@ fn join_head(kw: &str, name: &str, args: &[Expr], named: &[Named]) -> String {
         parts.push(fmt_named(n));
     }
     parts.join(" ")
+}
+
+fn fx_head(line: &FxLine) -> String {
+    join_head("fx", &line.op, &line.args, &line.named)
 }
 
 fn fmt_named(n: &Named) -> String {
