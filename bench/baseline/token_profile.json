@@ -3,32 +3,32 @@
   "project": "examples/chibi",
   "files": {
     "art/character/moss_monk.art": {
-      "tokens": 4336,
+      "tokens": 4344,
       "lines": 220,
       "palette_prefix_tokens": 35
     },
     "art/monument/stone_lantern.art": {
-      "tokens": 6392,
+      "tokens": 6402,
       "lines": 286,
       "palette_prefix_tokens": 418
     },
     "art/monument/vermilion_torii.art": {
-      "tokens": 4965,
+      "tokens": 4976,
       "lines": 250,
       "palette_prefix_tokens": 33
     },
     "art/produce/momo_peach.art": {
-      "tokens": 3520,
+      "tokens": 3524,
       "lines": 159,
       "palette_prefix_tokens": 104
     },
     "art/produce/sweet_strawberry.art": {
-      "tokens": 2507,
+      "tokens": 2513,
       "lines": 114,
       "palette_prefix_tokens": 20
     },
     "art/prop/matcha_teacup.art": {
-      "tokens": 2509,
+      "tokens": 2521,
       "lines": 128,
       "palette_prefix_tokens": 118
     },
@@ -38,7 +38,7 @@
       "palette_prefix_tokens": 0
     },
     "lib/palette/house.art": {
-      "tokens": 135,
+      "tokens": 147,
       "lines": 14,
       "palette_prefix_tokens": 0
     },
@@ -48,7 +48,7 @@
       "palette_prefix_tokens": 0
     }
   },
-  "total_tokens": 26180,
+  "total_tokens": 26243,
   "lexemes": {
     "comments": {
       "tokens": 357,
@@ -60,39 +60,39 @@
     },
     "colors": {
       "tokens": 486,
-      "share": 0.0186
+      "share": 0.0185
     },
     "keys": {
-      "tokens": 3975,
-      "share": 0.1518
+      "tokens": 3973,
+      "share": 0.1514
     },
     "palette_refs": {
       "tokens": 1235,
-      "share": 0.0472
+      "share": 0.0471
     },
     "identifiers": {
-      "tokens": 4996,
-      "share": 0.1908
+      "tokens": 5060,
+      "share": 0.1928
     },
     "numbers": {
       "tokens": 7367,
-      "share": 0.2814
+      "share": 0.2807
     },
     "operators": {
       "tokens": 3887,
-      "share": 0.1485
+      "share": 0.1481
     },
     "indentation": {
       "tokens": 1068,
-      "share": 0.0408
+      "share": 0.0407
     },
     "newlines": {
-      "tokens": 1051,
+      "tokens": 1052,
       "share": 0.0401
     },
     "whitespace": {
       "tokens": 1597,
-      "share": 0.061
+      "share": 0.0609
     }
   },
   "roles": {
@@ -101,12 +101,12 @@
       "share": 0.0138
     },
     "palette": {
-      "tokens": 1092,
-      "share": 0.0417
+      "tokens": 1149,
+      "share": 0.0438
     },
     "fx": {
       "tokens": 1342,
-      "share": 0.0513
+      "share": 0.0511
     },
     "cel_shading": {
       "tokens": 564,
@@ -114,27 +114,27 @@
     },
     "soft_light_shadow": {
       "tokens": 3952,
-      "share": 0.151
+      "share": 0.1506
     },
     "accent_strokes": {
-      "tokens": 4593,
-      "share": 0.1754
+      "tokens": 4597,
+      "share": 0.1752
     },
     "form_outlines": {
       "tokens": 6833,
-      "share": 0.261
+      "share": 0.2604
     },
     "logic_math": {
-      "tokens": 3910,
-      "share": 0.1494
+      "tokens": 3912,
+      "share": 0.1491
     },
     "structure": {
       "tokens": 3532,
-      "share": 0.1349
+      "share": 0.1346
     }
   },
   "palette_prefix_tokens": 728,
   "house_prefix_tokens": 33,
-  "card_tokens": 3081,
+  "card_tokens": 3468,
   "cryptic_names": {}
 }

@@ -5,171 +5,171 @@
       "tasks": {
         "c01-ume-plum": {
           "kind": "construction",
-          "tokens_read": 7978,
-          "tokens_written": 2615,
+          "tokens_read": 8000,
+          "tokens_written": 2619,
           "image_tokens": 2798,
-          "total_tokens": 13391,
+          "total_tokens": 13417,
           "round_trips": 3
         },
         "c02-paper-lantern": {
           "kind": "construction",
-          "tokens_read": 4460,
-          "tokens_written": 2739,
+          "tokens_read": 4484,
+          "tokens_written": 2747,
           "image_tokens": 2798,
-          "total_tokens": 9997,
+          "total_tokens": 10029,
           "round_trips": 3
         },
         "c03-acorn-sprite": {
           "kind": "construction",
-          "tokens_read": 6287,
-          "tokens_written": 2769,
+          "tokens_read": 6307,
+          "tokens_written": 2776,
           "image_tokens": 2798,
-          "total_tokens": 11854,
+          "total_tokens": 11881,
           "round_trips": 3
         },
         "m01-lantern-quieter-glow": {
           "kind": "multi",
-          "tokens_read": 6392,
+          "tokens_read": 6402,
           "tokens_written": 252,
           "image_tokens": 1399,
-          "total_tokens": 8043,
+          "total_tokens": 8053,
           "round_trips": 2
         },
         "m02-peach-shrink-sparkles": {
           "kind": "multi",
-          "tokens_read": 3520,
+          "tokens_read": 3524,
           "tokens_written": 60,
           "image_tokens": 1399,
-          "total_tokens": 4979,
+          "total_tokens": 4983,
           "round_trips": 2
         },
         "m03-strawberry-bigger-face": {
           "kind": "multi",
-          "tokens_read": 2507,
+          "tokens_read": 2513,
           "tokens_written": 208,
           "image_tokens": 1399,
-          "total_tokens": 4114,
+          "total_tokens": 4120,
           "round_trips": 2
         },
         "s01-peach-remove-small-sparkle": {
           "kind": "structural",
-          "tokens_read": 3520,
+          "tokens_read": 3524,
           "tokens_written": 10,
           "image_tokens": 1399,
-          "total_tokens": 4929,
+          "total_tokens": 4933,
           "round_trips": 2
         },
         "s02-torii-move-right-leaf": {
           "kind": "structural",
-          "tokens_read": 4965,
+          "tokens_read": 4976,
           "tokens_written": 52,
           "image_tokens": 1399,
-          "total_tokens": 6416,
+          "total_tokens": 6427,
           "round_trips": 2
         },
         "s03-strawberry-add-dew-drop": {
           "kind": "structural",
-          "tokens_read": 2507,
+          "tokens_read": 2513,
           "tokens_written": 23,
           "image_tokens": 1399,
-          "total_tokens": 3929,
+          "total_tokens": 3935,
           "round_trips": 2
         },
         "s04-teacup-add-steam-wisp": {
           "kind": "structural",
-          "tokens_read": 2509,
+          "tokens_read": 2521,
           "tokens_written": 119,
           "image_tokens": 1399,
-          "total_tokens": 4027,
+          "total_tokens": 4039,
           "round_trips": 2
         },
         "v01-peach-soften-highlight": {
           "kind": "value",
-          "tokens_read": 3520,
+          "tokens_read": 3524,
           "tokens_written": 52,
           "image_tokens": 1399,
-          "total_tokens": 4971,
+          "total_tokens": 4975,
           "round_trips": 2
         },
         "v02-torii-thicken-roof-outline": {
           "kind": "value",
-          "tokens_read": 4965,
+          "tokens_read": 4976,
           "tokens_written": 18,
           "image_tokens": 1399,
-          "total_tokens": 6382,
+          "total_tokens": 6393,
           "round_trips": 2
         },
         "v03-monk-warmer-robe": {
           "kind": "value",
-          "tokens_read": 4336,
+          "tokens_read": 4344,
           "tokens_written": 21,
           "image_tokens": 1399,
-          "total_tokens": 5756,
+          "total_tokens": 5764,
           "round_trips": 2
         },
         "v04-strawberry-bigger-sparkle": {
           "kind": "value",
-          "tokens_read": 2507,
+          "tokens_read": 2513,
           "tokens_written": 30,
           "image_tokens": 1399,
-          "total_tokens": 3936,
+          "total_tokens": 3942,
           "round_trips": 2
         },
         "v05-teacup-lighter-ground-shadow": {
           "kind": "value",
-          "tokens_read": 2509,
+          "tokens_read": 2521,
           "tokens_written": 48,
           "image_tokens": 1399,
-          "total_tokens": 3956,
+          "total_tokens": 3968,
           "round_trips": 2
         },
         "v06-lantern-taller-flame": {
           "kind": "value",
-          "tokens_read": 6392,
+          "tokens_read": 6402,
           "tokens_written": 22,
           "image_tokens": 1399,
-          "total_tokens": 7813,
+          "total_tokens": 7823,
           "round_trips": 2
         },
         "v07-house-stronger-blush": {
           "kind": "value",
-          "tokens_read": 5205,
+          "tokens_read": 5209,
           "tokens_written": 46,
           "image_tokens": 1399,
-          "total_tokens": 6650,
+          "total_tokens": 6654,
           "round_trips": 2
         },
         "v08-monk-brighter-head-rim": {
           "kind": "value",
-          "tokens_read": 4336,
+          "tokens_read": 4344,
           "tokens_written": 80,
           "image_tokens": 1399,
-          "total_tokens": 5815,
+          "total_tokens": 5823,
           "round_trips": 2
         },
         "x01-monk-sleepy": {
           "kind": "variant",
-          "tokens_read": 6021,
+          "tokens_read": 6029,
           "tokens_written": 555,
           "image_tokens": 2798,
-          "total_tokens": 9374,
+          "total_tokens": 9382,
           "round_trips": 3
         },
         "x02-strawberry-wink": {
           "kind": "variant",
-          "tokens_read": 4192,
+          "tokens_read": 4198,
           "tokens_written": 211,
           "image_tokens": 2798,
-          "total_tokens": 7201,
+          "total_tokens": 7207,
           "round_trips": 3
         }
       },
       "total": {
         "tasks": 20,
-        "tokens_read": 88628,
-        "tokens_written": 9930,
+        "tokens_read": 88824,
+        "tokens_written": 9949,
         "image_tokens": 34975,
-        "total_tokens": 133533,
+        "total_tokens": 133748,
         "round_trips": 45
       }
     }
