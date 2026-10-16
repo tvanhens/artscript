@@ -537,7 +537,16 @@ fn slot_fill_percents_use_the_host_box() {
         "@target t.png 200x100\nuse d\nhost\n",
         "def host size:40x20\n  slot hole at:10,0\n    circle 2 at:0%,0% name:mark\n",
     );
-    near(at(node(&shifted, "host.hole.mark")), (-30.0, -10.0));
+    near(at(node(&shifted, "host.hole.mark")), (-20.0, -10.0));
+}
+
+#[test]
+fn unplaced_slot_content_stays_at_the_slot() {
+    let lib = "def host size:40x20\n  slot hole at:10,0\n    circle 2 name:own\n";
+    let own = lib_scene("@target t.png 200x100\nuse d\nhost\n", lib);
+    near(at(node(&own, "host.hole.own")), (0.0, 0.0));
+    let filled = lib_scene("@target t.png 200x100\nuse d\nhost\n  hole:\n    circle 2 name:fill\n", lib);
+    near(at(node(&filled, "host.hole.fill")), (0.0, 0.0));
 }
 
 #[test]

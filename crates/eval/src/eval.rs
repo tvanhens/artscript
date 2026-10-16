@@ -1643,7 +1643,9 @@ impl<'a> Evaluator<'a> {
         a.named.extend(patch_named);
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
         let world = sc.world * m;
-        let local_frame = inverse(&m).map_rect(sc.frame).0;
+        let mapped = inverse(&m).map_rect(sc.frame).0;
+        // Centered on the slot origin, because content with no `at:` defaults to the frame center.
+        let local_frame = size_box(mapped.width() as f64, mapped.height() as f64);
         let children = match inst.fills.iter().find(|f| f.name == name) {
             Some(fill) => {
                 inst.used_fills.borrow_mut().push(name.to_string());

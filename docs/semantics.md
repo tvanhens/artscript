@@ -96,7 +96,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Inside a shape's children, it is the shape's local geometry bounds.
   - Inside `inside @x`, it is `@x`'s bounds in local coordinates.
   - Inside a `def` body, it is the instance's own box when the def declares `size`, and an empty rect at the origin otherwise. The box is that size centered on the local origin. `size:40` is a 40 by 40 square. `size:72x32` is 72 wide and 32 tall.
-  - Inside a slot, it is the enclosing frame mapped through the slot's transform, for the caller's fill and for the slot's own block.
+  - Inside a slot, it is the enclosing frame's size mapped through the slot's transform, centered on the slot origin, for the caller's fill and for the slot's own block. So content with no `at:` stays on the slot.
 - **Percentages.**
   - A position percent is `frame.min + p * frame.size` on that axis.
   - A size percent is `p * frame.size`.
@@ -221,7 +221,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Patches with longer paths are forwarded into nested instances with the prefix stripped.
   - A patch that matches nothing is E0340, and the note lists the part names.
 - **Slots.**
-  - `slot name [at:]` emits the caller's fill content, or its own block if there is no fill, at that z position, transformed by its `at:`. The slot frame is the enclosing frame mapped through that transform.
+  - `slot name [at:]` emits the caller's fill content, or its own block if there is no fill, at that z position, transformed by its `at:`. The slot frame is the enclosing frame's size, centered on the slot origin.
   - Slot content is evaluated with the caller's lexical scope plus host lookup. `@x` searches the host instance's named nodes created so far first, then outward.
 - **`needs:@a`.** When the def is instantiated as slot content, the host must have a part `a`. Otherwise it is E0311, listing the host's parts.
 - **Component values.**
