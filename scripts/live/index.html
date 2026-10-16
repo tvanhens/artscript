@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>artscript live</title>
+<style>
+  :root { --bg:#0f1117; --panel:#161922; --line:#262b38; --text:#e6e8ef; --dim:#8b91a3; --accent:#ffb454; --err:#ff6b6b; --ok:#6bd68a; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid var(--line); }
+  header h1 { font-size:15px; margin:0; letter-spacing:.02em; }
+  header h1 b { color:var(--accent); }
+  #provider { color:var(--dim); font-size:12px; margin-left:auto; }
+  form { display:flex; gap:10px; padding:16px 20px; }
+  #prompt { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:12px 14px; font-size:15px; outline:none; }
+  #prompt:focus { border-color:var(--accent); }
+  button { background:var(--accent); color:#1b1408; border:0; border-radius:10px; padding:0 20px; font-weight:600; font-size:14px; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:default; }
+  main { flex:1; display:grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); gap:16px; padding:0 20px 20px; min-height:0; }
+  .pane { background:var(--panel); border:1px solid var(--line); border-radius:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
+  .pane h2 { margin:0; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--dim); padding:10px 14px; border-bottom:1px solid var(--line); display:flex; gap:12px; }
+  .pane h2 span { margin-left:auto; text-transform:none; letter-spacing:0; font-weight:500; }
+  #code { flex:1; overflow:auto; margin:0; padding:10px 0; font:12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; counter-reset:ln; }
+  #code div { padding:0 14px 0 52px; position:relative; white-space:pre; min-height:1.55em; }
+  #code div::before { counter-increment:ln; content:counter(ln); position:absolute; left:0; width:38px; text-align:right; color:#4a5164; }
+  #code div.err { background:rgba(255,107,107,.08); }
+  #code div.err::before { color:var(--err); }
+  #code div.live { background:rgba(255,180,84,.07); }
+  #code div.live::after { content:"▍"; color:var(--accent); animation:blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+  #stage { flex:1; display:flex; align-items:center; justify-content:center; padding:16px; min-height:0;
+    background: repeating-conic-gradient(#1b1f2a 0 25%, #171a24 0 50%) 0 0/24px 24px; }
+  #art { max-width:100%; max-height:100%; aspect-ratio:1; border-radius:6px; box-shadow:0 10px 40px rgba(0,0,0,.45); }
+  #empty { color:var(--dim); }
+  .stats { display:flex; gap:18px; padding:10px 14px; border-top:1px solid var(--line); font:12px ui-monospace, Menlo, monospace; color:var(--dim); }
+  .stats b { color:var(--text); font-weight:600; }
+  #issues { max-height:84px; overflow:auto; padding:0 14px 10px; font:12px/1.5 ui-monospace, Menlo, monospace; color:var(--err); }
+  #issues .ok { color:var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1><b>artscript</b> live</h1>
+  <div id="provider"></div>
+</header>
+<form id="f">
+  <input id="prompt" placeholder="Describe a drawing…" autocomplete="off" autofocus>
+  <button id="go">Draw</button>
+</form>
+<main>
+  <section class="pane">
+    <h2>Model output <span id="tokens"></span></h2>
+    <pre id="code"></pre>
+  </section>
+  <section class="pane">
+    <h2>Render <span id="status">idle</span></h2>
+    <div id="stage"><div id="empty">The drawing appears here as each line arrives.</div><img id="art" alt="" hidden></div>
+    <div class="stats">
+      <div>frames <b id="frames">0</b></div>
+      <div>first pixels <b id="first">–</b></div>
+      <div>render <b id="ms">–</b></div>
+      <div>issues <b id="nissues">0</b></div>
+    </div>
+    <div id="issues"></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+fetch("/info").then(r => r.json()).then(i => $("provider").textContent = `model: ${i.model}`);
+
+let text = "", frames = 0, errLines = new Set();
+
+function sourceOf(t) {
+  if (t.includes("```")) {
+    let body = t.split("```").slice(1).join("```");
+    body = body.includes("\n") ? body.slice(body.indexOf("\n") + 1) : "";
+    return body.split("```")[0];
+  }
+  const at = t.indexOf("@target");
+  return at >= 0 ? t.slice(at) : "";
+}
+
+function paintCode(done) {
+  const lines = sourceOf(text).split("\n");
+  const code = $("code");
+  while (code.children.length > lines.length) code.lastChild.remove();
+  lines.forEach((l, i) => {
+    let div = code.children[i];
+    if (!div) { div = document.createElement("div"); code.appendChild(div); }
+    if (div.textContent !== l) div.textContent = l;
+    div.className = (errLines.has(i + 1) ? "err " : "") + (!done && i === lines.length - 1 ? "live" : "");
+  });
+  code.scrollTop = code.scrollHeight;
+}
+
+function showFrame(f) {
+  if (f.png) {
+    const img = new Image();
+    img.onload = () => { $("art").src = img.src; $("art").hidden = false; $("empty").hidden = true; };
+    img.src = "data:image/png;base64," + f.png;
+  }
+  frames++;
+  $("frames").textContent = frames;
+  $("ms").textContent = f.ms + " ms";
+  if (f.first_frame != null) $("first").textContent = (f.first_frame / 1000).toFixed(2) + " s";
+  const errs = f.diagnostics.filter(d => d.severity === "error");
+  errLines = new Set(errs.filter(d => d.file === "art/live.art").map(d => d.span.line));
+  $("nissues").textContent = errs.length;
+  $("issues").innerHTML = "";
+  for (const d of errs.slice(0, 4)) {
+    const row = document.createElement("div");
+    row.textContent = `line ${d.span.line}: ${d.message}`;
+    $("issues").appendChild(row);
+  }
+  $("status").textContent = `line ${f.lines} · exit ${f.exit}`;
+}
+
+$("f").onsubmit = async (e) => {
+  e.preventDefault();
+  const prompt = $("prompt").value.trim();
+  if (!prompt) return;
+  text = ""; frames = 0; errLines = new Set();
+  $("code").innerHTML = ""; $("issues").innerHTML = ""; $("art").hidden = true; $("empty").hidden = false;
+  ["frames", "nissues"].forEach(id => $(id).textContent = "0");
+  ["first", "ms"].forEach(id => $(id).textContent = "–");
+  $("go").disabled = true; $("status").textContent = "waiting for the model…";
+  const resp = await fetch("/generate", { method: "POST", body: JSON.stringify({ prompt }) });
+  const reader = resp.body.getReader(), dec = new TextDecoder();
+  let buf = "", tokens = 0;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let cut;
+    while ((cut = buf.indexOf("\n\n")) >= 0) {
+      const block = buf.slice(0, cut); buf = buf.slice(cut + 2);
+      const kind = block.match(/^event: (.*)$/m)[1];
+      const data = JSON.parse(block.match(/^data: (.*)$/m)[1]);
+      if (kind === "token") { text += data.text; tokens++; $("tokens").textContent = `${tokens} tokens`; paintCode(false); }
+      if (kind === "frame") { showFrame(data); paintCode(false); }
+      if (kind === "failure") { $("issues").textContent = data.message; }
+      if (kind === "done") {
+        paintCode(true);
+        $("status").textContent += ` · done in ${(data.elapsed / 1000).toFixed(1)} s`;
+        if (!$("issues").children.length) $("issues").innerHTML = '<div class="ok">no errors</div>';
+      }
+    }
+  }
+  $("go").disabled = false;
+};
+</script>
+</body>
+</html>

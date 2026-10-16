@@ -1,0 +1,19 @@
+# General-purpose ramps for live sketches. Index 0 is deep, 2 is base, 4 is highlight.
+palette studio
+  night ramp #141a3a #3a4a8c 5
+  dusk ramp #3b2f6b #f2a65a 5
+  sky ramp #7fb8e6 5
+  sun ramp #ffc857 5
+  moon ramp #f4ecd2 5
+  leaf ramp #6cbf6a 5 hue:12
+  pine ramp #2f6b4f 5
+  earth ramp #8b5a3c 5
+  stone ramp #9aa0a8 5
+  fox ramp #e0763a 5
+  rose ramp #e86a7a 5
+  water ramp #3a8fb7 5
+  snow #f7f9ff
+  ink #2a1f2d
+  glint #fff4e6
+  rim #b9c9ec
+  shadow #1a1426
