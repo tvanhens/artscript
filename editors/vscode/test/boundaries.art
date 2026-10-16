@@ -7,6 +7,9 @@ use foo/bar#note
 use foo#fffff
 use foo/bar#fff
 use /foo/bar
+use foo?
+use foo/bar?
+use foo?bar
 use
 usefoo
 usefoo/bar
@@ -16,6 +19,9 @@ usefoo/bar#note
 usefoo#fffff
 usefoo/bar#fff
 use/foo/bar
+usefoo?
+usefoo/bar?
+usefoo?bar
 @target 
 @target foo
 @target foo/bar
@@ -25,6 +31,9 @@ use/foo/bar
 @target foo#fffff
 @target foo/bar#fff
 @target /foo/bar
+@target foo?
+@target foo/bar?
+@target foo?bar
 @target
 @targetfoo
 @targetfoo/bar
@@ -34,6 +43,9 @@ use/foo/bar
 @targetfoo#fffff
 @targetfoo/bar#fff
 @target/foo/bar
+@targetfoo?
+@targetfoo/bar?
+@targetfoo?bar
 @target out/file
 @a.b
 123
@@ -83,3 +95,5 @@ circle	1
 .head. eye
 .mask off
 .head.eye
+.5
+..

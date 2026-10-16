@@ -298,7 +298,7 @@ fn patch() -> Pattern {
     );
     Pattern::Region {
         begin: format!(
-            "{at}(\\.)([ \\t]*){optional_non_keyword_name}",
+            "{at}(\\.)(?!\\.|[0-9])([ \\t]*){optional_non_keyword_name}",
             at = AT_STATEMENT,
             optional_non_keyword_name = optional_non_keyword_name
         ),
@@ -368,8 +368,11 @@ fn path_class() -> String {
 }
 
 fn path_chunk_end() -> String {
+    let gap = "(?:$|[ \\t]|#)";
+    // Characters the scanner drops never enter the token, so they stay outside the chunk.
+    let dropped = "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]";
     format!(
-        "(?!#(?:{hex})(?=$|{delims}))(?=$|[ \\t]|#)",
+        "(?!#(?:{hex})(?=$|{delims}))(?={gap}|(?:{dropped})+{gap})",
         hex = hex_body(),
         delims = delim_class()
     )

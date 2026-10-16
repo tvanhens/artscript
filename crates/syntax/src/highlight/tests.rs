@@ -815,6 +815,9 @@ fn boundary_source() -> String {
         "foo#fffff",
         "foo/bar#fff",
         "/foo/bar",
+        "foo?",
+        "foo/bar?",
+        "foo?bar",
     ];
     for host in ["use ", "use", "@target ", "@target"] {
         for tail in tails {
@@ -835,7 +838,15 @@ fn boundary_source() -> String {
     }
     lines.push("\t".into());
     lines.push("circle\t1".into());
-    for patch in [".if", ".head.if", ".head. eye", ".mask off", ".head.eye"] {
+    for patch in [
+        ".if",
+        ".head.if",
+        ".head. eye",
+        ".mask off",
+        ".head.eye",
+        ".5",
+        "..",
+    ] {
         lines.push(patch.into());
     }
     lines.join("\n") + "\n"

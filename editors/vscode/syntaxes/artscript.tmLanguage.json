@@ -46,7 +46,7 @@
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "(?<=^\\t*)(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
+      "match": "(?<=^\\t*)(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#)))?"
     },
     {
       "captures": {
@@ -57,7 +57,7 @@
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "(?<=^[ \\t]*)(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
+      "match": "(?<=^[ \\t]*)(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#)))?"
     },
     {
       "match": "(?<=^[ \\t]*)(?:from|use|as)(?![A-Za-z0-9_])",
@@ -80,7 +80,7 @@
       "name": "constant.language.art"
     },
     {
-      "begin": "(?<=^[ \\t]*)(\\.)([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
+      "begin": "(?<=^[ \\t]*)(\\.)(?!\\.|[0-9])([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
       "beginCaptures": {
         "1": {
           "name": "variable.other.property.patch.art"
