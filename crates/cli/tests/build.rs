@@ -1,8 +1,9 @@
 //! End-to-end CLI runs on a temporary copy of `examples/chibi`.
 
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
@@ -30,6 +31,19 @@ fn fixture(tag: &str) -> PathBuf {
 
 fn artscript(dir: &Path, args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_artscript")).args(args).current_dir(dir).output().unwrap()
+}
+
+fn render_stdin(dir: &Path, args: &[&str], src: &str) -> Output {
+    let mut child = Command::new(env!("CARGO_BIN_EXE_artscript"))
+        .args(args)
+        .current_dir(dir)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(src.as_bytes()).unwrap();
+    child.wait_with_output().unwrap()
 }
 
 fn text(o: &Output) -> String {
@@ -137,6 +151,30 @@ fn build_writes_a_png_when_the_entry_has_a_syntax_error() {
     let again = artscript(&dir, &["build"]);
     assert_eq!(again.status.code(), Some(1), "{}", text(&again));
     assert_eq!(fs::read(dir.join("assets/x.png")).unwrap(), png);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn render_stdin_writes_a_png_and_keeps_the_exit_code() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-render-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("lib")).unwrap();
+    fs::write(dir.join("artscript.toml"), "[project]\nout = \"assets\"\nlib = [\"lib\"]\n").unwrap();
+    fs::write(dir.join("lib/p.art"), "palette ink\n  line #112233\n").unwrap();
+    let png = dir.join("out.png");
+    let args = ["render", "art/x.art", "--stdin", "-o", "out.png"];
+
+    let bad = render_stdin(&dir, &args, "@target x.png 32x32\nuse p\ncircle 10 fill:ink.line\nlet\n");
+    assert_eq!(bad.status.code(), Some(1), "{}", text(&bad));
+    assert!(text(&bad).contains("E0101"), "{}", text(&bad));
+    assert!(!text(&bad).contains("no library"), "{}", text(&bad));
+    let bytes = fs::read(&png).unwrap_or_else(|e| panic!("{e}\n{}", text(&bad)));
+    assert_eq!(&bytes[1..4], b"PNG");
+
+    let good = render_stdin(&dir, &args, "@target x.png 32x32\nuse p\ncircle 10 fill:ink.line\n");
+    assert_eq!(good.status.code(), Some(0), "{}", text(&good));
+    let clean = fs::read(&png).unwrap();
+    assert_eq!(&clean[1..4], b"PNG");
     let _ = fs::remove_dir_all(&dir);
 }
 

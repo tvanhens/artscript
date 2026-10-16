@@ -1,8 +1,9 @@
-//! `artscript` command line: build, check, fmt, explain, init.
+//! `artscript` command line: build, check, fmt, explain, render, init.
 
 mod build;
 
 use std::fs;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -17,6 +18,8 @@ commands:
   check [--json]                           evaluate and run checks without rendering
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
+  render <file> [--stdin] [-o OUT.png] [--json]
+                                           render that file's first @target to a PNG at scale 1
   init                                     create a starter project in the current directory
 
 exit codes: 0 ok, 1 compile error, 2 assert or lint error, 3 warnings only";
@@ -39,6 +42,10 @@ fn main() -> ExitCode {
         },
         Some("explain") => match parse_explain(&args[1..]) {
             Ok(file) => with_project(&cwd, |p| explain(p, &cwd.join(file))),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("render") => match parse_render(&args[1..]) {
+            Ok(opts) => with_project(&cwd, |p| render(p, &cwd, &opts)),
             Err(msg) => usage_error(&msg),
         },
         Some("init") => match flag_set(&args[1..], &[]) {
@@ -90,6 +97,36 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
         }
     }
     Ok(opts)
+}
+
+struct RenderArgs {
+    file: String,
+    stdin: bool,
+    out: Option<String>,
+    json: bool,
+}
+
+fn parse_render(args: &[String]) -> Result<RenderArgs, String> {
+    let mut file = None;
+    let mut stdin = false;
+    let mut out = None;
+    let mut json = false;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--stdin" => stdin = true,
+            "--json" => json = true,
+            "-o" => out = Some(it.next().ok_or("`-o` needs a path")?.clone()),
+            other if other.starts_with('-') => return Err(format!("unknown flag `{other}`")),
+            other => {
+                if file.is_some() {
+                    return Err(format!("unexpected argument `{other}`"));
+                }
+                file = Some(other.to_string());
+            }
+        }
+    }
+    Ok(RenderArgs { file: file.ok_or_else(|| "`render` needs a file".to_string())?, stdin, out, json })
 }
 
 fn parse_explain(args: &[String]) -> Result<&str, String> {
@@ -241,6 +278,64 @@ fn resolve_art(project: &Project, cwd: &Path, arg: &str) -> Result<String, Strin
     } else {
         Err(format!("`{arg}` is not an .art file in this project"))
     }
+}
+
+fn render(project: &Project, cwd: &Path, opts: &RenderArgs) -> u8 {
+    let root = fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone());
+    let path = cwd.join(&opts.file);
+    let abs = fs::canonicalize(&path).unwrap_or(path);
+    let rel = rel_path(&root, &abs);
+    if opts.stdin {
+        let mut src = String::new();
+        if let Err(e) = io::stdin().read_to_string(&mut src) {
+            eprintln!("error: cannot read stdin: {e}");
+            return 1;
+        }
+        let mut project = project.clone();
+        project.files.insert(rel.clone(), src);
+        return render_job(&project, &rel, cwd, opts.out.as_deref(), opts.json);
+    }
+    render_job(project, &rel, cwd, opts.out.as_deref(), opts.json)
+}
+
+fn render_job(project: &Project, rel: &str, cwd: &Path, out: Option<&str>, json: bool) -> u8 {
+    let plan = plan(project);
+    let Some(job) = plan.jobs.iter().find(|j| j.source == rel) else {
+        let own: Vec<Diagnostic> = plan.diagnostics.into_iter().filter(|d| d.file == rel).collect();
+        if !own.is_empty() {
+            return report(own, true, json);
+        }
+        eprintln!(
+            "{}",
+            Diagnostic::error("E0200", Span::default(), format!("`{rel}` has no @target to render"))
+                .with_note(format!("entry files: {}", plan.entries.join(", ")))
+                .with_fix("pass a file that declares `@target`")
+        );
+        return 1;
+    };
+    let mut ev = artscript_eval::evaluate(project, job);
+    if let Some(out_path) = out
+        && let Some(scene) = &ev.scene
+    {
+        match artscript_render::render_png(scene, 1.0) {
+            Ok(bytes) => {
+                let path = cwd.join(out_path);
+                let written = path.parent().map_or(Ok(()), fs::create_dir_all).and_then(|_| fs::write(&path, &bytes));
+                if let Err(e) = written {
+                    ev.diagnostics.push(
+                        Diagnostic::error("E0400", job.span, format!("cannot write {out_path}: {e}")).in_file(&job.source),
+                    );
+                }
+            }
+            Err(artscript_render::RenderError::Skia(msg)) => {
+                ev.diagnostics.push(Diagnostic::error("E0400", job.span, format!("render failed: {msg}")).in_file(&job.source));
+            }
+            Err(artscript_render::RenderError::NotVector(_)) => {
+                ev.diagnostics.push(Diagnostic::error("E0400", job.span, "render failed").in_file(&job.source));
+            }
+        }
+    }
+    report(ev.diagnostics, true, json)
 }
 
 fn explain(project: &Project, file: &Path) -> u8 {
