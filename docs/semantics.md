@@ -1,6 +1,6 @@
 # artscript v0.1 implementation semantics
 
-The design doc is `MVP.md`, and the author-facing reference is `docs/language.md`. This file settles the details both leave open. When they disagree, this file wins for v0.1.
+The author-facing reference is `docs/language.md`. This file settles the details that reference leaves open. When they disagree, this file wins for v0.1.
 
 ## 1. Lexing
 
@@ -252,7 +252,12 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 ## 11. Targets, manifest and build
 
-- Follow MVP.md "Targets" rules 1 to 7 and the codes E0201 to E0204.
+- A file with one or more `@target` directives is an entry file. A file with none is a library.
+- A directive after another statement is E0101. `@target` lines come first.
+- `use` of an entry file is E0201.
+- Two declarations that produce the same output path, after matrix expansion, are E0202. The note names the first declaration.
+- `@target` under a manifest lib root is E0203.
+- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `def`, `rule`, and `let`.
 - The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`.
 - `bg:` defaults to the manifest `[defaults] bg`, which defaults to `none` (transparent).
 - `art-manifest.json` sits in `out`. It holds `{ "version": 1, "outputs": [ { "path", "source", "line", "target", "matrix", "scale", "hash", "status": "pass|warn|fail", "checks": [..] } ] }`, sorted by path.
@@ -273,7 +278,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 ## 12. Not implemented in v0.1
 
-- `shader`, `light` and `brush` parse, and evaluating them reports E0390 "not yet implemented in v0.1" with the design-doc phase.
+- `shader`, `light` and `brush` parse, and evaluating them reports E0390 "not yet implemented in v0.1". The message names the phase, as in `shader (Phase 2)`.
 - `fx bevel` and every other Phase 2 effect report E0391.
 - Rendered checks (`contrast`, `visible`) report E0392.
 

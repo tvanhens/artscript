@@ -1,6 +1,3 @@
-//! `@target` declarations: matrix expansion, output paths, profiles, and MVP.md target rules
-//! (E0202 duplicate outputs, E0203 targets under a lib root).
-
 use std::collections::BTreeMap;
 
 use artscript_ir::Profile;
