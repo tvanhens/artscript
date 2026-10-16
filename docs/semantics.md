@@ -268,3 +268,54 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `shader`, `light` and `brush` parse, and evaluating them reports E0390 "not yet implemented in v0.1" with the design-doc phase.
 - `fx bevel` and every other Phase 2 effect report E0391.
 - Rendered checks (`contrast`, `visible`) report E0392.
+
+## 13. Clarifications from implementation
+
+These pin down points the sections above leave open. Earlier sections still govern.
+
+- **Imports.**
+  - A plain `use x` binds every export of `x` by name. `use x { a b }` binds only those names. `use x as m` binds only `m`.
+  - `m.name` on a module alias falls back to the module's palette entries, so `p.rim` works through the default palette alias.
+  - A `use` that names a project-relative entry file (`use art/b`) is E0201, the same as one that resolves through a lib root.
+  - Top-level `let`s of a module are visible inside its `def`s.
+- **Node identity.**
+  - The sibling suffix counter is keyed by the base name plus any `#i` suffix. So the copies of one `each` are `circle#0`, `circle#1`, and a second loop's copies are `circle2#0`, `circle2#1`.
+  - Only nodes with `name:`, named layers and groups, and instances are registered for `@refs`. A bare `circle` is not addressable.
+  - Slot content registers its names in the caller's table, and resolves `@x` against the host first.
+- **Patches.** When an outer instance and an inner one both patch the same node, the outer one wins.
+- **Seeds.** `rand` draws from a seed of the file, node path, `#i` suffix and statement line, plus a counter that advances on every call in that statement.
+- **Repeat and grid.**
+  - `repeat n rot:r step:x,y` applies `i * rot` and `i * step` to copy `i`.
+  - `grid` copies are centered on the grid's origin. The cell size is `cell:` or the bounds of the first copy, plus `gap:`. Primitives inside a grid still default to the frame center, so the whole grid sits at the frame center.
+- **Paint.**
+  - A closed shape with a tapered stroke draws only the tapered outline, in the stroke paint, with no fill.
+  - When a tapered stroke's width list has a different length from the curve's points, the widths are spread evenly along the curve.
+  - `circle 50%` takes the percent of `min(w, h)` of the frame.
+  - `shadow` and `inner` with no offset use `0,4` and `blur:4`.
+  - The fx default colors use the step formula on the resolved color. They do not use the node's ramp index.
+- **Measurements.** `.area` is the bounds area, `w * h`.
+- **Lints.**
+  - `raw-color` only scans statements. `@target` keys such as `bg:` are exempt.
+  - `unused` (L0103) covers `let` bindings, def parameters other than `needs`, and imported names. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
+  - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
+- **Codes added in this version.**
+  - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
+  - E0206: a bad `@target` size, scale, extension, profile or matrix axis.
+  - E0207: an unknown `{var}` in a target path.
+  - E0208: an unknown directive.
+  - E0209: a `profile:vector` target that uses raster-only features. The notes list each node.
+  - E0210: a module that cannot be found.
+  - E0211: an import cycle.
+  - E0212: an imported name that the module does not export.
+  - E0304: `palette x from y` where `y` does not exist. E0305: a malformed palette entry or `ramp`.
+  - E0306: `each` over something that is not a list or range, or more than 100000 iterations.
+  - E0307: an unknown style.
+  - E0334: `slot` outside a `def`.
+  - E0350: an unknown reference or member. The notes list the names that exist.
+  - E0351: measuring a reference that has no geometry.
+  - E0400: a render or write failure.
+- **Build.**
+  - The cache file name is the FNV-1a hex of the target key (`source:line[matrix]`).
+  - A target whose evaluation reports an `E` error writes no outputs. Its previous manifest entries are kept with `status: fail`, so the old outputs are not deleted.
+  - With `--only`, entries of targets that were not selected stay in the manifest unchanged.
+  - The manifest's `checks` field lists the `C` diagnostics as `"<code>: <message>"`.

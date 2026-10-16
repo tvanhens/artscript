@@ -43,7 +43,7 @@ layer twig
   fx outline 4
 
 layer leaf_back
-  _leaf tone:shade(peach.leaf -.4) vein:-1 at:516,318 rot:210 scale:1.05,-.86
+  _leaf tone:shade(peach.leaf -.4) vein:1 at:516,318 rot:210 scale:1.05,-.86
 
 layer body
   curve 522,386 568,354 652,342 738,378 794,456 816,560 798,668 744,766 650,830 532,850 414,838 316,790 250,704 222,592 234,478 286,394 372,346 466,350 closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3 peach.cream .6),.62 peach.cream,.85 peach.cream.1) name:skin

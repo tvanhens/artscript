@@ -1,0 +1,27 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "67eee463660a3ee0",
+      "line": 1,
+      "matrix": {},
+      "path": "produce/momo_peach.png",
+      "scale": 1.0,
+      "source": "art/produce/momo_peach.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "f1a0187bfb2a02fb",
+      "line": 2,
+      "matrix": {},
+      "path": "produce/momo_peach.svg",
+      "scale": 1.0,
+      "source": "art/produce/momo_peach.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

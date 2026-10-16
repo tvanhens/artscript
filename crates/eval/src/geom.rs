@@ -1,0 +1,376 @@
+//! Geometry construction: centripetal Catmull-Rom splines, tapered ink outlines, hand-drawn
+//! wobble, blobs, regular polygons and stars, and PathOps booleans. The spline, brush and wobble
+//! algorithms are ports of chibi `paths.py`.
+
+use std::f64::consts::PI;
+
+use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
+
+use artscript_ir::{Path, Point, Rect};
+
+use crate::seed::Rng;
+
+pub type P = (f64, f64);
+
+fn pt(p: P) -> Point {
+    Point::new(p.0 as f32, p.1 as f32)
+}
+
+fn sub(a: P, b: P) -> P {
+    (a.0 - b.0, a.1 - b.1)
+}
+
+fn norm(a: P) -> f64 {
+    a.0.hypot(a.1)
+}
+
+fn bezier_controls(p0: P, p1: P, p2: P, p3: P, tension: f64) -> (P, P) {
+    let d1 = norm(sub(p1, p0)).max(1e-6).sqrt();
+    let d2 = norm(sub(p2, p1)).max(1e-6).sqrt();
+    let d3 = norm(sub(p3, p2)).max(1e-6).sqrt();
+    let b1 = |i: usize| {
+        let (a, b, c) = ([p0.0, p0.1][i], [p1.0, p1.1][i], [p2.0, p2.1][i]);
+        (d1 * d1 * c - d2 * d2 * a + (2.0 * d1 * d1 + 3.0 * d1 * d2 + d2 * d2) * b) / (3.0 * d1 * (d1 + d2))
+    };
+    let b2 = |i: usize| {
+        let (a, b, c) = ([p1.0, p1.1][i], [p2.0, p2.1][i], [p3.0, p3.1][i]);
+        (d3 * d3 * a - d2 * d2 * c + (2.0 * d3 * d3 + 3.0 * d3 * d2 + d2 * d2) * b) / (3.0 * d3 * (d3 + d2))
+    };
+    let k = tension / 0.5;
+    (
+        (p1.0 + (b1(0) - p1.0) * k, p1.1 + (b1(1) - p1.1) * k),
+        (p2.0 + (b2(0) - p2.0) * k, p2.1 + (b2(1) - p2.1) * k),
+    )
+}
+
+/// Smooth curve through every point. Needs 2 points open, 3 closed; fewer give a polyline.
+pub fn spline(pts: &[P], tension: f64, closed: bool) -> Path {
+    let n = pts.len();
+    let mut b = PathBuilder::new();
+    if n == 0 {
+        return b.detach();
+    }
+    if n < if closed { 3 } else { 2 } {
+        b.move_to(pt(pts[0]));
+        for p in &pts[1..] {
+            b.line_to(pt(*p));
+        }
+        return b.detach();
+    }
+    let ext: Vec<P> = if closed {
+        let mut e = vec![pts[n - 1]];
+        e.extend_from_slice(pts);
+        e.extend_from_slice(&pts[..2]);
+        e
+    } else {
+        let mut e = vec![(2.0 * pts[0].0 - pts[1].0, 2.0 * pts[0].1 - pts[1].1)];
+        e.extend_from_slice(pts);
+        e.push((2.0 * pts[n - 1].0 - pts[n - 2].0, 2.0 * pts[n - 1].1 - pts[n - 2].1));
+        e
+    };
+    b.move_to(pt(pts[0]));
+    for i in 0..if closed { n } else { n - 1 } {
+        let (c1, c2) = bezier_controls(ext[i], ext[i + 1], ext[i + 2], ext[i + 3], tension);
+        b.cubic_to(pt(c1), pt(c2), pt(ext[i + 2]));
+    }
+    if closed {
+        b.close();
+    }
+    b.detach()
+}
+
+pub struct Contour {
+    pub pos: Vec<P>,
+    pub tan: Vec<P>,
+    pub closed: bool,
+}
+
+/// Per contour, positions and unit tangents every `step` units of arc length.
+pub fn sample(path: &Path, step: f64) -> Vec<Contour> {
+    let mut out = Vec::new();
+    for measure in skia_safe::ContourMeasureIter::new(path, false, None) {
+        let length = measure.length() as f64;
+        if length <= 0.0 {
+            continue;
+        }
+        let n = ((length / step).ceil() as usize).max(2);
+        let mut pos = Vec::with_capacity(n + 1);
+        let mut tan = Vec::with_capacity(n + 1);
+        for i in 0..=n {
+            let (p, t) = measure.pos_tan((length * i as f64 / n as f64) as f32).unwrap_or_default();
+            pos.push((p.x as f64, p.y as f64));
+            tan.push((t.x as f64, t.y as f64));
+        }
+        out.push(Contour { pos, tan, closed: measure.is_closed() });
+    }
+    out
+}
+
+fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
+    if x <= xs[0] {
+        return ys[0];
+    }
+    for i in 1..xs.len() {
+        if x <= xs[i] {
+            let span = xs[i] - xs[i - 1];
+            let f = if span > 0.0 { (x - xs[i - 1]) / span } else { 1.0 };
+            return ys[i - 1] + (ys[i] - ys[i - 1]) * f;
+        }
+    }
+    ys[ys.len() - 1]
+}
+
+fn ease(x: f64) -> f64 {
+    (x.clamp(0.0, 1.0) * PI / 2.0).sin().powf(0.8)
+}
+
+/// Filled outline of a variable-width stroke along `path`'s first contour, with round caps.
+/// `widths` has one width per control point in `knots` (chord fractions follow the knots);
+/// with no knots the widths are spread evenly along the length.
+pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64)) -> Path {
+    let Some(c) = sample(path, 0.75).into_iter().next() else {
+        return Path::new();
+    };
+    let mut s = vec![0.0];
+    for i in 1..c.pos.len() {
+        let d = norm(sub(c.pos[i], c.pos[i - 1]));
+        s.push(s[i - 1] + d);
+    }
+    let length = *s.last().unwrap();
+    let chord: Vec<f64> = if knots.len() == widths.len() && knots.len() >= 2 {
+        let mut ch = vec![0.0];
+        for i in 1..knots.len() {
+            let d = norm(sub(knots[i], knots[i - 1]));
+            ch.push(ch[i - 1] + d);
+        }
+        let total = ch.last().copied().unwrap_or(1.0).max(1e-9);
+        ch.iter().map(|v| v / total).collect()
+    } else if widths.len() >= 2 {
+        (0..widths.len()).map(|i| i as f64 / (widths.len() - 1) as f64).collect()
+    } else {
+        vec![0.0, 1.0]
+    };
+    let ws: Vec<f64> = if widths.len() >= 2 { widths.to_vec() } else { vec![widths[0]; 2] };
+    let floor = 0.12;
+    let w: Vec<f64> = s
+        .iter()
+        .map(|&si| {
+            let mut w = interp(si / length, &chord, &ws);
+            if taper.0 > 0.0 {
+                w *= floor + (1.0 - floor) * ease(si / (taper.0 * length));
+            }
+            if taper.1 > 0.0 {
+                w *= floor + (1.0 - floor) * ease((length - si) / (taper.1 * length));
+            }
+            w
+        })
+        .collect();
+    let n = c.pos.len();
+    let normal = |i: usize| (-c.tan[i].1, c.tan[i].0);
+    let r = |i: usize| w[i] / 2.0;
+    let mut ring: Vec<P> = Vec::with_capacity(2 * n + 24);
+    for i in 0..n {
+        let (nx, ny) = normal(i);
+        ring.push((c.pos[i].0 + nx * r(i), c.pos[i].1 + ny * r(i)));
+    }
+    let thetas: Vec<f64> = (1..13).map(|k| PI * k as f64 / 13.0).collect();
+    let (e, ne, te, re) = (c.pos[n - 1], normal(n - 1), c.tan[n - 1], r(n - 1));
+    for th in &thetas {
+        ring.push((
+            e.0 + re * (th.cos() * ne.0 + th.sin() * te.0),
+            e.1 + re * (th.cos() * ne.1 + th.sin() * te.1),
+        ));
+    }
+    for i in (0..n).rev() {
+        let (nx, ny) = normal(i);
+        ring.push((c.pos[i].0 - nx * r(i), c.pos[i].1 - ny * r(i)));
+    }
+    let (s0, n0, t0, r0) = (c.pos[0], normal(0), c.tan[0], r(0));
+    for th in &thetas {
+        ring.push((
+            s0.0 + r0 * (-th.cos() * n0.0 - th.sin() * t0.0),
+            s0.1 + r0 * (-th.cos() * n0.1 - th.sin() * t0.1),
+        ));
+    }
+    polygon(&ring)
+}
+
+pub fn polygon(pts: &[P]) -> Path {
+    let pts: Vec<Point> = pts.iter().map(|p| pt(*p)).collect();
+    let mut b = PathBuilder::new();
+    b.add_polygon(&pts, true);
+    b.detach()
+}
+
+/// Displaces the outline along its normal by smooth noise of about `amount` units.
+pub fn wobble(path: &Path, amount: f64, rng: &mut Rng, wavelength: f64) -> Path {
+    let mut b = PathBuilder::new();
+    for c in sample(path, (wavelength / 4.0).max(2.0)) {
+        let n = if c.closed { c.pos.len() - 1 } else { c.pos.len() };
+        if n < 3 {
+            continue;
+        }
+        let knots = (n / 4).max(3);
+        let vals: Vec<f64> = (0..knots).map(|_| rng.uniform(-1.0, 1.0)).collect();
+        let pts: Vec<P> = (0..n)
+            .map(|i| {
+                let t = i as f64 / n as f64 * knots as f64;
+                let i0 = t.floor() as usize;
+                let f = t - i0 as f64;
+                let f = f * f * (3.0 - 2.0 * f);
+                let a = vals[i0 % knots];
+                let bv = if c.closed { vals[(i0 + 1) % knots] } else { vals[(i0 + 1).min(knots - 1)] };
+                let disp = (a + (bv - a) * f) * amount;
+                (c.pos[i].0 - c.tan[i].1 * disp, c.pos[i].1 + c.tan[i].0 * disp)
+            })
+            .collect();
+        b.add_path(&spline(&pts, 0.5, c.closed), None);
+    }
+    b.detach()
+}
+
+/// Organic closed shape: `points` radii scaled by `1 + wobble*u`, angles jittered.
+pub fn blob(r: f64, points: usize, wobble: f64, rng: &mut Rng) -> Path {
+    let n = points.max(3);
+    let step = 2.0 * PI / n as f64;
+    let pts: Vec<P> = (0..n)
+        .map(|i| {
+            let rr = r * (1.0 + wobble * rng.uniform(-1.0, 1.0));
+            let a = -PI / 2.0 + i as f64 * step + rng.uniform(-1.0, 1.0) * wobble * 0.5 * step;
+            (rr * a.cos(), rr * a.sin())
+        })
+        .collect();
+    spline(&pts, 0.5, true)
+}
+
+/// Regular polygon, or a star when `inner` is set (fraction of `r`). The first vertex points up.
+pub fn regular(n: usize, r: f64, inner: Option<f64>) -> Path {
+    let n = n.max(2);
+    let count = if inner.is_some() { 2 * n } else { n };
+    let pts: Vec<P> = (0..count)
+        .map(|i| {
+            let a = -PI / 2.0 + i as f64 * 2.0 * PI / count as f64;
+            let rr = match inner {
+                Some(f) if i % 2 == 1 => r * f,
+                _ => r,
+            };
+            (rr * a.cos(), rr * a.sin())
+        })
+        .collect();
+    polygon(&pts)
+}
+
+pub fn round_corners(path: &Path, r: f64) -> Path {
+    let Some(effect) = PathEffect::corner_path(r as f32) else {
+        return path.clone();
+    };
+    let cull = path.compute_tight_bounds().with_outset((r as f32 + 1.0, r as f32 + 1.0));
+    match effect.filter_path(path, &StrokeRec::new_fill(), cull) {
+        Some((mut b, _)) => b.detach(),
+        None => path.clone(),
+    }
+}
+
+/// Centered rect with per-corner radii (top-left, top-right, bottom-right, bottom-left).
+pub fn rect(w: f64, h: f64, radii: [f64; 4]) -> Path {
+    let r = Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32);
+    let mut b = PathBuilder::new();
+    if radii.iter().all(|v| *v <= 0.0) {
+        b.add_rect(r, None, None);
+    } else {
+        let v = radii.map(|x| Vector::new(x as f32, x as f32));
+        b.add_rrect(RRect::new_rect_radii(r, &v), None, None);
+    }
+    b.detach()
+}
+
+pub fn ellipse(rx: f64, ry: f64) -> Path {
+    let mut b = PathBuilder::new();
+    b.add_oval(Rect::from_ltrb(-rx as f32, -ry as f32, rx as f32, ry as f32), None, None);
+    b.detach()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BoolOp {
+    Subtract,
+    Union,
+    Intersect,
+    Xor,
+}
+
+/// Folds the operands left to right: `subtract` is the first minus the rest.
+pub fn boolean(op: BoolOp, operands: &[Path]) -> Path {
+    let Some((first, rest)) = operands.split_first() else {
+        return Path::new();
+    };
+    let skop = match op {
+        BoolOp::Subtract => PathOp::Difference,
+        BoolOp::Union => PathOp::Union,
+        BoolOp::Intersect => PathOp::Intersect,
+        BoolOp::Xor => PathOp::XOR,
+    };
+    rest.iter().fold(first.clone(), |acc, p| skia_safe::op(&acc, p, skop).unwrap_or(acc))
+}
+
+pub fn union_all(paths: &[Path]) -> Path {
+    match paths {
+        [] => Path::new(),
+        [one] => one.clone(),
+        _ => boolean(BoolOp::Union, paths),
+    }
+}
+
+/// Bounds of a path, or an empty rect at the origin for an empty path.
+pub fn bounds(path: &Path) -> Rect {
+    if path.is_empty() { Rect::new_empty() } else { path.compute_tight_bounds() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contains(path: &Path, p: P) -> bool {
+        sample(path, 0.25)
+            .iter()
+            .flat_map(|c| c.pos.iter())
+            .any(|q| (q.0 - p.0).abs() < 0.3 && (q.1 - p.1).abs() < 0.3)
+    }
+
+    #[test]
+    fn curve_passes_through_its_points() {
+        let pts = [(0.0, 0.0), (20.0, -15.0), (40.0, 0.0)];
+        let path = spline(&pts, 0.5, false);
+        for p in pts {
+            assert!(contains(&path, p), "curve misses {p:?}");
+        }
+        let b = path.compute_tight_bounds();
+        assert_eq!((b.left, b.right), (0.0, 40.0));
+        assert!((b.top + 15.0).abs() < 0.5, "top {}", b.top);
+    }
+
+    #[test]
+    fn tapered_stroke_is_full_width_in_the_middle() {
+        let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false);
+        let outline = brush(&line, &[(0.0, 0.0), (100.0, 0.0)], &[8.0, 8.0], (0.3, 0.3));
+        let probe = |y: f32| outline.contains(Point::new(50.0, y));
+        assert!(probe(3.9) && probe(-3.9));
+        assert!(!probe(4.2) && !probe(-4.2));
+        assert!(!outline.contains(Point::new(2.0, 3.0)), "ends taper");
+    }
+
+    #[test]
+    fn subtract_removes_the_overlap() {
+        let a = rect(20.0, 20.0, [0.0; 4]);
+        let b = rect(20.0, 20.0, [0.0; 4]).make_offset((10.0, 0.0));
+        let out = boolean(BoolOp::Subtract, &[a, b]);
+        assert_eq!(bounds(&out), Rect::from_ltrb(-10.0, -10.0, 0.0, 10.0));
+    }
+
+    #[test]
+    fn star_first_vertex_points_up() {
+        let s = regular(4, 20.0, Some(0.5));
+        let p = s.points()[0];
+        assert!(p.x.abs() < 1e-4 && p.y == -20.0, "{p:?}");
+        assert_eq!(s.count_points(), 8);
+    }
+}
