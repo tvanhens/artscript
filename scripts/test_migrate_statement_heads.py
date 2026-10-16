@@ -28,6 +28,10 @@ class MigrateStatementHeads(unittest.TestCase):
         self.assertEqual(notes, [])
         self.assertEqual(migrate(out)[0], out, "a rerun changes nothing")
 
+    def test_a_color_named_ramp_stays_a_color_on_rerun(self):
+        src = "palette p\n  color ramp #fff\n  ramp color #fff\n"
+        self.assertEqual(migrate(src)[0], src)
+
     def test_mask_colon_block_becomes_a_mask_block(self):
         src = "group feather:6\n  mask:\n    ellipse 150,140 at:330,440\n  circle 3\n"
         out, _ = migrate(src)
@@ -63,6 +67,11 @@ class MigrateStatementHeads(unittest.TestCase):
             "circle 4\n"
             "  fx rim 4 color:p.rim\n",
         )
+
+    def test_let_fx_rename_leaves_quoted_text(self):
+        src = 'group\n  let fx = 1\n  text "fx" fx\n'
+        out, _ = migrate(src)
+        self.assertEqual(out, 'group\n  let fiber_x = 1\n  text "fx" fiber_x\n')
 
     def test_top_level_fx_is_reported(self):
         out, notes = migrate("layer foil\nfx grade warm:.2\n")

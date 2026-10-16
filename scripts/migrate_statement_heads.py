@@ -3,7 +3,7 @@
 usage: python3 scripts/migrate_statement_heads.py FILE...
 
 - Palette rows: `name ramp <rest>` becomes `ramp name <rest>`, `name <rest>` becomes `color name <rest>`.
-  Rows already in the new order are left alone, so a rerun is a no-op.
+  A row that already starts with `ramp` or `color` is left alone, including a swatch named `ramp`, so a rerun is a no-op.
 - `mask:` ending a line becomes `mask` over the same block. `mask:<value>` becomes `mask <value>`.
 - A `mask:<value>` named argument on a draw line moves to a child line `mask <value>`.
 - `let fx` is renamed to `fiber_x` through the end of its block, and a `let fy` beside it to `fiber_y`.
@@ -70,7 +70,7 @@ def swatch_row(line: str) -> str:
     if not m:
         return line
     pad, first, _, rest = m.groups()
-    if first in ("ramp", "color") and re.match(rf"{NAME}(\s|$)", rest) and not re.match(r"ramp(\s|$)", rest):
+    if first in ("ramp", "color") and re.match(rf"{NAME}(\s|$)", rest):
         return line
     r = re.match(r"ramp(\s+)(.*)$", rest)
     if r:
@@ -159,13 +159,32 @@ def block_end_same_level(lines: list[str], i: int) -> int:
     return j
 
 
+def rename_outside_strings(text: str, pairs: dict[str, str]) -> str:
+    out = []
+    i = 0
+    while i < len(text):
+        if text[i] == '"':
+            j = text.find('"', i + 1)
+            j = len(text) if j < 0 else j + 1
+            out.append(text[i:j])
+            i = j
+            continue
+        j = text.find('"', i)
+        if j < 0:
+            j = len(text)
+        chunk = text[i:j]
+        for old, new in pairs.items():
+            chunk = re.sub(rf"(?<![\w.#@]){old}(?![\w:])", new, chunk)
+        out.append(chunk)
+        i = j
+    return "".join(out)
+
+
 def rename_in_line(line: str, pairs: dict[str, str]) -> str:
     code, comment = split_comment(line)
     m = re.match(r"^(\s*fx\b)(.*)$", code)
     head, rest = (m.group(1), m.group(2)) if m else ("", code)
-    for old, new in pairs.items():
-        rest = re.sub(rf"(?<![\w.#@]){old}(?![\w:])", new, rest)
-    return head + rest + comment
+    return head + rename_outside_strings(rest, pairs) + comment
 
 
 class Migrated(NamedTuple):
