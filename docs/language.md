@@ -2,6 +2,8 @@
 
 artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG and SVG. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
 
+A line that does not draw says so with its first word: `use palette style finish def rule let shader light brush` declare, `if else each` branch and loop, `assert expect` check, `slot` exposes a slot, `ramp color` are palette rows, `fx` adds an effect, `mask` masks, `.part` patches, and `name:` at the end of a line fills a slot. Every other line is a draw: a shape, a structure verb, or a component. `fx`, `mask`, `slot` and `finish` are reserved, so `let fx = 1` is an error.
+
 ## Files
 
 - An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`.
@@ -27,11 +29,13 @@ Expressions: `+ - * /` (elementwise on vectors; a number scales a vector, as in 
 
 ```
 palette garden
-  peach  ramp #f3a2a6 5        # 0 deep, 1 shadow, 2 base, 3 light, 4 highlight
-  leaf   ramp #7db956 5 hue:12 # hue: degrees of shift per step
-  sky    ramp #1b1f3a #f2a65a 7  # two endpoints, interpolated in OKLCH
-  ink    #3d2632
+  ramp peach #f3a2a6 5        # 0 deep, 1 shadow, 2 base, 3 light, 4 highlight
+  ramp leaf #7db956 5 hue:12  # hue: degrees of shift per step
+  ramp sky #1b1f3a #f2a65a 7  # two endpoints, interpolated in OKLCH
+  color ink #3d2632
 ```
+
+A palette holds only `ramp` and `color` rows. `ramp <name>` takes one or two colors, an optional stop count (default 5), and an optional `hue:`. `color <name>` takes one color. Outside a palette, `ramp` and `color` are ordinary names, so `color:p.ink` and `ramp(#fff 3)` still work.
 
 A single-color ramp darkens toward cool blue-violet and lightens toward warm yellow, so shadows and lights are hue-shifted for free. `p.peach.line` is the ramp's lineart color, darker and more saturated than the base. `palette night from garden` inherits and overrides.
 
@@ -83,8 +87,8 @@ curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body
 ```
 
 - `inside @torso` draws its block clipped to another node's silhouette, and `outside @x` does the inverse.
-- Masks are `mask:@body`, `mask:simplex(30) > .5`, or a `mask:` block, with `feather:6` for a soft edge.
-- `fx` lines apply to the node they're nested under, in order. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a line around the shape geometry behind the node, default `line(fill)`, unchanged by an earlier blur, shadow, or glow), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
+- A mask is a child line of the draw it masks, written `mask @body`, `mask simplex(30) > .5`, or `mask` alone over an indented block. It takes a value or a block, not both, and a draw has at most one. It may sit anywhere among the children. Add `feather:6` on the draw for a soft edge. `mask:` with a colon is a slot fill for a slot named `mask`, not a mask.
+- `fx` lines apply to the draw or `def` they sit directly under, in order. They cannot go at the top level, in a palette, or directly under `if` or `each`. A draw inside an `if` still takes its own `fx`. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a line around the shape geometry behind the node, default `line(fill)`, unchanged by an earlier blur, shadow, or glow), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
 - `finish` names an ordered stack of `fx` lines that several nodes share:
 
 ```
@@ -101,7 +105,7 @@ curve … name:cap
 
 ## Fields
 
-`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or `mask:worley(20) > .6` to threshold one into a shape. Seeds default to a hash of the file and node path, so editing one node never reshuffles another.
+`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or a `mask worley(20) > .6` child line to threshold one into a shape. Seeds default to a hash of the file and node path, so editing one node never reshuffles another.
 
 ## Components
 
@@ -116,7 +120,7 @@ def eye size:10 iris:p.sky.3 look:0,0
 - The first parameter is positional (`eye 9 at:-14,0`), and types come from the defaults.
 - `size` is the def's box, centered on the origin. `size:40` is a square. `size:72x32` is 72 wide and 32 tall. A bare percent uses the smaller side. Percents in the body measure that box, and a child with no `at:` stays at the origin.
 - Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
-- `slot name` exposes an insertion point, filled by the caller with a `name:` block. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
+- `slot name` exposes an insertion point, filled by the caller with a `name:` block. A def body may hold `fx`, which attach to every instance and run before the call site's. A mask, a slot fill, or a patch cannot sit directly in a def body. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
 - `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants. A style takes keys only, never a block. A style holds keys that children inherit, while a finish holds effects that one node gets.

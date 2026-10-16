@@ -1,4 +1,7 @@
-use crate::ast::{BinOp, CheckKind, Expr, File, FxLine, Named, Stmt, StmtKind, UnOp};
+use crate::ast::{
+    BinOp, CheckKind, Decl, DeclKind, DefItem, Draw, DrawItem, Expr, File, Fx, Item, Mask, Named,
+    Scene, SceneKind, Swatch, SwatchKind, UnOp,
+};
 use crate::lex::{self, Comment};
 
 pub fn format_file(file: &File) -> String {
@@ -36,7 +39,9 @@ pub(crate) fn format_file_with_comments(
         }
         p.emit(d.span.line, 0, &parts.join(" "));
     }
-    p.stmts(&file.stmts, 0);
+    for item in &file.items {
+        p.item(item);
+    }
     p.finish();
     p.out
 }
@@ -50,15 +55,17 @@ struct Printer<'a> {
 }
 
 impl<'a> Printer<'a> {
-    fn stmts(&mut self, stmts: &[Stmt], indent: usize) {
-        for stmt in stmts {
-            self.stmt(stmt, indent);
+    fn item(&mut self, item: &Item) {
+        match item {
+            Item::Decl(d) => self.decl(d),
+            Item::Scene(s) => self.scene(s, 0),
         }
     }
 
-    fn stmt(&mut self, stmt: &Stmt, indent: usize) {
-        match &stmt.kind {
-            StmtKind::Use { path, alias, items } => {
+    fn decl(&mut self, decl: &Decl) {
+        let line = decl.span.line;
+        match &decl.kind {
+            DeclKind::Use { path, alias, items } => {
                 let mut text = format!("use {path}");
                 if let Some(alias) = alias {
                     text.push_str(" as ");
@@ -69,78 +76,84 @@ impl<'a> Printer<'a> {
                     text.push_str(&items.join(" "));
                     text.push_str(" }");
                 }
-                self.emit(stmt.span.line, indent, &text);
+                self.emit(line, 0, &text);
             }
-            StmtKind::Palette { name, from, body } => {
+            DeclKind::Palette { name, from, body } => {
                 let mut text = format!("palette {name}");
                 if let Some(from) = from {
                     text.push_str(" from ");
                     text.push_str(from);
                 }
-                self.emit(stmt.span.line, indent, &text);
-                self.stmts(body, indent + 1);
+                self.emit(line, 0, &text);
+                for swatch in body {
+                    self.swatch(swatch);
+                }
             }
-            StmtKind::Style { name, named } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("style", name, &[], named),
-                );
+            DeclKind::Style { name, named } => {
+                self.emit(line, 0, &join_head("style", name, &[], named));
             }
-            StmtKind::Finish { name, params, body } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("finish", name, &[], params),
-                );
+            DeclKind::Finish { name, params, body } => {
+                self.emit(line, 0, &join_head("finish", name, &[], params));
                 for line in body {
-                    self.emit(line.span.line, indent + 1, &fx_head(line));
+                    self.fx(line, 1);
                 }
             }
-            StmtKind::Def { name, params, body } => {
-                self.emit(stmt.span.line, indent, &join_head("def", name, &[], params));
-                self.stmts(body, indent + 1);
+            DeclKind::Def { name, params, body } => {
+                self.emit(line, 0, &join_head("def", name, &[], params));
+                for item in body {
+                    match item {
+                        DefItem::Scene(s) => self.scene(s, 1),
+                        DefItem::Fx(f) => self.fx(f, 1),
+                    }
+                }
             }
-            StmtKind::Rule { name, params, body } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("rule", name, &[], params),
-                );
-                self.stmts(body, indent + 1);
+            DeclKind::Rule { name, params, body } => {
+                self.emit(line, 0, &join_head("rule", name, &[], params));
+                self.scenes(body, 1);
             }
-            StmtKind::Let { name, value } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &format!("let {name} = {}", fmt_expr(value)),
-                );
-            }
-            StmtKind::Shader { name, params, sksl } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("shader", name, &[], params),
-                );
+            DeclKind::Shader { name, params, sksl } => {
+                self.emit(line, 0, &join_head("shader", name, &[], params));
                 if let Some(body) = sksl {
-                    self.raw_block(indent + 1, body);
+                    self.raw_block(1, body);
                 }
             }
-            StmtKind::Light { name, named } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("light", name, &[], named),
-                );
+            DeclKind::Light { name, named } => {
+                self.emit(line, 0, &join_head("light", name, &[], named));
             }
-            StmtKind::Brush { name, named } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &join_head("brush", name, &[], named),
-                );
+            DeclKind::Brush { name, named } => {
+                self.emit(line, 0, &join_head("brush", name, &[], named));
             }
-            StmtKind::Check {
+        }
+    }
+
+    fn swatch(&mut self, swatch: &Swatch) {
+        let text = match &swatch.kind {
+            SwatchKind::Color(e) => format!("color {} {}", swatch.name, fmt_expr(e)),
+            SwatchKind::Ramp { pos, hue } => {
+                let mut parts = vec![format!("ramp {}", swatch.name)];
+                parts.extend(pos.exprs().into_iter().map(fmt_expr));
+                if let Some(hue) = hue {
+                    parts.push(format!("hue:{}", fmt_expr(hue)));
+                }
+                parts.join(" ")
+            }
+        };
+        self.emit(swatch.span.line, 1, &text);
+    }
+
+    fn scenes(&mut self, scenes: &[Scene], indent: usize) {
+        for s in scenes {
+            self.scene(s, indent);
+        }
+    }
+
+    fn scene(&mut self, scene: &Scene, indent: usize) {
+        let line = scene.span.line;
+        match &scene.kind {
+            SceneKind::Let { name, value } => {
+                self.emit(line, indent, &format!("let {name} = {}", fmt_expr(value)));
+            }
+            SceneKind::Check {
                 kind,
                 expr,
                 named,
@@ -157,70 +170,97 @@ impl<'a> Printer<'a> {
                 if let Some(message) = message {
                     parts.push(fmt_string(message));
                 }
-                self.emit(stmt.span.line, indent, &parts.join(" "));
+                self.emit(line, indent, &parts.join(" "));
             }
-            StmtKind::If {
+            SceneKind::If {
                 cond,
                 then,
                 otherwise,
             } => {
-                self.stmt_if(stmt.span.line, cond, then, otherwise, indent, false);
+                self.stmt_if(line, cond, then, otherwise, indent, false);
             }
-            StmtKind::Each { var, iter, body } => {
-                self.emit(
-                    stmt.span.line,
-                    indent,
-                    &format!("each {var} in {}", fmt_expr(iter)),
-                );
-                self.stmts(body, indent + 1);
+            SceneKind::Each { var, iter, body } => {
+                self.emit(line, indent, &format!("each {var} in {}", fmt_expr(iter)));
+                self.scenes(body, indent + 1);
             }
-            StmtKind::Node {
+            SceneKind::Slot {
+                name,
+                named,
+                fallback,
+            } => {
+                self.emit(line, indent, &join_head("slot", name, &[], named));
+                self.scenes(fallback, indent + 1);
+            }
+            SceneKind::Draw(Draw {
                 verb,
                 args,
                 named,
                 body,
+            }) => {
+                self.emit(line, indent, &join_head("", verb, args, named));
+                for item in body.items() {
+                    self.draw_item(item, indent + 1);
+                }
+            }
+        }
+    }
+
+    fn draw_item(&mut self, item: &DrawItem, indent: usize) {
+        match item {
+            DrawItem::Scene(s) => self.scene(s, indent),
+            DrawItem::Fx(f) => self.fx(f, indent),
+            DrawItem::Mask {
+                mask: Mask::Value(e),
+                span,
             } => {
-                self.emit(stmt.span.line, indent, &join_head("", verb, args, named));
-                self.stmts(body, indent + 1);
+                self.emit(span.line, indent, &format!("mask {}", fmt_expr(e)));
             }
-            StmtKind::Fx(line) => {
-                self.emit(stmt.span.line, indent, &fx_head(line));
+            DrawItem::Mask {
+                mask: Mask::Block(body),
+                span,
+            } => {
+                self.emit(span.line, indent, "mask");
+                self.scenes(body, indent + 1);
             }
-            StmtKind::SlotFill { name, body } => {
-                self.emit(stmt.span.line, indent, &format!("{name}:"));
-                self.stmts(body, indent + 1);
+            DrawItem::SlotFill(fill) => {
+                self.emit(fill.span.line, indent, &format!("{}:", fill.name));
+                self.scenes(&fill.body, indent + 1);
             }
-            StmtKind::Patch { path, named, off } => {
-                let mut text = format!(".{}", path.join("."));
-                for n in named {
+            DrawItem::Patch(p) => {
+                let mut text = format!(".{}", p.path.join("."));
+                for n in &p.named {
                     text.push(' ');
                     text.push_str(&fmt_named(n));
                 }
-                if *off {
+                if p.off {
                     text.push_str(" off");
                 }
-                self.emit(stmt.span.line, indent, &text);
+                self.emit(p.span.line, indent, &text);
             }
         }
+    }
+
+    fn fx(&mut self, fx: &Fx, indent: usize) {
+        self.emit(fx.span.line, indent, &join_head("fx", &fx.op, &fx.args, &fx.named));
     }
 
     fn stmt_if(
         &mut self,
         line: u32,
         cond: &Expr,
-        then: &[Stmt],
-        otherwise: &[Stmt],
+        then: &[Scene],
+        otherwise: &[Scene],
         indent: usize,
         else_if: bool,
     ) {
         let kw = if else_if { "else if" } else { "if" };
         self.emit(line, indent, &format!("{kw} {}", fmt_expr(cond)));
-        self.stmts(then, indent + 1);
+        self.scenes(then, indent + 1);
         match otherwise {
             [
-                Stmt {
+                Scene {
                     kind:
-                        StmtKind::If {
+                        SceneKind::If {
                             cond,
                             then,
                             otherwise,
@@ -237,7 +277,7 @@ impl<'a> Printer<'a> {
                 self.gap_before(anchor);
                 self.out.push_str(&" ".repeat(indent * 2));
                 self.out.push_str("else\n");
-                self.stmts(body, indent + 1);
+                self.scenes(body, indent + 1);
             }
         }
     }
@@ -364,10 +404,6 @@ fn join_head(kw: &str, name: &str, args: &[Expr], named: &[Named]) -> String {
         parts.push(fmt_named(n));
     }
     parts.join(" ")
-}
-
-fn fx_head(line: &FxLine) -> String {
-    join_head("fx", &line.op, &line.args, &line.named)
 }
 
 fn fmt_named(n: &Named) -> String {
