@@ -284,6 +284,8 @@ pub fn frame_count(dur: f64, fps: f64) -> Result<usize, &'static str> {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use super::*;
     use crate::color::Rgba;
 
@@ -340,7 +342,7 @@ mod tests {
         };
         assert!(c.rgba.r > 0.0 && c.rgba.b > 0.0 && c.rgba.g < c.rgba.r);
         let err = sample_track(
-            &[Value::List(vec![]), Value::List(vec![])],
+            &[Value::List(Rc::new(vec![])), Value::List(Rc::new(vec![]))],
             &even_at(2),
             &smooth(2),
             0.5,
@@ -408,7 +410,10 @@ mod tests {
         ];
         for u in [0.0, 0.5, 1.0] {
             let err = sample_track(&mixed, &even_at(2), &smooth(2), u).unwrap_err();
-            assert!(err.contains("a vector") && err.contains("a size"), "{u}: {err}");
+            assert!(
+                err.contains("a vector") && err.contains("a size"),
+                "{u}: {err}"
+            );
         }
     }
 
