@@ -2245,6 +2245,107 @@ fn an_anim_cannot_rename_a_node() {
 }
 
 #[test]
+fn a_gif_side_over_65535px_is_e0206_from_sample() {
+    let wide = project(&[(
+        "art/t.art",
+        "@target t.gif 70000x1 bg:#ffffff dur:1s fps:1\ncircle 1\n",
+    )]);
+    let wide_plan = plan(&wide);
+    assert!(
+        wide_plan.diagnostics.is_empty(),
+        "{:?}",
+        wide_plan.diagnostics
+    );
+    let wide_sample = crate::sample(&wide, &wide_plan.jobs[0]);
+    assert!(
+        wide_sample
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0206" && d.message.contains("65535px")),
+        "{}",
+        show(&wide_sample.diagnostics)
+    );
+}
+
+#[test]
+fn a_rule_line_number_does_not_choose_the_worst_frame() {
+    use artscript_syntax::ast::Span;
+    let span = Span { line: 2, col: 1 };
+    let note = "via rule `bad` (lib/d.art:400) applied at art/t.art:3";
+    let mild = Diagnostic::error("C0101", span, "gap")
+        .in_file("art/t.art")
+        .at_node("a")
+        .with_note("gap is 1")
+        .with_note(note)
+        .with_fix("nudge 1");
+    let worse = Diagnostic::error("C0101", span, "gap")
+        .in_file("art/t.art")
+        .at_node("a")
+        .with_note("gap is 9")
+        .with_note(note)
+        .with_fix("nudge 9");
+    let out = super::aggregate_frames(&[(0.0, vec![mild]), (0.5, vec![worse])]);
+    let a = out.iter().find(|d| d.node == "a").unwrap();
+    assert_eq!(a.fix.as_deref(), Some("nudge 9"));
+    assert!(
+        a.notes.iter().any(|n| n.contains("worst at 0.5s")),
+        "{:?}",
+        a.notes
+    );
+}
+
+#[test]
+fn a_geometry_guard_keeps_an_instance_play_ahead_of_a_later_play() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8 at:10,0\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero\n  if @marker.w > 0\n    play inner\nplay outer\n",
+    );
+    let eye = node(&s, "hero.eye");
+    assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
+    near(at(eye), (10.0, 0.0));
+}
+
+#[test]
+fn an_anim_rand_ignores_a_toggling_let() {
+    let p = project(&[(
+        "art/t.art",
+        "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim idle dur:1s\n  .c at:rand(0 10),0\ncircle 4 name:c\nif t > 0\n  let n = 1\nplay idle\n",
+    )]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    assert!(
+        sampled.diagnostics.iter().all(|d| d.code != "E0320"),
+        "{}",
+        show(&sampled.diagnostics)
+    );
+    assert_eq!(sampled.frames.len(), 2, "{}", sampled.dur);
+    let xs: Vec<f32> = sampled
+        .frames
+        .iter()
+        .map(|f| {
+            f.scene
+                .children
+                .iter()
+                .find(|n| n.path == "c")
+                .unwrap()
+                .transform
+                .translate_x()
+        })
+        .collect();
+    assert!((xs[0] - xs[1]).abs() < 1e-4, "{xs:?}");
+    let lib = [("lib/motion.art", "anim idle dur:1s\n  .c at:rand(0 10),0\n")];
+    let bare = scene_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &lib,
+    );
+    let noisy = scene_with(
+        "@target t.png 40x40\nuse motion { idle }\nlet n = 1\nif true\n  let m = 2\ncircle 4 name:c\nplay idle\n",
+        &lib,
+    );
+    assert_eq!(at(node(&bare, "c")), at(node(&noisy, "c")));
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

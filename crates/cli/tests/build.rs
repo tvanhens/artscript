@@ -357,6 +357,31 @@ fn the_sample_raster_cap_matches_the_encoder() {
 }
 
 #[test]
+fn check_reports_a_gif_wider_than_65535px() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifwide-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifwide\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target wide.gif 70000x1 bg:#ffffff dur:1s fps:1\ncircle 1\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("a gif is larger than 65535px"),
+        "{}",
+        text(&out)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_reports_a_gif_raster_over_the_budget() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-gifraster-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

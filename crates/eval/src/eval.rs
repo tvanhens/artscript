@@ -2801,13 +2801,15 @@ impl<'a> Evaluator<'a> {
                     sc.suffix,
                     st.span.line
                 ));
-                let Ok(c) = self.quiet_expr(cond, sc) else {
-                    return;
+                let branches: Vec<&[Scene]> = match self.quiet_expr(cond, sc) {
+                    Ok(c) => vec![if c.truthy() { then } else { otherwise }],
+                    Err(_) => vec![then, otherwise],
                 };
-                let mut inner = sc.clone();
-                let branch = if c.truthy() { then } else { otherwise };
-                for child in branch {
-                    self.reserve_call_scene(child, &mut inner);
+                for branch in branches {
+                    let mut inner = sc.clone();
+                    for child in branch {
+                        self.reserve_call_scene(child, &mut inner);
+                    }
                 }
             }
             SceneKind::Each { var, iter, body } => {
@@ -3088,8 +3090,11 @@ impl<'a> Evaluator<'a> {
             raw.clamp(0.0, dur)
         };
         let saved = self.anim_clock.replace(AnimClock { local, dur });
+        let saved_base = self.seed_base.clone();
+        let saved_count = self.seed_count;
         let file = sc.file().to_string();
         for patch in &anim.body {
+            self.seed_at(format!("{}\0{owner}\0{}", anim.module, patch.span.line));
             if patch.off {
                 self.push_channel(Channel {
                     pattern: patch.path.clone(),
@@ -3151,6 +3156,8 @@ impl<'a> Evaluator<'a> {
                 }
             }
         }
+        self.seed_base = saved_base;
+        self.seed_count = saved_count;
         self.anim_clock = saved;
     }
 

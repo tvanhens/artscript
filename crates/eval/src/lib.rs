@@ -175,6 +175,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     if !diagnostics.iter().any(|d| d.code.starts_with('E'))
         && let Some(d) = gif_timing_error(job, frames.len(), dur)
             .or_else(|| gif_background_error(job, &frames))
+            .or_else(|| gif_dimension_error(job, &frames))
             .or_else(|| gif_raster_error(job, &frames))
     {
         diagnostics.push(d);
@@ -229,6 +230,23 @@ fn gif_background_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic>
         Diagnostic::error("E0206", job.span, "a gif needs an opaque `bg:`")
             .in_file(&job.source)
             .with_fix("set `bg:` to an opaque color; transparent gifs come later"),
+    )
+}
+
+fn gif_dimension_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
+    let scene = &frames.first()?.scene;
+    let over = job.outputs.iter().filter(|o| o.format == Format::Gif).any(|o| {
+        let w = (scene.width * o.scale).ceil();
+        let h = (scene.height * o.scale).ceil();
+        w > u16::MAX as f32 || h > u16::MAX as f32
+    });
+    if !over {
+        return None;
+    }
+    Some(
+        Diagnostic::error("E0206", job.span, "a gif is larger than 65535px")
+            .in_file(&job.source)
+            .with_fix("shrink the canvas"),
     )
 }
 
@@ -355,6 +373,9 @@ struct Agg {
 fn note_magnitude(d: &Diagnostic) -> Option<f64> {
     let mut best = None;
     for note in &d.notes {
+        if note.starts_with("via rule ") {
+            continue;
+        }
         for token in note.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')) {
             if token.is_empty() || token == "-" || token == "." {
                 continue;
