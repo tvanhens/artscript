@@ -1287,6 +1287,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix, stroke_src: Option<&Expr>) -> R<Shape> {
         let pick = |k: &str| a.get(k).cloned().or_else(|| style.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone()));
         let bounds = geom::bounds(&geometry);

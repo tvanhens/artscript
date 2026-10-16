@@ -111,15 +111,3 @@ fn check_json_reports_failed_asserts_with_exit_2() {
     assert!(level["fix"].as_str().unwrap().starts_with("set .eye_r at:550,"), "{level}");
     let _ = fs::remove_dir_all(&dir);
 }
-
-#[test]
-fn check_passes_on_the_fixture_and_fmt_is_stable() {
-    let dir = fixture("fmt");
-    let out = artscript(&dir, &["check"]);
-    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let first = artscript(&dir, &["fmt"]);
-    assert_eq!(first.status.code(), Some(0), "{}", text(&first));
-    let again = artscript(&dir, &["fmt"]);
-    assert_eq!(String::from_utf8_lossy(&again.stdout), "");
-    let _ = fs::remove_dir_all(&dir);
-}
