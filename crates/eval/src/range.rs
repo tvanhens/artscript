@@ -22,21 +22,20 @@ impl Range {
     }
 
     pub(crate) fn steps(self) -> impl Iterator<Item = f64> {
-        let mut x = self.lo;
-        let mut more = true;
+        let mut n = 0u64;
+        let mut prev = self.lo;
         std::iter::from_fn(move || {
-            if !more || !self.contains(x) {
+            let x = self.lo + n as f64;
+            // An offset that does not move forward is infinity or a lost integer, so stop.
+            if n > 0 && !(x > prev) {
                 return None;
             }
-            let current = x;
-            let next = x + 1.0;
-            if next > x {
-                x = next;
-            } else {
-                // `x + 1` did not increase (infinity or a NaN), so the walk must stop.
-                more = false;
+            if !self.contains(x) {
+                return None;
             }
-            Some(current)
+            prev = x;
+            n += 1;
+            Some(x)
         })
     }
 
@@ -84,13 +83,15 @@ mod tests {
             let steps: Vec<f64> = r.steps().take(64).collect();
             assert!(steps.len() < 64, "{lo}..{hi} did not stop");
             assert!(steps.iter().all(|x| r.contains(*x)), "{lo}..{hi} -> {steps:?}");
-            if let Some(last) = steps.last() {
-                let next = last + 1.0;
-                if next > *last {
-                    assert!(!r.contains(next), "{lo}..{hi} still contains {next}");
-                }
+            let next = lo + steps.len() as f64;
+            if steps.last().is_some_and(|last| next > *last) {
+                assert!(!r.contains(next), "{lo}..{hi} still contains {next}");
             }
         }
+
+        let third = 1.0 / 3.0;
+        let drifted = Range::new(third, third + 2.0);
+        assert_eq!(drifted.steps().collect::<Vec<_>>(), vec![third, third + 1.0]);
 
         let nan_lo = Range::new(f64::NAN, 1.0);
         assert!(!nan_lo.contains(0.0));

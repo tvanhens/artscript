@@ -319,7 +319,7 @@ fn each_walks_a_list_of_points() {
 #[test]
 fn range_end_is_excluded_for_in_and_each() {
     let s = scene(
-        "@target t.png 40x40\nexpect 0 in 0..3\nexpect 2.999 in 0..3\nexpect 5..1 == 3..3\nexpect max(0..5) == 4\nexpect [each k in 1.2..2.2 -> k] == [1.2]\nexpect [each k in .5..3.2 -> k] == [.5 1.5 2.5]\nexpect (2..4) * 2 == 4..8\neach i in 5..5\n  circle 1 name:skip\neach i in 0..3\n  circle 1 at:i*10,0 name:n\n",
+        "@target t.png 40x40\nexpect 0 in 0..3\nexpect 2.999 in 0..3\nexpect 5..1 == 3..3\nexpect max(0..5) == 4\nexpect [each k in 1.2..2.2 -> k] == [1.2]\nexpect [each k in .5..3.2 -> k] == [.5 1.5 2.5]\nexpect [each k in (1/3)..(1/3+2) -> k] == [1/3 1/3+1]\nexpect (2..4) * 2 == 4..8\neach i in 5..5\n  circle 1 name:skip\neach i in 0..3\n  circle 1 at:i*10,0 name:n\n",
     );
     assert!(!paths(&s).iter().any(|p| p.contains("skip")), "{:?}", paths(&s));
     assert_eq!(at(node(&s, "n#0")), (0.0, 0.0));
@@ -366,6 +366,18 @@ fn stroke_range_is_e0320() {
         "{}",
         show(&ev.diagnostics)
     );
+
+    let patched = run_with(
+        "@target t.png 40x40\ndef ink\n  curve 0,0 30,0 name:line stroke:#111,1..3\nink\n  .line stroke:#222,4..6\n",
+        &[],
+    );
+    let patch_fixes: Vec<_> = patched
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(patch_fixes, vec!["write `stroke:paint,[2 6]`".to_string()], "{}", show(&patched.diagnostics));
 }
 
 #[test]

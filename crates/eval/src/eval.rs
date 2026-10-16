@@ -898,6 +898,7 @@ impl<'a> Evaluator<'a> {
         let leaf = out.name(&base, &sc.suffix);
         let path = if sc.path.is_empty() { leaf.clone() } else { format!("{}.{leaf}", sc.path) };
         let (patch_named, off) = self.take_patches(&path);
+        let patch_stroke = patch_named.iter().any(|(k, _)| k == "stroke");
         if off {
             return Ok(());
         }
@@ -1029,7 +1030,8 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            let stroke_src = stroke_expr(named, &a, sc);
+            // A patch is stored as a value, so a stroke it supplies has no source spelling left.
+            let stroke_src = if patch_stroke { None } else { stroke_expr(named, &a, sc) };
             let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world, stroke_src.as_ref())?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
