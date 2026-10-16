@@ -48,6 +48,8 @@ fn phrase(v: &Value) -> String {
         Value::Field(_) | Value::FieldMask(..) => "a field".into(),
         Value::Str(_) => "a string".into(),
         Value::Ref(_) => "a node reference".into(),
+        Value::Vec2(..) => "a vector".into(),
+        Value::Size(..) => "a size".into(),
         other => other.kind().to_string(),
     }
 }
@@ -266,18 +268,18 @@ pub fn frame_delays(frame_count: usize, dur: f64) -> Result<Vec<u16>, &'static s
     Ok(delays)
 }
 
-pub fn frame_count(dur: f64, fps: f64) -> usize {
+pub fn frame_count(dur: f64, fps: f64) -> Result<usize, &'static str> {
     if dur <= 0.0 || fps <= 0.0 {
-        return 0;
+        return Ok(0);
     }
     let mut n = 0usize;
     while (n as f64) / fps < dur {
         n += 1;
         if n > 100_000 {
-            break;
+            return Err("a clip has more than 100000 frames");
         }
     }
-    n
+    Ok(n)
 }
 
 #[cfg(test)]
@@ -362,8 +364,8 @@ mod tests {
         assert!(d.iter().all(|n| *n == 4 || *n == 5));
         assert_eq!(&d[..6], &[4, 4, 4, 4, 4, 5]);
         assert_eq!(frame_delays(5, 0.2).unwrap(), vec![4, 4, 4, 4, 4]);
-        assert_eq!(frame_count(0.2, 24.0), 5);
-        assert_eq!(frame_count(2.0, 24.0), 48);
+        assert_eq!(frame_count(0.2, 24.0).unwrap(), 5);
+        assert_eq!(frame_count(2.0, 24.0).unwrap(), 48);
     }
 
     #[test]
@@ -396,6 +398,27 @@ mod tests {
             "a gif frame is longer than 65535cs"
         );
         assert_eq!(frame_delays(1, 655.0).unwrap(), vec![65500]);
+    }
+
+    #[test]
+    fn a_vector_and_a_size_do_not_share_a_track() {
+        let mixed = vec![
+            Value::Vec2(Coord::Num(10.0), Coord::Num(20.0)),
+            Value::Size(Coord::Num(30.0), Coord::Num(40.0)),
+        ];
+        for u in [0.0, 0.5, 1.0] {
+            let err = sample_track(&mixed, &even_at(2), &smooth(2), u).unwrap_err();
+            assert!(err.contains("a vector") && err.contains("a size"), "{u}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_clip_over_the_frame_cap_is_rejected() {
+        assert_eq!(
+            frame_count(5000.0, 24.0).unwrap_err(),
+            "a clip has more than 100000 frames"
+        );
+        assert_eq!(frame_count(1.0, 24.0).unwrap(), 24);
     }
 
     #[test]

@@ -269,12 +269,16 @@ fn run_gif(project: &Project, out_dir: &Path, job: &TargetJob, key: String) -> O
             let delays = match frame_delays(sampled.frames.len(), sampled.dur) {
                 Ok(delays) => delays,
                 Err(msg) => {
+                    let fix = match msg {
+                        "a gif frame is longer than 65535cs" => {
+                            "raise `fps` or shorten `dur` so each frame is at most 65535cs"
+                        }
+                        _ => "lower `fps` or lengthen `dur` so each frame lasts at least 1cs",
+                    };
                     diagnostics.push(
                         Diagnostic::error("E0206", job.span, msg)
                             .in_file(&job.source)
-                            .with_fix(
-                                "lower `fps` or lengthen `dur` so each frame lasts at least 1cs",
-                            ),
+                            .with_fix(fix),
                     );
                     return Outcome {
                         job: job.clone(),

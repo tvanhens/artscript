@@ -1740,6 +1740,83 @@ fn play_marks_an_imported_anim_as_used() {
 }
 
 #[test]
+fn an_alias_shares_the_components_occurrence_base() {
+    let s = lib_scene(
+        "@target t.png 40x40\nuse d\nlet alias = eye\nalias\neye\n",
+        "def eye\n  circle 4\n",
+    );
+    assert_eq!(
+        paths(&s),
+        ["eye", "eye.circle", "eye2", "eye2.circle"]
+    );
+}
+
+#[test]
+fn a_missing_reference_in_if_is_reported_once() {
+    let ev = run_with(
+        "@target t.png 20x20\nif @missing\n  circle 1\ncircle 2\n",
+        &[],
+    );
+    let n = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.message.contains("missing"))
+        .count();
+    assert_eq!(n, 1, "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn off_canvas_on_a_later_frame_is_kept() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
+    let still_files = [(
+        "art/t.art".to_string(),
+        "@target t.png 40x40\ncircle 2 name:c\n".to_string(),
+    )]
+    .into();
+    let still = Project::from_sources(manifest, still_files).unwrap();
+    let still_plan = plan(&still);
+    let still_ev = evaluate(&still, &still_plan.jobs[0]);
+    assert!(
+        still_ev.diagnostics.iter().all(|d| d.code != "L0102"),
+        "{}",
+        show(&still_ev.diagnostics)
+    );
+    let files = [(
+        "art/t.art".to_string(),
+        "@target t.gif 40x40 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .c at:key(0 80),0\ncircle 2 name:c\nplay slide\n".to_string(),
+    )]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let offs: Vec<_> = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0102")
+        .collect();
+    assert_eq!(offs.len(), 1, "{}", show(&sampled.diagnostics));
+    assert_eq!(offs[0].node, "c");
+}
+
+#[test]
+fn a_clip_past_the_frame_cap_is_e0206() {
+    let p = project(&[("art/t.art", "@target t.gif 8x8 bg:#ffffff dur:5000s fps:24\ncircle 2\n")]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    assert!(sampled.frames.is_empty(), "{}", sampled.frames.len());
+    assert!(
+        sampled
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0206" && d.message.contains("100000")),
+        "{}",
+        show(&sampled.diagnostics)
+    );
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

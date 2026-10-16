@@ -252,7 +252,9 @@ fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
-        err.contains("E0206") && err.contains("a gif has more frames than centiseconds"),
+        err.contains("E0206")
+            && err.contains("a gif has more frames than centiseconds")
+            && err.contains("lower `fps` or lengthen `dur`"),
         "{err}"
     );
     assert!(!dir.join("assets/tiny.gif").exists(), "{err}");
@@ -278,7 +280,9 @@ fn a_gif_frame_longer_than_the_field_is_e0206() {
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
-        err.contains("E0206") && err.contains("a gif frame is longer than 65535cs"),
+        err.contains("E0206")
+            && err.contains("a gif frame is longer than 65535cs")
+            && err.contains("raise `fps` or shorten `dur`"),
         "{err}"
     );
     assert!(!dir.join("assets/tiny.gif").exists(), "{err}");

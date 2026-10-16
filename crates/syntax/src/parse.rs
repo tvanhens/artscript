@@ -134,7 +134,7 @@ impl<'a> Parser<'a> {
                             break;
                         }
                         let item = self.parse_named();
-                        if is_each_axis(&item.value, each.is_empty()) {
+                        if is_each_axis(&item.value, each.is_empty(), &item.key) {
                             each.push(item);
                         } else {
                             named.push(item);
@@ -2039,8 +2039,15 @@ fn is_key(kind: &Tok) -> bool {
     matches!(kind, Tok::Ident(_) | Tok::Kw(_))
 }
 
-fn is_each_axis(value: &Expr, no_axis_yet: bool) -> bool {
-    matches!(value, Expr::List(_)) || no_axis_yet
+fn is_each_axis(value: &Expr, no_axis_yet: bool, key: &str) -> bool {
+    match value {
+        Expr::List(_) => true,
+        _ if no_axis_yet => true,
+        _ => !matches!(
+            key,
+            "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile"
+        ),
+    }
 }
 
 fn binop_of(kind: &Tok) -> Option<(BinOp, u8)> {

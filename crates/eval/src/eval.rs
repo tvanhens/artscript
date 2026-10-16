@@ -20,7 +20,7 @@ use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
 use crate::key::Ease;
-use crate::motion::{absolute_channel, offset_channel, path_match};
+use crate::motion::{absolute_channel, offset_channel, path_match, static_base};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
@@ -205,6 +205,7 @@ pub(crate) struct Evaluator<'a> {
     pub plays: Vec<PlayMark>,
     channels: Vec<Channel>,
     occurrences: HashMap<Span, usize>,
+    silence: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -540,6 +541,7 @@ impl<'a> Evaluator<'a> {
             plays: Vec::new(),
             channels: Vec::new(),
             occurrences: HashMap::new(),
+            silence: false,
         }
     }
 
@@ -553,7 +555,7 @@ impl<'a> Evaluator<'a> {
     }
 
     pub fn report(&mut self, f: Fail, file: &str, span: Span, node: &str) {
-        if f.code.is_empty() {
+        if self.silence || f.code.is_empty() {
             return;
         }
         let mut d = if f.code.starts_with('L') || f.code == "C0201" {
@@ -963,12 +965,93 @@ impl<'a> Evaluator<'a> {
         sc: &mut Scope,
     ) -> Vec<Node> {
         let stmts: Vec<&Scene> = stmts.into_iter().collect();
-        let map = crate::motion::occurrences(stmts.iter().copied());
+        let map = self.occurrence_map(&stmts, sc);
         let prev = std::mem::replace(&mut self.occurrences, map);
         let mut sib = Siblings::default();
         self.eval_block(stmts.iter().copied(), sc, &mut sib);
         self.occurrences = prev;
         sib.finish()
+    }
+
+    fn occurrence_map(&mut self, stmts: &[&Scene], sc: &Scope) -> HashMap<Span, usize> {
+        let silence = self.silence;
+        let seed_base = self.seed_base.clone();
+        let seed_count = self.seed_count;
+        self.silence = true;
+        let mut counts = HashMap::new();
+        let mut map = HashMap::new();
+        let mut scratch = sc.clone();
+        scratch.publish = false;
+        self.count_scenes(stmts, &mut scratch, &mut counts, &mut map);
+        self.silence = silence;
+        self.seed_base = seed_base;
+        self.seed_count = seed_count;
+        map
+    }
+
+    fn count_scenes(
+        &mut self,
+        scenes: &[&Scene],
+        sc: &mut Scope,
+        counts: &mut HashMap<String, usize>,
+        map: &mut HashMap<Span, usize>,
+    ) {
+        for scene in scenes {
+            match &scene.kind {
+                SceneKind::If { then, otherwise, .. } => {
+                    let mut then_sc = sc.clone();
+                    then_sc.publish = false;
+                    let then_refs: Vec<&Scene> = then.iter().collect();
+                    self.count_scenes(&then_refs, &mut then_sc, counts, map);
+                    let mut else_sc = sc.clone();
+                    else_sc.publish = false;
+                    let else_refs: Vec<&Scene> = otherwise.iter().collect();
+                    self.count_scenes(&else_refs, &mut else_sc, counts, map);
+                }
+                SceneKind::Each { body, .. } => {
+                    let mut inner = sc.clone();
+                    inner.publish = false;
+                    let refs: Vec<&Scene> = body.iter().collect();
+                    self.count_scenes(&refs, &mut inner, counts, map);
+                }
+                SceneKind::Let { name, value } => {
+                    let v = self.expr(value, sc).unwrap_or(Value::None);
+                    sc.env.push((name.clone(), v));
+                }
+                SceneKind::Draw(draw) => {
+                    if let Some(base) = self.occurrence_base(draw, sc) {
+                        let n = counts.entry(base).or_insert(0);
+                        *n += 1;
+                        map.insert(scene.span, *n);
+                    }
+                }
+                SceneKind::Slot { name, .. } => {
+                    let n = counts.entry(name.clone()).or_insert(0);
+                    *n += 1;
+                    map.insert(scene.span, *n);
+                }
+                SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+            }
+        }
+    }
+
+    fn occurrence_base(&self, draw: &Draw, sc: &Scope) -> Option<String> {
+        let syntactic = static_base(&draw.verb, &draw.args, &draw.named)?;
+        if syntactic != draw.verb {
+            return Some(syntactic);
+        }
+        if let Some(Some(comp)) = self.component_for(&draw.verb, sc) {
+            return Some(comp.name.clone());
+        }
+        Some(syntactic)
+    }
+
+    fn quiet_expr(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
+        let silence = self.silence;
+        self.silence = true;
+        let v = self.expr(e, sc);
+        self.silence = silence;
+        v
     }
 
     fn eval_block<'s>(
@@ -2494,7 +2577,7 @@ impl<'a> Evaluator<'a> {
                     sc.suffix,
                     st.span.line
                 ));
-                let v = self.expr(value, sc).unwrap_or(Value::None);
+                let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
                 if sc.top && sc.publish {
                     sc.module
                         .globals
@@ -2516,7 +2599,9 @@ impl<'a> Evaluator<'a> {
                     sc.suffix,
                     st.span.line
                 ));
-                let c = self.expr(cond, sc)?;
+                let Ok(c) = self.quiet_expr(cond, sc) else {
+                    return Ok(());
+                };
                 let mut inner = sc.clone();
                 inner.publish = false;
                 let branch = if c.truthy() { then } else { otherwise };
@@ -2531,7 +2616,9 @@ impl<'a> Evaluator<'a> {
                     sc.suffix,
                     st.span.line
                 ));
-                let items = each_items(self.expr(iter, sc)?)?;
+                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
+                    return Ok(());
+                };
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
                     inner.publish = false;

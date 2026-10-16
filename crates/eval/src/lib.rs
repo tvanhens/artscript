@@ -129,7 +129,24 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
     let loops = probe.plays.iter().any(|p| p.loops);
-    let n = frame_count(dur, fps);
+    let n = match frame_count(dur, fps) {
+        Ok(n) => n,
+        Err(msg) => {
+            let mut diagnostics = probe.diagnostics;
+            diagnostics.push(
+                Diagnostic::error("E0206", job.span, msg)
+                    .in_file(&job.source)
+                    .with_fix("lower `fps` or shorten `dur`"),
+            );
+            return Sample {
+                frames: Vec::new(),
+                diagnostics,
+                loops,
+                dur,
+                fps,
+            };
+        }
+    };
     let mut frames = Vec::new();
     let mut per_frame: Vec<(f64, Vec<Diagnostic>)> = Vec::new();
     if n == 0 {
@@ -164,7 +181,7 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
     let mut groups: Vec<Agg> = Vec::new();
     for (i, (t, diags)) in frames.iter().enumerate() {
         for d in diags {
-            if d.code.starts_with('L') {
+            if d.code.starts_with('L') && d.code != "L0102" {
                 continue;
             }
             let key = (
@@ -201,7 +218,10 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
             }
         }
         if i == 0 {
-            for d in diags.iter().filter(|d| d.code.starts_with('L')) {
+            for d in diags
+                .iter()
+                .filter(|d| d.code.starts_with('L') && d.code != "L0102")
+            {
                 out.push(d.clone());
             }
         }

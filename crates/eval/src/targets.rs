@@ -474,6 +474,36 @@ mod tests {
     }
 
     #[test]
+    fn a_non_list_after_an_axis_stays_an_axis() {
+        let p = project(&[(
+            "art/k.art",
+            "@target t.png 8x8 each a:[x] b:oops\nrect 1\n",
+        )]);
+        let plan = plan(&p);
+        assert!(
+            plan.diagnostics
+                .iter()
+                .any(|d| d.code == "E0206" && d.message.contains("`b`")),
+            "{:?}",
+            plan.diagnostics
+        );
+        assert!(plan.jobs.is_empty(), "{:?}", plan.jobs);
+    }
+
+    #[test]
+    fn a_known_key_after_each_stays_a_target_key() {
+        let p = project(&[(
+            "art/k.art",
+            "@target t.png 8x8 each a:[x] clip:go fps:12\nrect 1\n",
+        )]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        assert_eq!(plan.jobs.len(), 1);
+        assert_eq!(plan.jobs[0].clip.as_deref(), Some("go"));
+        assert_eq!(plan.jobs[0].fps, 12.0);
+    }
+
+    #[test]
     fn duplicate_outputs_are_e0202_naming_both_lines() {
         let p = project(&[
             ("art/a.art", "@target x.png 8x8\nrect 1x1\n"),

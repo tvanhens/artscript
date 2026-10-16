@@ -1,44 +1,4 @@
-use std::collections::HashMap;
-
-use artscript_syntax::ast::{Expr, Named, Scene, SceneKind, Span};
-
-pub fn occurrences<'a>(scenes: impl IntoIterator<Item = &'a Scene>) -> HashMap<Span, usize> {
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    let mut map = HashMap::new();
-    walk(scenes, &mut counts, &mut map);
-    map
-}
-
-fn walk<'a>(
-    scenes: impl IntoIterator<Item = &'a Scene>,
-    counts: &mut HashMap<String, usize>,
-    map: &mut HashMap<Span, usize>,
-) {
-    for scene in scenes {
-        match &scene.kind {
-            SceneKind::If {
-                then, otherwise, ..
-            } => {
-                walk(then, counts, map);
-                walk(otherwise, counts, map);
-            }
-            SceneKind::Each { body, .. } => walk(body, counts, map),
-            SceneKind::Draw(draw) => {
-                if let Some(base) = static_base(&draw.verb, &draw.args, &draw.named) {
-                    let n = counts.entry(base).or_insert(0);
-                    *n += 1;
-                    map.insert(scene.span, *n);
-                }
-            }
-            SceneKind::Slot { name, .. } => {
-                let n = counts.entry(name.clone()).or_insert(0);
-                *n += 1;
-                map.insert(scene.span, *n);
-            }
-            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
-        }
-    }
-}
+use artscript_syntax::ast::{Expr, Named};
 
 pub fn static_base(verb: &str, args: &[Expr], named: &[Named]) -> Option<String> {
     if matches!(
