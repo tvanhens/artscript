@@ -668,6 +668,48 @@ fn numbers_drop_leading_and_trailing_zeros() {
 }
 
 #[test]
+fn unclosed_call_and_list_keep_what_was_parsed() {
+    let grad = parse_partial("circle 10 fill:grad(down #fff #000\n");
+    assert!(
+        grad.diagnostics.iter().any(|d| d.code == "E0101" && d.message.contains("unclosed `(`")),
+        "{:?}\n{:?}",
+        grad.diagnostics,
+        grad.file.stmts
+    );
+    match node(&grad.file) {
+        StmtKind::Node { named, .. } => match &named[0].value {
+            Expr::Call { func, args, .. } => {
+                assert_eq!(func, "grad");
+                assert_eq!(args.len(), 3);
+                assert!(matches!(args[1], Expr::Hex(ref h) if h == "fff"));
+                assert!(matches!(args[2], Expr::Hex(ref h) if h == "000"));
+            }
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+
+    let list = parse_partial("let v = [1 2 3\n");
+    assert!(list.diagnostics.iter().any(|d| d.message.contains("unclosed `[`")));
+    match &list.file.stmts[0].kind {
+        StmtKind::Let { value: Expr::List(xs), .. } => assert_eq!(xs.len(), 3),
+        other => panic!("{other:?}"),
+    }
+
+    let comma = parse_partial("circle 10 at:120,\n");
+    assert!(comma.diagnostics.iter().any(|d| d.code == "E0101"));
+    match node(&comma.file) {
+        StmtKind::Node { named, .. } => assert_eq!(named[0].value, num(120.0)),
+        other => panic!("{other:?}"),
+    }
+    let pair = parse_partial("circle 10 at:14,0,\n");
+    match node(&pair.file) {
+        StmtKind::Node { named, .. } => assert_eq!(named[0].value, Expr::Tuple(vec![num(14.0), num(0.0)])),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn partial_parse_keeps_statements_around_a_broken_line() {
     let src = "circle 10\nlet\nrect 4x4\n";
     let parsed = parse_partial(src);

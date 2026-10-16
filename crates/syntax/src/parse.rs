@@ -843,11 +843,11 @@ impl<'a> Parser<'a> {
 
     fn parse_tuple(&mut self) -> Expr {
         let first = self.parse_prec(0);
-        if !self.is_tight_comma() {
+        if !self.is_tight_comma() && !self.is_dangling_comma() {
             return first;
         }
         let mut xs = vec![first];
-        while self.is_tight_comma() {
+        while self.is_tight_comma() || self.is_dangling_comma() {
             self.bump();
             if self.eol() {
                 self.fail_here(
@@ -858,7 +858,19 @@ impl<'a> Parser<'a> {
             }
             xs.push(self.parse_prec(0));
         }
-        Expr::Tuple(xs)
+        // A trailing comma is not a one-element tuple: `120,` keeps the number 120.
+        if xs.len() == 1 {
+            xs.remove(0)
+        } else {
+            Expr::Tuple(xs)
+        }
+    }
+
+    fn is_dangling_comma(&self) -> bool {
+        let Some(c) = self.cur() else { return false };
+        matches!(c.kind, Tok::Comma)
+            && !c.ws_before
+            && self.lines[self.li].tokens.get(self.ti + 1).is_none()
     }
 
     fn is_tight_comma(&self) -> bool {
@@ -1076,6 +1088,10 @@ impl<'a> Parser<'a> {
             if self.eat(&Tok::RParen) {
                 break;
             }
+            if self.eol() {
+                self.fail_here("unclosed `(`", "close the call with `)`");
+                break;
+            }
             if self.is_arg_comma() {
                 self.fail_here(
                     "arguments are separated by spaces, not commas",
@@ -1192,6 +1208,10 @@ impl<'a> Parser<'a> {
             }
             items.push(self.parse_tuple());
             if self.eat(&Tok::RBrack) {
+                break;
+            }
+            if self.eol() {
+                self.fail_here("unclosed `[`", "close the list with `]`");
                 break;
             }
             if self.at(&Tok::Comma) {
