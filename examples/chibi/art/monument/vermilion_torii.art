@@ -2,18 +2,18 @@
 @target monument/vermilion_torii.svg 1024x1024
 use face/parts { sparkle }
 palette torii
-  verm ramp #d9543a 5
-  char ramp #3a3942 5
-  straw ramp #d8b25a 5
-  paper ramp #f1ede4 5
-  paper_cool #c3c9dc
-  maple ramp #e47a35 5
-  stone ramp #a89f93 5
-  moss ramp #7d8f4e 5
-  sheen #8d93ad
-  lacquer #e6ecf8
-  ink_cool #6f7fa8
-  spark #fff3cf
+  ramp verm #d9543a 5
+  ramp char #3a3942 5
+  ramp straw #d8b25a 5
+  ramp paper #f1ede4 5
+  color paper_cool #c3c9dc
+  ramp maple #e47a35 5
+  ramp stone #a89f93 5
+  ramp moss #7d8f4e 5
+  color sheen #8d93ad
+  color lacquer #e6ecf8
+  color ink_cool #6f7fa8
+  color spark #fff3cf
 let verm = torii.verm
 let char = torii.char
 let straw = torii.straw
@@ -67,9 +67,9 @@ def _groove x:512
   curve x-16,yc-hw x-9,yc-hw*.35 x+1,yc+hw*.35 x+12,yc+hw stroke:straw.0,[1.2 3.4 3.4 1.2] taper:.25 a:.8
   curve x-24,yc-hw*.75 x-17,yc-hw*.1 x-10,yc+hw*.4 stroke:straw.4,[2 4.5 1.5] a:.65 blur:1.2
   each i in 0..3
-    let fx = x+rand(-12 4)
-    let fy = yc+rand(-1 1)*hw*.6
-    curve fx-4,fy-3 fx+4,fy+3 stroke:straw.1,1 a:.4
+    let fiber_x = x+rand(-12 4)
+    let fiber_y = yc+rand(-1 1)*hw*.6
+    curve fiber_x-4,fiber_y-3 fiber_x+4,fiber_y+3 stroke:straw.1,1 a:.4
 finish _surface width:4 a:.45 strength:.04 scale:2.5
   fx rim width dir:1,1 color:p.rim a:a
   fx grain strength scale:scale

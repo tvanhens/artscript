@@ -6,14 +6,18 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect, Shape, Stroke,
+    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
+    Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::{format_expr, Diagnostic};
-use artscript_syntax::ast::{BinOp, Expr, File, FxLine, Named, Span, Stmt, StmtKind, UnOp};
+use artscript_syntax::ast::{
+    self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene, SceneKind, Span, Swatch, SwatchKind,
+    UnOp,
+};
 
 use crate::checks::{CheckState, Pending};
-use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
+use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::geom::{self, BoolOp, P};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
@@ -58,17 +62,8 @@ impl Fail {
 }
 
 const MEASURES: &[&str] = &["x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area"];
-const NODE_KEYS: &[&str] = &["at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "mask", "feather"];
+const NODE_KEYS: &[&str] = &["at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather"];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
-
-/// A node's block split by role: effects, inline `fill:`/`stroke:`/`mask:` lines, a `mask:` block,
-/// and the drawable rest.
-struct Body<'s> {
-    fx: Vec<&'s FxLine>,
-    inline: Vec<&'s Stmt>,
-    mask: Option<&'s [Stmt]>,
-    rest: Vec<Stmt>,
-}
 
 pub(crate) struct Instance {
     pub def_name: String,
@@ -80,7 +75,7 @@ pub(crate) struct Instance {
 
 struct Fill {
     name: String,
-    body: Vec<Stmt>,
+    body: Vec<Scene>,
     scope: Scope,
     span: Span,
 }
@@ -449,9 +444,9 @@ impl<'a> Evaluator<'a> {
                 Err(f) => self.report(f, file, Span { line: 1, col: 1 }, ""),
             }
         }
-        for st in &parsed.stmts {
-            if let Err(f) = self.declare(&module, st, entry) {
-                self.report(f, file, st.span, "");
+        for item in &parsed.items {
+            if let Err(f) = self.declare(&module, item, entry) {
+                self.report(f, file, item.span(), "");
             }
         }
         self.loading.pop();
@@ -459,16 +454,32 @@ impl<'a> Evaluator<'a> {
         Ok(module)
     }
 
-    fn declare(&mut self, module: &Rc<Module>, st: &Stmt, entry: bool) -> R<()> {
-        match &st.kind {
-            StmtKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
-            StmtKind::Palette { name, from, body } => {
+    fn declare(&mut self, module: &Rc<Module>, item: &Item, entry: bool) -> R<()> {
+        let decl = match item {
+            Item::Decl(d) => d,
+            Item::Scene(Scene { kind: SceneKind::Let { name, value }, .. }) if !entry => {
+                let sc = self.module_scope(module);
+                self.seed_at(format!("{}\0{name}", module.path));
+                let v = self.expr(value, &sc)?;
+                module.define(name, v);
+                return Ok(());
+            }
+            Item::Scene(_) if entry => return Ok(()),
+            Item::Scene(_) => {
+                return Err(fail("E0204", "a library may only hold declarations at its top level")
+                    .note("allowed: use, palette, style, finish, def, rule, let")
+                    .fix("wrap the drawing in a `def` and place it from an entry file"));
+            }
+        };
+        match &decl.kind {
+            DeclKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
+            DeclKind::Palette { name, from, body } => {
                 let pal = self.palette(module, name, from.as_deref(), body)?;
                 module.palettes.borrow_mut().push(pal.clone());
                 module.define(name, Value::Palette(pal));
                 Ok(())
             }
-            StmtKind::Style { name, named } => {
+            DeclKind::Style { name, named } => {
                 module
                     .styles
                     .borrow_mut()
@@ -476,8 +487,8 @@ impl<'a> Evaluator<'a> {
                 module.own.borrow_mut().push(format!("style:{name}"));
                 Ok(())
             }
-            StmtKind::Finish { name, params, body } => self.declare_finish(module, name, params, body, st.span),
-            StmtKind::Def { name, params, body } => {
+            DeclKind::Finish { name, params, body } => self.declare_finish(module, name, params, body, decl.span),
+            DeclKind::Def { name, params, body } => {
                 let mut needs = Vec::new();
                 let mut ps = Vec::new();
                 for p in params {
@@ -501,43 +512,31 @@ impl<'a> Evaluator<'a> {
                     needs,
                     body: body.clone(),
                     module: module.path.clone(),
-                    span: st.span,
+                    span: decl.span,
                 };
                 module.define(name, Value::Component(Rc::new(comp)));
                 Ok(())
             }
-            StmtKind::Rule { name, params, body } => {
+            DeclKind::Rule { name, params, body } => {
                 let rule = RuleDef {
                     name: name.clone(),
                     params: params.clone(),
                     body: body.clone(),
                     module: module.path.clone(),
-                    span: st.span,
+                    span: decl.span,
                 };
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
-            StmtKind::Let { name, value } if !entry => {
-                let sc = self.module_scope(module);
-                self.seed_at(format!("{}\0{name}", module.path));
-                let v = self.expr(value, &sc)?;
-                module.define(name, v);
-                Ok(())
-            }
-            StmtKind::Shader { .. } | StmtKind::Light { .. } | StmtKind::Brush { .. } => {
-                let what = match &st.kind {
-                    StmtKind::Shader { .. } => "shader (Phase 2)",
-                    StmtKind::Light { .. } => "light (Phase 2)",
+            DeclKind::Shader { .. } | DeclKind::Light { .. } | DeclKind::Brush { .. } => {
+                let what = match &decl.kind {
+                    DeclKind::Shader { .. } => "shader (Phase 2)",
+                    DeclKind::Light { .. } => "light (Phase 2)",
                     _ => "brush (Phase 2)",
                 };
                 Err(fail("E0390", format!("{what} is not yet implemented in v0.1"))
                     .fix("remove the declaration, or use built-in fields and fx lines"))
             }
-            StmtKind::Let { .. } => Ok(()),
-            _ if entry => Ok(()),
-            _ => Err(fail("E0204", "a library may only hold declarations at its top level")
-                .note("allowed: use, palette, style, finish, def, rule, let")
-                .fix("wrap the drawing in a `def` and place it from an entry file")),
         }
     }
 
@@ -628,7 +627,7 @@ impl<'a> Evaluator<'a> {
         Scope { frame: self.canvas, top: true, ..self.module_scope(module) }
     }
 
-    fn palette(&mut self, module: &Rc<Module>, name: &str, from: Option<&str>, body: &[Stmt]) -> R<Rc<Palette>> {
+    fn palette(&mut self, module: &Rc<Module>, name: &str, from: Option<&str>, body: &[Swatch]) -> R<Rc<Palette>> {
         let mut entries = Vec::new();
         if let Some(parent) = from {
             match module.global(parent) {
@@ -640,34 +639,33 @@ impl<'a> Evaluator<'a> {
             }
         }
         let sc = self.module_scope(module);
-        for st in body {
-            let StmtKind::Node { verb, args, named, .. } = &st.kind else {
-                self.report(fail("E0305", "a palette entry is `name <color>` or `name ramp …`"), &module.path, st.span, "");
-                continue;
-            };
-            match self.palette_entry(args, named, &sc) {
-                Ok(v) => entries.push((verb.clone(), v)),
-                Err(f) => self.report(f, &module.path, st.span, &format!("{name}.{verb}")),
+        for sw in body {
+            match self.swatch(&sw.kind, &sc) {
+                Ok(v) => entries.push((sw.name.clone(), v)),
+                Err(f) => self.report(f, &module.path, sw.span, &format!("{name}.{}", sw.name)),
             }
         }
         Ok(Rc::new(Palette { name: name.to_string(), entries }))
     }
 
-    fn palette_entry(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
-        if args.first().and_then(ident_of) == Some("ramp") {
-            let vals: Vec<Value> = args[1..].iter().map(|e| self.expr(e, sc)).collect::<R<_>>()?;
-            let hue = match named.iter().find(|n| n.key == "hue") {
-                Some(n) => self.expr(&n.value, sc)?.num().unwrap_or(DEFAULT_HUE_STEP),
-                None => DEFAULT_HUE_STEP,
-            };
-            return self.ramp(&vals, hue);
-        }
-        let first = args.first().ok_or_else(|| fail("E0305", "palette entry needs a color"))?;
-        let v = self.expr(first, sc)?;
-        match v.kind() {
-            Kind::Color => Ok(v),
-            k => Err(fail("E0305", format!("palette entries are colors or ramps, got {k}"))
-                .fix("write `name #rrggbb` or `name ramp #rrggbb 5`")),
+    fn swatch(&mut self, kind: &SwatchKind, sc: &Scope) -> R<Value> {
+        match kind {
+            SwatchKind::Ramp { pos, hue } => {
+                let vals: Vec<Value> = pos.exprs().into_iter().map(|e| self.expr(e, sc)).collect::<R<_>>()?;
+                let hue = match hue {
+                    Some(e) => self.expr(e, sc)?.num().unwrap_or(DEFAULT_HUE_STEP),
+                    None => DEFAULT_HUE_STEP,
+                };
+                self.ramp(&vals, hue)
+            }
+            SwatchKind::Color(e) => {
+                let v = self.expr(e, sc)?;
+                match v.kind() {
+                    Kind::Color => Ok(v),
+                    k => Err(fail("E0305", format!("`color` takes a color, got {k}"))
+                        .fix("write `color name #rrggbb`, or `ramp name #rrggbb 5` for a ramp")),
+                }
+            }
         }
     }
 
@@ -684,13 +682,13 @@ impl<'a> Evaluator<'a> {
 
     // ---------------------------------------------------------------- statements
 
-    pub fn eval_block_nodes(&mut self, stmts: &[Stmt], sc: &mut Scope) -> Vec<Node> {
+    pub fn eval_block_nodes<'s>(&mut self, stmts: impl IntoIterator<Item = &'s Scene>, sc: &mut Scope) -> Vec<Node> {
         let mut sib = Siblings::default();
         self.eval_block(stmts, sc, &mut sib);
         sib.finish()
     }
 
-    fn eval_block(&mut self, stmts: &[Stmt], sc: &mut Scope, out: &mut Siblings) {
+    fn eval_block<'s>(&mut self, stmts: impl IntoIterator<Item = &'s Scene>, sc: &mut Scope, out: &mut Siblings) {
         for st in stmts {
             if let Err(f) = self.eval_stmt(st, sc, out) {
                 let node = sc.path.clone();
@@ -700,9 +698,9 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_stmt(&mut self, st: &Stmt, sc: &mut Scope, out: &mut Siblings) -> R<()> {
+    fn eval_stmt(&mut self, st: &Scene, sc: &mut Scope, out: &mut Siblings) -> R<()> {
         match &st.kind {
-            StmtKind::Let { name, value } => {
+            SceneKind::Let { name, value } => {
                 self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
                 let v = self.expr(value, sc);
                 let v = match v {
@@ -718,14 +716,14 @@ impl<'a> Evaluator<'a> {
                 sc.env.push((name.clone(), v));
                 Ok(())
             }
-            StmtKind::If { cond, then, otherwise } => {
+            SceneKind::If { cond, then, otherwise } => {
                 self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
-            StmtKind::Each { var, iter, body } => {
+            SceneKind::Each { var, iter, body } => {
                 self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
@@ -736,21 +734,12 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            StmtKind::Check { .. } => {
+            SceneKind::Check { .. } => {
                 sc.checks.borrow_mut().push(Pending { stmt: st.clone(), scope: sc.clone() });
                 Ok(())
             }
-            StmtKind::Node { verb, args, named, body } => self.eval_node(st, verb, args, named, body, sc, out),
-            StmtKind::Fx(_) => {
-                Err(fail("E0333", "`fx` applies to the node it is nested under").fix("indent the `fx` line under a shape, layer or instance"))
-            }
-            StmtKind::SlotFill { name, .. } if name == "mask" => Ok(()),
-            StmtKind::SlotFill { name, .. } => Err(fail("E0331", format!("slot fill `{name}:` is only valid under a component call"))
-                .fix("indent it under the component that exposes the slot")),
-            StmtKind::Patch { path, .. } => Err(fail("E0332", format!("patch `.{}` is only valid under a component call", path.join(".")))
-                .fix("indent it under the component instance it overrides")),
-            _ if sc.top => Ok(()),
-            _ => Err(fail("E0303", "declarations belong at the top level of a file").fix("move it to the top level")),
+            SceneKind::Slot { name, named, fallback } => self.slot(st, name, named, fallback, sc, out),
+            SceneKind::Draw(draw) => self.eval_node(st, draw, sc, out),
         }
     }
 
@@ -853,34 +842,11 @@ impl<'a> Evaluator<'a> {
         r
     }
 
-    fn split_body<'s>(&self, body: &'s [Stmt]) -> Body<'s> {
-        let mut parts = Body { fx: Vec::new(), inline: Vec::new(), mask: None, rest: Vec::new() };
-        for st in body {
-            match &st.kind {
-                StmtKind::Fx(line) => parts.fx.push(line),
-                StmtKind::Node { verb, .. } if matches!(verb.as_str(), "fill" | "stroke" | "mask") => parts.inline.push(st),
-                StmtKind::SlotFill { name, body } if name == "mask" => parts.mask = Some(body.as_slice()),
-                _ => parts.rest.push(st.clone()),
-            }
-        }
-        parts
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn eval_node(
-        &mut self,
-        st: &Stmt,
-        verb: &str,
-        args: &[Expr],
-        named: &[Named],
-        body: &[Stmt],
-        sc: &mut Scope,
-        out: &mut Siblings,
-    ) -> R<()> {
+    fn eval_node(&mut self, st: &Scene, draw: &Draw, sc: &mut Scope, out: &mut Siblings) -> R<()> {
+        let Draw { verb, args, named, body } = draw;
+        let verb = verb.as_str();
         match verb {
-            "fill" | "stroke" | "mask" => return Ok(()),
             "anchor" => return self.anchor(args, sc),
-            "slot" => return self.slot(st, args, named, body, sc, out),
             "canvas" if sc.top => {
                 let a = self.eval_args(args, named, sc, 0)?;
                 if let Some(v) = a.get("fill") {
@@ -951,21 +917,29 @@ impl<'a> Evaluator<'a> {
             s.append(&mut a.named);
             a.named = s;
         }
-        let Body { fx, inline, mask: mask_block, rest } = self.split_body(body);
-        for st in &inline {
-            if let StmtKind::Node { verb, args, .. } = &st.kind
-                && let Some(e) = args.first()
-            {
-                let v = self.expr(e, sc)?;
-                a.named.push((verb.clone(), v));
-            }
-        }
         a.named.extend(patch_named);
         let origin = format!("{}:{}", sc.file(), st.span.line);
         let name = registered.then(|| explicit.clone().or(positional_name.clone()).unwrap_or(base.clone()));
 
         if let Some(comp) = comp {
             return self.instance(&comp, a, body, sc, out, path, origin, name);
+        }
+        for item in body.items() {
+            let err = match item {
+                DrawItem::SlotFill(fill) => (
+                    fill.span,
+                    fail("E0331", format!("slot fill `{}:` is only valid under a component call", fill.name))
+                        .fix("indent it under the component that exposes the slot"),
+                ),
+                DrawItem::Patch(p) => (
+                    p.span,
+                    fail("E0332", format!("patch `.{}` is only valid under a component call", p.path.join(".")))
+                        .fix("indent it under the component instance it overrides"),
+                ),
+                _ => continue,
+            };
+            let file = sc.file().to_string();
+            self.report(err.1, &file, err.0, &path);
         }
         let child_style = match a.word("style") {
             Some(_) => {
@@ -1004,10 +978,10 @@ impl<'a> Evaluator<'a> {
                 record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(placeholder), anchor: None, at }));
             }
             let children = match verb {
-                "mirror" => self.mirror(&rest, &mut inner, if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) }),
-                "repeat" => self.repeat(&rest, &mut inner, &a)?,
-                "grid" => self.grid(&rest, &mut inner, &a)?,
-                _ => self.eval_block_nodes(&rest, &mut inner),
+                "mirror" => self.mirror(body, &mut inner, if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) }),
+                "repeat" => self.repeat(body, &mut inner, &a)?,
+                "grid" => self.grid(body, &mut inner, &a)?,
+                _ => self.eval_block_nodes(body.scenes(), &mut inner),
             };
             node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: verb == "layer", children });
             node.clip = clip;
@@ -1023,7 +997,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let local_frame = inverse(&m).map_rect(frame).0;
                     let mut inner = sc.child(&path, local_frame, inner_world);
-                    let operands = self.eval_block_nodes(&rest, &mut inner);
+                    let operands = self.eval_block_nodes(body.scenes(), &mut inner);
                     let sils: Vec<Path> = operands.iter().map(|n| crate::scope::silhouette(n, &Matrix::new_identity())).collect();
                     (geom::boolean(op, &sils), None, true)
                 }
@@ -1061,14 +1035,14 @@ impl<'a> Evaluator<'a> {
             if let Some(n) = &name {
                 record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at }));
             }
-            if !matches!(verb, "subtract" | "union" | "intersect" | "xor") && !rest.is_empty() {
+            if !matches!(verb, "subtract" | "union" | "intersect" | "xor") && body.scenes().next().is_some() {
                 let gb = match &node.kind {
                     NodeKind::Shape(s) => geom::bounds(&s.geometry),
                     _ => Rect::new_empty(),
                 };
                 let mut inner = sc.child(&path, gb, inner_world);
                 inner.style = child_style;
-                let kids = self.eval_block_nodes(&rest, &mut inner);
+                let kids = self.eval_block_nodes(body.scenes(), &mut inner);
                 if let NodeKind::Shape(s) = &mut node.kind {
                     s.children = kids;
                 }
@@ -1076,9 +1050,9 @@ impl<'a> Evaluator<'a> {
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = sc.child(&path, sc.frame, world);
-        let sites: Vec<FxSite> = fx.iter().map(|line| FxSite { line, scope: &fx_scope }).collect();
+        let sites: Vec<FxSite> = body.fx().map(|line| FxSite { line, scope: &fx_scope }).collect();
         node.effects = self.lower_fx(&sites, &path, fill_key);
-        self.mask(&mut node, &a, mask_block, sc, world)?;
+        self.mask(&mut node, &a, body.mask(), sc, world)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
@@ -1096,27 +1070,29 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn mask(&mut self, node: &mut Node, a: &Args, block: Option<&[Stmt]>, sc: &Scope, world: Matrix) -> R<()> {
+    fn mask(&mut self, node: &mut Node, a: &Args, mask: Option<&ast::Mask>, sc: &Scope, world: Matrix) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
-        let source = if let Some(body) = block {
-            let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
-            Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
-        } else {
-            match a.get("mask") {
-                None | Some(Value::None) => None,
-                Some(Value::Ref(r)) => {
+        let source = match mask {
+            None => None,
+            Some(ast::Mask::Block(body)) => {
+                let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
+                Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
+            }
+            Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
+                Value::None => None,
+                Value::Ref(r) => {
                     let geometry = r.silhouette().make_transform(&inverse(&world));
                     let shape = Shape { geometry, fill: Some(Paint::Solid(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }.to_ir())), stroke: None, blur: 0.0, children: vec![] };
                     let n = new_node(format!("{}.mask", node.path), node.origin.clone(), Matrix::new_identity(), NodeKind::Shape(Box::new(shape)));
                     Some(MaskSource::Nodes(vec![n]))
                 }
-                Some(Value::FieldMask(f, t)) => Some(MaskSource::Field { field: (**f).clone(), threshold: Some(*t as f32) }),
-                Some(Value::Field(f)) => Some(MaskSource::Field { field: (**f).clone(), threshold: None }),
-                Some(other) => {
-                    return Err(fail("E0320", format!("`mask:` expects a node reference or a field, got {}", other.kind()))
-                        .fix("write `mask:@body` or `mask:simplex(30) > .5`"));
+                Value::FieldMask(f, t) => Some(MaskSource::Field { field: (*f).clone(), threshold: Some(t as f32) }),
+                Value::Field(f) => Some(MaskSource::Field { field: (*f).clone(), threshold: None }),
+                other => {
+                    return Err(fail("E0320", format!("`mask` expects a node reference or a field, got {}", other.kind()))
+                        .fix("write `mask @body` or `mask simplex(30) > .5`"));
                 }
-            }
+            },
         };
         if let Some(source) = source {
             node.mask = Some(Box::new(Mask { source, luminance: false, feather, invert: false }));
@@ -1137,8 +1113,8 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn mirror(&mut self, body: &[Stmt], sc: &mut Scope, flip: (f32, f32)) -> Vec<Node> {
-        let originals = self.eval_block_nodes(body, sc);
+    fn mirror(&mut self, body: &DrawBody, sc: &mut Scope, flip: (f32, f32)) -> Vec<Node> {
+        let originals = self.eval_block_nodes(body.scenes(), sc);
         let mut out = originals.clone();
         for n in originals {
             let mut m = n.clone();
@@ -1155,7 +1131,7 @@ impl<'a> Evaluator<'a> {
         out
     }
 
-    fn repeat(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn repeat(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
         let n = a.pos.first().and_then(Value::num).ok_or_else(|| fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`"))?;
         let rot = a.num("rot").unwrap_or(0.0);
         let step = a.get("step").and_then(Value::vec2).unwrap_or((0.0, 0.0));
@@ -1167,7 +1143,7 @@ impl<'a> Evaluator<'a> {
             inner.env.push(("i".into(), Value::Num(fi)));
             inner.suffix = format!("{}#{i}", sc.suffix);
             inner.world = sc.world * copy_m;
-            for mut node in self.eval_block_nodes(body, &mut inner) {
+            for mut node in self.eval_block_nodes(body.scenes(), &mut inner) {
                 node.transform = copy_m * node.transform;
                 out.push(node);
             }
@@ -1175,7 +1151,7 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn grid(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn grid(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
         let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`"))?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
@@ -1188,7 +1164,7 @@ impl<'a> Evaluator<'a> {
                 inner.env.push(("row".into(), Value::Num(row as f64)));
                 inner.env.push(("col".into(), Value::Num(col as f64)));
                 inner.suffix = format!("{}#{i}", sc.suffix);
-                copies.push(((row, col), self.eval_block_nodes(body, &mut inner)));
+                copies.push(((row, col), self.eval_block_nodes(body.scenes(), &mut inner)));
             }
         }
         let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
@@ -1384,10 +1360,6 @@ impl<'a> Evaluator<'a> {
         Ok(Shape { geometry, fill, stroke: Some(Stroke { paint, width: w as f32, cap, join, dash }), blur, children: vec![] })
     }
 
-    // ---------------------------------------------------------------- components
-
-    /// Binds named params in order. A given value wins and must be the kind of its default.
-    /// Otherwise the default evaluates in `module` with the earlier params bound.
     pub(crate) fn bind_params(
         &mut self,
         owner: &str,
@@ -1419,12 +1391,14 @@ impl<'a> Evaluator<'a> {
         Ok(env)
     }
 
+    // ---------------------------------------------------------------- components
+
     #[allow(clippy::too_many_arguments)]
     fn instance(
         &mut self,
         comp: &Rc<Component>,
         a: Args,
-        block: &[Stmt],
+        block: &DrawBody,
         sc: &mut Scope,
         out: &mut Siblings,
         path: String,
@@ -1501,14 +1475,13 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let table = new_table();
         let mut fills = Vec::new();
-        let mut block_fx = Vec::new();
-        let mut mask_block = None;
         let depth = path.matches('.').count();
-        for b in block {
-            match &b.kind {
-                StmtKind::SlotFill { name, body } if name == "mask" => mask_block = Some(body.as_slice()),
-                StmtKind::SlotFill { name, body } => fills.push(Fill { name: name.clone(), body: body.clone(), scope: sc.clone(), span: b.span }),
-                StmtKind::Patch { path: segs, named, off } => {
+        for b in block.items() {
+            match b {
+                DrawItem::SlotFill(fill) => {
+                    fills.push(Fill { name: fill.name.clone(), body: fill.body.clone(), scope: sc.clone(), span: fill.span })
+                }
+                DrawItem::Patch(ast::Patch { path: segs, named, off, span }) => {
                     let mut vals = Vec::new();
                     for n in named {
                         vals.push((n.key.clone(), self.expr(&n.value, sc)?));
@@ -1521,26 +1494,22 @@ impl<'a> Evaluator<'a> {
                         owner: path.clone(),
                         depth,
                         rel,
-                        span: b.span,
+                        span: *span,
                         file: sc.file().to_string(),
                         matched: Cell::new(false),
                     });
                 }
-                StmtKind::Fx(line) => block_fx.push(line),
-                StmtKind::Node { verb, args, .. } if verb == "mask" => {
-                    if let Some(e) = args.first() {
-                        let v = self.expr(e, sc)?;
-                        node_args.named.push(("mask".into(), v));
-                    }
+                DrawItem::Fx(_) | DrawItem::Mask { .. } => {}
+                DrawItem::Scene(st @ Scene { kind: SceneKind::Check { .. }, .. }) => {
+                    sc.checks.borrow_mut().push(Pending { stmt: st.clone(), scope: sc.clone() })
                 }
-                StmtKind::Check { .. } => sc.checks.borrow_mut().push(Pending { stmt: b.clone(), scope: sc.clone() }),
-                _ => {
+                DrawItem::Scene(st) => {
                     let file = sc.file().to_string();
                     self.report(
-                        fail("E0330", format!("only slot fills, patches, fx and mask: may go under an instance of `{}`", comp.name))
+                        fail("E0330", format!("only slot fills, patches, checks, fx and one mask may go under an instance of `{}`", comp.name))
                             .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
                         &file,
-                        b.span,
+                        st.span,
                         &path,
                     );
                 }
@@ -1571,18 +1540,19 @@ impl<'a> Evaluator<'a> {
             checks: checks.clone(),
             top: false,
         };
-        let Body { fx: body_fx, rest: body_rest, .. } = self.split_body(&comp.body);
-        let children = self.eval_block_nodes(&body_rest, &mut body_scope);
+        let children = self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
         let mut node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: false, children });
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(&path, body_scope.frame, world);
-        let sites: Vec<FxSite> = body_fx
+        let sites: Vec<FxSite> = comp
+            .body
             .iter()
+            .filter_map(DefItem::fx)
             .map(|line| FxSite { line, scope: &fx_scope })
-            .chain(block_fx.iter().map(|line| FxSite { line, scope: &*sc }))
+            .chain(block.fx().map(|line| FxSite { line, scope: &*sc }))
             .collect();
         node.effects = self.lower_fx(&sites, &path, f);
-        self.mask(&mut node, &node_args, mask_block, sc, world)?;
+        self.mask(&mut node, &node_args, block.mask(), sc, world)?;
         let z = self.finish_node(&mut node, &node_args)?;
         let reg_name = name.unwrap_or(comp.name.clone());
         let rec = self.register(sc, &reg_name, Record { name: reg_name.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at });
@@ -1622,13 +1592,15 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn slot(&mut self, st: &Stmt, args: &[Expr], named: &[Named], body: &[Stmt], sc: &mut Scope, out: &mut Siblings) -> R<()> {
+    fn slot(&mut self, st: &Scene, name: &str, named: &[Named], fallback: &[Scene], sc: &mut Scope, out: &mut Siblings) -> R<()> {
         let inst = sc.inst.clone().ok_or_else(|| fail("E0334", "`slot` is only valid inside a `def`").fix("move it into a def body"))?;
-        let name = args.first().and_then(ident_of).ok_or_else(|| fail("E0320", "`slot` needs a name").fix("write `slot head at:0,-30`"))?;
         let leaf = out.name(name, &sc.suffix);
         let path = format!("{}.{leaf}", sc.path);
         let (patch_named, off) = self.take_patches(&path);
         if off {
+            if inst.fills.iter().any(|f| f.name == name) {
+                inst.used_fills.borrow_mut().push(name.to_string());
+            }
             return Ok(());
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;
@@ -1650,7 +1622,7 @@ impl<'a> Evaluator<'a> {
             }
             None => {
                 let mut inner = sc.child(&path, local_frame, world);
-                self.eval_block_nodes(body, &mut inner)
+                self.eval_block_nodes(fallback, &mut inner)
             }
         };
         let mut node = new_node(path, format!("{}:{}", sc.file(), st.span.line), m, NodeKind::Group { isolate: false, children });
@@ -1880,7 +1852,7 @@ impl<'a> Evaluator<'a> {
             }
             Value::Color(_) => {
                 return Err(fail("E0350", format!("a plain color has no step `.{seg}`; only ramps are indexed"))
-                    .fix("declare the palette entry as `name ramp <color> 5` to index it, or drop the index"));
+                    .fix("declare the palette entry as `ramp name <color> 5` to index it, or drop the index"));
             }
             other => return Err(fail("E0350", format!("{} has no member `.{seg}`", other.kind()))),
         })

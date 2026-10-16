@@ -13,27 +13,37 @@ The author-facing reference is `docs/language.md`. This file settles the details
   - Numbers look like `12`, `1.5`, `.5`. There is no exponent, and the sign is never part of the token.
   - The suffixes `%`, `deg` and `turn` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees.
 - **Sizes.** A number or percent, then `x`, then a number or percent with no spaces is one size token: `256x256`, `100%x60%`, `8x40`. `mirror x` stays an identifier because `x` is not glued to a number.
-- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none`, plus the reserved list in `lib.rs`. A reserved word used as a name is E0105.
+- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Every grammar word has one row in the word table in `crates/syntax/src/words.rs`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none fx mask slot`. The future words (`sksl field warp backdrop profile pose joint ease t frames anim key`) are reserved too. A reserved word used as a name is E0105, so `let fx = 1` is an error. `ramp` and `color` head palette rows and are ordinary names everywhere else, so `color:p.ink`, a def parameter named `color`, and the `ramp(...)` builtin keep working.
 - **References.** `@` followed by an identifier, then `.segment` repeats where a segment is an identifier, digits or `*`.
-- **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by an identifier is a patch.
+- **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by a name is a patch. A segment may be a keyword, because a slot may be named one: `slot mask`, then `.mask off`.
 - **Strings.** `"..."` supports the escapes `\" \\ \n`. `"""..."""` is raw and may span lines. Its common leading indentation is stripped.
 - **Whitespace.** Every token records whether whitespace preceded it, and the parser needs this.
 
 ## 2. Parsing
 
-The first tokens of a line decide its form:
+The first word of a line decides its form, so a line that does not draw says so up front:
 
-| line starts with | form |
-|---|---|
-| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes |
-| `use` | `use <raw path> [as x] [{ a b }]` |
-| `palette`, `style`, `finish`, `def`, `rule`, `let`, `shader`, `light`, `brush` | declarations. In `finish`, `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs`. A `style` takes no block, and one is E0101 whose fix names `finish`. A `finish` needs a block, and every line in it must be an `fx` line, or it is E0101 |
-| `fx` | `fx <name> items`, with no block. The name is a built-in effect or a finish |
-| `assert`, `expect` | `expr named* "message"?` |
-| `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed |
-| `.ident` | patch. Path segments, named args, and an optional trailing `off` |
-| `ident:` then end of line | slot fill, which needs a block |
-| any other identifier | node: the verb, then items |
+| line starts with | form | where it may go |
+|---|---|---|
+| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes | file top |
+| `use` | `use <raw path> [as x] [{ a b }]` | file top |
+| `palette`, `style`, `finish`, `def`, `rule`, `shader`, `light`, `brush` | declarations. In `finish`, `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs`. A `style` takes no block, and one is E0101 whose fix names `finish`. A `finish` needs a block, and every line in it must be an `fx` line, or it is E0101 | file top |
+| `ramp`, `color` | palette row: `ramp <name> <color> [<color>] [<count>] [hue:h]` or `color <name> <color>` | directly under `palette`, and nothing else may go there |
+| `let` | `let name = expr` | any scene block |
+| `assert`, `expect` | `expr named* "message"?` | any scene block |
+| `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed | any scene block |
+| `slot` | `slot <name> named*` with an optional fallback block. The name may be `mask` | any scene block. Evaluation requires a `def` (E0334) |
+| `fx` | `fx <name> items`, with no block. The name is a built-in effect or a finish | directly under a draw, a `def`, or a `finish` |
+| `mask` | `mask <expr>`, or `mask` alone over a block. One per draw, anywhere among its children | directly under a draw |
+| `.ident` | patch. Path segments, named args, and an optional trailing `off` | directly under a draw |
+| `ident:` then end of line | slot fill, which needs a block. `mask:` is a slot fill named `mask`, not a mask | directly under a draw |
+| any other identifier | draw: the verb (a shape, a structure verb, or a component), then items | any scene block |
+
+A scene block is the file top, a draw's children, a `def` body, and the bodies of `if`, `else`, `each`, `slot`, a slot fill, a mask block, and a `rule`. A line in a block that cannot hold it is E0101, and the line and everything indented under it are dropped. A `def` body holds draws, control, checks, `slot`, and `fx` (effects attach to the instance). A mask, a slot fill, or a patch directly in a `def` body is E0101. A draw nested inside the def still takes its own mask.
+
+**Colons at the head.** An identifier (or `mask`) glued to `:` at the end of a line is a slot fill. Glued to `:` with more tokens after it, as in `mask:simplex(30) > .5` or `fill:#fff`, it is E0101 with the fix "write `mask simplex(30) > .5`, or end the line with `mask:` to fill a slot". Named args in the item list (`hue:12`, `as:soft`, `color:p.ink`) are unaffected. A `mask:` named arg on a draw is E0101, because the mask is its own child line.
+
+**Masks.** A mask has a value or a block, never both and never neither. A second mask on the same draw is E0101. `fmt` prints a draw's children in source order and never moves a mask, an `fx`, or a child.
 
 **Items on a line.** Items are separated by whitespace. An item is either a named arg or a positional expression.
 
@@ -136,7 +146,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 - Implement OKLab and OKLCH conversion as in `../chibi/.cursor/skills/chibi-art/toolkit/src/chibi/color.py`.
 - Out-of-gamut colors are mapped by reducing chroma (binary search), never by clipping.
-- **Single-color ramp `ramp c n [hue:h]`.**
+- **Single-color ramp `ramp <name> c n [hue:h]`.** The row takes one to three positionals and no named arg but `hue:`. Evaluation decides which positionals are colors and which is the stop count (default 5), because a name can be either.
   - The base index is `b = (n - 1) / 2` (integer division).
   - The step `s = i - b` produces each stop. With base `L, C, H` and `h = hue` (default 15):
     - For `s < 0`:
@@ -149,7 +159,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
       - `H'` rotates toward 75 by `min(0.65*h*s, distance)`
   - A neutral base (C < .02) keeps its hue.
   - Out-of-range steps (`shade` past either end) extrapolate with the same formula.
-- **Two-color ramp `ramp a b n`.** Interpolate in OKLCH, taking the shorter hue arc.
+- **Two-color ramp `ramp <name> a b n`.** Interpolate in OKLCH, taking the shorter hue arc.
 - **`line(c)`** is `L = max(L - .42, .18)`, `C = max(C * 1.15, .04)`, with the hue rotated 24 degrees toward 275.
 - **`shade(c k)`**:
   - If `c` remembers a ramp, use index + k, extrapolating past the ends.
@@ -193,7 +203,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 ## 8. Effects (`fx`)
 
-- `fx` is a child statement and is appended to the parent node's `effects`. The statement `fx <op> positional… named…` maps onto `EffectOp`.
+- `fx` is a child line of a draw or a `def` and is appended to that node's `effects`, in source order. On a component, the def body's `fx` run first, then the call site's. The line `fx <op> positional… named…` maps onto `EffectOp`. At the file top, in a palette, or directly under `if`, `else`, or `each` it is E0101. A draw nested under `if` still takes its own `fx`.
 - `color:` defaults:
 
 | op | default color |
@@ -222,7 +232,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 - **Calling a def.**
   1. Bind its params (positional first, then named).
-  2. Collect the instance block. It may contain slot fills, patches, `fx`, and `mask:`. Anything else is E0330, and the fix suggests wrapping it in a slot fill.
+  2. Collect the instance block. It may contain slot fills, patches, checks, `fx`, and one `mask`. Anything else is E0330, and the fix suggests wrapping it in a slot fill. The instance's mask is the call site's only. A slot fill or patch under a draw that is not a component is E0331 or E0332.
   3. Evaluate the body in a fresh scope whose frame is the instance box. That box is the resolved `size`, centered on the origin. A def with no `size` keeps an empty frame.
 - **Patches.**
   - Patches are applied in source order, and the last value set wins.
@@ -337,7 +347,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - E0210: a module that cannot be found.
   - E0211: an import cycle.
   - E0212: an imported name that the module does not export.
-  - E0304: `palette x from y` where `y` does not exist. E0305: a malformed palette entry or `ramp`.
+  - E0304: `palette x from y` where `y` does not exist. E0305: a `color` row whose value is not a color, or a `ramp` row without one or two colors.
   - E0306: `each` over something that is not a list or range, or more than 100000 iterations. `[each k in ... -> ...]` uses the same rule.
   - E0307: an unknown style.
   - E0322: a percent measured against an empty frame. Inside a def, the message names the def.

@@ -22,7 +22,7 @@ use std::collections::BTreeSet;
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::StmtKind;
+use artscript_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use project::{LintLevel, Manifest, Project, find_root, load};
@@ -52,7 +52,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     };
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
-    let children = ev.eval_block_nodes(&file.stmts, &mut sc);
+    let children = ev.eval_block_nodes(file.scenes(), &mut sc);
     let checks = sc.checks.clone();
     ev.run_checks(&checks);
     let background = match &job.bg {
@@ -92,8 +92,8 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
         }
         let Some(src) = project.files.get(&f) else { continue };
         let Ok(file) = artscript_syntax::parse(src) else { continue };
-        for st in &file.stmts {
-            if let StmtKind::Use { path, .. } = &st.kind {
+        for d in file.decls() {
+            if let DeclKind::Use { path, .. } = &d.kind {
                 let rooted = format!("{path}.art");
                 if let Some(t) = project.resolve_use(path).or(project.files.contains_key(&rooted).then_some(rooted)) {
                     stack.push(t);

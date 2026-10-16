@@ -4,15 +4,15 @@
 use face/parts { happy_eye blush cat_mouth sparkle }
 
 palette peach
-  cream ramp #f6e2c6 5
-  pink ramp #f3a2a6 5
-  coral ramp #ec7a6a 5
-  leaf ramp #6cb956 5
-  twig ramp #8b5a3c 5
-  face #6a2f3c
-  edge #7e253c
-  fuzz #ffe3dc
-  lit #d4e678
+  ramp cream #f6e2c6 5
+  ramp pink #f3a2a6 5
+  ramp coral #ec7a6a 5
+  ramp leaf #6cb956 5
+  ramp twig #8b5a3c 5
+  color face #6a2f3c
+  color edge #7e253c
+  color fuzz #ffe3dc
+  color lit #d4e678
 
 # Blade along +x, 200 long. +y is the belly. `bend` sags the spine, `wide` is the belly's share of the width, `vein` picks that side.
 def _leaf tone:peach.leaf vein:1 bend:.19 wide:.48
@@ -89,7 +89,7 @@ layer body
     fx outline 5.2 color:peach.edge
   # Pale halo stays on the lit left arc. A wide mask let it wash the cavity, the shoulders, and the stem.
   group feather:6
-    mask:
+    mask
       ellipse 150,140 at:330,440 fill:peach.cream
     outside @skin
       curve skin_pts closed tension:.55 stroke:peach.fuzz,18.4 a:.4 blur:.45

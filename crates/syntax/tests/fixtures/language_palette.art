@@ -1,5 +1,5 @@
 palette garden
-  peach  ramp #f3a2a6 5        # 0 deep, 1 shadow, 2 base, 3 light, 4 highlight
-  leaf   ramp #7db956 5 hue:12 # hue: degrees of shift per step
-  sky    ramp #1b1f3a #f2a65a 7  # two endpoints, interpolated in OKLCH
-  ink    #3d2632
+  ramp peach #f3a2a6 5        # 0 deep, 1 shadow, 2 base, 3 light, 4 highlight
+  ramp leaf #7db956 5 hue:12 # hue: degrees of shift per step
+  ramp sky #1b1f3a #f2a65a 7  # two endpoints, interpolated in OKLCH
+  color ink #3d2632
