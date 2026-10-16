@@ -7,7 +7,7 @@ palette peach
   cream ramp #f6e2c6 5
   pink ramp #f3a2a6 5
   coral ramp #ec7a6a 5
-  leaf ramp #7db956 5
+  leaf ramp #6cb956 5
   twig ramp #8b5a3c 5
   face #6a2f3c
   edge #7e253c
@@ -87,10 +87,10 @@ layer body
     fx grain .045 scale:1.6
     # The outline is the outer half of a centered stroke, about 5.2px past the fill, opaque #7e253c.
     fx outline 5.2 color:peach.edge
-  # Covers that outer 5.2px and four more past it. Alpha .4 of pale pink over the maroon reads as the lit mauve, and the same paint on empty ground is the halo. The mask fades it off toward the shadow.
-  group feather:58
+  # Pale halo stays on the lit left arc. A wide mask let it wash the cavity, the shoulders, and the stem.
+  group feather:6
     mask:
-      ellipse 420,280 at:270,290 fill:peach.cream
+      ellipse 150,140 at:330,440 fill:peach.cream
     outside @skin
       curve skin_pts closed tension:.55 stroke:peach.fuzz,18.4 a:.4 blur:.45
   each segment in 0..skin_count
@@ -126,16 +126,18 @@ layer body
     let seg_mid = floor(sample_count/2)
     let seg_light = min(1 max(0 (0-outx.{seg_mid}-outy.{seg_mid})*.85))
     let wobble = [each k in 0..sample_count -> rand(-.16 .16 seed:k)]
-    if seg_light < .42
-      let rose_reach = [each k in 0..sample_count -> rand(1.5 2.4 seed:k)]
-      let rose_comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(4.5+(if mod(k 3) == 1 then rose_reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*.5 else 0)]
-      curve rose_comb tension:0 stroke:peach.edge,1.05 a:.8 blur:.3
-    if seg_light > .36
+    if spot.{seg_mid}.x < 400
       each k in 0..sample_count
         if mod(k 3) == 1
           let reach = rand(2.2 3.6 seed:k+11)
           let hair = spot.{k}+(outx.{k},outy.{k})*8.6+(tx.{k},ty.{k})*wobble.{k}
           curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.fuzz,.95 a:seg_light*.42 taper:0,.9
+    else
+      each k in 0..sample_count
+        if mod(k 6) == 1
+          let reach = rand(2.2 4 seed:k)
+          let hair = spot.{k}+(outx.{k},outy.{k})*5.2+(tx.{k},ty.{k})*wobble.{k}
+          curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.edge,1.15 a:.9 taper:0,.9
   assert inside(@skin canvas margin:24)
 
 layer face
