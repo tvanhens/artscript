@@ -247,13 +247,12 @@ impl<'a> Parser<'a> {
             while !self.eol() && !self.eat(&Tok::RBrace) {
                 if self.at(&Tok::Comma) {
                     self.fail_here(
-                        "expected a name in the import list",
-                        "remove the extra comma",
+                        "imported names are separated by spaces, not commas",
+                        "remove the comma: write `use lib { a b }`",
                     );
                     break;
                 }
                 items.push(self.expect_name());
-                let _ = self.eat(&Tok::Comma);
             }
         }
         self.expect_eol("remove the extra tokens after `use`");
@@ -1072,18 +1071,18 @@ impl<'a> Parser<'a> {
                 break;
             }
             if self.is_arg_comma() {
-                self.bump();
-                if self.eat(&Tok::RParen) {
-                    break;
-                }
-                continue;
+                self.fail_here(
+                    "arguments are separated by spaces, not commas",
+                    "remove the comma: write `f(a b)`, not `f(a, b)`",
+                );
+                break;
             }
             if self.cur().is_some_and(|t| t.ws_before) {
                 continue;
             }
             self.fail_here(
-                "expected `)`, a space, or a comma between arguments",
-                "separate arguments with a space or `, `",
+                "expected `)` or a space between arguments",
+                "separate arguments with a space",
             );
             break;
         }
@@ -1182,23 +1181,23 @@ impl<'a> Parser<'a> {
                 self.fail_here("unclosed `[`", "close the list with `]`");
                 break;
             }
-            items.push(self.parse_prec(0));
+            items.push(self.parse_tuple());
             if self.eat(&Tok::RBrack) {
                 break;
             }
             if self.at(&Tok::Comma) {
-                self.bump();
-                if self.eat(&Tok::RBrack) {
-                    break;
-                }
-                continue;
+                self.fail_here(
+                    "list items are separated by spaces, not commas",
+                    "remove the comma: write `[a b]`, not `[a, b]`",
+                );
+                break;
             }
             if self.cur().is_some_and(|t| t.ws_before) {
                 continue;
             }
             self.fail_here(
-                "expected `]`, a space, or a comma in the list",
-                "separate list items with a comma or a space",
+                "expected `]` or a space in the list",
+                "separate list items with a space",
             );
             break;
         }

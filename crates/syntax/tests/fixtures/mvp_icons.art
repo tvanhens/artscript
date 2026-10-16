@@ -1,7 +1,7 @@
 # lib/rules/icons.art
 rule icon_grid subject:@self size:64
-  assert inside(subject, canvas, margin:size * .0625)
-  assert on_grid(subject, 2)
+  assert inside(subject canvas margin:size * .0625)
+  assert on_grid(subject 2)
   expect stroke_widths(subject) == [2]
 
 # art/ui/icons.art

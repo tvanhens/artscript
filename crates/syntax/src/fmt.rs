@@ -58,7 +58,7 @@ impl<'a> Printer<'a> {
                 }
                 if !items.is_empty() {
                     text.push_str(" { ");
-                    text.push_str(&items.join(", "));
+                    text.push_str(&items.join(" "));
                     text.push_str(" }");
                 }
                 self.emit(stmt.span.line, indent, &text);
@@ -393,7 +393,7 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Tuple(xs) => xs.iter().map(fmt_expr).collect::<Vec<_>>().join(","),
         Expr::List(xs) => format!(
             "[{}]",
-            xs.iter().map(fmt_expr).collect::<Vec<_>>().join(", ")
+            xs.iter().map(fmt_expr).collect::<Vec<_>>().join(" ")
         ),
         Expr::Range(lo, hi) => format!("{}..{}", fmt_at(lo, 7, false), fmt_at(hi, 7, true)),
         Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, false)),

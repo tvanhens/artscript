@@ -5,8 +5,8 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 ## Files
 
 - An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `def`, `rule`, `let`.
-- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a, b]` fans out a matrix interpolated as `{k}` in the path.
-- `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye, blush }` imports names. Names starting with `_` stay private.
+- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a b]` fans out a matrix interpolated as `{k}` in the path.
+- `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The manifest's default palette is always available as `p`.
 
 ## Values
@@ -18,10 +18,10 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | vector / size | `14,0` (no spaces around the comma), `256x256` |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
-| list / range | `[a, b, c]`, `0..8` |
+| list / range | `[a b c]`, `0..8` |
 | reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas` |
 
-Expressions: `+ - * /` (elementwise on vectors), `== != < <= > >= ~=`, `and or not`, `in lo..hi`, `if c then a else b`. Write binary operators with spaces on both sides or neither: `w/2`, `a + b`. `-x` after a space starts a new argument. Functions: `min max abs clamp lerp sqrt floor round sin cos` (degrees), `polar(r, deg)`, `rand(lo, hi)`, `pick(list)`, and the color helpers below. `v.x`, `v.y` read a vector.
+Expressions: `+ - * /` (elementwise on vectors), `== != < <= > >= ~=`, `and or not`, `in lo..hi`, `if c then a else b`. Write binary operators with spaces on both sides or neither: `w/2`, `a + b`. `-x` after a space starts a new argument. Functions: `min max abs clamp lerp sqrt floor round sin cos` (degrees), `polar(r deg)`, `rand(lo hi)`, `pick(list)`, and the color helpers below. `v.x`, `v.y` read a vector.
 
 ## Color
 
@@ -35,8 +35,8 @@ palette garden
 
 A single-color ramp darkens toward cool blue-violet and lightens toward warm yellow, so shadows and lights are hue-shifted for free. `p.peach.line` is the ramp's lineart color, darker and more saturated than the base. `palette night from garden` inherits and overrides.
 
-- `shade(c, k)` steps `k` along `c`'s ramp: `-1` shadow, `-2` deep, `+1` light, `+2` highlight.
-- `mix(a, b, t)` mixes in OKLab, `fade(c, a)` sets alpha, `line(c)` is the lineart color for any color.
+- `shade(c k)` steps `k` along `c`'s ramp: `-1` shadow, `-2` deep, `+1` light, `+2` highlight.
+- `mix(a b t)` mixes in OKLab, `fade(c a)` sets alpha, `line(c)` is the lineart color for any color.
 - Gradients interpolate in OKLCH. `grad(down a b)` runs across the shape's bounds, with directions `down up left right` or an angle (0 = right, 90 = down). Use `radial(a b at:.3,.3 r:200)` (`at:` is a fraction of the bounds, `r:` is in units) or `conic(a b c)`. A stop can carry a position, as in `p.peach.3,.4`.
 
 ## Shapes
@@ -62,7 +62,7 @@ Paint keys:
 
 - `fill:<color|gradient|field>`.
 - `stroke:<color>,<width>`. Strokes have round caps and joins. `stroke:3` alone uses `line(fill)`.
-- Tapered ink: `stroke:p.ink,[2,8,3] taper:.3` on an open curve gives one width per point along its length, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
+- Tapered ink: `stroke:p.ink,[2 8 3] taper:.3` on an open curve gives one width per point along its length, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
 - `blur:6` softens a shape's edge.
 - `jitter:1.5` wobbles the outline like a hand-drawn edge.
 
@@ -112,12 +112,12 @@ def eye size:10 iris:p.sky.3 look:0,0
 Checks measure the evaluated scene and never move anything. An `assert` failure is an error, and an `expect` failure is a warning.
 
 ```
-assert level(@eye_l, @eye_r) tol:.5
-assert inside(@hero, canvas, margin:24)
+assert level(@eye_l @eye_r) tol:.5
+assert inside(@hero canvas margin:24)
 expect @head.w / @body.w in .9..1.4 "head as wide as the body"
 ```
 
-Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a, b, margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a, b, edge:top)`, `level`, `centered(a, in:b)`, `symmetric(a, b, about:x)`, `aspect`, `on_grid(a, n)`, `same_size(@row.*)` and `stroke_widths(a)`. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
+Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a b margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a b edge:top)`, `level`, `centered(a in:b)`, `symmetric(a b about:x)`, `aspect`, `on_grid(a n)`, `same_size(@row.*)` and `stroke_widths(a)`. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
 
 ## CLI
 

@@ -45,13 +45,12 @@ The first tokens of a line decide its form:
 - The keyword operators (`and or in -> ..` and the comparisons) continue the expression when they are spaced.
 - A tight comma, with no whitespace on either side, builds a `Tuple` at the lowest precedence of that tight run: `-w/2,0` is `Tuple[-(w)/2, 0]`, and `p.ink,1.5` is `Tuple[p.ink, 1.5]`.
 
-**Inside `( )`.**
+**Inside `( )`, `[ ]` and `use … { }`.** There is one way to write this.
 
-- Arguments are separated by whitespace or by a comma that has whitespace after it.
-- A tight comma still builds a tuple, so `radial(a b at:.3,.3)` and `level(@a, @b)` both work.
-- Named args are allowed. `oklch(.78 .07 55)` is an ordinary call.
-
-**Inside `[ ]`.** Every comma separates, whitespace also separates, and lists nest.
+- Items are separated by whitespace only: `shade(c -2)`, `level(@a @b)`, `[plate leather]`, `use face/parts { eye blush }`.
+- A comma with whitespace on either side is error E0101, with the fix "remove the comma".
+- A tight comma builds a tuple exactly as it does on a statement line. So `radial(a b at:.3,.3)` is a call with a vector argument, `[5 4 3]` is a list of three numbers, and `[0,0 10,5]` is a list of two points.
+- Named args are allowed in calls. `oklch(.78 .07 55)` is an ordinary call.
 
 **Precedence**, lowest to highest:
 

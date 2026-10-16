@@ -129,7 +129,7 @@ fn mvp_targets_reject_reserved_alias() {
 
 #[test]
 fn directive_target_matrix() {
-    let src = "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate, leather] team:[red, blue]\n";
+    let src = "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n";
     let file = must_parse(src);
     let d = &file.directives[0];
     assert_eq!(d.name, "target");
@@ -155,7 +155,7 @@ fn directive_target_matrix() {
     );
     assert_eq!(
         format(&file),
-        "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate, leather] team:[red, blue]\n"
+        "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
     );
 }
 
@@ -170,7 +170,7 @@ fn use_forms() {
             items: vec![]
         }
     );
-    let items = must_parse("use a/b { x, y }\n");
+    let items = must_parse("use a/b { x y }\n");
     assert_eq!(
         node(&items),
         &StmtKind::Use {
@@ -262,7 +262,7 @@ fn field_fill_and_stroke() {
             body: vec![],
         }
     );
-    let stroke = must_parse("stroke:p.ink,[2,8,3] taper:0,.6\n");
+    let stroke = must_parse("stroke:p.ink,[2 8 3] taper:0,.6\n");
     match node(&stroke) {
         StmtKind::Node {
             verb,
@@ -369,7 +369,7 @@ fn calls_members_and_colors() {
         }
         other => panic!("{other:?}"),
     }
-    let shade = must_parse("let v = shade(c, -2)\n");
+    let shade = must_parse("let v = shade(c -2)\n");
     match &shade.stmts[0].kind {
         StmtKind::Let { value, .. } => {
             assert_eq!(value, &call("shade", vec![ident("c"), neg(num(2.0))]));
@@ -605,6 +605,31 @@ fn syntax_errors_carry_a_fix() {
     );
     assert!(many.iter().all(|e| e.fix.is_some()));
     assert!(many.len() >= 3);
+}
+
+#[test]
+fn separator_commas_are_rejected() {
+    for (src, fix) in [
+        ("let v = shade(c, -2)\n", "remove the comma: write `f(a b)`, not `f(a, b)`"),
+        ("let v = [a, b]\n", "remove the comma: write `[a b]`, not `[a, b]`"),
+        ("use a/b { x, y }\n", "remove the comma: write `use lib { a b }`"),
+    ] {
+        let errs = parse(src).unwrap_err();
+        assert_eq!(errs.len(), 1, "{src}: {errs:?}");
+        assert_eq!(errs[0].code, "E0101");
+        assert_eq!(errs[0].fix.as_deref(), Some(fix));
+    }
+    let points = must_parse("let v = [0,0 10,5]\n");
+    match node(&points) {
+        StmtKind::Let { value, .. } => assert_eq!(
+            value,
+            &Expr::List(vec![
+                Expr::Tuple(vec![num(0.0), num(0.0)]),
+                Expr::Tuple(vec![num(10.0), num(5.0)]),
+            ])
+        ),
+        other => panic!("{other:?}"),
+    }
 }
 
 #[test]
