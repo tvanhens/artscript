@@ -113,6 +113,34 @@ fn check_json_reports_failed_asserts_with_exit_2() {
 }
 
 #[test]
+fn build_writes_a_png_when_the_entry_has_a_syntax_error() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-partial-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(dir.join("artscript.toml"), "[project]\nout = \"assets\"\nlib = [\"lib\"]\n").unwrap();
+    fs::write(dir.join("art/x.art"), "@target x.png 32x32\ncircle 10\nlet\nrect 8x8\n").unwrap();
+
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let png = fs::read(dir.join("assets/x.png")).unwrap_or_else(|e| panic!("{e}\n{}", text(&out)));
+    assert_eq!(&png[1..4], b"PNG");
+    let entry = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["path"] == "x.png")
+        .unwrap()
+        .clone();
+    assert_eq!(entry["status"], "fail");
+    assert_eq!(entry["hash"], fnv_hex(&png));
+
+    let again = artscript(&dir, &["build"]);
+    assert_eq!(again.status.code(), Some(1), "{}", text(&again));
+    assert_eq!(fs::read(dir.join("assets/x.png")).unwrap(), png);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_passes_on_the_fixture_and_fmt_is_stable() {
     let dir = fixture("fmt");
     let out = artscript(&dir, &["check"]);

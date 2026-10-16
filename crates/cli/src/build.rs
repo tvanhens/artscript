@@ -163,8 +163,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob) -> Outcome {
     let ev = evaluate(project, job);
     let mut diagnostics = ev.diagnostics;
     let mut outputs = Vec::new();
-    let compile_error = diagnostics.iter().any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
-    if let (Some(scene), false) = (&ev.scene, compile_error) {
+    if let Some(scene) = &ev.scene {
         for out in &job.outputs {
             let bytes = match out.format {
                 Format::Png => artscript_render::render_png(scene, out.scale),
