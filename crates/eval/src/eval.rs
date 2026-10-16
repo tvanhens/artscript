@@ -233,16 +233,21 @@ fn size_box(w: f64, h: f64) -> Rect {
     Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
 }
 
-fn resolve_size(v: &Value, frame: Rect, sc: &Scope, def_name: &str) -> R<(Value, Rect)> {
+/// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
+fn resolve_size(v: &Value, pair_default: bool, frame: Rect, sc: &Scope, def_name: &str) -> R<(Value, Rect)> {
     let positive = |n: f64| n.is_finite() && n > 0.0;
     let reject = |got: &str| fail("E0320", format!("`size` of `{def_name}` must be positive, got {got}")).fix("write `size:40` or `size:72x32`");
+    let square = |side: f64| {
+        let value = if pair_default { Value::Size(Coord::Num(side), Coord::Num(side)) } else { Value::Num(side) };
+        (value, size_box(side, side))
+    };
     let (fw, fh) = (frame.width() as f64, frame.height() as f64);
     match v {
         Value::Num(n) => {
             if !positive(*n) {
                 return Err(reject(&v.show()));
             }
-            Ok((Value::Num(*n), size_box(*n, *n)))
+            Ok(square(*n))
         }
         Value::Percent(p) => {
             check_percent(Coord::Pct(*p), frame, sc)?;
@@ -250,7 +255,7 @@ fn resolve_size(v: &Value, frame: Rect, sc: &Scope, def_name: &str) -> R<(Value,
             if !positive(side) {
                 return Err(reject(&v.show()));
             }
-            Ok((Value::Num(side), size_box(side, side)))
+            Ok(square(side))
         }
         other => {
             let Some((x, y)) = other.pair() else {
@@ -1462,11 +1467,10 @@ impl<'a> Evaluator<'a> {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
             let default = self.expr(&p.value, &dsc);
+            let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
-                    let size_form = p.key == "size" && v.pair().is_some();
-                    if !size_form
-                        && let Ok(d) = &default
+                    if let Ok(d) = &default
                         && !d.accepts(v)
                     {
                         return Err(fail("E0320", format!("`{}` of `{}` expects {}, got {}", p.key, comp.name, d.kind(), v.kind()))
@@ -1477,7 +1481,7 @@ impl<'a> Evaluator<'a> {
                 None => default.map_err(|f| f.note(format!("in the default of `{}` ({}:{})", p.key, comp.module, comp.span.line)))?,
             };
             let value = if p.key == "size" {
-                let (value, rect) = resolve_size(&value, caller_local, sc, &comp.name)?;
+                let (value, rect) = resolve_size(&value, pair_default, caller_local, sc, &comp.name)?;
                 box_frame = rect;
                 value
             } else {

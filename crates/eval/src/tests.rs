@@ -493,10 +493,16 @@ fn caller_percent_size_resolves_against_the_caller_frame() {
     assert_box(&pair, "d.c", 20.0, 20.0);
     let bare = lib_scene("@target t.png 200x100\nuse d\nd 50%\n", "def d size:40x20\n  rect size name:r\n");
     assert_box(&bare, "d.r", 50.0, 50.0);
-    let scaled = lib_scene("@target t.png 200x100\nuse d\nd 100%x100% scale:2\n", "def d size:10\n  rect 100%x100% name:r\n");
+    let scaled = lib_scene("@target t.png 200x100\nuse d\nd 100%x100% scale:2\n", "def d size:10x10\n  rect 100%x100% name:r\n");
     assert_box(&scaled, "d.r", 100.0, 50.0);
-    let wide = lib_scene("@target t.png 80x40\nuse d\nd 30x16\n", "def d size:10\n  rect size name:r\n");
-    assert_box(&wide, "d.r", 30.0, 16.0);
+    let square = lib_scene("@target t.png 80x40\nuse d\nd 30\n", "def d size:72x32\n  rect size.w,size.h name:r\n");
+    assert_box(&square, "d.r", 30.0, 30.0);
+}
+
+#[test]
+fn a_square_size_rejects_a_pair() {
+    let ev = run_with("@target t.png 80x40\nuse d\nd 30x16\n", &[("lib/d.art", "def d size:10\n  circle size*.5\n")]);
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0320"), "{}", show(&ev.diagnostics));
 }
 
 #[test]
