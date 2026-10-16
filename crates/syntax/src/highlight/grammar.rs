@@ -515,7 +515,7 @@ fn path_chunk_end() -> String {
         delims = delim_class()
     );
     let glued = format!(
-        "[ \\t]+(?:{dropped}+[ \\t]+)*{dropped}+(?:[@\"A-Za-z0-9_./{{}}*+=!<>~:,()\\[\\]-]|{color})"
+        "(?:{dropped}|[ \\t])*{dropped}(?:[@\"A-Za-z0-9_./{{}}*+=!<>~:,()\\[\\]-]|{color})"
     );
     format!("(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?:{dropped})+{gap})")
 }
