@@ -835,7 +835,7 @@ impl<'a> Evaluator<'a> {
                     s.append(&mut a.named);
                     a.named = s;
                 }
-                Err(f) => self.report(f, &sc.file().to_string(), st.span, &path),
+                Err(f) => self.report(f, sc.file(), st.span, &path),
             }
         }
         let Body { fx, inline, mask: mask_block, rest } = self.split_body(body);
@@ -845,7 +845,7 @@ impl<'a> Evaluator<'a> {
             {
                 match self.expr(e, sc) {
                     Ok(v) => a.named.push((verb.clone(), v)),
-                    Err(f) => self.report(f, &sc.file().to_string(), child.span, &path),
+                    Err(f) => self.report(f, sc.file(), child.span, &path),
                 }
             }
         }
