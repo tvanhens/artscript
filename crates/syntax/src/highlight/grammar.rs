@@ -394,11 +394,7 @@ fn keyword_alts() -> String {
 }
 
 fn slot_tail() -> String {
-    format!(
-        "(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
-        hex = hex_body(),
-        delims = delim_class()
-    )
+    format!("(?={after})", after = slot_after())
 }
 
 fn slot() -> Pattern {
@@ -517,7 +513,8 @@ fn erased_before_colon() -> String {
 
 fn slot_after() -> String {
     format!(
-        "[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims})))",
+        "(?:[ \\t]|{dropped})*(?:\\r?$|#(?!(?:{hex})(?=$|{delims})))",
+        dropped = dropped_class(),
         hex = hex_body(),
         delims = delim_class()
     )
