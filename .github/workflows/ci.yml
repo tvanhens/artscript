@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: ${{ matrix.gate }}
+    runs-on: ubuntu-24.04
+    # A failed Skia prebuilt download silently falls back to a from-source build.
+    # This bounds it. Do not set FORCE_SKIA_BINARIES_DOWNLOAD: in a crates.io build
+    # it skips the download and forces the source build.
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - gate: test
+            run: cargo test --workspace --locked
+          - gate: clippy
+            run: cargo clippy --workspace --all-targets --locked -- -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      # skia-bindings links freetype and fontconfig.
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libfontconfig-dev libfreetype-dev
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.gate }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: ${{ matrix.run }}
+
+  ci:
+    needs: gate
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test "${{ needs.gate.result }}" = success
