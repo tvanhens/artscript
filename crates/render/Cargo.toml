@@ -1,0 +1,8 @@
+[package]
+name = "artscript-render"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+skia-safe.workspace = true
+artscript-ir.workspace = true

@@ -1,0 +1,124 @@
+# artscript language card (v0.1)
+
+artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG and SVG. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
+
+## Files
+
+- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `def`, `rule`, `let`.
+- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a, b]` fans out a matrix interpolated as `{k}` in the path.
+- `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye, blush }` imports names. Names starting with `_` stay private.
+- The manifest's default palette is always available as `p`.
+
+## Values
+
+| kind | examples |
+|---|---|
+| number | `12`, `.5`, `-3` (canvas units) |
+| percent | `50%` of the current frame (canvas, or the parent shape's bounds) |
+| angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
+| vector / size | `14,0` (no spaces around the comma), `256x256` |
+| color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
+| list / range | `[a, b, c]`, `0..8` |
+| reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas` |
+
+Expressions: `+ - * /` (elementwise on vectors), `== != < <= > >= ~=`, `and or not`, `in lo..hi`, `if c then a else b`. Write binary operators with spaces on both sides or neither: `w/2`, `a + b`. `-x` after a space starts a new argument. Functions: `min max abs clamp lerp sqrt floor round sin cos` (degrees), `polar(r, deg)`, `rand(lo, hi)`, `pick(list)`, and the color helpers below. `v.x`, `v.y` read a vector.
+
+## Color
+
+```
+palette garden
+  peach  ramp #f3a2a6 5        # 0 deep, 1 shadow, 2 base, 3 light, 4 highlight
+  leaf   ramp #7db956 5 hue:12 # hue: degrees of shift per step
+  sky    ramp #1b1f3a #f2a65a 7  # two endpoints, interpolated in OKLCH
+  ink    #3d2632
+```
+
+A single-color ramp darkens toward cool blue-violet and lightens toward warm yellow, so shadows and lights are hue-shifted for free. `p.peach.line` is the ramp's lineart color, darker and more saturated than the base. `palette night from garden` inherits and overrides.
+
+- `shade(c, k)` steps `k` along `c`'s ramp: `-1` shadow, `-2` deep, `+1` light, `+2` highlight.
+- `mix(a, b, t)` mixes in OKLab, `fade(c, a)` sets alpha, `line(c)` is the lineart color for any color.
+- Gradients interpolate in OKLCH. `grad(down a b)` runs across the shape's bounds, with directions `down up left right` or an angle (0 = right, 90 = down). Use `radial(a b at:.3,.3 r:200)` (`at:` is a fraction of the bounds, `r:` is in units) or `conic(a b c)`. A stop can carry a position, as in `p.peach.3,.4`.
+
+## Shapes
+
+Shapes are centered on their local origin, and `at:` places that origin in the parent.
+
+| shape | example |
+|---|---|
+| rect | `rect 40x20 r:4` (or `r:4,4,0,0` per corner) |
+| circle, ellipse | `circle 12`, `ellipse 20,12` (radii) |
+| poly, star | `poly 6 r:20 round:3`, `star 5 r:20 inner:.5` |
+| curve | `curve 0,0 20,-15 40,0` smooth through the points, `closed` for a fill, `tension:.5` |
+| blob | `blob 30 seed:4 wobble:.2` organic closed shape |
+| path | `path "M0 0 c10-20 30-20 40 0z"` |
+| copy | `copy @body at:-20,-8` reuses a named node's outline |
+| booleans | `subtract`, `union`, `intersect`, `xor` with shape operands as children, first minus the rest |
+| mirror | `mirror x` draws its block and the block flipped across x = 0 |
+| repeat, grid | `repeat 8 rot:45`, `grid 4x3 gap:8` (`i`, `row`, `col` in the block) |
+
+Any node takes `at: rot: scale: skew: pivot: a:` (opacity), `blend:` (`multiply screen overlay soft_light add erase` …), `z:behind|front|N`, `name:`, `style:`.
+
+Paint keys:
+
+- `fill:<color|gradient|field>`.
+- `stroke:<color>,<width>`. Strokes have round caps and joins. `stroke:3` alone uses `line(fill)`.
+- Tapered ink: `stroke:p.ink,[2,8,3] taper:.3` on an open curve gives one width per point along its length, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
+- `blur:6` softens a shape's edge.
+- `jitter:1.5` wobbles the outline like a hand-drawn edge.
+
+## Structure
+
+- `layer name` is an isolated group. `group` is a plain group.
+- **Nesting under a shape clips the children to that shape.** This is how every highlight, shadow and texture stays inside its form:
+
+```
+curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body
+  ellipse 30,20 at:-20,-30 fill:p.peach.4 a:.6 blur:12   # soft light, upper left
+  subtract fill:p.peach.1 a:.5 blur:2                      # cel shadow, lower right
+    copy @body
+    copy @body at:-14,-10
+  fx rim 4 dir:1,1
+  fx grain .04
+  fx outline 4
+```
+
+- `inside @torso` draws its block clipped to another node's silhouette, and `outside @x` does the inverse.
+- Masks are `mask:@body`, `mask:simplex(30) > .5`, or a `mask:` block, with `feather:6` for a soft edge.
+- `fx` lines apply to the node they're nested under, in order. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a silhouette line behind the node, defaulting to `line(fill)`), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
+
+## Fields
+
+`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or `mask:worley(20) > .6` to threshold one into a shape. Seeds default to a hash of the file and node path, so editing one node never reshuffles another.
+
+## Components
+
+```
+def eye size:10 iris:p.sky.3 look:0,0
+  circle size fill:#fff name:white
+    circle size*.55 at:look*size*.3 fill:iris
+  anchor brow 0,-size
+  slot lashes at:0,-size*.8
+```
+
+- The first parameter is positional (`eye 9 at:-14,0`), and types come from the defaults.
+- Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
+- `slot name` exposes an insertion point, filled by the caller with a `name:` block. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
+- `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
+- `let w = if build == slim then 34 else 42`, `if`/`else`, and `each x in [..]` / `each i in 0..8` are bounded control flow.
+- `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants.
+
+## Checks
+
+Checks measure the evaluated scene and never move anything. An `assert` failure is an error, and an `expect` failure is a warning.
+
+```
+assert level(@eye_l, @eye_r) tol:.5
+assert inside(@hero, canvas, margin:24)
+expect @head.w / @body.w in .9..1.4 "head as wide as the body"
+```
+
+Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a, b, margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a, b, edge:top)`, `level`, `centered(a, in:b)`, `symmetric(a, b, about:x)`, `aspect`, `on_grid(a, n)`, `same_size(@row.*)` and `stroke_widths(a)`. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
+
+## CLI
+
+`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt`, `explain <file>`, `init`. Exit codes: 0 ok, 1 compile error, 2 an assert failed, 3 only warnings.

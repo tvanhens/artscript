@@ -1,0 +1,16 @@
+[package]
+name = "artscript"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "artscript"
+path = "src/main.rs"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+artscript-syntax.workspace = true
+artscript-ir.workspace = true
+artscript-render.workspace = true
+artscript-eval.workspace = true
