@@ -7,7 +7,6 @@ const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 /// A digit may sit in front of a word. `5degx` is a number and then a name.
 const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
-/// Spaces, then an optional tab-tainted indent in capture 1.
 const HEAD: &str = "^[ ]*([ \\t]*\\t[ \\t]*)?";
 
 const ESCAPE_SCOPE: &str = "constant.character.escape.art";
@@ -21,7 +20,6 @@ pub(crate) enum KwGroup {
     Constant,
 }
 
-/// Adding a keyword fails to compile here until it has a group.
 pub(crate) fn group(kw: Kw) -> KwGroup {
     match kw {
         Kw::Use | Kw::As | Kw::From => KwGroup::Import,

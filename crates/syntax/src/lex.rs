@@ -5,10 +5,8 @@ use crate::words::{self, Word};
 #[derive(Clone, Debug)]
 pub(crate) struct Comment {
     pub line: u32,
-    /// Byte of the `#`.
     #[allow(dead_code)]
     pub start: usize,
-    /// Byte before CR or LF.
     #[allow(dead_code)]
     pub end: usize,
     pub text: String,
@@ -71,10 +69,8 @@ pub(crate) const HEX_LENS: &[usize] = &[3, 4, 6, 8];
 pub(crate) const HEX_DELIMS: &[char] = &[' ', '\t', '\r', '\n', ',', ')', ']'];
 /// Suffix and the degrees in one unit.
 pub(crate) const ANGLE_SUFFIXES: &[(&str, f64)] = &[("deg", 1.0), ("turn", 360.0)];
-/// Escape letter after `\`, and the char it produces.
 pub(crate) const STRING_ESCAPES: &[(char, char)] = &[('\\', '\\'), ('"', '"'), ('n', '\n')];
 
-/// `@` plus one non-empty segment.
 pub(crate) fn is_directive_ref(tokens: &[Token]) -> bool {
     matches!(
         tokens.first().map(|t| &t.kind),
@@ -82,7 +78,6 @@ pub(crate) fn is_directive_ref(tokens: &[Token]) -> bool {
     )
 }
 
-/// `name:` glued, and the colon is the last token. A keyword never qualifies.
 pub(crate) fn is_slot_at(tokens: &[Token], index: usize) -> bool {
     if !matches!(tokens.get(index).map(|t| &t.kind), Some(Tok::Ident(_))) {
         return false;
@@ -93,7 +88,6 @@ pub(crate) fn is_slot_at(tokens: &[Token], index: usize) -> bool {
     matches!(colon.kind, Tok::Colon) && !colon.ws_before && index + 2 == tokens.len()
 }
 
-/// `name:` or `keyword:` with the colon glued. A following value is not required.
 pub(crate) fn is_glued_key(tokens: &[Token], index: usize) -> bool {
     if !matches!(
         tokens.get(index).map(|t| &t.kind),

@@ -7,7 +7,6 @@ mod grammar;
 #[cfg(test)]
 mod tests;
 
-/// What the editor shows for a span of source. One ribbon letter and one TextMate scope each.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Class {
     Comment,
@@ -48,7 +47,6 @@ impl Class {
         Class::Invalid,
     ];
 
-    /// Whitespace is ` ` and is not a class.
     pub(crate) fn letter(self) -> char {
         match self {
             Class::Comment => 'c',
@@ -71,14 +69,12 @@ impl Class {
     }
 }
 
-/// A classified byte range. `classify` returns these sorted and non-overlapping.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Run {
     pub range: Range<usize>,
     pub class: Class,
 }
 
-/// Characters a `use` or directive path chunk may contain.
 /// The grammar's path regex is built from this same constant.
 pub(crate) const PATH_CHARS: &str = "A-Za-z0-9_./{}*-";
 
@@ -95,7 +91,6 @@ enum HeadRole {
     Plain,
 }
 
-/// Classifies `src` the way the lexer sees it. Total on any input. Does not parse.
 pub(crate) fn classify(src: &str) -> Vec<Run> {
     let lexed = lex::lex(src);
     let mut runs = Vec::new();
@@ -136,12 +131,12 @@ fn head_role(src: &str, line: &Line) -> HeadRole {
     };
     if line.indent == 0 && lex::is_directive_ref(tokens) {
         return HeadRole::Directive {
-            path: path_tokens(src, tokens, 1, true),
+            path: directive_path(src, tokens, 1),
         };
     }
     if matches!(first.kind, Tok::Kw(Kw::Use)) {
         return HeadRole::Use {
-            path: path_tokens(src, tokens, 1, false),
+            path: glued_path(src, tokens, 1),
         };
     }
     if matches!(first.kind, Tok::Kw(_)) {
@@ -160,20 +155,21 @@ fn head_role(src: &str, line: &Line) -> HeadRole {
     HeadRole::Plain
 }
 
-/// `shaped` requires `/`, `.`, or `{`. A `use` path is the glued chunk either way.
-fn path_tokens(src: &str, tokens: &[Token], start: usize, shaped: bool) -> Option<Range<usize>> {
+fn directive_path(src: &str, tokens: &[Token], start: usize) -> Option<Range<usize>> {
+    let range = glued_path(src, tokens, start)?;
+    let text = &src[tokens[range.start].start..tokens[range.end - 1].end];
+    text.chars()
+        .any(|c| matches!(c, '/' | '.' | '{'))
+        .then_some(range)
+}
+
+fn glued_path(src: &str, tokens: &[Token], start: usize) -> Option<Range<usize>> {
     if start >= tokens.len() {
         return None;
     }
     let end = glued_end(tokens, start);
     let text = &src[tokens[start].start..tokens[end - 1].end];
-    if !text.chars().all(is_path_char) {
-        return None;
-    }
-    if shaped && !text.chars().any(|c| matches!(c, '/' | '.' | '{')) {
-        return None;
-    }
-    Some(start..end)
+    text.chars().all(is_path_char).then_some(start..end)
 }
 
 fn glued_end(tokens: &[Token], start: usize) -> usize {
@@ -226,7 +222,6 @@ fn lexical(src: &str, tok: &Token) -> Class {
         Tok::Ref(segs) if segs.iter().any(|seg| !seg.is_empty()) => Class::Reference,
         Tok::Ref(_) => Class::Invalid,
         Tok::Ident(_) => Class::Ident,
-        // The scanner keeps the two-character kind and reports E0101 for the one-byte form.
         Tok::NotEq | Tok::Approx
             if &src[tok.start..tok.end] == "!" || &src[tok.start..tok.end] == "~" =>
         {
@@ -286,7 +281,6 @@ fn is_gap(byte: u8) -> bool {
     matches!(byte, b' ' | b'\n' | b'\r')
 }
 
-/// One letter per UTF-16 code unit, one line per source line. `\r` and `\n` emit nothing.
 pub(crate) fn ribbon(src: &str, runs: &[Run]) -> String {
     let mut lines = Vec::new();
     let mut cur = String::new();

@@ -1,4 +1,3 @@
-# test/edge.art: a buffer that does not parse. Each line exercises one lexer rule.
 # The unclosed raw string must stay the last line.
 @target out/{name}.png 256x256 each name:[a b]
 @a.b
