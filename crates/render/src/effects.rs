@@ -2,19 +2,24 @@
 //!
 //! `None` means the layer's own content (Skia's null filter input). Named results remember that
 //! same choice so a later `Named` input can point at the untouched source.
+//!
+//! A linear chain that contains an outline is executed on a raster layer instead. The outline
+//! reads alpha on the CPU and disc-dilates the bbox, because a full-frame shader sampling that
+//! disc is the expensive part.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use artscript_ir::{Color, Effect, EffectInput, EffectOp};
-use skia_safe::{
-    BlendMode, Color4f, ColorMatrix, Data, ImageFilter, Matrix, Paint, PictureRecorder, Point, Rect,
-    RuntimeEffect, TileMode, image_filters,
-};
+use skia_safe::canvas::SaveLayerRec;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
+use skia_safe::{
+    AlphaType, BlendMode, Color4f, ColorMatrix, ColorType, Data, Image, ImageFilter, ImageInfo,
+    Matrix, Paint, PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, surfaces,
+};
 
+use crate::RenderError;
 use crate::draw::{DrawCtx, draw_node};
 use crate::paint::color4;
-use crate::RenderError;
 
 pub struct FxEnv<'a> {
     pub ctx: &'a DrawCtx<'a>,
@@ -44,7 +49,10 @@ fn resolve(
     match input {
         EffectInput::Previous => Ok(current.clone()),
         EffectInput::Source => Ok(None),
-        EffectInput::Named(name) => Ok(named.get(name).cloned().unwrap_or_else(|| Some(image_filters::empty()))),
+        EffectInput::Named(name) => Ok(named
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| Some(image_filters::empty()))),
         EffectInput::Node(path) => node_filter(path, env),
     }
 }
@@ -65,24 +73,58 @@ fn apply(
                 image_filters::blur((*sigma, *sigma), TileMode::Decal, input, None),
             )?))
         }
-        EffectOp::Shadow { dx, dy, blur, color } => Ok(Some(req(
+        EffectOp::Shadow {
+            dx,
+            dy,
+            blur,
+            color,
+        } => Ok(Some(req(
             "shadow",
-            image_filters::drop_shadow((*dx, *dy), (*blur, *blur), color4(*color), None, input, None),
+            image_filters::drop_shadow(
+                (*dx, *dy),
+                (*blur, *blur),
+                color4(*color),
+                None,
+                input,
+                None,
+            ),
         )?)),
         EffectOp::Glow { radius, color } => Ok(Some(req(
             "glow",
-            image_filters::drop_shadow((0.0, 0.0), (*radius, *radius), color4(*color), None, input, None),
+            image_filters::drop_shadow(
+                (0.0, 0.0),
+                (*radius, *radius),
+                color4(*color),
+                None,
+                input,
+                None,
+            ),
         )?)),
-        EffectOp::Inner { dx, dy, blur, color } => inner(*dx, *dy, *blur, *color, input),
+        EffectOp::Inner {
+            dx,
+            dy,
+            blur,
+            color,
+        } => inner(*dx, *dy, *blur, *color, input),
         EffectOp::Rim { width, dir, color } => rim(*width, *dir, *color, input),
         EffectOp::Outline { width, color } => outline(*width, *color, input),
-        EffectOp::Grain { strength, scale, seed } => grain(*strength, *scale, *seed, input),
+        EffectOp::Grain {
+            strength,
+            scale,
+            seed,
+        } => grain(*strength, *scale, *seed, input),
         EffectOp::Adjust { hue, sat, light } => adjust(*hue, *sat, *light, input),
         EffectOp::Merge { inputs, alphas } => merge(inputs, alphas, &input, named, env),
     }
 }
 
-fn inner(dx: f32, dy: f32, blur: f32, color: Color, input: Option<ImageFilter>) -> Result<Option<ImageFilter>, RenderError> {
+fn inner(
+    dx: f32,
+    dy: f32,
+    blur: f32,
+    color: Color,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
     // CSS inset: offset (0, 6) darkens the top, because the shifted alpha leaves the top uncovered.
     let c = color4(color);
     let band = shader_on(
@@ -100,12 +142,21 @@ fn inner(dx: f32, dy: f32, blur: f32, color: Color, input: Option<ImageFilter>) 
     )?))
 }
 
-fn rim(width: f32, dir: Point, color: Color, input: Option<ImageFilter>) -> Result<Option<ImageFilter>, RenderError> {
+fn rim(
+    width: f32,
+    dir: Point,
+    color: Color,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
     if width <= 0.0 {
         return Ok(input);
     }
     let len = (dir.x * dir.x + dir.y * dir.y).sqrt();
-    let (dx, dy) = if len == 0.0 { (1.0, 1.0) } else { (dir.x / len, dir.y / len) };
+    let (dx, dy) = if len == 0.0 {
+        (1.0, 1.0)
+    } else {
+        (dir.x / len, dir.y / len)
+    };
     // Two inward offsets, weighted like pen.rim_light, so the band is brightest at the edge.
     let far = (-dx * width, -dy * width);
     let near = (-dx * width * 0.45, -dy * width * 0.45);
@@ -129,7 +180,11 @@ fn rim(width: f32, dir: Point, color: Color, input: Option<ImageFilter>) -> Resu
     )?))
 }
 
-fn outline(width: f32, color: Color, input: Option<ImageFilter>) -> Result<Option<ImageFilter>, RenderError> {
+fn outline(
+    width: f32,
+    color: Color,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
     if width <= 0.0 {
         return Ok(input);
     }
@@ -150,7 +205,12 @@ fn outline(width: f32, color: Color, input: Option<ImageFilter>) -> Result<Optio
     )?))
 }
 
-fn grain(strength: f32, scale: f32, seed: u32, input: Option<ImageFilter>) -> Result<Option<ImageFilter>, RenderError> {
+fn grain(
+    strength: f32,
+    scale: f32,
+    seed: u32,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
     if strength == 0.0 {
         return Ok(input);
     }
@@ -159,14 +219,23 @@ fn grain(strength: f32, scale: f32, seed: u32, input: Option<ImageFilter>) -> Re
     Ok(Some(shader_on(
         GRAIN_SKSL,
         "child",
-        &[("strength", &[strength]), ("scale", &[scale]), ("seed", &[lo, hi])],
+        &[
+            ("strength", &[strength]),
+            ("scale", &[scale]),
+            ("seed", &[lo, hi]),
+        ],
         input,
         0.0,
         true,
     )?))
 }
 
-fn adjust(hue: f32, sat: f32, light: f32, input: Option<ImageFilter>) -> Result<Option<ImageFilter>, RenderError> {
+fn adjust(
+    hue: f32,
+    sat: f32,
+    light: f32,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
     let effect = color_effect(ADJUST_SKSL)?;
     let mut bytes = Vec::with_capacity(12);
     for v in [hue, sat, light] {
@@ -175,7 +244,10 @@ fn adjust(hue: f32, sat: f32, light: f32, input: Option<ImageFilter>) -> Result<
     let filter = effect
         .make_color_filter(Data::new_copy(&bytes), None)
         .ok_or_else(|| RenderError::Skia("adjust filter".into()))?;
-    Ok(Some(req("adjust", image_filters::color_filter(filter, input, None))?))
+    Ok(Some(req(
+        "adjust",
+        image_filters::color_filter(filter, input, None),
+    )?))
 }
 
 fn merge(
@@ -201,7 +273,10 @@ fn maybe_blur(input: ImageFilter, sigma: f32) -> Result<ImageFilter, RenderError
     if sigma <= 0.0 {
         return Ok(input);
     }
-    req("effect blur", image_filters::blur((sigma, sigma), TileMode::Decal, input, None))
+    req(
+        "effect blur",
+        image_filters::blur((sigma, sigma), TileMode::Decal, input, None),
+    )
 }
 
 fn scale_alpha(input: Option<ImageFilter>, alpha: f32) -> Result<Option<ImageFilter>, RenderError> {
@@ -209,10 +284,14 @@ fn scale_alpha(input: Option<ImageFilter>, alpha: f32) -> Result<Option<ImageFil
         return Ok(input);
     }
     let matrix = ColorMatrix::new(
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, alpha, 0.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        alpha, 0.0,
     );
     let filter = skia_safe::color_filters::matrix(&matrix, None);
-    Ok(Some(req("alpha", image_filters::color_filter(filter, input, None))?))
+    Ok(Some(req(
+        "alpha",
+        image_filters::color_filter(filter, input, None),
+    )?))
 }
 
 fn node_filter(path: &str, env: &FxEnv<'_>) -> Result<Option<ImageFilter>, RenderError> {
@@ -443,10 +522,396 @@ half4 main(half4 c) {
 }
 "#;
 
+/// One step of a linear effect chain. Filters are the Skia graph for a run of non-outline ops.
+pub enum LayerStep {
+    Filter(ImageFilter),
+    Outline { width: f32, color: Color },
+}
+
+/// Splits a `Previous`-only chain that contains a positive outline. Anything else (a named
+/// input, a merge, no outline) stays on the single image-filter path.
+pub fn layer_steps(
+    effects: &[Effect],
+    env: &FxEnv<'_>,
+) -> Result<Option<Vec<LayerStep>>, RenderError> {
+    let linear = effects
+        .iter()
+        .all(|e| e.input == EffectInput::Previous && !matches!(e.op, EffectOp::Merge { .. }));
+    let outlined = effects
+        .iter()
+        .any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0));
+    if !linear || !outlined {
+        return Ok(None);
+    }
+    let mut steps = Vec::new();
+    let mut start = 0;
+    for (i, effect) in effects.iter().enumerate() {
+        let EffectOp::Outline { width, color } = effect.op else {
+            continue;
+        };
+        if width <= 0.0 {
+            continue;
+        }
+        if start < i
+            && let Some(filter) = chain(&effects[start..i], env)?
+        {
+            steps.push(LayerStep::Filter(filter));
+        }
+        steps.push(LayerStep::Outline { width, color });
+        start = i + 1;
+    }
+    if start < effects.len()
+        && let Some(filter) = chain(&effects[start..], env)?
+    {
+        steps.push(LayerStep::Filter(filter));
+    }
+    Ok(Some(steps))
+}
+
+const OUTLINE_SOFTEN: f32 = 0.45;
+
+/// Disc-dilates `src` alpha in the layer's pixel grid and paints that tint behind the content.
+pub fn outline_image(
+    src: Image,
+    local_to_px: &Matrix,
+    width: f32,
+    color: Color,
+) -> Result<Image, RenderError> {
+    if width <= 0.0 {
+        return Ok(src);
+    }
+    let (w, h, alpha) = read_alpha(&src)?;
+    if local_to_px.is_similarity() {
+        let radius = local_to_px.map_radius(width).unwrap_or(width);
+        let sigma = local_to_px
+            .map_radius(OUTLINE_SOFTEN)
+            .unwrap_or(OUTLINE_SOFTEN);
+        return paint_disc(&src, &alpha, w, h, radius, sigma, color);
+    }
+    paint_local_disc(&src, &alpha, w, h, local_to_px, width, color)
+}
+
+/// Runs `filter` in `local_to_px` over a device-space image of that same layer.
+pub fn apply_image_filter(
+    src: Image,
+    local_to_px: &Matrix,
+    filter: ImageFilter,
+) -> Result<Image, RenderError> {
+    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
+        .ok_or_else(|| RenderError::Skia("filter surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.concat(local_to_px);
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_image_filter(filter);
+    canvas.save_layer(&SaveLayerRec::default().paint(&paint));
+    canvas.reset_matrix();
+    canvas.draw_image(&src, (0.0, 0.0), None);
+    canvas.restore();
+    Ok(surface.image_snapshot())
+}
+
+fn paint_disc(
+    src: &Image,
+    alpha: &[f32],
+    w: i32,
+    h: i32,
+    radius: f32,
+    sigma: f32,
+    color: Color,
+) -> Result<Image, RenderError> {
+    let Some((grown, left, top, cw, ch)) = dilate_crop(alpha, w, h, radius) else {
+        return Ok(src.clone());
+    };
+    let mask = premul_image(&tinted(&grown, color), cw, ch)?;
+    let mut place = Matrix::new_identity();
+    place.pre_translate((left as f32, top as f32));
+    composite_behind(src, &mask, &place, sigma)
+}
+
+fn paint_local_disc(
+    src: &Image,
+    alpha: &[f32],
+    w: i32,
+    h: i32,
+    local_to_px: &Matrix,
+    width: f32,
+    color: Color,
+) -> Result<Image, RenderError> {
+    let Some(inv) = local_to_px.invert() else {
+        let radius = local_to_px.map_radius(width).unwrap_or(width);
+        let sigma = local_to_px
+            .map_radius(OUTLINE_SOFTEN)
+            .unwrap_or(OUTLINE_SOFTEN);
+        return paint_disc(src, alpha, w, h, radius, sigma, color);
+    };
+    let (sx, sy) = axis_scales(local_to_px);
+    let s = sx.max(sy).max(1.0e-3);
+    let Some(bounds) = alpha_bounds(alpha, w, h) else {
+        return Ok(src.clone());
+    };
+    let dev = Rect::from_ltrb(
+        bounds.left as f32,
+        bounds.top as f32,
+        bounds.right as f32,
+        bounds.bottom as f32,
+    );
+    let (mut local, _) = inv.map_rect(dev);
+    local.outset((width + 3.0 / s, width + 3.0 / s));
+    if !(local.width() > 0.0 && local.height() > 0.0) {
+        return Ok(src.clone());
+    }
+    if local.width() * s > 8192.0 || local.height() * s > 8192.0 {
+        let radius = local_to_px.map_radius(width).unwrap_or(width);
+        let sigma = local_to_px
+            .map_radius(OUTLINE_SOFTEN)
+            .unwrap_or(OUTLINE_SOFTEN);
+        return paint_disc(src, alpha, w, h, radius, sigma, color);
+    }
+    let bw = (local.width() * s).ceil() as i32;
+    let bh = (local.height() * s).ceil() as i32;
+    let mut sampled = vec![0.0f32; (bw as usize) * (bh as usize)];
+    for j in 0..bh {
+        for i in 0..bw {
+            let lx = local.left + (i as f32 + 0.5) / s;
+            let ly = local.top + (j as f32 + 0.5) / s;
+            let p = local_to_px.map_point((lx, ly));
+            sampled[(j * bw + i) as usize] = sample_alpha(alpha, w, h, p.x, p.y);
+        }
+    }
+    let grown = dilate_disc(&sampled, bw, bh, width * s);
+    let mask = premul_image(&tinted(&grown, color), bw, bh)?;
+    let mut place = *local_to_px;
+    place.pre_translate((local.left, local.top));
+    place.pre_scale((1.0 / s, 1.0 / s), None);
+    composite_behind(src, &mask, &place, OUTLINE_SOFTEN * s)
+}
+
+fn composite_behind(
+    src: &Image,
+    mask: &Image,
+    place: &Matrix,
+    sigma: f32,
+) -> Result<Image, RenderError> {
+    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
+        .ok_or_else(|| RenderError::Skia("outline surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.draw_image(src, (0.0, 0.0), None);
+    canvas.concat(place);
+    let mut paint = Paint::default();
+    paint.set_blend_mode(BlendMode::DstOver);
+    if sigma > 0.0 {
+        let blur = req(
+            "outline blur",
+            image_filters::blur((sigma, sigma), TileMode::Decal, None, None),
+        )?;
+        paint.set_image_filter(blur);
+    }
+    canvas.draw_image(mask, (0.0, 0.0), Some(&paint));
+    Ok(surface.image_snapshot())
+}
+
+fn dilate_crop(
+    alpha: &[f32],
+    w: i32,
+    h: i32,
+    radius: f32,
+) -> Option<(Vec<f32>, i32, i32, i32, i32)> {
+    let bounds = alpha_bounds(alpha, w, h)?;
+    let margin = radius.ceil() as i32 + 3;
+    let left = (bounds.left - margin).max(0);
+    let top = (bounds.top - margin).max(0);
+    let right = (bounds.right + margin).min(w);
+    let bottom = (bounds.bottom + margin).min(h);
+    let cw = right - left;
+    let ch = bottom - top;
+    if cw <= 0 || ch <= 0 {
+        return None;
+    }
+    let mut crop = vec![0.0f32; (cw as usize) * (ch as usize)];
+    for y in 0..ch {
+        let src_i = ((top + y) * w + left) as usize;
+        let dst_i = (y * cw) as usize;
+        crop[dst_i..dst_i + cw as usize].copy_from_slice(&alpha[src_i..src_i + cw as usize]);
+    }
+    Some((dilate_disc(&crop, cw, ch, radius), left, top, cw, ch))
+}
+
+/// Max over a disc of radius `r`. `dy` runs out to `ceil(r)`, and each row's half-width is
+/// `floor(sqrt(r^2-dy^2))`, so a fractional radius still reaches the next pixel on the axis.
+fn dilate_disc(src: &[f32], w: i32, h: i32, radius: f32) -> Vec<f32> {
+    let n = (w as usize) * (h as usize);
+    if w <= 0 || h <= 0 || radius <= 0.0 || !radius.is_finite() {
+        return src.to_vec();
+    }
+    let ri = radius.ceil().min((w + h) as f32) as usize;
+    let mut out = vec![0.0f32; n];
+    let pad_w = w as usize + 2 * ri;
+    let mut padded = vec![0.0f32; pad_w];
+    let mut windowed = vec![0.0f32; pad_w];
+    let r2 = radius * radius;
+    for dy in -(ri as i32)..=ri as i32 {
+        let k = (r2 - (dy as f32) * (dy as f32)).max(0.0).sqrt().floor() as usize;
+        let window = 2 * k + 1;
+        let start = ri - k;
+        for y in 0..h {
+            padded.fill(0.0);
+            let sy = y + dy;
+            if (0..h).contains(&sy) {
+                let row =
+                    &src[(sy as usize) * (w as usize)..(sy as usize) * (w as usize) + w as usize];
+                padded[ri..ri + w as usize].copy_from_slice(row);
+            }
+            sliding_max(&padded, window, &mut windowed[..pad_w - window + 1]);
+            let dst =
+                &mut out[(y as usize) * (w as usize)..(y as usize) * (w as usize) + w as usize];
+            for x in 0..w as usize {
+                dst[x] = dst[x].max(windowed[start + x]);
+            }
+        }
+    }
+    out
+}
+
+fn sliding_max(row: &[f32], window: usize, out: &mut [f32]) {
+    let mut dq = VecDeque::new();
+    for i in 0..row.len() {
+        while dq.front().copied().is_some_and(|j| j + window <= i) {
+            dq.pop_front();
+        }
+        while dq.back().copied().is_some_and(|j| row[j] <= row[i]) {
+            dq.pop_back();
+        }
+        dq.push_back(i);
+        if i + 1 >= window {
+            out[i + 1 - window] = row[dq[0]];
+        }
+    }
+}
+
+fn alpha_bounds(alpha: &[f32], w: i32, h: i32) -> Option<skia_safe::IRect> {
+    let mut left = w;
+    let mut top = h;
+    let mut right = 0;
+    let mut bottom = 0;
+    for y in 0..h {
+        let row = &alpha[(y * w) as usize..((y + 1) * w) as usize];
+        for (x, v) in row.iter().enumerate() {
+            if *v > 0.0 {
+                let x = x as i32;
+                left = left.min(x);
+                right = right.max(x + 1);
+                top = top.min(y);
+                bottom = bottom.max(y + 1);
+            }
+        }
+    }
+    if right <= left || bottom <= top {
+        None
+    } else {
+        Some(skia_safe::IRect::from_ltrb(left, top, right, bottom))
+    }
+}
+
+fn sample_alpha(alpha: &[f32], w: i32, h: i32, x: f32, y: f32) -> f32 {
+    let x = x - 0.5;
+    let y = y - 0.5;
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+    let at = |ix: i32, iy: i32| -> f32 {
+        if ix < 0 || iy < 0 || ix >= w || iy >= h {
+            0.0
+        } else {
+            alpha[(iy * w + ix) as usize]
+        }
+    };
+    let a0 = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+    let a1 = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+    a0 + (a1 - a0) * ty
+}
+
+fn axis_scales(m: &Matrix) -> (f32, f32) {
+    let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
+    let sy = (m.skew_x() * m.skew_x() + m.scale_y() * m.scale_y()).sqrt();
+    (sx, sy)
+}
+
+fn tinted(alpha: &[f32], color: Color) -> Vec<u8> {
+    let mut px = Vec::with_capacity(alpha.len() * 4);
+    for &cov in alpha {
+        let a = (cov.clamp(0.0, 1.0) * color.a).clamp(0.0, 1.0);
+        px.push(unit_byte(a * color.r));
+        px.push(unit_byte(a * color.g));
+        px.push(unit_byte(a * color.b));
+        px.push(unit_byte(a));
+    }
+    px
+}
+
+fn unit_byte(v: f32) -> u8 {
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn premul_image(pixels: &[u8], w: i32, h: i32) -> Result<Image, RenderError> {
+    let info = ImageInfo::new((w, h), ColorType::RGBA8888, AlphaType::Premul, None);
+    skia_safe::images::raster_from_data(&info, Data::new_copy(pixels), (w as usize) * 4)
+        .ok_or_else(|| RenderError::Skia("outline image".into()))
+}
+
+fn read_alpha(image: &Image) -> Result<(i32, i32, Vec<f32>), RenderError> {
+    let w = image.width();
+    let h = image.height();
+    let info = ImageInfo::new((w, h), ColorType::RGBA8888, AlphaType::Premul, None);
+    let row = (w as usize) * 4;
+    let mut bytes = vec![0u8; row * (h as usize)];
+    if !image.read_pixels(
+        &info,
+        &mut bytes,
+        row,
+        (0, 0),
+        skia_safe::image::CachingHint::Disallow,
+    ) {
+        return Err(RenderError::Skia("outline read".into()));
+    }
+    let alpha = bytes
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|p| p[3] as f32 / 255.0)
+        .collect();
+    Ok((w, h, alpha))
+}
+
 pub fn white_paint() -> Paint {
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
     paint.set_dither(true);
-    paint.set_color4f(Color4f { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }, None);
+    paint.set_color4f(
+        Color4f {
+            r: 1.0,
+            g: 1.0,
+            b: 1.0,
+            a: 1.0,
+        },
+        None,
+    );
     paint
+}
+
+#[cfg(test)]
+mod dilate_tests {
+    use super::dilate_disc;
+
+    #[test]
+    fn disc_covers_the_axis_and_the_near_diagonal() {
+        let mut src = vec![0.0f32; 11 * 11];
+        src[5 * 11 + 5] = 1.0;
+        let out = dilate_disc(&src, 11, 11, 3.0);
+        assert_eq!(out[5 * 11 + 8], 1.0);
+        assert_eq!(out[7 * 11 + 7], 1.0);
+        assert_eq!(out[8 * 11 + 8], 0.0);
+        assert_eq!(out[5 * 11 + 9], 0.0);
+    }
 }

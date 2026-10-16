@@ -7,14 +7,14 @@ use std::collections::{HashMap, HashSet};
 use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
-    BlendMode, Canvas, ClipOp, ColorFilter, ColorMatrix, EncodedImageFormat, ImageFilter, Paint, Rect,
-    TileMode, image_filters, surfaces,
+    BlendMode, Canvas, ClipOp, ColorFilter, ColorMatrix, EncodedImageFormat, Image, ImageFilter,
+    Paint, Rect, TileMode, image_filters, surfaces,
 };
 
+use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
 use crate::paint::{blend_mode, color4, content_paint};
-use crate::RenderError;
 
 pub struct SceneIndex<'a> {
     nodes: HashMap<&'a str, &'a Node>,
@@ -23,7 +23,10 @@ pub struct SceneIndex<'a> {
 
 impl<'a> SceneIndex<'a> {
     pub fn build(scene: &'a Scene) -> Self {
-        let mut index = Self { nodes: HashMap::new(), parents: HashMap::new() };
+        let mut index = Self {
+            nodes: HashMap::new(),
+            parents: HashMap::new(),
+        };
         index.walk(&scene.children, Matrix::new_identity());
         index
     }
@@ -47,7 +50,10 @@ impl<'a> SceneIndex<'a> {
     }
 
     pub fn parent_world(&self, path: &str) -> Matrix {
-        self.parents.get(path).copied().unwrap_or_else(Matrix::new_identity)
+        self.parents
+            .get(path)
+            .copied()
+            .unwrap_or_else(Matrix::new_identity)
     }
 }
 
@@ -58,7 +64,10 @@ pub struct DrawCtx<'a> {
 
 impl<'a> DrawCtx<'a> {
     pub fn new(scene: &'a Scene) -> Self {
-        Self { index: SceneIndex::build(scene), visiting: RefCell::new(HashSet::new()) }
+        Self {
+            index: SceneIndex::build(scene),
+            visiting: RefCell::new(HashSet::new()),
+        }
     }
 }
 
@@ -79,8 +88,8 @@ pub fn render_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, RenderError> {
     }
     let w = (scene.width * scale).ceil().max(1.0) as i32;
     let h = (scene.height * scale).ceil().max(1.0) as i32;
-    let mut surface = surfaces::raster_n32_premul((w, h))
-        .ok_or_else(|| RenderError::Skia("surface".into()))?;
+    let mut surface =
+        surfaces::raster_n32_premul((w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((scale, scale));
     if let Some(bg) = scene.background {
@@ -109,7 +118,9 @@ pub fn bake_node(scene: &Scene, node: &Node, bake_scale: f32) -> Result<Baked, R
         return Err(RenderError::Skia("bake scale must be positive".into()));
     }
     let ctx = DrawCtx::new(scene);
-    let mut bounds = node.bounds().unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
+    let mut bounds = node
+        .bounds()
+        .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
     let pad = visual_pad(node) * transform_scale(&node.transform);
     bounds.outset((pad, pad));
     if bounds.width() < 1.0 {
@@ -139,36 +150,125 @@ pub fn bake_node(scene: &Scene, node: &Node, bake_scale: f32) -> Result<Baked, R
     })
 }
 
-pub fn draw_node(canvas: &Canvas, node: &Node, ctx: &DrawCtx<'_>, parent_world: Matrix) -> Result<(), RenderError> {
+pub fn draw_node(
+    canvas: &Canvas,
+    node: &Node,
+    ctx: &DrawCtx<'_>,
+    parent_world: Matrix,
+) -> Result<(), RenderError> {
     if !ctx.visiting.borrow_mut().insert(node.path.clone()) {
         return Ok(());
     }
-    let _visit = Visit { set: &ctx.visiting, path: node.path.clone() };
+    let _visit = Visit {
+        set: &ctx.visiting,
+        path: node.path.clone(),
+    };
 
     canvas.save();
     canvas.concat(&node.transform);
     let world = parent_world * node.transform;
 
     if needs_layer(node) {
-        let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        paint.set_dither(true);
-        paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
-        paint.set_blend_mode(blend_mode(node.blend));
-        if let Some(filter) = filter {
-            paint.set_image_filter(filter);
+        if canvas.is_clip_rect()
+            && !canvas.is_clip_empty()
+            && let Some(steps) = effects::layer_steps(&node.effects, &FxEnv { ctx, world })?
+        {
+            paint_layer_steps(canvas, node, ctx, world, steps)?;
+        } else {
+            let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
+            let mut paint = Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_dither(true);
+            paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
+            paint.set_blend_mode(blend_mode(node.blend));
+            if let Some(filter) = filter {
+                paint.set_image_filter(filter);
+            }
+            let rec = SaveLayerRec::default().paint(&paint);
+            canvas.save_layer(&rec);
+            draw_clipped(canvas, node, ctx, world)?;
+            canvas.restore();
         }
-        let rec = SaveLayerRec::default().paint(&paint);
-        canvas.save_layer(&rec);
-        draw_clipped(canvas, node, ctx, world)?;
-        canvas.restore();
     } else {
         draw_kind(canvas, node, ctx, world)?;
     }
 
     canvas.restore();
     Ok(())
+}
+
+fn paint_layer_steps(
+    canvas: &Canvas,
+    node: &Node,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+    mut steps: Vec<effects::LayerStep>,
+) -> Result<(), RenderError> {
+    let Some(bounds) = canvas.device_clip_bounds() else {
+        return Ok(());
+    };
+    if bounds.is_empty() {
+        return Ok(());
+    }
+    let mut local_to_px = canvas.local_to_device_as_3x3();
+    local_to_px.post_translate((-(bounds.left as f32), -(bounds.top as f32)));
+    let lead = match steps.first() {
+        Some(effects::LayerStep::Filter(_)) => match steps.remove(0) {
+            effects::LayerStep::Filter(filter) => Some(filter),
+            _ => None,
+        },
+        _ => None,
+    };
+    let mut image = rasterize_layer(bounds, &local_to_px, lead, |off| {
+        draw_clipped(off, node, ctx, world)
+    })?;
+    for step in steps {
+        image = match step {
+            effects::LayerStep::Filter(filter) => {
+                effects::apply_image_filter(image, &local_to_px, filter)?
+            }
+            effects::LayerStep::Outline { width, color } => {
+                effects::outline_image(image, &local_to_px, width, color)?
+            }
+        };
+    }
+    canvas.save();
+    canvas.reset_matrix();
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_dither(true);
+    paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
+    paint.set_blend_mode(blend_mode(node.blend));
+    canvas.draw_image(
+        &image,
+        (bounds.left as f32, bounds.top as f32),
+        Some(&paint),
+    );
+    canvas.restore();
+    Ok(())
+}
+
+fn rasterize_layer(
+    bounds: skia_safe::IRect,
+    local_to_px: &Matrix,
+    filter: Option<ImageFilter>,
+    draw: impl FnOnce(&Canvas) -> Result<(), RenderError>,
+) -> Result<Image, RenderError> {
+    let mut surface = surfaces::raster_n32_premul((bounds.width(), bounds.height()))
+        .ok_or_else(|| RenderError::Skia("layer surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.concat(local_to_px);
+    if let Some(filter) = filter {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_image_filter(filter);
+        canvas.save_layer(&SaveLayerRec::default().paint(&paint));
+        draw(canvas)?;
+        canvas.restore();
+    } else {
+        draw(canvas)?;
+    }
+    Ok(surface.image_snapshot())
 }
 
 fn needs_layer(node: &Node) -> bool {
@@ -180,12 +280,21 @@ fn needs_layer(node: &Node) -> bool {
         || matches!(node.kind, NodeKind::Group { isolate: true, .. })
 }
 
-fn draw_clipped(canvas: &Canvas, node: &Node, ctx: &DrawCtx<'_>, world: Matrix) -> Result<(), RenderError> {
+fn draw_clipped(
+    canvas: &Canvas,
+    node: &Node,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+) -> Result<(), RenderError> {
     let hard = node.clip.as_ref().filter(|c| c.feather <= 0.0);
     let soft = node.clip.as_ref().filter(|c| c.feather > 0.0);
     if let Some(clip) = hard {
         canvas.save();
-        let op = if clip.invert { ClipOp::Difference } else { ClipOp::Intersect };
+        let op = if clip.invert {
+            ClipOp::Difference
+        } else {
+            ClipOp::Intersect
+        };
         canvas.clip_path(&clip.path, op, true);
     }
     let wrapped = soft.is_some() || node.mask.is_some();
@@ -208,7 +317,12 @@ fn draw_clipped(canvas: &Canvas, node: &Node, ctx: &DrawCtx<'_>, world: Matrix) 
     Ok(())
 }
 
-fn draw_kind(canvas: &Canvas, node: &Node, ctx: &DrawCtx<'_>, world: Matrix) -> Result<(), RenderError> {
+fn draw_kind(
+    canvas: &Canvas,
+    node: &Node,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+) -> Result<(), RenderError> {
     match &node.kind {
         NodeKind::Group { children, .. } => {
             for child in children {
@@ -220,7 +334,12 @@ fn draw_kind(canvas: &Canvas, node: &Node, ctx: &DrawCtx<'_>, world: Matrix) -> 
     }
 }
 
-fn draw_shape(canvas: &Canvas, shape: &Shape, ctx: &DrawCtx<'_>, world: Matrix) -> Result<(), RenderError> {
+fn draw_shape(
+    canvas: &Canvas,
+    shape: &Shape,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+) -> Result<(), RenderError> {
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
             let paint = content_paint(fill, shape.blur, None)?;
@@ -243,7 +362,9 @@ fn draw_shape(canvas: &Canvas, shape: &Shape, ctx: &DrawCtx<'_>, world: Matrix) 
     let mut atop = Paint::default();
     atop.set_anti_alias(true);
     atop.set_blend_mode(BlendMode::SrcATop);
-    let rec = SaveLayerRec::default().paint(&atop).flags(SaveLayerFlags::INIT_WITH_PREVIOUS);
+    let rec = SaveLayerRec::default()
+        .paint(&atop)
+        .flags(SaveLayerFlags::INIT_WITH_PREVIOUS);
     canvas.save_layer(&rec);
     for child in &shape.children {
         draw_node(canvas, child, ctx, world)?;
@@ -272,7 +393,12 @@ fn apply_clip_mask(canvas: &Canvas, clip: &Clip) -> Result<(), RenderError> {
     Ok(())
 }
 
-fn apply_mask(canvas: &Canvas, mask: &Mask, ctx: &DrawCtx<'_>, world: Matrix) -> Result<(), RenderError> {
+fn apply_mask(
+    canvas: &Canvas,
+    mask: &Mask,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+) -> Result<(), RenderError> {
     let paint = coverage_paint(mask.luminance, mask.invert, mask.feather)?;
     let rec = SaveLayerRec::default().paint(&paint);
     canvas.save_layer(&rec);
@@ -283,7 +409,13 @@ fn apply_mask(canvas: &Canvas, mask: &Mask, ctx: &DrawCtx<'_>, world: Matrix) ->
             }
         }
         MaskSource::Field { field, threshold } => {
-            let shader = field_shader(field, FieldUse::Coverage { threshold: *threshold, as_luma: mask.luminance })?;
+            let shader = field_shader(
+                field,
+                FieldUse::Coverage {
+                    threshold: *threshold,
+                    as_luma: mask.luminance,
+                },
+            )?;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             paint.set_shader(shader);
@@ -315,8 +447,13 @@ fn coverage_paint(luminance: bool, invert: bool, feather: f32) -> Result<Paint, 
         paint.set_color_filter(filter);
     }
     if feather > 0.0 {
-        let blur = image_filters::blur((feather, feather), TileMode::Decal, None::<ImageFilter>, None)
-            .ok_or_else(|| RenderError::Skia("feather".into()))?;
+        let blur = image_filters::blur(
+            (feather, feather),
+            TileMode::Decal,
+            None::<ImageFilter>,
+            None,
+        )
+        .ok_or_else(|| RenderError::Skia("feather".into()))?;
         paint.set_image_filter(blur);
     }
     Ok(paint)
@@ -324,7 +461,8 @@ fn coverage_paint(luminance: bool, invert: bool, feather: f32) -> Result<Paint, 
 
 fn invert_alpha() -> ColorFilter {
     let matrix = ColorMatrix::new(
-        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 1.0,
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        -1.0, 1.0,
     );
     skia_safe::color_filters::matrix(&matrix, None)
 }

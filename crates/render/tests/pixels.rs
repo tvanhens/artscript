@@ -45,6 +45,18 @@ fn outline_ring_is_round() {
 }
 
 #[test]
+fn outline_width_scales_with_the_canvas() {
+    let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
+    let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0).unwrap();
+    assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
+    let axis = outer_radius(&png, 120.0, 120.0, 1.0, 0.0);
+    let diag = outer_radius(&png, 120.0, 120.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2);
+    assert!((axis - diag).abs() <= 2.0, "axis {axis} diag {diag}");
+    assert!((axis - 52.0).abs() <= 4.0, "radius {axis}");
+}
+
+#[test]
 fn rim_brightens_the_bottom_right_edge() {
     let mut node = solid("disc", circle_at(50.0, 50.0, 30.0), color(140, 140, 140, 255));
     node.effects.push(effect(EffectOp::Rim {
