@@ -5,6 +5,12 @@ use crate::words::{self, Word};
 #[derive(Clone, Debug)]
 pub(crate) struct Comment {
     pub line: u32,
+    /// Byte of the `#`.
+    #[allow(dead_code)]
+    pub start: usize,
+    /// Byte before CR or LF.
+    #[allow(dead_code)]
+    pub end: usize,
     pub text: String,
     pub trailing: bool,
 }
@@ -59,6 +65,14 @@ pub(crate) enum Tok {
     LBrace,
     RBrace,
 }
+
+pub(crate) const HEX_LENS: &[usize] = &[3, 4, 6, 8];
+/// Characters that may follow a hex color. Anything else makes the `#` a comment.
+pub(crate) const HEX_DELIMS: &[char] = &[' ', '\t', '\r', '\n', ',', ')', ']'];
+/// Suffix and the degrees in one unit.
+pub(crate) const ANGLE_SUFFIXES: &[(&str, f64)] = &[("deg", 1.0), ("turn", 360.0)];
+/// Escape letter after `\`, and the char it produces.
+pub(crate) const STRING_ESCAPES: &[(char, char)] = &[('\\', '\\'), ('"', '"'), ('n', '\n')];
 
 impl Tok {
     pub(crate) fn desc(&self) -> String {
@@ -281,6 +295,7 @@ impl<'a> Scanner<'a> {
 
     fn scan_comment(&mut self, trailing: bool) {
         let line = self.line;
+        let start = self.i;
         self.bump();
         let mut text = String::new();
         while let Some(c) = self.peek() {
@@ -292,6 +307,8 @@ impl<'a> Scanner<'a> {
         }
         self.comments.push(Comment {
             line,
+            start,
+            end: self.i,
             text: text.trim().to_string(),
             trailing,
         });
@@ -303,15 +320,11 @@ impl<'a> Scanner<'a> {
         }
         let rest = &self.src[self.i + 1..];
         let hex: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
-        if !matches!(hex.len(), 3 | 4 | 6 | 8) {
+        if !HEX_LENS.contains(&hex.len()) {
             return None;
         }
         let after = rest[hex.len()..].chars().next();
-        let delim = matches!(
-            after,
-            None | Some(' ' | '\t' | '\n' | '\r' | ',' | ')' | ']')
-        );
-        if delim {
+        if after.is_none_or(|c| HEX_DELIMS.contains(&c)) {
             Some(hex.to_ascii_lowercase())
         } else {
             None
@@ -537,11 +550,10 @@ impl<'a> Scanner<'a> {
         }
         let lit = &self.src[start..self.i];
         let value: f64 = lit.parse().unwrap_or(0.0);
-        if self.consume_suffix("deg") {
-            return Tok::Angle(value);
-        }
-        if self.consume_suffix("turn") {
-            return Tok::Angle(value * 360.0);
+        for &(suffix, scale) in ANGLE_SUFFIXES {
+            if self.consume_suffix(suffix) {
+                return Tok::Angle(value * scale);
+            }
         }
         if self.peek() == Some('%') {
             self.bump();
@@ -661,28 +673,23 @@ impl<'a> Scanner<'a> {
                         let esc_span = self.span_here();
                         self.bump();
                         match self.peek() {
-                            Some('\\') => {
-                                out.push('\\');
-                                self.bump();
-                            }
-                            Some('"') => {
-                                out.push('"');
-                                self.bump();
-                            }
-                            Some('n') => {
-                                out.push('\n');
-                                self.bump();
-                            }
-                            Some(other) => {
-                                self.errors.push(
-                                    Diagnostic::error(
-                                        "E0101",
-                                        esc_span,
-                                        format!("unknown string escape `\\{other}`"),
-                                    )
-                                    .with_fix("use `\\\\`, `\\\"`, or `\\n`"),
-                                );
-                                self.bump();
+                            Some(letter) => {
+                                if let Some((_, produced)) =
+                                    STRING_ESCAPES.iter().find(|(esc, _)| *esc == letter)
+                                {
+                                    out.push(*produced);
+                                    self.bump();
+                                } else {
+                                    self.errors.push(
+                                        Diagnostic::error(
+                                            "E0101",
+                                            esc_span,
+                                            format!("unknown string escape `\\{letter}`"),
+                                        )
+                                        .with_fix("use `\\\\`, `\\\"`, or `\\n`"),
+                                    );
+                                    self.bump();
+                                }
                             }
                             None => {
                                 self.errors.push(
