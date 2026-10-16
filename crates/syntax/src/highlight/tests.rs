@@ -894,6 +894,13 @@ fn boundary_source() -> String {
         "body:?foo",
         "body:?#fff",
         "use:?",
+        ".head ?.eye",
+        ".head ? .eye",
+        ".head ? ?.eye",
+        "body? ?:",
+        "mask? ?:",
+        "circle fill? ?:red",
+        "body? ? :",
     ] {
         lines.push(line.into());
     }
@@ -926,6 +933,13 @@ fn discarded_gap_ribbons() {
         ("body:?foo", "vvvvo!iii"),
         ("body:?#fff", "vvvvo!hhhh"),
         ("use:?", "llll!"),
+        (".head ?.eye", "ppppp !pppp"),
+        (".head ? .eye", "ppppp ! oiii"),
+        (".head ? ?.eye", "ppppp ! !pppp"),
+        ("body? ?:", "llll! !o"),
+        ("mask? ?:", "llll! !o"),
+        ("circle fill? ?:red", "vvvvvv yyyy! !oiii"),
+        ("body? ? :", "vvvv! ! o"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");

@@ -164,7 +164,6 @@ pub(crate) fn emit() -> Vec<Pattern> {
         indent_tab(invalid),
         directive(invalid),
         keyword_slot(),
-        keyword_slot_gap(),
         keyword_slot_erased(),
         use_path(invalid),
     ];
@@ -173,7 +172,6 @@ pub(crate) fn emit() -> Vec<Pattern> {
     }
     patterns.push(patch());
     patterns.push(slot());
-    patterns.push(slot_gap());
     patterns.push(slot_erased());
     patterns.push(verb());
     patterns.push(Pattern::Match {
@@ -197,20 +195,6 @@ pub(crate) fn emit() -> Vec<Pattern> {
         captures: vec![],
     });
     patterns.push(key_erased());
-    patterns.push(Pattern::Match {
-        re: format!(
-            "{before}({ident})({dropped}+)(:)",
-            before = NOT_IDENT_BEFORE,
-            ident = IDENT,
-            dropped = dropped_class()
-        ),
-        name: None,
-        captures: vec![
-            (1, scope(Class::Key)),
-            (2, scope(Class::Invalid)),
-            (3, scope(Class::Operator)),
-        ],
-    });
     patterns.push(Pattern::Match {
         re: format!(
             "{before}({ident})(:)",
@@ -341,7 +325,7 @@ fn patch_name(patch: &'static str) -> Pattern {
     Pattern::Region {
         begin: format!("({name})", name = non_keyword_name()),
         end: format!(
-            "(?!{dropped})(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
+            "(?!{dropped})(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))(?!(?:[ \\t]|{dropped})*{dropped}\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
             dropped = dropped_class(),
             name = non_keyword_name()
         ),
@@ -407,24 +391,6 @@ fn slot() -> Pattern {
         ),
         name: None,
         captures: vec![(1, scope(Class::Slot)), (2, scope(Class::Slot))],
-    }
-}
-
-fn slot_gap() -> Pattern {
-    Pattern::Match {
-        re: format!(
-            "{at}({ident})({dropped}+)(:){tail}",
-            at = AT_STATEMENT,
-            ident = IDENT,
-            dropped = dropped_class(),
-            tail = slot_tail()
-        ),
-        name: None,
-        captures: vec![
-            (1, scope(Class::Slot)),
-            (2, scope(Class::Invalid)),
-            (3, scope(Class::Operator)),
-        ],
     }
 }
 
@@ -505,10 +471,7 @@ fn colon_erased_region(head: String, head_scope: &'static str) -> Pattern {
 }
 
 fn erased_before_colon() -> String {
-    format!(
-        "[ \\t]+(?:{dropped}+[ \\t]+)*{dropped}+",
-        dropped = dropped_class()
-    )
+    format!("(?:{dropped}|[ \\t])*{dropped}", dropped = dropped_class())
 }
 
 fn slot_after() -> String {
@@ -518,24 +481,6 @@ fn slot_after() -> String {
         hex = hex_body(),
         delims = delim_class()
     )
-}
-
-fn keyword_slot_gap() -> Pattern {
-    Pattern::Match {
-        re: format!(
-            "{at}({alts})({dropped}+)(:){tail}",
-            at = AT_STATEMENT,
-            alts = keyword_alts(),
-            dropped = dropped_class(),
-            tail = slot_tail()
-        ),
-        name: None,
-        captures: vec![
-            (1, scope(Class::Slot)),
-            (2, scope(Class::Invalid)),
-            (3, scope(Class::Operator)),
-        ],
-    }
 }
 
 fn path_class() -> String {
