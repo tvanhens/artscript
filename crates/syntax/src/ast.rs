@@ -185,6 +185,8 @@ pub enum Expr {
     Hex(String),
     Str(String),
     Ident(String),
+    /// A value the parser could not read. The diagnostic is already on the `Parsed` result.
+    Error,
     /// `@body`, `@hero.head.eye_l`, `@self`, `@body.neck`. First segment is the name.
     Ref(Vec<String>),
     /// `p.sky.3`: the base and each member segment (numbers are kept as text).

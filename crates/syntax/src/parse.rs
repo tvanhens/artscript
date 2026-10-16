@@ -15,7 +15,7 @@ const PREC_ADD: u8 = 8;
 const PREC_MUL: u8 = 9;
 const PREC_UNARY: u8 = 10;
 
-pub fn parse_file(src: &str) -> Result<File, Vec<Diagnostic>> {
+pub(crate) fn parse_partial(src: &str) -> crate::Parsed {
     let lexed = lex::lex(src);
     let mut p = Parser {
         src,
@@ -27,9 +27,7 @@ pub fn parse_file(src: &str) -> Result<File, Vec<Diagnostic>> {
         dedent_reported: HashSet::new(),
     };
     let file = p.parse_file();
-    if p.errors.is_empty() {
-        Ok(file)
-    } else {
+    if !p.errors.is_empty() {
         p.errors.sort_by(|a, b| {
             (a.span.line, a.span.col, a.code.clone()).cmp(&(
                 b.span.line,
@@ -38,8 +36,8 @@ pub fn parse_file(src: &str) -> Result<File, Vec<Diagnostic>> {
             ))
         });
         p.errors.dedup();
-        Err(p.errors)
     }
+    crate::Parsed { file, diagnostics: p.errors }
 }
 
 struct Parser<'a> {
@@ -356,7 +354,7 @@ impl<'a> Parser<'a> {
             return Stmt {
                 kind: StmtKind::Let {
                     name,
-                    value: Expr::Ident(String::new()),
+                    value: Expr::Error,
                 },
                 span,
             };
@@ -485,7 +483,7 @@ impl<'a> Parser<'a> {
                 "expected an expression to check",
                 "write `assert <expr>`",
             );
-            Expr::Ident(String::new())
+            Expr::Error
         } else {
             self.parse_tuple()
         };
@@ -527,7 +525,7 @@ impl<'a> Parser<'a> {
     fn finish_if(&mut self, span: Span, indent: usize) -> Stmt {
         let cond = if self.eol() {
             self.fail(span, "expected a condition after `if`", "write `if <expr>`");
-            Expr::Ident(String::new())
+            Expr::Error
         } else {
             self.parse_tuple()
         };
@@ -588,7 +586,7 @@ impl<'a> Parser<'a> {
                 "expected the list or range after `in`",
                 "write `each name in <expr>`",
             );
-            Expr::Ident(String::new())
+            Expr::Error
         } else {
             self.parse_tuple()
         };
@@ -761,7 +759,7 @@ impl<'a> Parser<'a> {
             );
             return Named {
                 key,
-                value: Expr::Ident(String::new()),
+                value: Expr::Error,
                 span,
             };
         }
@@ -773,7 +771,7 @@ impl<'a> Parser<'a> {
             );
             return Named {
                 key,
-                value: Expr::Ident(String::new()),
+                value: Expr::Error,
                 span,
             };
         }
@@ -1112,7 +1110,7 @@ impl<'a> Parser<'a> {
     fn parse_primary(&mut self) -> Expr {
         let Some(tok) = self.cur().cloned() else {
             self.fail_here("expected an expression", "write a value");
-            return Expr::Ident(String::new());
+            return Expr::Error;
         };
         match tok.kind {
             Tok::Num(n) => {
@@ -1159,7 +1157,7 @@ impl<'a> Parser<'a> {
             Tok::Ref(segs) => {
                 self.bump();
                 if segs.is_empty() {
-                    Expr::Ident(String::new())
+                    Expr::Error
                 } else {
                     Expr::Ref(segs)
                 }
@@ -1173,7 +1171,7 @@ impl<'a> Parser<'a> {
                     format!("expected an expression, found {desc}"),
                     "write a value here",
                 );
-                Expr::Ident(String::new())
+                Expr::Error
             }
         }
     }
@@ -1233,7 +1231,7 @@ impl<'a> Parser<'a> {
                 "expected the list or range after `in`",
                 "write `[each name in <expr> -> <expr>]`",
             );
-            Expr::Ident(String::new())
+            Expr::Error
         } else {
             self.parse_prec(PREC_MAP + 1)
         };
@@ -1245,7 +1243,7 @@ impl<'a> Parser<'a> {
             return Expr::Each {
                 var,
                 iter: Box::new(iter),
-                body: Box::new(Expr::Ident(String::new())),
+                body: Box::new(Expr::Error),
             };
         }
         let body = if self.eol() || self.at(&Tok::RBrack) {
@@ -1253,7 +1251,7 @@ impl<'a> Parser<'a> {
                 "expected an expression after `->`",
                 "write `[each name in <expr> -> <expr>]`",
             );
-            Expr::Ident(String::new())
+            Expr::Error
         } else {
             self.parse_tuple()
         };

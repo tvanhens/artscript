@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use artscript_syntax::ast::{BinOp, CheckKind, Expr, File, Span, StmtKind, UnOp};
-use artscript_syntax::{format, format_source, parse};
+use artscript_syntax::{format, format_source, parse, parse_partial};
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -665,4 +665,22 @@ fn numbers_drop_leading_and_trailing_zeros() {
     assert_eq!(format(&must_parse("let n = 1.0\n")), "let n = 1\n");
     assert_eq!(format(&must_parse("let n = .25turn\n")), "let n = 90deg\n");
     assert_eq!(format(&must_parse("rect 100%x60%\n")), "rect 100%x60%\n");
+}
+
+#[test]
+fn partial_parse_keeps_statements_around_a_broken_line() {
+    let src = "circle 10\nlet\nrect 4x4\n";
+    let parsed = parse_partial(src);
+    assert!(parsed.diagnostics.iter().any(|d| d.code == "E0101"));
+    assert!(parse(src).is_err());
+    assert!(format_source(src).is_err());
+    let mut verbs = Vec::new();
+    for st in &parsed.file.stmts {
+        match &st.kind {
+            StmtKind::Node { verb, .. } => verbs.push(verb.as_str()),
+            StmtKind::Let { value, .. } => assert!(matches!(value, Expr::Error)),
+            other => panic!("{other:?}"),
+        }
+    }
+    assert_eq!(verbs, ["circle", "rect"]);
 }

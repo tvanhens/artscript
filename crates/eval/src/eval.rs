@@ -323,17 +323,11 @@ impl<'a> Evaluator<'a> {
             return Ok(f.clone());
         }
         let src = self.project.files.get(file).ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
-        match artscript_syntax::parse(src) {
-            Ok(f) => {
-                let f = Rc::new(f);
-                self.parsed.insert(file.to_string(), f.clone());
-                Ok(f)
-            }
-            Err(errs) => {
-                self.diags.extend(errs.into_iter().map(|d| d.in_file(file)));
-                Err(Fail::reported())
-            }
-        }
+        let parsed = artscript_syntax::parse_partial(src);
+        self.diags.extend(parsed.diagnostics.into_iter().map(|d| d.in_file(file)));
+        let f = Rc::new(parsed.file);
+        self.parsed.insert(file.to_string(), f.clone());
+        Ok(f)
     }
 
     pub fn load_module(&mut self, file: &str, entry: bool) -> R<Rc<Module>> {
@@ -1659,6 +1653,7 @@ impl<'a> Evaluator<'a> {
             Expr::Unary(UnOp::Not, x) => Value::Bool(!self.expr(x, sc)?.truthy()),
             Expr::Binary(op, l, r) => self.binary(*op, l, r, sc)?,
             Expr::Call { func, args, named } => self.call(func, args, named, sc)?,
+            Expr::Error => return Err(Fail::reported()),
             Expr::If { cond, then, otherwise } => {
                 if self.expr(cond, sc)?.truthy() {
                     self.expr(then, sc)?

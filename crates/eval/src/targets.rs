@@ -80,15 +80,11 @@ pub fn plan(project: &Project) -> Plan {
     let mut diagnostics = Vec::new();
     let mut entries = Vec::new();
     for (path, src) in &project.files {
-        let file = match artscript_syntax::parse(src) {
-            Ok(f) => f,
-            Err(errs) => {
-                if !project.is_lib_file(path) || src.contains("@target") {
-                    diagnostics.extend(errs.into_iter().map(|d| d.in_file(path)));
-                }
-                continue;
-            }
-        };
+        let parsed = artscript_syntax::parse_partial(src);
+        if !parsed.diagnostics.is_empty() && (!project.is_lib_file(path) || src.contains("@target")) {
+            diagnostics.extend(parsed.diagnostics.iter().cloned().map(|d| d.in_file(path)));
+        }
+        let file = parsed.file;
         if !is_entry(&file) {
             continue;
         }

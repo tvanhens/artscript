@@ -414,6 +414,7 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Hex(h) => format!("#{h}"),
         Expr::Str(s) => fmt_string(s),
         Expr::Ident(s) => s.clone(),
+        Expr::Error => String::new(),
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
         Expr::Tuple(xs) => xs.iter().map(fmt_expr).collect::<Vec<_>>().join(","),

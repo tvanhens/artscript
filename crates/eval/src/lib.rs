@@ -89,7 +89,7 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
             continue;
         }
         let Some(src) = project.files.get(&f) else { continue };
-        let Ok(file) = artscript_syntax::parse(src) else { continue };
+        let file = artscript_syntax::parse_partial(src).file;
         for st in &file.stmts {
             if let StmtKind::Use { path, .. } = &st.kind {
                 let rooted = format!("{path}.art");
