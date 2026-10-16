@@ -27,7 +27,12 @@ pub enum RenderError {
     NotVector(Vec<Unsupported>),
     Skia(String),
     TransparentGif,
+    /// `width × height × frames × 4` exceeds [`RASTER_BUDGET`].
+    GifTooLarge,
 }
+
+/// RGBA bytes of every GIF frame. Encoding also holds a second copy for the palette.
+pub const RASTER_BUDGET: u64 = 256 * 1024 * 1024;
 
 /// Renders the scene at `scale` (1 = one pixel per canvas unit) and encodes it as PNG.
 /// Deterministic: the same scene produces the same bytes.

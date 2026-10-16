@@ -7,7 +7,7 @@ A line that does not draw says so with its first word: `use palette style finish
 ## Files
 
 - An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`, `anim`.
-- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. `.gif` targets write a GIF. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `fps:` (default 24), `dur:`, `clip:` (the file reads it as `clip`, default `none`), `t:` (the time a still draws, default 0), `each k:[a b]` fans out a matrix interpolated as `{k}` in the path. `fmt` prints `clip:` after `each`. A GIF needs an opaque `bg:` and at most one frame per centisecond of `dur`.
+- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. `.gif` targets write one GIF at scale 1; `scale:` does not add `@2x` copies. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `fps:` (default 24), `dur:`, `clip:` (the file reads it as `clip`, default `none`), `t:` (the time a still draws, default 0), `each k:[a b]` fans out a matrix interpolated as `{k}` in the path. `fmt` prints `clip:` after `each`. A GIF needs an opaque `bg:` and at most one frame per centisecond of `dur`.
 - `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The manifest's default palette is always available as `p`.
 
@@ -160,4 +160,4 @@ Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functi
 
 ## CLI
 
-`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
+`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.

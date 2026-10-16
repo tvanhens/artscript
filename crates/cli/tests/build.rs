@@ -288,3 +288,25 @@ fn a_gif_frame_longer_than_the_field_is_e0206() {
     assert!(!dir.join("assets/tiny.gif").exists(), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn check_samples_a_gif_so_a_later_assert_fails() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifcheck-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifcheck\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target still.png 16x16\n@target clip.gif 16x16 bg:#ffffff fps:2 dur:1s\ncircle 4\nassert t < .5\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    let err = text(&out);
+    assert!(err.contains("C0101"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}

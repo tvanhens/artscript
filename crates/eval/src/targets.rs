@@ -333,12 +333,12 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 .with_fix(format!("add `each {var}:[..]`, or remove `{{{var}}}`"))
             })?;
             let outputs = match format {
-                Format::Svg => vec![OutputSpec {
+                Format::Svg | Format::Gif => vec![OutputSpec {
                     path,
                     format,
                     scale: 1.0,
                 }],
-                Format::Png | Format::Gif => scales
+                Format::Png => scales
                     .iter()
                     .map(|s| OutputSpec {
                         path: scaled_name(&path, *s),
@@ -474,11 +474,22 @@ mod tests {
     }
 
     #[test]
-    fn a_non_list_after_an_axis_stays_an_axis() {
+    fn a_gif_stays_one_output_at_scale_one() {
         let p = project(&[(
             "art/k.art",
-            "@target t.png 8x8 each a:[x] b:oops\nrect 1\n",
+            "@target t.gif 8x8 scale:1,2 bg:#ffffff\nrect 1\n",
         )]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        assert_eq!(plan.jobs.len(), 1);
+        assert_eq!(plan.jobs[0].outputs.len(), 1);
+        assert_eq!(plan.jobs[0].outputs[0].path, "t.gif");
+        assert_eq!(plan.jobs[0].outputs[0].scale, 1.0);
+    }
+
+    #[test]
+    fn a_non_list_after_an_axis_stays_an_axis() {
+        let p = project(&[("art/k.art", "@target t.png 8x8 each a:[x] b:oops\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics

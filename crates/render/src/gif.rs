@@ -3,8 +3,8 @@ use std::io::Cursor;
 use artscript_ir::Scene;
 use gif::{Encoder, Frame, Repeat};
 
-use crate::RenderError;
 use crate::draw;
+use crate::{RASTER_BUDGET, RenderError};
 
 pub fn encode(
     scenes: &[&Scene],
@@ -19,6 +19,31 @@ pub fn encode(
     if bg.a < 1.0 - 1e-4 {
         return Err(RenderError::TransparentGif);
     }
+    if !(scale.is_finite() && scale > 0.0) {
+        return Err(RenderError::Skia("scale must be positive".into()));
+    }
+    let mut bytes = 0u64;
+    let mut dims = Vec::with_capacity(scenes.len());
+    for scene in scenes {
+        let w = (scene.width * scale).ceil().max(1.0);
+        let h = (scene.height * scale).ceil().max(1.0);
+        if !w.is_finite() || !h.is_finite() {
+            return Err(RenderError::Skia("gif frame has no size".into()));
+        }
+        let (w, h) = (w as u32, h as u32);
+        if w > u16::MAX as u32 || h > u16::MAX as u32 {
+            return Err(RenderError::Skia("gif is larger than 65535px".into()));
+        }
+        bytes = bytes.saturating_add(u64::from(w).saturating_mul(u64::from(h)).saturating_mul(4));
+        dims.push((w, h));
+    }
+    let (w, h) = dims[0];
+    if dims.iter().any(|(fw, fh)| *fw != w || *fh != h) {
+        return Err(RenderError::Skia("gif frames differ in size".into()));
+    }
+    if bytes > RASTER_BUDGET {
+        return Err(RenderError::GifTooLarge);
+    }
     let rendered: Result<Vec<(u32, u32, Vec<u8>)>, RenderError> = scenes
         .iter()
         .map(|scene| {
@@ -30,15 +55,8 @@ pub fn encode(
         })
         .collect();
     let rendered = rendered?;
-    let Some((w, h, _)) = rendered.first() else {
-        return Err(RenderError::Skia("gif has no frames".into()));
-    };
-    let (w, h) = (*w, *h);
     if rendered.iter().any(|(fw, fh, _)| *fw != w || *fh != h) {
         return Err(RenderError::Skia("gif frames differ in size".into()));
-    }
-    if w > u16::MAX as u32 || h > u16::MAX as u32 {
-        return Err(RenderError::Skia("gif is larger than 65535px".into()));
     }
     let rasters: Vec<&[u8]> = rendered.iter().map(|(_, _, px)| px.as_slice()).collect();
     let flat: Vec<u8> = rasters.iter().flat_map(|px| px.iter().copied()).collect();
@@ -73,4 +91,40 @@ fn rgb_palette(rgba: &[u8]) -> Vec<u8> {
 
 fn opaque(px: &[u8]) -> bool {
     px.as_chunks::<4>().0.iter().all(|p| p[3] == 255)
+}
+
+#[cfg(test)]
+mod tests {
+    use artscript_ir::{Color, Scene};
+
+    use super::*;
+
+    fn blank(size: f32) -> Scene {
+        Scene {
+            width: size,
+            height: size,
+            background: Some(Color {
+                r: 1.0,
+                g: 1.0,
+                b: 1.0,
+                a: 1.0,
+            }),
+            children: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_raster_over_the_budget_is_rejected_before_render() {
+        let scene = blank(4096.0);
+        let frames = vec![&scene; 5];
+        let err = encode(&frames, 1.0, &[4; 5], false).unwrap_err();
+        assert!(matches!(err, RenderError::GifTooLarge));
+    }
+
+    #[test]
+    fn a_small_gif_still_encodes() {
+        let scene = blank(8.0);
+        let bytes = encode(&[&scene], 1.0, &[4], false).unwrap();
+        assert!(bytes.starts_with(b"GIF"));
+    }
 }

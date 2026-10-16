@@ -1647,11 +1647,12 @@ fn a_let_inside_if_does_not_escape_and_a_later_let_is_not_early() {
             show(&leaked.diagnostics)
         );
     }
-    let early = run_with(
-        "@target t.png 40x40\ncircle r name:c\nlet r = 9\n",
-        &[],
+    let early = run_with("@target t.png 40x40\ncircle r name:c\nlet r = 9\n", &[]);
+    assert!(
+        !early.diagnostics.is_empty(),
+        "{}",
+        show(&early.diagnostics)
     );
-    assert!(!early.diagnostics.is_empty(), "{}", show(&early.diagnostics));
     let s = scene("@target t.png 40x40\nlet r = 9\ncircle r name:c\n");
     assert_box(&s, "c", 18.0, 18.0);
     let moved = scene(
@@ -1700,7 +1701,11 @@ fn the_worst_frame_keeps_its_notes_and_fix() {
     let a = out.iter().find(|d| d.node == "a").unwrap();
     assert_eq!(a.fix.as_deref(), Some("nudge 9"));
     assert!(a.notes.iter().any(|n| n == "gap is 9"), "{:?}", a.notes);
-    assert!(a.notes.iter().any(|n| n.contains("first at 0s")), "{:?}", a.notes);
+    assert!(
+        a.notes.iter().any(|n| n.contains("first at 0s")),
+        "{:?}",
+        a.notes
+    );
     assert!(
         a.notes.iter().any(|n| n.contains("worst at 0.5s")),
         "{:?}",
@@ -1745,10 +1750,7 @@ fn an_alias_shares_the_components_occurrence_base() {
         "@target t.png 40x40\nuse d\nlet alias = eye\nalias\neye\n",
         "def eye\n  circle 4\n",
     );
-    assert_eq!(
-        paths(&s),
-        ["eye", "eye.circle", "eye2", "eye2.circle"]
-    );
+    assert_eq!(paths(&s), ["eye", "eye.circle", "eye2", "eye2.circle"]);
 }
 
 #[test]
@@ -1801,7 +1803,10 @@ fn off_canvas_on_a_later_frame_is_kept() {
 
 #[test]
 fn a_clip_past_the_frame_cap_is_e0206() {
-    let p = project(&[("art/t.art", "@target t.gif 8x8 bg:#ffffff dur:5000s fps:24\ncircle 2\n")]);
+    let p = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:5000s fps:24\ncircle 2\n",
+    )]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
     let sampled = crate::sample(&p, &plan.jobs[0]);
@@ -1814,6 +1819,80 @@ fn a_clip_past_the_frame_cap_is_e0206() {
         "{}",
         show(&sampled.diagnostics)
     );
+}
+
+#[test]
+fn a_play_inside_if_sees_an_earlier_name() {
+    let s = scene(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\nif @marker\n  play bob\n",
+    );
+    near(at(node(&s, "marker")), (30.0, 20.0));
+}
+
+#[test]
+fn a_hidden_parent_matches_a_channel_under_it() {
+    let s = scene(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.eye at:10,0\ngroup hero\n  circle 4 name:eye\nplay idle\n",
+    );
+    assert!(
+        paths(&s).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(&s)
+    );
+}
+
+#[test]
+fn an_each_binding_shares_the_components_occurrence_base() {
+    let s = lib_scene(
+        "@target t.png 40x40\nuse d\neach part in [eye]\n  part\neach item in [1]\n  eye\n",
+        "def eye\n  circle 4\n",
+    );
+    assert_eq!(
+        paths(&s),
+        ["eye#0", "eye#0.circle", "eye2#0", "eye2#0.circle"]
+    );
+}
+
+#[test]
+fn a_patch_expression_is_reported_on_the_anim() {
+    let ev = run_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:1s\n  .c at:@missing\n")],
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.file == "lib/motion.art")
+        .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.span.line, 2, "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("in anim `idle`")), "{d}");
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    let blend = run_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:1s\n  .c at:#ffffff\n")],
+    );
+    let b = blend
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0320")
+        .unwrap_or_else(|| panic!("{}", show(&blend.diagnostics)));
+    assert_eq!(b.file, "lib/motion.art");
+    assert_eq!(b.span.line, 2, "{b}");
+    let unmatched = run_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:1s\n  .missing at:1,0\n")],
+    );
+    let u = unmatched
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0340")
+        .unwrap_or_else(|| panic!("{}", show(&unmatched.diagnostics)));
+    assert_eq!(u.file, "art/t.art");
+    assert_eq!(u.span.line, 4, "{u}");
 }
 
 #[test]

@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use artscript_eval::{Project, find_root, load, plan, project::rel_path};
+use artscript_eval::{Format, Project, find_root, load, plan, project::rel_path};
 use artscript_syntax::ast::Span;
 use artscript_syntax::{Diagnostic, Severity};
 
@@ -14,7 +14,7 @@ const USAGE: &str = "usage: artscript <command>
 
 commands:
   build [--only GLOB] [--allow-warnings]   render every @target, write art-manifest.json
-  check [--json]                           evaluate and run checks without rendering
+  check [--json]                           evaluate stills and sample GIFs, without rendering
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
@@ -177,7 +177,12 @@ fn check(project: &Project, json: bool) -> u8 {
     let plan = plan(project);
     let mut diags = plan.diagnostics;
     for job in &plan.jobs {
-        diags.extend(artscript_eval::evaluate(project, job).diagnostics);
+        let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
+            artscript_eval::sample(project, job).diagnostics
+        } else {
+            artscript_eval::evaluate(project, job).diagnostics
+        };
+        diags.extend(frame_diags);
     }
     report(diags, false, json)
 }

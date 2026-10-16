@@ -20,7 +20,7 @@ use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
 use crate::key::Ease;
-use crate::motion::{absolute_channel, offset_channel, path_match, static_base};
+use crate::motion::{absolute_channel, offset_channel, path_covers, path_match, static_base};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
@@ -228,8 +228,12 @@ struct Channel {
     off: bool,
     live: bool,
     anim: String,
+    /// The `play` that scheduled this channel. E0340 stays here.
     span: Span,
     file: String,
+    /// The patch key in the anim's file. Expression and blend failures stay here.
+    patch_span: Span,
+    patch_file: String,
     matched: Cell<bool>,
 }
 
@@ -1010,9 +1014,14 @@ impl<'a> Evaluator<'a> {
                     let else_refs: Vec<&Scene> = otherwise.iter().collect();
                     self.count_scenes(&else_refs, &mut else_sc, counts, map);
                 }
-                SceneKind::Each { body, .. } => {
+                SceneKind::Each { var, iter, body } => {
                     let mut inner = sc.clone();
                     inner.publish = false;
+                    if let Ok(items) = self.expr(iter, sc).and_then(each_items)
+                        && let Some(first) = items.into_iter().next()
+                    {
+                        inner.env.push((var.clone(), first));
+                    }
                     let refs: Vec<&Scene> = body.iter().collect();
                     self.count_scenes(&refs, &mut inner, counts, map);
                 }
@@ -1409,7 +1418,7 @@ impl<'a> Evaluator<'a> {
         let (patch_named, off) = self.take_patches(&path);
         let patch_stroke = patch_named.iter().any(|(k, _)| k == "stroke");
         if off {
-            self.mark_channels(&path);
+            self.mark_hidden(&path);
             return Ok(());
         }
         self.seed_at(format!("{}\0{path}", sc.file()));
@@ -2503,7 +2512,7 @@ impl<'a> Evaluator<'a> {
         let path = format!("{}.{leaf}", sc.path);
         let (patch_named, off) = self.take_patches(&path);
         if off {
-            self.mark_channels(&path);
+            self.mark_hidden(&path);
             if inst.fills.iter().any(|f| f.name == name) {
                 inst.used_fills.borrow_mut().push(name.to_string());
             }
@@ -2556,6 +2565,9 @@ impl<'a> Evaluator<'a> {
     pub fn collect_entry(&mut self, scenes: &[Scene], sc: &Scope) {
         let saved = sc.module.globals.borrow().clone();
         let mut scratch = sc.clone();
+        let table = new_table();
+        scratch.register = table.clone();
+        scratch.lookup = Rc::new(vec![table]);
         self.collect_surface(scenes, &mut scratch, "");
         *sc.module.globals.borrow_mut() = saved;
     }
@@ -2634,8 +2646,54 @@ impl<'a> Evaluator<'a> {
                 self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
                 Ok(())
             }
-            _ => Ok(()),
+            SceneKind::Draw(draw) => {
+                self.collect_draw(draw, sc);
+                Ok(())
+            }
+            SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
         }
+    }
+
+    /// A name the real pass will register, recorded so a later `if @name` can take its branch.
+    /// The stub has no geometry: `@name` is visible, `@name.w` is not.
+    fn collect_draw(&mut self, draw: &Draw, sc: &Scope) {
+        let verb = draw.verb.as_str();
+        if matches!(verb, "canvas" | "fill" | "stroke" | "mask" | "fx") {
+            return;
+        }
+        let explicit = draw
+            .named
+            .iter()
+            .find(|n| n.key == "name")
+            .and_then(|n| ident_of(&n.value))
+            .map(str::to_string);
+        let positional = if matches!(verb, "anchor" | "layer" | "group") {
+            draw.args.first().and_then(ident_of).map(str::to_string)
+        } else {
+            None
+        };
+        let comp = self.component_for(verb, sc).and_then(|c| c);
+        let name = explicit
+            .or(positional)
+            .or_else(|| comp.as_ref().map(|c| c.name.clone()));
+        let Some(name) = name else { return };
+        let path = if sc.path.is_empty() {
+            name.clone()
+        } else {
+            format!("{}.{name}", sc.path)
+        };
+        self.register(
+            sc,
+            &name,
+            Record {
+                name: name.clone(),
+                path,
+                parent_world: sc.world,
+                node: None,
+                anchor: None,
+                at: (0.0, 0.0),
+            },
+        );
     }
 
     fn absorb_item(
@@ -2873,6 +2931,8 @@ impl<'a> Evaluator<'a> {
                     anim: name.to_string(),
                     span,
                     file: file.clone(),
+                    patch_span: patch.span,
+                    patch_file: anim.module.clone(),
                     matched: Cell::new(false),
                 });
                 continue;
@@ -2894,9 +2954,16 @@ impl<'a> Evaluator<'a> {
                         anim: name.to_string(),
                         span,
                         file: file.clone(),
+                        patch_span: n.span,
+                        patch_file: anim.module.clone(),
                         matched: Cell::new(false),
                     }),
-                    Err(f) => self.report(f, &file, span, owner),
+                    Err(f) => self.report(
+                        f.note(format!("in anim `{name}`")),
+                        &anim.module,
+                        n.span,
+                        owner,
+                    ),
                 }
             }
         }
@@ -3002,9 +3069,9 @@ impl<'a> Evaluator<'a> {
         crate::key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
     }
 
-    fn mark_channels(&self, path: &str) {
+    fn mark_hidden(&self, path: &str) {
         for ch in &self.channels {
-            if path_match(path, &ch.owner, &ch.pattern) {
+            if path_covers(path, &ch.owner, &ch.pattern) {
                 ch.matched.set(true);
             }
         }
@@ -3034,12 +3101,15 @@ impl<'a> Evaluator<'a> {
             let key = self.channels[i].key.clone();
             let absolute = self.channels[i].absolute;
             let value = self.channels[i].value.clone();
-            let span = self.channels[i].span;
-            let file = self.channels[i].file.clone();
+            let span = self.channels[i].patch_span;
+            let file = self.channels[i].patch_file.clone();
             let anim = self.channels[i].anim.clone();
             if let Err(f) = blend_arg(a, &key, absolute, &value, default_at) {
                 self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
             }
+        }
+        if hide {
+            self.mark_hidden(path);
         }
         hide
     }

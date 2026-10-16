@@ -183,6 +183,16 @@ fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic
                 .in_file(&job.source)
                 .with_fix("set `bg:` to an opaque color; transparent gifs come later")
         }
+        artscript_render::RenderError::GifTooLarge => {
+            let mib = artscript_render::RASTER_BUDGET / (1024 * 1024);
+            Diagnostic::error(
+                "E0206",
+                span,
+                format!("a gif raster is larger than {mib}MiB"),
+            )
+            .in_file(&job.source)
+            .with_fix("lower `fps`, shorten `dur`, or shrink the canvas")
+        }
     }
 }
 

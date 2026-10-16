@@ -52,6 +52,31 @@ pub fn path_match(full: &str, owner: &str, pattern: &[String]) -> bool {
         .all(|(seg, pat)| pat == "*" || pat == seg)
 }
 
+/// `pattern` is this node or a node under it. A hidden parent never walks those children,
+/// so their channels still count as matched.
+pub fn path_covers(full: &str, owner: &str, pattern: &[String]) -> bool {
+    let rel = if owner.is_empty() {
+        full
+    } else {
+        let prefix = format!("{owner}.");
+        match full.strip_prefix(&prefix) {
+            Some(rest) => rest,
+            None => return false,
+        }
+    };
+    let segs: Vec<&str> = if rel.is_empty() {
+        Vec::new()
+    } else {
+        rel.split('.').collect()
+    };
+    if pattern.len() < segs.len() {
+        return false;
+    }
+    segs.iter()
+        .zip(pattern)
+        .all(|(seg, pat)| pat == "*" || pat == seg)
+}
+
 pub fn absolute_channel<'a>(key: &str, value: &'a Expr) -> Option<&'a Expr> {
     if !offset_channel(key) {
         return None;
