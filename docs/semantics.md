@@ -71,7 +71,9 @@ The first tokens of a line decide its form:
 
 So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its parentheses.
 
-**Errors.** Parse errors are E0101 with a concrete fix. Report every error, then recover at the next line.
+**Errors.** Parse errors are E0101 with a concrete fix. Report every error, then recover at the next line. Recovery keeps everything the line parsed before the error: a value that could not be parsed is dropped, and a `(` or `[` still open at the end of the line closes there, so `fill:grad(down #fff #000` still yields a gradient. Every consumer except `fmt` evaluates this partial tree. `fmt` refuses to rewrite a file with errors.
+
+**Forgiving evaluation.** A file that fails still draws whatever it can, so a model's half-written file or a streamed prefix gives visual feedback. An argument that fails to evaluate is reported and dropped, and its node draws with the remaining arguments. A node whose geometry is impossible (a `circle` with no radius) is dropped. An unknown verb with a block draws the block as a `group`. The exit code is unchanged: any `E` error still exits 1.
 
 **Formatting (`fmt`).**
 
@@ -324,6 +326,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - E0400: a render or write failure.
 - **Build.**
   - The cache file name is the FNV-1a hex of the target key (`source:line[matrix]`).
-  - A target whose evaluation reports an `E` error writes no outputs. Its previous manifest entries are kept with `status: fail`, so the old outputs are not deleted.
+  - A target whose evaluation reports an `E` error still writes every output it can render, marked `status: fail` in the manifest, and the build exits 1. A target that produced no scene keeps its previous manifest entries with `status: fail`, so the old outputs are not deleted.
+  - `render <file> --stdin -o out.png` evaluates the file's first `@target` from source on stdin, against the project's libraries, and writes one PNG at scale 1. It is the per-line hot loop of a live preview, so it renders nothing else.
   - With `--only`, entries of targets that were not selected stay in the manifest unchanged.
   - The manifest's `checks` field lists the `C` diagnostics as `"<code>: <message>"`.

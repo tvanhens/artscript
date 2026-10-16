@@ -119,6 +119,15 @@ expect @head.w / @body.w in .9..1.4 "head as wide as the body"
 
 Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a b margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a b edge:top)`, `level`, `centered(a in:b)`, `symmetric(a b about:x)`, `aspect`, `on_grid(a n)`, `same_size(@row.*)` and `stroke_widths(a)`. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
 
+## Order for a live preview
+
+A file renders after every line, and a malformed or half-written file still draws what it can, so write in the order a viewer should see it:
+
+1. `@target` first, then `use` lines. Prefer the default palette `p` over a new `palette` block.
+2. Paint back to front and coarse to fine: the background and the largest shapes, then mid-size forms, then details nested under their shape, then `fx` lines.
+3. Put a `def` right before its first use and keep it short. Shapes outside a `def` draw at once.
+4. Checks go last.
+
 ## CLI
 
-`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
+`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `render <file> [--stdin] [-o out.png] [--json]` (the first target as one PNG, source from stdin), `init`. A target with errors still writes what it could render. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
