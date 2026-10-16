@@ -5,6 +5,9 @@ mod lex;
 mod parse;
 mod words;
 
+#[cfg(test)]
+mod highlight;
+
 pub use diag::{Diagnostic, Severity};
 
 /// Parses one `.art` source. Returns every syntax error found, not just the first.
