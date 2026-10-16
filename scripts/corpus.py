@@ -42,7 +42,7 @@ def cryptic_names(text: str) -> list[str]:
             names.append(m.group(1))
             in_palette = True
             continue
-        if in_palette and (m := re.match(r"^  (\w+) ", line)):
+        if in_palette and (m := re.match(r"^  (?:ramp|color) (\w+)", line)):
             names.append(m.group(1))
             continue
         in_palette = False
