@@ -173,7 +173,7 @@ impl Evaluator<'_> {
         let rs = refs(a);
         let need = |n: usize| -> R<()> {
             if rs.len() < n {
-                Err(fail("E0320", format!("`{func}` needs {n} node reference(s)")).fix(format!("write `{func}(@a{})`", if n > 1 { ", @b" } else { "" })))
+                Err(fail("E0320", format!("`{func}` needs {n} node reference(s)")).fix(format!("write `{func}(@a{})`", if n > 1 { " @b" } else { "" })))
             } else {
                 Ok(())
             }

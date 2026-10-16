@@ -11,12 +11,6 @@ use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
 
-/// Functions that take one argument, so a tight tuple is that argument rather than a splat.
-const SINGLE: &[&str] = &[
-    "abs", "sqrt", "floor", "round", "sin", "cos", "line", "simplex", "perlin", "worley", "value", "fbm", "ridged", "aspect",
-    "stroke_widths", "pick", "same_size",
-];
-
 fn f32_field(v: &Value) -> Option<Field> {
     match v {
         Value::Field(f) => Some((**f).clone()),
@@ -30,12 +24,8 @@ impl Evaluator<'_> {
         if let Some(Value::Rule(rule)) = sc.module.global(func) {
             return self.call_rule(&rule, args, named, sc);
         }
-        let exprs: Vec<&Expr> = match args {
-            [Expr::Tuple(xs)] if !SINGLE.contains(&func) => xs.iter().collect(),
-            _ => args.iter().collect(),
-        };
-        let mut a = Vec::with_capacity(exprs.len());
-        for e in exprs {
+        let mut a = Vec::with_capacity(args.len());
+        for e in args {
             a.push(self.expr(e, sc)?);
         }
         let mut nm = Vec::with_capacity(named.len());
@@ -60,7 +50,8 @@ impl Evaluator<'_> {
         Ok(match func {
             "min" | "max" => {
                 let items = match a.as_slice() {
-                    [single] => single.items().unwrap_or_else(|| vec![single.clone()]),
+                    [Value::List(xs)] => xs.clone(),
+                    [v @ Value::Range(_, _)] => v.items().unwrap_or_else(|| a.clone()),
                     _ => a.clone(),
                 };
                 if items.iter().any(|v| matches!(v, Value::Field(_))) {
@@ -127,7 +118,7 @@ impl Evaluator<'_> {
                 Value::Num(rng.uniform(lo, hi))
             }
             "pick" => {
-                let items = a.first().and_then(Value::items).ok_or_else(|| fail("E0320", "`pick` needs a list").fix("write `pick([a, b])`"))?;
+                let items = a.first().and_then(Value::items).ok_or_else(|| fail("E0320", "`pick` needs a list").fix("write `pick([a b])`"))?;
                 if items.is_empty() {
                     return Err(fail("E0320", "`pick` needs a non-empty list"));
                 }

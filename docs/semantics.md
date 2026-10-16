@@ -26,7 +26,7 @@ The first tokens of a line decide its form:
 | line starts with | form |
 |---|---|
 | `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes |
-| `use` | `use <raw path> [as x] [{ a, b }]` |
+| `use` | `use <raw path> [as x] [{ a b }]` |
 | `palette`, `style`, `def`, `rule`, `let`, `shader`, `light`, `brush` | declarations. In `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs` |
 | `assert`, `expect` | `expr named* "message"?` |
 | `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed |
@@ -145,11 +145,11 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Out-of-range steps (`shade` past either end) extrapolate with the same formula.
 - **Two-color ramp `ramp a b n`.** Interpolate in OKLCH, taking the shorter hue arc.
 - **`line(c)`** is `L = max(L - .42, .18)`, `C = max(C * 1.15, .04)`, with the hue rotated 24 degrees toward 275.
-- **`shade(c, k)`**:
+- **`shade(c k)`**:
   - If `c` remembers a ramp, use index + k, extrapolating past the ends.
   - Otherwise, apply the step formula with `s = k`.
-  - `lit(c, k)` is an alias.
-- **`mix`** interpolates in OKLab. **`fade(c, a)`** multiplies alpha.
+  - `lit(c k)` is an alias.
+- **`mix`** interpolates in OKLab. **`fade(c a)`** multiplies alpha.
 - **Gradients.**
   - Densify each segment to 16 sub-stops interpolated in OKLCH, with linear alpha.
   - When one end has alpha 0 or chroma < .02, take hue (and, for alpha 0, the color too) from the other end.
@@ -192,8 +192,8 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 
 | op | default color |
 |---|---|
-| shadow, inner | `shade(f, -2)` at alpha .35 |
-| glow | `shade(f, 2)` |
+| shadow, inner | `shade(f -2)` at alpha .35 |
+| glow | `shade(f 2)` |
 | rim | `oklch(.86 .05 265)` |
 | outline | `line(f)` |
 
@@ -222,7 +222,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - **`needs:@a`.** When the def is instantiated as slot content, the host must have a part `a`. Otherwise it is E0311, listing the host's parts.
 - **Component values.**
   - A param whose value is a Component can be used as a verb.
-  - Inside a body, `pick([tunic, apron])` returns a Component.
+  - Inside a body, `pick([tunic apron])` returns a Component.
   - `none` draws nothing.
 - **`z:`.** Applied after the siblings are built: `behind` moves the node first, `front` moves it last, and a number sorts stably.
 - **References.** `@name` resolves by walking scopes outward:
@@ -237,12 +237,12 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - Checks are collected and evaluated when their enclosing scope (an instance body or the file) finishes. All measurements are in canvas coordinates.
 - Bounds are visual: geometry plus half the stroke width. `.geom.*` uses geometry only.
 - Functions:
-  - `level(a, b)` compares `cy`.
-  - `gap(a, b)` is the separation along the axis where the boxes don't overlap: horizontal if they overlap vertically, otherwise vertical. It is 0 if they intersect.
+  - `level(a b)` compares `cy`.
+  - `gap(a b)` is the separation along the axis where the boxes don't overlap: horizontal if they overlap vertically, otherwise vertical. It is 0 if they intersect.
   - `dist` is the center distance.
-  - `symmetric(a, b, about:x)` checks that `a.cx + b.cx == 2x` and that the two are level.
+  - `symmetric(a b about:x)` checks that `a.cx + b.cx == 2x` and that the two are level.
   - `about:` defaults to the parent's frame center x.
-  - `inside(a, b, margin:)` checks that a's bounds sit within b's bounds shrunk by the margin.
+  - `inside(a b margin:)` checks that a's bounds sit within b's bounds shrunk by the margin.
   - `same_size(list)` uses `tol:` (default .5).
   - `@row.*` expands to the named children.
 - `~=` and `same_size` use `tol:` (default .5).

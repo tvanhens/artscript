@@ -203,7 +203,7 @@ pub enum Expr {
     Range(Box<Expr>, Box<Expr>),
     Unary(UnOp, Box<Expr>),
     Binary(BinOp, Box<Expr>, Box<Expr>),
-    /// `grad(down a b)`, `shade(c, -2)`, `radial(a b at:.3,.3)`, `oklch(.78 .07 55)`.
+    /// `grad(down a b)`, `shade(c -2)`, `radial(a b at:.3,.3)`, `oklch(.78 .07 55)`.
     Call {
         func: String,
         args: Vec<Expr>,
