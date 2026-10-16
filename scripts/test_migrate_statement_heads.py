@@ -68,6 +68,20 @@ class MigrateStatementHeads(unittest.TestCase):
             "  fx rim 4 color:p.rim\n",
         )
 
+    def test_mask_inside_a_string_stays_put(self):
+        src = 'text "hello mask:world"\n'
+        self.assertEqual(migrate(src)[0], src)
+        out, _ = migrate('text "hello" mask:@body\n')
+        self.assertEqual(out, 'text "hello"\n  mask @body\n')
+
+    def test_mask_value_keeps_in_range_not_and_approx(self):
+        out, _ = migrate("rect 4 mask:x in 0..1 a:.5\n")
+        self.assertEqual(out, "rect 4 a:.5\n  mask x in 0..1\n")
+        out, _ = migrate("rect 4 mask:not x ~= 1 a:.5\n")
+        self.assertEqual(out, "rect 4 a:.5\n  mask not x ~= 1\n")
+        out, _ = migrate("rect 4 mask:0 .. 1 a:.5\n")
+        self.assertEqual(out, "rect 4 a:.5\n  mask 0 .. 1\n")
+
     def test_mask_if_expression_is_lifted_whole(self):
         out, _ = migrate("rect 4 mask:if wet then @a else @b a:.5\n")
         self.assertEqual(out, "rect 4 a:.5\n  mask if wet then @a else @b\n")

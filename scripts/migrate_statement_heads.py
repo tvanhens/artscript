@@ -16,7 +16,7 @@ A top-level `fx` line has no draw to attach to. It is reported and left for a ha
 import re
 import sys
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Optional
 
 KEYWORD_HEADS = {
     "use", "palette", "style", "def", "rule", "let", "shader", "light", "brush",
@@ -92,6 +92,35 @@ def mask_head(line: str) -> str:
     return f"{pad}mask {value}{comment}"
 
 
+def skip_string(text: str, i: int) -> int:
+    if text.startswith('"""', i):
+        j = text.find('"""', i + 3)
+        return len(text) if j < 0 else j + 3
+    i += 1
+    while i < len(text):
+        if text[i] == "\\":
+            i += 2
+            continue
+        if text[i] == '"':
+            return i + 1
+        i += 1
+    return len(text)
+
+
+def mask_value_at(code: str) -> Optional[int]:
+    i = 0
+    while i < len(code):
+        if code[i] == '"':
+            i = skip_string(code, i)
+            continue
+        if code[i] in " \t" and code.startswith("mask:", i + 1):
+            after = i + 1 + len("mask:")
+            if after < len(code) and code[after] not in " \t":
+                return i + 1
+        i += 1
+    return None
+
+
 def glued_chunk_len(text: str) -> int:
     depth = 0
     for k, c in enumerate(text):
@@ -111,17 +140,25 @@ def word_at(text: str, i: int, word: str) -> bool:
     return end == len(text) or not (text[end].isalnum() or text[end] == "_")
 
 
+OPS = r"(?:->|\.\.|>=|<=|==|!=|~=|[<>+\-*/]|and|or|in)"
+
+
 def expression_len(text: str) -> int:
     n = prefix_len(text, 0)
     while True:
-        m = re.match(r"\s+(>=|<=|==|!=|->|>|<|\+|-|\*|/|and|or)\s+", text[n:])
+        m = re.match(rf"\s+{OPS}\s+", text[n:])
         if not m:
             return n
         n += len(m.group(0))
-        n += prefix_len(text, n) - n
+        n = prefix_len(text, n)
 
 
 def prefix_len(text: str, i: int) -> int:
+    if word_at(text, i, "not"):
+        n = i + 3
+        gap = re.match(r"\s+", text[n:])
+        if gap is not None:
+            return expression_len_from(text, n + len(gap.group(0)))
     if word_at(text, i, "if"):
         n = i + 2
         gap = re.match(r"\s+", text[n:])
@@ -161,15 +198,15 @@ def lift_mask_args(lines: list[str]) -> list[str]:
         line = lines[i]
         code, comment = split_comment(line)
         head = re.match(rf"^(\s*)({NAME})\b", code)
-        m = re.search(r"\s(mask:)(\S)", code)
-        if not head or head.group(2) in KEYWORD_HEADS or not m:
+        start = None if head is None or head.group(2) in KEYWORD_HEADS else mask_value_at(code)
+        if start is None:
             out.append(line)
             i += 1
             continue
-        start = m.start(1)
         n = expression_len(code[start + len("mask:"):])
         value = code[start + len("mask:"):start + len("mask:") + n]
-        kept = (code[:m.start()] + code[start + len("mask:") + n:]).rstrip()
+        cut = start - 1 if start > 0 and code[start - 1] in " \t" else start
+        kept = (code[:cut] + code[start + len("mask:") + n:]).rstrip()
         end = block_end(lines, i)
         child = next((indent_of(l) for l in lines[i + 1:end] if l.strip()), indent_of(line) + 2)
         out.append(kept + comment)
