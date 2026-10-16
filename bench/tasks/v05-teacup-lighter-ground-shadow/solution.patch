@@ -1,0 +1,11 @@
+--- a/art/prop/matcha_teacup.art
++++ b/art/prop/matcha_teacup.art
+@@ -25,7 +25,7 @@
+   curve pts stroke:tea.steam,w taper:.35 a:.88 blur:1.2
+   curve [each i in 1..n-1 -> pts.{i}+(-2,-1)] stroke:tea.mist,[each i in 1..n-1 -> w.{i}*.35] taper:.35 a:.7 blur:1
+ layer ground_shadow
+-  ellipse 330,40 at:512,868 fill:fade(tea.shadow .38) blur:16
++  ellipse 330,40 at:512,868 fill:fade(tea.shadow .28) blur:16
+   ellipse 250,22 at:512,864 fill:fade(tea.shadow .22) blur:8
+ layer saucer pivot:512,800
+   union fill:none name:saucer_form

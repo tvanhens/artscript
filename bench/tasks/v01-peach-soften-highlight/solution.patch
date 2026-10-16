@@ -1,0 +1,11 @@
+--- a/art/produce/momo_peach.art
++++ b/art/produce/momo_peach.art
+@@ -75,7 +75,7 @@
+     curve 518,392 558,420 618,478 660,562 678,652 672,732 648,802 stroke:peach.coral.1,[16 18 18 15 11 6 2] taper:0,.6 a:.45 blur:8
+     curve 526,390 566,418 626,476 668,560 686,650 680,730 656,800 stroke:peach.coral.line,[7 8 7 6 4.5 2.5 1] taper:.05,.6 a:.75
+     curve 573,416 633,474 675,558 693,648 stroke:peach.coral.4,[4 5 4 2] taper:.4 a:.7 blur:2
+-    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.55 blur:30
++    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.42 blur:44
+     ellipse 32,14 at:330,452 rot:-35 fill:p.glint a:.45 blur:8
+     ellipse 210,58 at:474,624 fill:peach.coral a:.05 blur:18
+     each i in 0..900

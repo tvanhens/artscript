@@ -1,0 +1,11 @@
+--- a/art/monument/stone_lantern.art
++++ b/art/monument/stone_lantern.art
+@@ -202,7 +202,7 @@
+         inside @window
+           copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
+       layer flame pivot:512,486
+-        _flame 64 17 3
++        _flame 80 17 3
+       layer flame_low pivot:512,486 a:0
+         _flame 46 16 -7
+       layer roof pivot:512,350

@@ -1,0 +1,9 @@
+{"read": "lib/face/parts.art"}
+{"read": "art/character/moss_monk.art"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -4,1 +4,2 @@\n @target character/moss_monk_yawn.png 1024x1024 as:yawn\n+@target character/moss_monk_sleepy.png 1024x1024 as:sleepy\n"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -171,2 +171,3 @@\n-    curve 512+120*s,362 512+92*s,348 512+60*s,354 stroke:fade(skin.line .7),[2 5 2] taper:.35\n-    eye 104x112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else .6 at:512+88*s,440\n+    let brow_drop = if target == sleepy then 1 else 0\n+    curve 512+120*s,362+14*brow_drop 512+92*s,348+18*brow_drop 512+60*s,354+6*brow_drop stroke:fade(skin.line .7),[2 5 2] taper:.35\n+    eye 104x112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else if target == sleepy then .86 else .6 at:512+88*s,440\n"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -176,1 +176,3 @@\n     o_mouth 36 at:512,508 color:monk.mouth\n+  else if target == sleepy\n+    smile 26 at:512,514 color:monk.mouth\n"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -223,1 +223,11 @@\n   sparkle 26 at:318,222 color:monk.star\n+if target == sleepy\n+  layer sleep_bubble\n+    ellipse 14,9 at:292,338 fill:monk.star\n+    ellipse 24,15 at:258,302 fill:monk.star\n+    ellipse 72,48 at:208,242 fill:monk.star name:bubble\n+      ellipse 22,12 at:-16,-10 fill:glint a:.82 blur:2\n+      ellipse 34,14 at:8,12 fill:monk.shadow a:.12 blur:6\n+      curve -22,-10 18,-10 stroke:monk.shadow,[2.2 4.4 2.2] taper:.35\n+      curve 18,-10 -16,8 stroke:monk.shadow,[2.2 4.4 2.2] taper:.35\n+      curve -16,8 20,8 stroke:monk.shadow,[2.2 4.4 2.2] taper:.35\n"}
+{"build": "character/moss_monk.*"}
+{"look": "1024x1024", "path": "assets/character/moss_monk.png"}
+{"look": "1024x1024", "path": "assets/character/moss_monk_sleepy.png"}

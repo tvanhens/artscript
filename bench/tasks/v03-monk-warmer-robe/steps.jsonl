@@ -1,0 +1,4 @@
+{"read": "art/character/moss_monk.art"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -8,1 +8,1 @@\n-  moss ramp #7f9a52 5\n+  moss ramp #939444 5\n"}
+{"build": "character/moss_monk.*"}
+{"look": "1024x1024", "path": "assets/character/moss_monk.png"}

@@ -1,0 +1,6 @@
+{"read": "art/monument/stone_lantern.art"}
+{"write": "--- a/art/monument/stone_lantern.art\n+++ b/art/monument/stone_lantern.art\n@@ -139,1 +139,1 @@\n-      ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.35 blur:10\n+      ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.08 blur:10\n"}
+{"write": "--- a/art/monument/stone_lantern.art\n+++ b/art/monument/stone_lantern.art\n@@ -201,1 +201,1 @@\n-        circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .42) fade(lantern.amber .16),.45 fade(lantern.amber 0) r:160)\n+        circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .08) fade(lantern.amber .03),.45 fade(lantern.amber 0) r:160)\n"}
+{"write": "--- a/art/monument/stone_lantern.art\n+++ b/art/monument/stone_lantern.art\n@@ -203,1 +203,1 @@\n-          copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)\n+          copy @window fill:radial(fade(lantern.amber.4 .18) fade(lantern.amber.3 .07),.6 fade(lantern.amber 0) at:.5,.64 r:66)\n"}
+{"build": "monument/stone_lantern.*"}
+{"look": "1024x1024", "path": "assets/monument/stone_lantern.png"}

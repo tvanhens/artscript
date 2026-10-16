@@ -1,0 +1,4 @@
+{"read": "art/produce/momo_peach.art"}
+{"write": "--- a/art/produce/momo_peach.art\n+++ b/art/produce/momo_peach.art\n@@ -159,1 +159,0 @@\n-  sparkle 20 at:822,770\n"}
+{"build": "produce/momo_peach.*"}
+{"look": "1024x1024", "path": "assets/produce/momo_peach.png"}

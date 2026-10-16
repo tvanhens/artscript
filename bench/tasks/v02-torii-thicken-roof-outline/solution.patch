@@ -1,0 +1,11 @@
+--- a/art/monument/vermilion_torii.art
++++ b/art/monument/vermilion_torii.art
+@@ -214,7 +214,7 @@
+       union fill:verm z:-1
+         copy @shimaki
+         copy @cap
+-        fx outline 7 color:gate
++        fx outline 10 color:gate
+       layer sparkles
+         sparkle 28 at:210,84 color:spark
+         sparkle 20 at:900,272 color:spark glow:.25

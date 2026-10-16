@@ -1,0 +1,177 @@
+{
+  "image_formula": "ceil(w*h/750)",
+  "variants": {
+    "today": {
+      "tasks": {
+        "c01-ume-plum": {
+          "kind": "construction",
+          "tokens_read": 7978,
+          "tokens_written": 2615,
+          "image_tokens": 2798,
+          "total_tokens": 13391,
+          "round_trips": 3
+        },
+        "c02-paper-lantern": {
+          "kind": "construction",
+          "tokens_read": 4460,
+          "tokens_written": 2739,
+          "image_tokens": 2798,
+          "total_tokens": 9997,
+          "round_trips": 3
+        },
+        "c03-acorn-sprite": {
+          "kind": "construction",
+          "tokens_read": 6287,
+          "tokens_written": 2769,
+          "image_tokens": 2798,
+          "total_tokens": 11854,
+          "round_trips": 3
+        },
+        "m01-lantern-quieter-glow": {
+          "kind": "multi",
+          "tokens_read": 6392,
+          "tokens_written": 252,
+          "image_tokens": 1399,
+          "total_tokens": 8043,
+          "round_trips": 2
+        },
+        "m02-peach-shrink-sparkles": {
+          "kind": "multi",
+          "tokens_read": 3520,
+          "tokens_written": 60,
+          "image_tokens": 1399,
+          "total_tokens": 4979,
+          "round_trips": 2
+        },
+        "m03-strawberry-bigger-face": {
+          "kind": "multi",
+          "tokens_read": 2507,
+          "tokens_written": 208,
+          "image_tokens": 1399,
+          "total_tokens": 4114,
+          "round_trips": 2
+        },
+        "s01-peach-remove-small-sparkle": {
+          "kind": "structural",
+          "tokens_read": 3520,
+          "tokens_written": 10,
+          "image_tokens": 1399,
+          "total_tokens": 4929,
+          "round_trips": 2
+        },
+        "s02-torii-move-right-leaf": {
+          "kind": "structural",
+          "tokens_read": 5017,
+          "tokens_written": 52,
+          "image_tokens": 1399,
+          "total_tokens": 6468,
+          "round_trips": 2
+        },
+        "s03-strawberry-add-dew-drop": {
+          "kind": "structural",
+          "tokens_read": 2507,
+          "tokens_written": 23,
+          "image_tokens": 1399,
+          "total_tokens": 3929,
+          "round_trips": 2
+        },
+        "s04-teacup-add-steam-wisp": {
+          "kind": "structural",
+          "tokens_read": 2509,
+          "tokens_written": 119,
+          "image_tokens": 1399,
+          "total_tokens": 4027,
+          "round_trips": 2
+        },
+        "v01-peach-soften-highlight": {
+          "kind": "value",
+          "tokens_read": 3520,
+          "tokens_written": 52,
+          "image_tokens": 1399,
+          "total_tokens": 4971,
+          "round_trips": 2
+        },
+        "v02-torii-thicken-roof-outline": {
+          "kind": "value",
+          "tokens_read": 5017,
+          "tokens_written": 18,
+          "image_tokens": 1399,
+          "total_tokens": 6434,
+          "round_trips": 2
+        },
+        "v03-monk-warmer-robe": {
+          "kind": "value",
+          "tokens_read": 4336,
+          "tokens_written": 21,
+          "image_tokens": 1399,
+          "total_tokens": 5756,
+          "round_trips": 2
+        },
+        "v04-strawberry-bigger-sparkle": {
+          "kind": "value",
+          "tokens_read": 2507,
+          "tokens_written": 30,
+          "image_tokens": 1399,
+          "total_tokens": 3936,
+          "round_trips": 2
+        },
+        "v05-teacup-lighter-ground-shadow": {
+          "kind": "value",
+          "tokens_read": 2509,
+          "tokens_written": 48,
+          "image_tokens": 1399,
+          "total_tokens": 3956,
+          "round_trips": 2
+        },
+        "v06-lantern-taller-flame": {
+          "kind": "value",
+          "tokens_read": 6392,
+          "tokens_written": 22,
+          "image_tokens": 1399,
+          "total_tokens": 7813,
+          "round_trips": 2
+        },
+        "v07-house-stronger-blush": {
+          "kind": "value",
+          "tokens_read": 5205,
+          "tokens_written": 46,
+          "image_tokens": 1399,
+          "total_tokens": 6650,
+          "round_trips": 2
+        },
+        "v08-monk-brighter-head-rim": {
+          "kind": "value",
+          "tokens_read": 4336,
+          "tokens_written": 80,
+          "image_tokens": 1399,
+          "total_tokens": 5815,
+          "round_trips": 2
+        },
+        "x01-monk-sleepy": {
+          "kind": "variant",
+          "tokens_read": 6021,
+          "tokens_written": 555,
+          "image_tokens": 2798,
+          "total_tokens": 9374,
+          "round_trips": 3
+        },
+        "x02-strawberry-wink": {
+          "kind": "variant",
+          "tokens_read": 4192,
+          "tokens_written": 211,
+          "image_tokens": 2798,
+          "total_tokens": 7201,
+          "round_trips": 3
+        }
+      },
+      "total": {
+        "tasks": 20,
+        "tokens_read": 88732,
+        "tokens_written": 9930,
+        "image_tokens": 34975,
+        "total_tokens": 133637,
+        "round_trips": 45
+      }
+    }
+  }
+}

@@ -1,0 +1,34 @@
+--- a/art/produce/sweet_strawberry.art
++++ b/art/produce/sweet_strawberry.art
+@@ -53,7 +53,7 @@
+     ellipse r*1.05,r*.62 at:x+r*.08,y+r*.48 fill:mix(glint red.4 .22) a:.62 blur:3.5
+   curve d closed tension:.6 fill:none stroke:fade(red.line .4),1.4
+   ellipse r*.22,r*.4 at:x-r*.35,y-r*.2 rot:20 fill:glint a:.95
+-def _eye x:436 side:-1 lid:.18 w:72 h:86
++def _eye x:436 side:-1 lid:.18 w:81 h:97
+   eye w,h iris:berry.iris side:side look:-.3,.35 lid:lid at:x,592
+ layer ground_shadow
+   ellipse 250,34 at:512,878 fill:berry.plum a:.36 blur:16
+@@ -83,17 +83,17 @@
+   assert inside(@skin canvas margin:24)
+   layer cheeks
+     each x in [378 646]
+-      blush 86x40 at:x,648 color:berry.blush lines:3
+-      blush 56x24 at:x,648 color:berry.blush lines:0
++      blush 97x45 at:x,648 color:berry.blush lines:3
++      blush 63x27 at:x,648 color:berry.blush lines:0
+   layer eyes pivot:512,592
+     _eye name:eye_l
+     _eye 588 side:1 name:eye_r
+     assert level(@eye_l @eye_r) tol:.5
+   layer eyes_closed pivot:512,592 a:0
+-    _eye lid:1 w:70 h:84
+-    _eye 588 side:1 lid:1 w:70 h:84
++    _eye lid:1 w:79 h:95
++    _eye 588 side:1 lid:1 w:79 h:95
+   layer mouth
+-    open_mouth at:512,642 color:berry.lip
++    open_mouth 34 at:512,642 color:berry.lip
+   layer calyx pivot:512,338
+     group name:crown
+       _sepals

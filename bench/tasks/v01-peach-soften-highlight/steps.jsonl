@@ -1,0 +1,4 @@
+{"read": "art/produce/momo_peach.art"}
+{"write": "--- a/art/produce/momo_peach.art\n+++ b/art/produce/momo_peach.art\n@@ -78,1 +78,1 @@\n-    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.55 blur:30\n+    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.42 blur:44\n"}
+{"build": "produce/momo_peach.*"}
+{"look": "1024x1024", "path": "assets/produce/momo_peach.png"}

@@ -1,0 +1,11 @@
+--- a/art/prop/matcha_teacup.art
++++ b/art/prop/matcha_teacup.art
+@@ -107,6 +107,8 @@
+         fx grain .06 scale:1.5
+       layer steam_l pivot:462,466
+         _wisp [462,462 434,398 470,330 440,262 456,206] w:[6 22 26 18 4]
++      layer steam_c pivot:514,466
++        _wisp [514,464 492,420 522,378 500,346] w:[5 12 10 3] n:4
+       layer steam_r pivot:570,466
+         _wisp [570,464 598,408 566,350 590,292] w:[6 18 18 4] n:4
+     layer cheeks

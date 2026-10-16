@@ -1,0 +1,4 @@
+{"read": "art/monument/vermilion_torii.art"}
+{"write": "--- a/art/monument/vermilion_torii.art\n+++ b/art/monument/vermilion_torii.art\n@@ -217,1 +217,1 @@\n-        fx outline 7 color:gate\n+        fx outline 10 color:gate\n"}
+{"build": "monument/vermilion_torii.*"}
+{"look": "1024x1024", "path": "assets/monument/vermilion_torii.png"}

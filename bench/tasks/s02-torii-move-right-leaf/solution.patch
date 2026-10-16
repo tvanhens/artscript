@@ -1,0 +1,13 @@
+--- a/art/monument/vermilion_torii.art
++++ b/art/monument/vermilion_torii.art
+@@ -246,8 +246,8 @@
+   _peb 572 852 r:5.5
+ layer leaf_a pivot:150,566
+   _leaf 150 566
+-layer leaf_b pivot:870,474
+-  _leaf 870 474 r:36 rot:28 tint:.35
++layer leaf_b pivot:904,536
++  _leaf 904 536 r:36 rot:28 tint:.35
+ layer leaf_c pivot:836,690
+   _leaf 836 690 r:30 rot:64 tint:.15
+ assert inside(@cap canvas margin:24)

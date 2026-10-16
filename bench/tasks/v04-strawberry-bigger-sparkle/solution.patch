@@ -1,0 +1,10 @@
+--- a/art/produce/sweet_strawberry.art
++++ b/art/produce/sweet_strawberry.art
+@@ -109,6 +109,6 @@
+         curve [each q in [stem.0 stem.1 stem.2 stem.3 stem.4] -> q-(4,2)] stroke:leaf.4,[5 5 4 3 2] taper:.35 a:.75 blur:1
+       fx outline 4 color:leaf.line
+   layer sparkle
+-    sparkle 52 at:232,300 color:berry.twinkle
++    sparkle 66 at:232,300 color:berry.twinkle
+     sparkle 30 at:812,520 color:berry.twinkle
+     sparkle 22 at:780,250 color:berry.twinkle

@@ -14,3 +14,6 @@ artscript-syntax.workspace = true
 artscript-ir.workspace = true
 artscript-render.workspace = true
 artscript-eval.workspace = true
+
+[dev-dependencies]
+skia-safe.workspace = true

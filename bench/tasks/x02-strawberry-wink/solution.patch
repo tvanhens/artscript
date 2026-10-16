@@ -1,0 +1,33 @@
+--- a/art/produce/sweet_strawberry.art
++++ b/art/produce/sweet_strawberry.art
+@@ -1,6 +1,7 @@
+ @target produce/sweet_strawberry.png 1024x1024
+ @target produce/sweet_strawberry.svg 1024x1024
+-use face/parts { eye blush open_mouth sparkle }
++@target produce/sweet_strawberry_wink.png 1024x1024 as:wink
++use face/parts { eye blush open_mouth smile sparkle }
+ palette berry
+   red ramp #e2404e 5
+   gold ramp #f2c04e 5
+@@ -86,14 +87,17 @@
+       blush 86x40 at:x,648 color:berry.blush lines:3
+       blush 56x24 at:x,648 color:berry.blush lines:0
+   layer eyes pivot:512,592
+-    _eye name:eye_l
++    _eye name:eye_l a:if target == wink then 0 else 1
+     _eye 588 side:1 name:eye_r
+     assert level(@eye_l @eye_r) tol:.5
+-  layer eyes_closed pivot:512,592 a:0
++  layer eyes_closed pivot:512,592 a:if target == wink then 1 else 0
+     _eye lid:1 w:70 h:84
+-    _eye 588 side:1 lid:1 w:70 h:84
++    _eye 588 side:1 lid:1 w:70 h:84 a:if target == wink then 0 else 1
+   layer mouth
+-    open_mouth at:512,642 color:berry.lip
++    if target == wink
++      smile 24 at:512,650 color:berry.lip
++    else
++      open_mouth at:512,642 color:berry.lip
+   layer calyx pivot:512,338
+     group name:crown
+       _sepals

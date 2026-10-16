@@ -1,0 +1,10 @@
+{"read": "lib/face/parts.art"}
+{"read": "art/produce/sweet_strawberry.art"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -3,1 +3,2 @@\n-use face/parts { eye blush open_mouth sparkle }\n+@target produce/sweet_strawberry_wink.png 1024x1024 as:wink\n+use face/parts { eye blush open_mouth smile sparkle }\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -90,1 +90,1 @@\n-    _eye name:eye_l\n+    _eye name:eye_l a:if target == wink then 0 else 1\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -93,1 +93,1 @@\n-  layer eyes_closed pivot:512,592 a:0\n+  layer eyes_closed pivot:512,592 a:if target == wink then 1 else 0\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -95,1 +95,1 @@\n-    _eye 588 side:1 lid:1 w:70 h:84\n+    _eye 588 side:1 lid:1 w:70 h:84 a:if target == wink then 0 else 1\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -97,1 +97,4 @@\n-    open_mouth at:512,642 color:berry.lip\n+    if target == wink\n+      smile 24 at:512,650 color:berry.lip\n+    else\n+      open_mouth at:512,642 color:berry.lip\n"}
+{"build": "produce/sweet_strawberry.*"}
+{"look": "1024x1024", "path": "assets/produce/sweet_strawberry.png"}
+{"look": "1024x1024", "path": "assets/produce/sweet_strawberry_wink.png"}

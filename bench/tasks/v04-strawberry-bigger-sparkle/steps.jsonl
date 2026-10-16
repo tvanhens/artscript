@@ -1,0 +1,4 @@
+{"read": "art/produce/sweet_strawberry.art"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -112,1 +112,1 @@\n-    sparkle 52 at:232,300 color:berry.twinkle\n+    sparkle 66 at:232,300 color:berry.twinkle\n"}
+{"build": "produce/sweet_strawberry.*"}
+{"look": "1024x1024", "path": "assets/produce/sweet_strawberry.png"}

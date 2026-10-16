@@ -1,0 +1,23 @@
+--- a/art/monument/stone_lantern.art
++++ b/art/monument/stone_lantern.art
+@@ -136,7 +136,7 @@
+       rect 86x72 at:637,560 fill:stone_cel a:.9 blur:1
+       curve 374,534 650,534 664,544 512,548 360,544 closed tension:.3 fill:lantern.stone.4 a:.55 blur:1.5
+       ellipse 110,8 at:512,542 fill:lantern.stone.0 a:.45 blur:5
+-      ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.35 blur:10
++      ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.08 blur:10
+       _speckle 80 lantern.stone.0 lantern.stone.3 @chudai.left @chudai.top @chudai.right @chudai.bottom
+       _moss
+         form:
+@@ -198,9 +198,9 @@
+         fx grain .045 scale:2
+         fx outline 5.5 color:stone_line
+       layer glow pivot:512,452
+-        circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .42) fade(lantern.amber .16),.45 fade(lantern.amber 0) r:160)
++        circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .08) fade(lantern.amber .03),.45 fade(lantern.amber 0) r:160)
+         inside @window
+-          copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
++          copy @window fill:radial(fade(lantern.amber.4 .18) fade(lantern.amber.3 .07),.6 fade(lantern.amber 0) at:.5,.64 r:66)
+       layer flame pivot:512,486
+         _flame 64 17 3
+       layer flame_low pivot:512,486 a:0

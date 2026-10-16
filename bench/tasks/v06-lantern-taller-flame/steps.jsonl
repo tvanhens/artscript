@@ -1,0 +1,4 @@
+{"read": "art/monument/stone_lantern.art"}
+{"write": "--- a/art/monument/stone_lantern.art\n+++ b/art/monument/stone_lantern.art\n@@ -205,1 +205,1 @@\n-        _flame 64 17 3\n+        _flame 80 17 3\n"}
+{"build": "monument/stone_lantern.*"}
+{"look": "1024x1024", "path": "assets/monument/stone_lantern.png"}

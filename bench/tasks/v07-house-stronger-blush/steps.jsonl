@@ -1,0 +1,5 @@
+{"read": "art/produce/momo_peach.art"}
+{"read": "lib/face/parts.art"}
+{"write": "--- a/lib/face/parts.art\n+++ b/lib/face/parts.art\n@@ -36,1 +36,1 @@\n-  ellipse 50%,50% fill:color a:.6 blur:min(size.w size.h)*.2\n+  ellipse 50%,50% fill:color a:.76 blur:min(size.w size.h)*.2\n"}
+{"build": "produce/momo_peach.*"}
+{"look": "1024x1024", "path": "assets/produce/momo_peach.png"}

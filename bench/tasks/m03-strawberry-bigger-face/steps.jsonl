@@ -1,0 +1,7 @@
+{"read": "art/produce/sweet_strawberry.art"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -56,1 +56,1 @@\n-def _eye x:436 side:-1 lid:.18 w:72 h:86\n+def _eye x:436 side:-1 lid:.18 w:81 h:97\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -86,2 +86,2 @@\n-      blush 86x40 at:x,648 color:berry.blush lines:3\n-      blush 56x24 at:x,648 color:berry.blush lines:0\n+      blush 97x45 at:x,648 color:berry.blush lines:3\n+      blush 63x27 at:x,648 color:berry.blush lines:0\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -93,2 +93,2 @@\n-    _eye lid:1 w:70 h:84\n-    _eye 588 side:1 lid:1 w:70 h:84\n+    _eye lid:1 w:79 h:95\n+    _eye 588 side:1 lid:1 w:79 h:95\n"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -96,1 +96,1 @@\n-    open_mouth at:512,642 color:berry.lip\n+    open_mouth 34 at:512,642 color:berry.lip\n"}
+{"build": "produce/sweet_strawberry.*"}
+{"look": "1024x1024", "path": "assets/produce/sweet_strawberry.png"}

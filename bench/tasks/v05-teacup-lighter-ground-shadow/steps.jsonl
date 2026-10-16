@@ -1,0 +1,4 @@
+{"read": "art/prop/matcha_teacup.art"}
+{"write": "--- a/art/prop/matcha_teacup.art\n+++ b/art/prop/matcha_teacup.art\n@@ -28,1 +28,1 @@\n-  ellipse 330,40 at:512,868 fill:fade(tea.shadow .38) blur:16\n+  ellipse 330,40 at:512,868 fill:fade(tea.shadow .28) blur:16\n"}
+{"build": "prop/matcha_teacup.*"}
+{"look": "1024x1024", "path": "assets/prop/matcha_teacup.png"}

@@ -1,0 +1,11 @@
+--- a/art/character/moss_monk.art
++++ b/art/character/moss_monk.art
+@@ -159,7 +159,7 @@
+     ellipse 26,9 at:398,262 rot:-34 fill:glint a:.9 blur:1.5
+     circle 5 at:442,236 fill:glint a:.85 blur:1
+     ellipse 60,20 at:600,560 fill:moss.3 a:.25 blur:12
+-  fx rim 5 dir:1,1 color:rim a:.45
++  fx rim 5 dir:1,1 color:rim a:.7
+   fx grain .03 scale:2
+   fx outline 6 color:skin.line
+ layer cheeks

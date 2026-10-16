@@ -1,0 +1,4 @@
+{"read": "art/produce/sweet_strawberry.art"}
+{"write": "--- a/art/produce/sweet_strawberry.art\n+++ b/art/produce/sweet_strawberry.art\n@@ -77,1 +77,2 @@\n     _dew\n+    _dew 736 654 r:9 name:dew_right\n"}
+{"build": "produce/sweet_strawberry.*"}
+{"look": "1024x1024", "path": "assets/produce/sweet_strawberry.png"}

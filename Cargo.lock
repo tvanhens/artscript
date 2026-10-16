@@ -27,6 +27,7 @@ dependencies = [
  "artscript-syntax",
  "serde",
  "serde_json",
+ "skia-safe",
 ]
 
 [[package]]

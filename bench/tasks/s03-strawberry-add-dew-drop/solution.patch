@@ -1,0 +1,10 @@
+--- a/art/produce/sweet_strawberry.art
++++ b/art/produce/sweet_strawberry.art
+@@ -75,6 +75,7 @@
+     curve 282,476 296,428 328,392 366,374 376,386 340,414 310,452 298,486 closed tension:.6 fill:glint a:.92 blur:.7
+     circle 7 at:290,512 fill:glint a:.88
+     _dew
++    _dew 736 654 r:9 name:dew_right
+     ellipse 30,10 at:690,430 rot:40 fill:red.4 a:.45 blur:5
+     fx inner -8,-8 blur:8 color:red.0
+     fx rim 5 dir:1,1 color:berry.rim a:.5

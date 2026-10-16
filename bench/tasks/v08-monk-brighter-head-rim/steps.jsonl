@@ -1,0 +1,4 @@
+{"read": "art/character/moss_monk.art"}
+{"write": "--- a/art/character/moss_monk.art\n+++ b/art/character/moss_monk.art\n@@ -161,2 +161,2 @@\n     ellipse 60,20 at:600,560 fill:moss.3 a:.25 blur:12\n-  fx rim 5 dir:1,1 color:rim a:.45\n+  fx rim 5 dir:1,1 color:rim a:.7\n"}
+{"build": "character/moss_monk.*"}
+{"look": "1024x1024", "path": "assets/character/moss_monk.png"}

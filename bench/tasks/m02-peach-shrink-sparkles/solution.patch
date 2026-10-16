@@ -1,0 +1,12 @@
+--- a/art/produce/momo_peach.art
++++ b/art/produce/momo_peach.art
+@@ -154,6 +154,6 @@
+   ellipse 3.5,2.2 at:683,244 fill:p.glint a:.95
+ 
+ layer sparkles
+-  sparkle 52 at:262,360
+-  sparkle 28 at:810,330
+-  sparkle 20 at:822,770
++  sparkle 39 at:262,360
++  sparkle 21 at:810,330
++  sparkle 15 at:822,770

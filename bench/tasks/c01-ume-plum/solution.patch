@@ -1,0 +1,142 @@
+--- /dev/null
++++ b/art/produce/ume_plum.art
+@@ -0,0 +1,139 @@
++@target produce/ume_plum.png 1024x1024
++
++use face/parts { eye blush smile sparkle }
++use shade/cel { cel }
++
++palette ume
++  green ramp #a8c64a 5
++  gold ramp #f4d35e 5
++  flush ramp #f25a66 5
++  leaf ramp #5aa84c 5
++  twig ramp #7a5034 5
++  petal ramp #f7b6c6 5
++  iris ramp #6e4a2c 5
++  blush #f59a8c
++  edge #5e5220
++  lip #7a3a30
++  twinkle #ffe08a
++
++let green = ume.green
++let gold = ume.gold
++let flush = ume.flush
++let leaf = ume.leaf
++let twig = ume.twig
++
++# Blade along +x from its stem end at the origin, 250 long. The -y half takes the light, so a mirrored leaf flips y.
++def _leaf tone:leaf
++  path "M0 0 C34 -46 132 -66 250 0 C140 50 40 42 0 0Z" fill:grad(110,-50 120,40 tone.3 tone,.5 tone.1) name:blade
++    path "M0 0 C60 8 150 10 250 0 C140 50 40 42 0 0Z" fill:tone.1 a:.45 blur:3
++    ellipse 70,12 at:104,-28 rot:-8 fill:tone.4 a:.55 blur:8
++    curve 4,1 80,-2 166,-3 240,0 stroke:shade(tone -2),[5 4.2 2.8 1] taper:0,.6 a:.9
++    curve 6,-3 80,-6 160,-7 stroke:tone.4,[2.4 1.8 1] taper:0,.6 a:.7
++    curve 14,-14 64,-40 146,-46 226,-14 stroke:tone.4,[1 2.6 2 .8] taper:.3 a:.5 blur:.8
++    each f in [.24 .44 .64]
++      let base = 250*f,-1
++      let reach = 64*(1-.5*f)
++      curve base base+(reach*.4,-reach*.42) base+(reach,-reach*.6) stroke:shade(tone -2),[2.2 1.6 .8] taper:0,.8 a:.6
++      curve base base+(reach*.4,reach*.34) base+(reach,reach*.46) stroke:shade(tone -2),[2.2 1.6 .8] taper:0,.8 a:.5
++  fx rim 3 dir:1,1 color:p.rim a:.4
++  fx outline 4 color:tone.line
++
++def _petal size:34 tone:ume.petal
++  curve 0,-size*.5 size*.5,-size*.18 size*.34,size*.3 0,size*.5 -size*.34,size*.3 -size*.5,-size*.18 closed tension:.6 fill:grad(down tone.4 tone,.6 tone.1) stroke:fade(tone.line .55),size*.04
++    ellipse size*.16,size*.3 at:0,size*.3 fill:tone.1 a:.45 blur:size*.12
++    curve 0,size*.44 size*.02,size*.1 0,-size*.2 stroke:fade(tone.1 .6),[size*.04 size*.03 size*.01] taper:.2,.6
++    ellipse size*.18,size*.1 at:-size*.14,-size*.2 rot:-30 fill:p.glint a:.6 blur:size*.06
++
++def _blossom size:34 tone:ume.petal
++  repeat 5 rot:72
++    _petal size tone:tone at:0,-size*.56
++  circle size*.26 fill:radial(ume.gold.3 ume.gold.1 at:.4,.4 r:size*.3)
++  each k in 0..10
++    let tip = polar(size*.44 k*36+18)
++    curve tip*.3 tip stroke:fade(tone.line .5),size*.03
++    circle size*.05 at:tip fill:ume.gold.4
++  fx rim 2 dir:1,1 color:p.rim a:.4
++  fx outline 2.6 color:tone.line
++
++let skin_pts = [510,374 552,358 622,354 696,380 752,436 782,514 788,604 768,694 716,778 630,838 520,858 410,840 322,782 268,700 248,604 256,508 292,428 352,374 428,352 480,360]
++
++layer ground_shadow
++  ellipse 280,30 at:520,872 fill:p.shadow a:.34 blur:16
++  ellipse 180,15 at:526,864 fill:p.shadow a:.26 blur:8
++  ellipse 110,7 at:520,860 fill:p.shadow a:.3 blur:4
++
++layer stem
++  curve 508,400 510,360 518,326 534,298 552,282 stroke:twig,[22 21 18 15 13] taper:0
++    curve 514,402 516,362 524,328 540,300 558,284 stroke:twig.1,[12 11 10 8 7] taper:0 blur:3
++    curve 506,360 512,326 528,298 stroke:twig.3,[5 4 3] taper:.3 a:.8 blur:1.2
++    ellipse 9,6 at:552,282 rot:-40 fill:twig.4 a:.9
++    ellipse 4,2.5 at:553,283 rot:-40 fill:twig.0 a:.6
++    curve 501,352 511,356 521,354 stroke:twig.0,2 a:.55
++    curve 507,324 517,329 527,328 stroke:twig.0,2 a:.55
++  fx grain .05 scale:1.5
++  fx outline 4
++
++layer leaf_small
++  _leaf at:514,334 rot:196 scale:.56,-.5
++    fx adjust light:-.05 sat:.04
++
++layer body
++  curve skin_pts closed tension:.55 fill:grad(38deg gold.3 gold,.38 mix(gold green .6),.72 green) name:skin
++    blob 140 seed:7 wobble:.24 at:632,486 fill:flush a:.5 blur:50
++    blob 84 seed:3 wobble:.3 at:654,462 fill:flush.3 a:.3 blur:30
++    each i in 0..50
++      let spot = (630,490)+polar(sqrt(rand(0 1)) rand(0 360))*(110,100)
++      circle rand(1 2.2) at:spot fill:flush.1 a:rand(.15 .35) blur:.5
++    each i in 0..60
++      let dot = (512,600)+polar(sqrt(rand(0 1)) rand(0 360))*(250,230)
++      circle rand(.8 1.6) at:dot fill:gold.4 a:rand(.15 .35)
++    ellipse 140,120 at:396,480 fill:gold.3 a:.45 blur:44
++    ellipse 230,110 at:470,440 fill:p.glint a:.1 blur:40
++    cel @skin tone:green shift:-60,-48 core:.2 a:.5
++    ellipse 230,40 at:540,846 fill:green.1 a:.5 blur:20
++    ellipse 48,160 at:772,620 fill:green.0 a:.3 blur:24
++    ellipse 46,18 at:510,382 fill:mix(gold.0 green.1 .5) a:.45 blur:12
++    ellipse 16,7 at:510,388 fill:gold.0 a:.45 blur:4
++    ellipse 72,14 at:470,378 rot:-8 fill:gold.1 a:.35 blur:10
++    ellipse 34,12 at:488,392 rot:14 fill:gold.1 a:.4 blur:7
++    curve 360,384 410,362 462,364 stroke:p.glint,[1.5 4 1.5] taper:.4 a:.5 blur:1.5
++    curve 562,370 612,362 662,372 stroke:gold.4,[1.5 4 1.5] taper:.4 a:.55 blur:1.5
++    curve 512,390 500,440 478,500 450,560 stroke:mix(gold.1 green.1 .5),[18 16 10 3] taper:0,.7 a:.4 blur:9
++    curve 508,388 494,438 472,498 446,552 stroke:mix(ume.edge gold.0 .5),[3.6 3.2 2 .8] taper:.1,.6 a:.55
++    curve 500,394 484,446 462,506 stroke:gold.4,[5 4 1.5] taper:.3 a:.55 blur:2.5
++    ellipse 70,44 at:370,452 rot:-30 fill:gold.4 a:.6 blur:22
++    ellipse 26,12 at:350,438 rot:-36 fill:p.glint a:.6 blur:6
++    curve 276,600 284,520 316,450 stroke:p.glint,[2 5 4 1] taper:.3 a:.55 blur:1.5
++    ellipse 180,40 at:520,800 fill:gold.3 a:.18 blur:20
++    curve 330,790 420,830 520,844 640,828 stroke:gold.3,[2 8 12 8 2] taper:.3 a:.45 blur:6
++    fx rim 20 dir:-1,-1 color:gold.4 a:.45
++    fx rim 6 dir:1,1 color:p.rim a:.5
++    fx grain .04 scale:1.8
++    fx outline 5.2 color:ume.edge
++  assert inside(@skin canvas margin:24)
++
++layer face
++  blush 76x34 at:384,694 color:ume.blush
++  blush 76x34 at:648,694 color:ume.blush
++  eye 68x80 iris:ume.iris side:-1 look:.15,.3 lid:.12 at:438,640 name:eye_l
++  eye 68x80 iris:ume.iris side:1 look:.15,.3 lid:.12 at:594,640 name:eye_r
++  smile 46 at:516,702 color:ume.lip
++  assert level(@eye_l @eye_r) tol:.5
++
++layer leaf_front
++  _leaf at:540,300 rot:-28 scale:1.04
++
++layer blossom
++  _blossom 40 at:462,348 rot:12
++
++layer drifting_petals
++  _petal 30 at:182,560 rot:-34 scale:1,.72
++  _petal 22 at:858,640 rot:28 scale:1,.7
++  fx rim 2 dir:1,1 color:p.rim a:.4
++  fx outline 2 color:ume.petal.line
++
++layer sparkles
++  sparkle 46 at:250,340 color:ume.twinkle
++  sparkle 28 at:820,420 color:ume.twinkle
++  sparkle 20 at:216,760 color:ume.twinkle
++  sparkle 16 at:318,236 color:ume.twinkle

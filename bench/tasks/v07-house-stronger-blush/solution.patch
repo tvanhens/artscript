@@ -1,0 +1,11 @@
+--- a/lib/face/parts.art
++++ b/lib/face/parts.art
+@@ -33,7 +33,7 @@
+   curve -size*.5,size*.16 -size*.22,-size*.17 size*.1,-size*.2 size*.5,size*.12 stroke:color,[size*.044 size*.147 size*.147 size*.044] taper:.3,.35
+ 
+ def blush size:72x32 color:p.blush lines:3
+-  ellipse 50%,50% fill:color a:.6 blur:min(size.w size.h)*.2
++  ellipse 50%,50% fill:color a:.76 blur:min(size.w size.h)*.2
+   each k in 0..lines
+     let x = (k-(lines-1)/2)*size.w*.22
+     curve x-size.w*.05,size.h*.18 x+size.w*.05,-size.h*.18 stroke:shade(color -1),size.w*.045 taper:.5 a:.7

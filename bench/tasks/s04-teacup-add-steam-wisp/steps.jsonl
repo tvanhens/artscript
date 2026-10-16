@@ -1,0 +1,4 @@
+{"read": "art/prop/matcha_teacup.art"}
+{"write": "--- a/art/prop/matcha_teacup.art\n+++ b/art/prop/matcha_teacup.art\n@@ -109,1 +109,3 @@\n         _wisp [462,462 434,398 470,330 440,262 456,206] w:[6 22 26 18 4]\n+      layer steam_c pivot:514,466\n+        _wisp [514,464 492,420 522,378 500,346] w:[5 12 10 3] n:4\n"}
+{"build": "prop/matcha_teacup.*"}
+{"look": "1024x1024", "path": "assets/prop/matcha_teacup.png"}
