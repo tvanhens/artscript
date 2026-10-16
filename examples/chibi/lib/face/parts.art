@@ -30,30 +30,30 @@ def eye size:68x80 iris:p.iris side:1 look:0,0 lid:0
 
 # Content `^ ^` arc.
 def happy_eye size:68 color:p.ink
-  curve 0%,size*.16 size*-.22,size*-.17 size*.1,size*-.2 100%,size*.12 stroke:color,[size*.044 size*.147 size*.147 size*.044] taper:.3,.35
+  curve -size*.5,size*.16 -size*.22,-size*.17 size*.1,-size*.2 size*.5,size*.12 stroke:color,[size*.044 size*.147 size*.147 size*.044] taper:.3,.35
 
 def blush size:72x32 color:p.blush lines:3
   ellipse 50%,50% fill:color a:.6 blur:min(size.w size.h)*.2
   each k in 0..lines
     let x = (k-(lines-1)/2)*size.w*.22
-    curve x-size.w*.05,size.h*.18 x+size.w*.05,size.h*-.18 stroke:shade(color -1),size.w*.045 taper:.5 a:.7
+    curve x-size.w*.05,size.h*.18 x+size.w*.05,-size.h*.18 stroke:shade(color -1),size.w*.045 taper:.5 a:.7
 
 def cat_mouth size:46 color:p.ink
   mirror x
-    curve 50%,size*-.04 75%,size*.22 100%,size*-.02 stroke:color,[size*.04 size*.08 size*.04] taper:.35
+    curve 0,-size*.04 size*.25,size*.22 size*.5,-size*.02 stroke:color,[size*.04 size*.08 size*.04] taper:.35
 
 def smile size:40 color:p.ink
-  curve 0%,size*-.06 50%,size*.2 100%,size*-.06 stroke:color,[size*.05 size*.09 size*.05] taper:.35
+  curve -size/2,-size*.06 0,size*.2 size/2,-size*.06 stroke:color,[size*.05 size*.09 size*.05] taper:.35
 
 # A shape's stroke paints under its children, so the lip line is a copy drawn after the tongue.
 def open_mouth size:30 color:p.ink
-  curve 0%,50% 50%,size*.06 100%,50% size*.36,size*.34 50%,size*.56 size*-.36,size*.34 closed tension:.45 fill:p.mouth name:lips
+  curve -size/2,0 0,size*.06 size/2,0 size*.36,size*.34 0,size*.56 -size*.36,size*.34 closed tension:.45 fill:p.mouth name:lips
     ellipse size*.3,size*.2 at:size*.04,size*.52 fill:p.tongue
   copy @lips fill:none stroke:color,size*.05
 
 # Round `o` yawn with a tongue.
 def o_mouth size:36 color:p.ink
-  curve 50%,size*-.3 size*.26,size*.02 50%,size*.36 size*-.26,size*.02 closed fill:p.mouth name:lips
+  curve 0,-size*.3 size*.26,size*.02 0,size*.36 -size*.26,size*.02 closed fill:p.mouth name:lips
     ellipse size*.2,size*.13 at:0,size*.3 fill:p.tongue
   copy @lips fill:none stroke:color,size*.06
 
