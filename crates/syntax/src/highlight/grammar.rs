@@ -91,7 +91,8 @@ pub(crate) enum Pattern {
     Region {
         begin: String,
         end: String,
-        name: &'static str,
+        name: Option<&'static str>,
+        begin_captures: Vec<(u8, &'static str)>,
         inner: Vec<Pattern>,
     },
 }
@@ -102,13 +103,15 @@ pub(crate) fn emit() -> Vec<Pattern> {
         Pattern::Region {
             begin: "\"\"\"".into(),
             end: "\"\"\"".into(),
-            name: scope(Class::String),
+            name: Some(scope(Class::String)),
+            begin_captures: vec![],
             inner: vec![],
         },
         Pattern::Region {
             begin: "\"".into(),
             end: "\"|$".into(),
-            name: scope(Class::String),
+            name: Some(scope(Class::String)),
+            begin_captures: vec![],
             inner: vec![
                 Pattern::Match {
                     re: escape_re(),
@@ -125,6 +128,11 @@ pub(crate) fn emit() -> Vec<Pattern> {
         Pattern::Match {
             re: hex_re(),
             name: Some(scope(Class::Color)),
+            captures: vec![],
+        },
+        Pattern::Match {
+            re: "^[ ]*\\t[ \\t]*(?=#|$)".into(),
+            name: Some(invalid),
             captures: vec![],
         },
         Pattern::Match {
@@ -214,7 +222,7 @@ fn directive() -> Pattern {
     let path = path_class();
     Pattern::Match {
         re: format!(
-            "^(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]+({path}*[/.{{]{path}*))?",
+            "^(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]+({path}*[/.{{]{path}*)(?=$|[ \\t#]))?",
             ident = IDENT
         ),
         name: None,
@@ -225,7 +233,7 @@ fn directive() -> Pattern {
 fn use_path(invalid: &'static str) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}(use){after}(?:[ \\t]+({path}+))?",
+            "{head}(use){after}(?:[ \\t]+({path}+)(?=$|[ \\t#]))?",
             head = HEAD,
             after = NOT_IDENT_AFTER,
             path = path_class()
@@ -253,21 +261,25 @@ fn keyword_head(kw_group: KwGroup, invalid: &'static str) -> Pattern {
 }
 
 fn patch(invalid: &'static str) -> Pattern {
-    Pattern::Match {
-        re: format!(
-            "{head}(\\.{ident}(?:\\.{ident})*)",
-            head = HEAD,
-            ident = IDENT
-        ),
+    let patch = scope(Class::Patch);
+    let segment = format!("(\\.)([ \\t]*)({ident})", ident = IDENT);
+    Pattern::Region {
+        begin: format!("{head}{segment}", head = HEAD),
+        end: "(?!\\.)".into(),
         name: None,
-        captures: vec![(1, invalid), (2, scope(Class::Patch))],
+        begin_captures: vec![(1, invalid), (2, patch), (4, patch)],
+        inner: vec![Pattern::Match {
+            re: segment,
+            name: None,
+            captures: vec![(1, patch), (3, patch)],
+        }],
     }
 }
 
 fn slot(invalid: &'static str) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}({ident})(:)(?=[ \\t]*(?:\\r?$|#(?!{hex}(?=$|{delims}))))",
+            "{head}({ident})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
             head = HEAD,
             ident = IDENT,
             hex = hex_body(),
@@ -425,11 +437,17 @@ fn pattern_value(pattern: &Pattern) -> Value {
             begin,
             end,
             name,
+            begin_captures,
             inner,
         } => {
             map.insert("begin".into(), Value::String(begin.clone()));
             map.insert("end".into(), Value::String(end.clone()));
-            map.insert("name".into(), Value::String((*name).into()));
+            if let Some(name) = name {
+                map.insert("name".into(), Value::String((*name).into()));
+            }
+            if !begin_captures.is_empty() {
+                map.insert("beginCaptures".into(), captures_value(begin_captures));
+            }
             if !inner.is_empty() {
                 map.insert(
                     "patterns".into(),

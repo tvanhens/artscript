@@ -9,8 +9,13 @@ circle 10 at:(1).5,.5 r:12deg s:5degx t:.25turn w:100%x60% q:50%
 blob:3 in:2 from:x profile:vector
 pose 1
 mask: # a slot with a trailing comment
+mask: #fffff
 mask: #fff
 .head.eye fill:red off
+.head. eye fill:red
+use foo/bar!baz
+@target out/file!bad
+	# tabbed comment
 	tabbed 1
 fill:"esc \" \\ \n \q" bad:"unclosed
 x 14,0 y 14, 0 z a !b ~c 3 % 4 @ @r.1.* -> .. ~= != café
