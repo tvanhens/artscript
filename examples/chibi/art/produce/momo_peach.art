@@ -14,21 +14,25 @@ palette peach
   fuzz #ffe3dc
   lit #d4e678
 
-# Leaf along +x from its base, 200 long and 100 wide; `vein` picks the shaded half.
-def _leaf tone:peach.leaf vein:1
-  curve 0,0 18,18 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 18,-10 closed fill:grad(down mix(shade(tone 2) peach.lit .42) shade(tone 1),.2 tone,.48 shade(tone -1),.72 shade(tone -2)) name:blade
-    subtract fill:shade(tone -2) a:.46 blur:1.4
-      copy @blade
-      copy @blade at:0,50*vein
-    curve 0,0 60,23 120,27 180,9 stroke:shade(tone -2),[5.5 4.6 3.2 1.7] taper:0,.6 a:.92
-    curve -2,-2 58,21 118,25 stroke:mix(shade(tone 2) shade(peach.lit 1) .5),[2.6 2 1.4] taper:0,.6 a:.8
+# Blade along +x, 200 long. +y is the belly. `bend` sags the spine, `wide` is the belly's share of the width, `vein` picks that side.
+def _leaf tone:peach.leaf vein:1 bend:.19 wide:.48
+  # No power operator, so t^.8 is this square-root fit. It stays within a thousandth on the sample stations.
+  let station = [0 .08 .25 .45 .65 .82 .93 0 .93 .82 .65 .45 .25 .08]
+  let root = [each i in 0..14 -> sqrt(station.{i})]
+  let grow = [each i in 0..14 -> .161*root.{i}+1.24*station.{i}-.569*station.{i}*root.{i}+.169*station.{i}*station.{i}]
+  let breadth = [each i in 0..14 -> 100*sin(180*grow.{i})*(1-.25*station.{i})]
+  let droop = [each i in 0..14 -> bend*200*sin(180*station.{i})]
+  let blade_x = [each i in 0..14 -> if i == 0 then 0 else if i == 7 then 200 else 200*station.{i}]
+  let blade_y = [each i in 0..14 -> if i == 0 then 0 else if i == 7 then bend*20 else if i < 7 then droop.{i}+breadth.{i}*wide else droop.{i}-breadth.{i}*(1.05-wide)]
+  let blade_pts = [each i in 0..14 -> blade_x.{i},blade_y.{i}]
+  curve blade_pts closed fill:grad(96,58*vein 96,-16*vein mix(tone peach.lit .1) mix(shade(tone -1) tone .5),.42 mix(shade(tone -1) tone .5)) name:blade
+    curve 0,0 60,bend*200*sin(54) 120,bend*200*sin(108) 180,bend*200*sin(162) stroke:shade(tone -2),[5.5 4.6 3.2 1.7] taper:0,.6 a:.92
+    curve -2,-3 58,bend*200*sin(54)-4 118,bend*200*sin(108)-4 stroke:mix(shade(tone 2) shade(peach.lit 1) .5),[2.6 2 1.4] taper:0,.6 a:.8
     each f in [.22 .42 .62]
       let k = 100*(1-.6*f)
-      let m = 200*f,28*sin(180*f)
+      let m = 200*f,bend*200*sin(180*f)
       each s in [-1 1]
         curve m m+(.08*k,s*.22*k) m+(.3*k,s*.36*k) stroke:shade(tone -2),[2.3 1.8 .9] taper:0,.8 a:.7
-    ellipse 58,20 at:86,-8 fill:mix(shade(tone 2) peach.lit .5) a:.32 blur:8
-    ellipse 16,6 at:72,-16 fill:shade(peach.lit 1) a:.22 blur:3
   fx rim 3 dir:1,1 color:p.rim a:.4
   fx outline 4 color:mix(line(tone) shade(tone -2) .35)
 
@@ -52,7 +56,7 @@ layer twig
   fx outline 4
 
 layer leaf_back
-  _leaf tone:peach.leaf vein:1 at:516,318 rot:210 scale:1.05,-.86
+  _leaf tone:peach.leaf vein:1 bend:.16 wide:.55 at:516,318 rot:210 scale:1.05,-.86
     fx adjust light:-.06 sat:.05
 
 layer body
@@ -127,9 +131,11 @@ layer body
       let rose_comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(4.5+(if mod(k 3) == 1 then rose_reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*.5 else 0)]
       curve rose_comb tension:0 stroke:peach.edge,1.05 a:.8 blur:.3
     if seg_light > .36
-      let pale_reach = [each k in 0..sample_count -> rand(2.2 3.4 seed:k+11)]
-      let pale_comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(7.2+(if mod(k 3) == 1 then pale_reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*.5 else 0)]
-      curve pale_comb tension:0 stroke:peach.fuzz,1.2 a:seg_light*.5 blur:.28
+      each k in 0..sample_count
+        if mod(k 3) == 1
+          let reach = rand(2.2 3.6 seed:k+11)
+          let hair = spot.{k}+(outx.{k},outy.{k})*8.6+(tx.{k},ty.{k})*wobble.{k}
+          curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.fuzz,.95 a:seg_light*.42 taper:0,.9
   assert inside(@skin canvas margin:24)
 
 layer face
