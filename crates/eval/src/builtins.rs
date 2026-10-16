@@ -51,7 +51,7 @@ impl Evaluator<'_> {
             "min" | "max" => {
                 let items = match a.as_slice() {
                     [Value::List(xs)] => xs.clone(),
-                    [v @ Value::Range(_, _)] => v.items().unwrap_or_else(|| a.clone()),
+                    [v @ Value::Range(_)] => v.items().unwrap_or_else(|| a.clone()),
                     _ => a.clone(),
                 };
                 if items.iter().any(|v| matches!(v, Value::Field(_))) {
