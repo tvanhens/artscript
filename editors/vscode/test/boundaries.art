@@ -160,3 +160,11 @@ c"
 b"
 "a\\
 d"
+use 50%
+@target ./50%
+use ./50%
+use foo%
+.?.head
+.?.if
+. .head
+.?. head

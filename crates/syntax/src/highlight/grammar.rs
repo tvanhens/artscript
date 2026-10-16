@@ -310,14 +310,18 @@ fn patch() -> Pattern {
     Pattern::Region {
         begin: format!("{at}(\\.)(?!\\.|[0-9])", at = AT_STATEMENT),
         end: format!(
-            "(?<=[A-Za-z0-9_])|(?![ \\t]|{dropped})(?!{name})",
+            "(?<=[A-Za-z0-9_])|(?![ \\t]|{dropped})(?!{name})(?!(?<![ \\t])\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
             dropped = dropped_class(),
             name = non_keyword_name()
         ),
         name: None,
         begin_captures: vec![(1, patch)],
         end_captures: vec![],
-        inner: vec![invalid_dropped(scope(Class::Invalid)), patch_name(patch)],
+        inner: vec![
+            invalid_dropped(scope(Class::Invalid)),
+            patch_segment(patch),
+            patch_name(patch),
+        ],
     }
 }
 
@@ -517,7 +521,9 @@ fn path_chunk_end() -> String {
     let glued = format!(
         "(?:{dropped}|[ \\t])*{dropped}(?:[@\"A-Za-z0-9_./{{}}*+=!<>~:,()\\[\\]-]|{color})"
     );
-    format!("(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?:{dropped})+{gap})")
+    format!(
+        "(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?!(?<=[0-9])%)(?:{dropped})+{gap})"
+    )
 }
 
 fn dropped_class() -> &'static str {

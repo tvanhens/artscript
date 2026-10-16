@@ -915,6 +915,14 @@ fn boundary_source() -> String {
         "b\"",
         "\"a\\\\\r",
         "d\"",
+        "use 50%",
+        "@target ./50%",
+        "use ./50%",
+        "use foo%",
+        ".?.head",
+        ".?.if",
+        ". .head",
+        ".?. head",
     ] {
         lines.push(line.into());
     }
@@ -964,6 +972,16 @@ fn discarded_gap_ribbons() {
         ("\"a\\\\\nb\"", "ssss\nvs"),
         ("\"a\\\r\nb\"", "sss\nss"),
         ("\"a\\\\\r\nb\"", "ssss\nvs"),
+        ("use 50%", "kkk nnn"),
+        ("@target ./50%", "ddddddd oonnn"),
+        ("use ./50%", "kkk oonnn"),
+        ("use foo%", "kkk aaa!"),
+        ("use 50 %", "kkk aa !"),
+        ("@target ./50", "ddddddd aaaa"),
+        (".?.head", "p!ppppp"),
+        (".?.if", "p!okk"),
+        (". .head", "p oiiii"),
+        (".?. head", "p!p pppp"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
