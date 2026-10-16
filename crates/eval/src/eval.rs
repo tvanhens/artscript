@@ -162,7 +162,6 @@ struct AnimClock {
     dur: f64,
 }
 
-/// One channel from a `play`, applied after static patches. `live` is false when this frame is outside a non-looping anim.
 struct Channel {
     pattern: Vec<String>,
     owner: String,
@@ -228,7 +227,6 @@ pub(crate) struct Evaluator<'a> {
     pub check: Option<CheckState>,
     seed_base: String,
     seed_count: u64,
-    /// Clip time in seconds. `t` reads this, unless an anim is being sampled.
     pub time: f64,
     anim_clock: Option<AnimClock>,
     pub plays: Vec<PlayMark>,
@@ -2537,8 +2535,6 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    // ---------------------------------------------------------------- time, anims, plays
-
     pub fn collect_entry(&mut self, stmts: &[Stmt], sc: &Scope) {
         let mut scratch = sc.clone();
         self.collect_surface(stmts, &mut scratch, "");
@@ -2915,11 +2911,7 @@ impl<'a> Evaluator<'a> {
         if !(dur.is_finite() && dur > 0.0) {
             return Err(fail("E0320", "`key` duration must be positive").fix("write `dur:1s`"));
         }
-        let local = self
-            .anim_clock
-            .as_ref()
-            .map(|c| c.local)
-            .unwrap_or(self.time);
+        let local = self.local_time();
         let u = if loop_ {
             local.rem_euclid(dur) / dur
         } else if local <= 0.0 {
@@ -2992,7 +2984,13 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    /// Applies live channels onto `a`. Returns whether a live `off` hides the node.
+    fn local_time(&self) -> f64 {
+        self.anim_clock
+            .as_ref()
+            .map(|c| c.local)
+            .unwrap_or(self.time)
+    }
+
     fn hide_motion(&mut self, path: &str, a: &mut Args, default_at: (f64, f64)) -> bool {
         let mut hide = false;
         for i in 0..self.channels.len() {
@@ -3058,12 +3056,7 @@ impl<'a> Evaluator<'a> {
             );
         }
         if name == "t" {
-            let t = self
-                .anim_clock
-                .as_ref()
-                .map(|c| c.local)
-                .unwrap_or(self.time);
-            return Some(Value::Num(t));
+            return Some(Value::Num(self.local_time()));
         }
         if name == "clip" {
             return Some(

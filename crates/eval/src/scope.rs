@@ -17,7 +17,6 @@ pub struct Module {
     pub globals: RefCell<HashMap<String, Value>>,
     pub styles: RefCell<HashMap<String, Rc<StyleDef>>>,
     pub palettes: RefCell<Vec<Rc<Palette>>>,
-    /// Anims are not values. `clip == idle` must see `idle` as a word, and `play idle` looks here.
     pub anims: RefCell<HashMap<String, Rc<AnimDef>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
@@ -84,7 +83,6 @@ impl Palette {
     }
 }
 
-/// `anim name dur:<time> loop` and its patch lines. `dur` is evaluated in this module.
 pub struct AnimDef {
     pub name: String,
     pub dur: Expr,

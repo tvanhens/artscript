@@ -160,14 +160,10 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
 
 fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
-    let mut seen_lints = false;
     let mut groups: Vec<Agg> = Vec::new();
     for (i, (t, diags)) in frames.iter().enumerate() {
         for d in diags {
             if d.code.starts_with('L') {
-                if i == 0 && !seen_lints {
-                    // kept with the first frame below
-                }
                 continue;
             }
             let key = (
@@ -204,7 +200,6 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
             for d in diags.iter().filter(|d| d.code.starts_with('L')) {
                 out.push(d.clone());
             }
-            seen_lints = true;
         }
     }
     for mut agg in groups {

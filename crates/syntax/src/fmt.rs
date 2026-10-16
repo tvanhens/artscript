@@ -528,7 +528,6 @@ fn round_scaled(n: f64, scale: f64) -> f64 {
     (scaled * 1e8).round() / 1e8
 }
 
-/// Sub-second whole milliseconds print as `Nms`. Everything else prints as seconds.
 fn fmt_time(seconds: f64) -> String {
     if !seconds.is_finite() {
         return "0s".into();

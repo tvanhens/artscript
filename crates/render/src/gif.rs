@@ -1,5 +1,3 @@
-//! Deterministic GIF. One NeuQuant palette for the whole clip. Delays are already centiseconds.
-
 use std::io::Cursor;
 
 use artscript_ir::Scene;

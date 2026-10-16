@@ -30,7 +30,6 @@ pub(crate) enum Tok {
     Num(f64),
     Percent(f64),
     Angle(f64),
-    /// Seconds. `200ms` and `1.6s` are both this token.
     Time(f64),
     Size(SizePart, SizePart),
     Hex(String),

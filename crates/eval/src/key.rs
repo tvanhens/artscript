@@ -1,5 +1,3 @@
-//! Sampling one `key(...)` track. Easing replaces the default spline. It does not compose with it.
-
 use crate::color;
 use crate::value::{Col, Coord, Value};
 
@@ -65,7 +63,6 @@ fn numeric_coord(c: Coord) -> Result<f64, String> {
     }
 }
 
-/// Fractions of the key duration. Evenly spaced when `at` is omitted.
 pub fn sample_track(values: &[Value], at: &[f64], eases: &[Ease], u: f64) -> Result<Value, String> {
     if values.is_empty() {
         return Err("`key` needs at least one value".into());
@@ -230,7 +227,6 @@ fn lerp_value(a: &Value, b: &Value, s: f64) -> Result<Value, String> {
     }
 }
 
-/// Even spacing, including the single-key case.
 pub fn even_at(n: usize) -> Vec<f64> {
     if n <= 1 {
         return vec![0.0; n];
@@ -238,7 +234,6 @@ pub fn even_at(n: usize) -> Vec<f64> {
     (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
 }
 
-/// Centisecond delays that sum to `round(dur * 100)`. 24 fps over one second is `4,4,4,4,4,5` repeating.
 pub fn frame_delays(frame_count: usize, dur: f64) -> Vec<u16> {
     if frame_count == 0 {
         return Vec::new();

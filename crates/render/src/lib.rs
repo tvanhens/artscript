@@ -26,7 +26,6 @@ pub enum RenderError {
     /// Under `Profile::Vector`, every node that uses a raster-only feature.
     NotVector(Vec<Unsupported>),
     Skia(String),
-    /// A gif frame has no opaque background.
     TransparentGif,
 }
 

@@ -1,6 +1,3 @@
-//! Stable sibling indices and patch-path matching. The index counts statements, including
-//! both arms of an `if` and the body of an `each`, and it does not walk into a node's own block.
-
 use std::collections::HashMap;
 
 use artscript_syntax::ast::{Expr, Named, Span, Stmt, StmtKind};
@@ -68,7 +65,6 @@ fn ident(e: &Expr) -> Option<&str> {
     }
 }
 
-/// `owner` is the instance path, or empty at the top of an entry file. `*` matches one segment.
 pub fn path_match(full: &str, owner: &str, pattern: &[String]) -> bool {
     let rel = if owner.is_empty() {
         full
@@ -92,9 +88,8 @@ pub fn path_match(full: &str, owner: &str, pattern: &[String]) -> bool {
         .all(|(seg, pat)| pat == "*" || pat == seg)
 }
 
-/// `abs(v)` on a transform channel is absolute mode. Everywhere else `abs` stays the math function.
 pub fn absolute_channel<'a>(key: &str, value: &'a Expr) -> Option<&'a Expr> {
-    if !matches!(key, "at" | "rot" | "scale") {
+    if !offset_channel(key) {
         return None;
     }
     match value {

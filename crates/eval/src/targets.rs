@@ -45,13 +45,11 @@ pub struct TargetJob {
     pub span: Span,
     /// The `as:` label, read by the file as `target`.
     pub label: Option<String>,
-    /// Frames per second. A count, not a time. Default 24.
     pub fps: f64,
     /// Explicit clip length in seconds. `None` means the latest `play` end.
     pub dur: Option<f64>,
     /// Binds `clip`. `None` is `none`.
     pub clip: Option<String>,
-    /// Time in seconds for a still, and the probe time while sampling.
     pub frame_t: f64,
     pub matrix: Vec<(String, MatrixValue)>,
     pub size: (f32, f32),
@@ -185,7 +183,6 @@ fn number(e: &Expr) -> Option<f64> {
     }
 }
 
-/// A time position. A bare number is seconds. `None` when the expression is not a literal time.
 fn time_literal(e: &Expr) -> Option<f64> {
     match e {
         Expr::Time(s) | Expr::Num(s) => Some(*s),

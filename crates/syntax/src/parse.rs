@@ -52,6 +52,10 @@ struct Parser<'a> {
     dedent_reported: HashSet<u32>,
 }
 
+fn is_each_axis(value: &Expr, no_axis_yet: bool) -> bool {
+    matches!(value, Expr::List(_)) || no_axis_yet
+}
+
 impl<'a> Parser<'a> {
     fn parse_file(&mut self) -> File {
         let mut directives = Vec::new();
@@ -117,8 +121,7 @@ impl<'a> Parser<'a> {
                             break;
                         }
                         let item = self.parse_named();
-                        // A list is an axis. A later non-list is a target key (`clip:c`).
-                        if matches!(item.value, Expr::List(_)) || each.is_empty() {
+                        if is_each_axis(&item.value, each.is_empty()) {
                             each.push(item);
                         } else {
                             named.push(item);
