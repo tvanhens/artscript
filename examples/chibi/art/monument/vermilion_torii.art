@@ -109,6 +109,7 @@ def _leaf cx:150 cy:566 r:44 rot:-18 tint:0
   let A = [-106 -96 -90 -84 -74 -64 -54 -44 -38 -32 -22 -12 -1 9 15 21 31 90 149 159 165 171 181 191 202 212 218 224 234 244]
   let R = [.58 .82 1 .82 .58 .38 .5104 .7216 .88 .7216 .5104 .38 .348 .492 .6 .492 .348 .3 .348 .492 .6 .492 .348 .38 .5104 .7216 .88 .7216 .5104 .38]
   let L = [-90,1 -38,.88 15,.6 165,.6 218,.88]
+  curve o o+polar(r*.75 90+rot) o+polar(r*.95 90+rot+17.19) stroke:line(tone),[8.2 8.2 7.4] taper:0,.08
   curve o o+polar(r*.75 90+rot) o+polar(r*.95 90+rot+17.19) stroke:shade(tone -1),[2.4 2 1.2] taper:0,.7
   curve [each n in 0..30 -> o+polar(r*R.{n} A.{n}+rot)] closed tension:.25 fill:grad(45 shade(tone 1) tone shade(tone -1)) name:blade
     ellipse r*.5,r*.4 at:o+(r*.35,r*.35) fill:shade(tone -2) a:.4 blur:r*.25
@@ -116,6 +117,7 @@ def _leaf cx:150 cy:566 r:44 rot:-18 tint:0
       curve o o+polar(r*L.{k}.y*.82 L.{k}.x+rot) stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
     ellipse r*.28,r*.14 at:o-(r*.3,r*.35) fill:shade(tone 2) a:.6 blur:2
     fx outline 3 color:line(tone)
+  circle 5.2 at:o+polar(r*1.03 90+rot+18) fill:spark blur:2.6 blend:erase
 def _peb px:806 py:850 r:7
   curve px-r,py px-r*.4,py-r*.8 px+r*.6,py-r*.7 px+r,py+r*.2 px,py+r*.5 closed tension:.5 fill:grad(45 stone.3 stone.1) stroke:fade(stone.line .8),1.6
 layer ground_shadow
@@ -177,8 +179,8 @@ layer footings pivot:512,840
               _groove x
             fx rim 4 dir:1,1 color:p.rim a:.4
             fx grain .05 scale:1.8
-          _tassel 467 name:tas_l
-          _tassel 557 name:tas_r
+          _tassel 467 name:tas_l z:behind
+          _tassel 557 name:tas_r z:behind
         union fill:straw z:-1
           copy @rope
           copy @tas_l.fringe
@@ -218,15 +220,18 @@ layer footings pivot:512,840
         sparkle 10 at:900,272 color:spark glow:.25
   _stone 334 name:stone_l
   _stone 690 name:stone_r
-  curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4 fill:none name:src_l
-  copy @src_l at:3,4 fill:stone.0 a:.45 blur:3
-  intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_l
-    copy @src_l
-    copy @stone_l.rock
-  inside @tuft_l
-    each i in 0..14
-      circle rand(1 1.8) at:rand(240 298),rand(764 816) fill:moss.4 a:.6
-  copy @tuft_l fill:fade(moss 0) stroke:moss.line,1.2 a:.35 blur:.6
+  curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4 fill:none jitter:2.5,14 name:src_l
+  group
+    intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_l
+      copy @src_l
+      union
+        copy @stone_l.rock
+        copy @stone_l.rock stroke:stone,4 taper:0
+    copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 z:behind
+    inside @tuft_l
+      each i in 0..14
+        circle rand(1 1.8 seed:i) at:rand(248 294 seed:i),rand(766 814 seed:i) fill:moss.4 a:.6
+    copy @tuft_l fill:fade(moss 0) stroke:moss.line,1.4 a:.45 blur:.55
   curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4 fill:none name:src_r
   copy @src_r at:3,4 fill:stone.0 a:.45 blur:3
   intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_r
