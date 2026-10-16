@@ -134,7 +134,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
         },
         Pattern::Region {
             begin: "\"".into(),
-            end: "\"|$".into(),
+            end: "\"|(?<!\\\\)(?:\\\\\\\\)*\\n".into(),
             name: Some(scope(Class::String)),
             begin_captures: vec![],
             end_captures: vec![],
@@ -237,7 +237,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
         captures: vec![],
     });
     patterns.push(Pattern::Match {
-        re: "\\S".into(),
+        re: "[^\\n\\r\\t ]".into(),
         name: Some(invalid),
         captures: vec![],
     });
@@ -325,7 +325,7 @@ fn patch_name(patch: &'static str) -> Pattern {
     Pattern::Region {
         begin: format!("({name})", name = non_keyword_name()),
         end: format!(
-            "(?!{dropped})(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))(?!(?:[ \\t]|{dropped})*{dropped}\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
+            "(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))(?!(?:[ \\t]|{dropped})*{dropped}\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
             dropped = dropped_class(),
             name = non_keyword_name()
         ),

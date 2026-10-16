@@ -12,7 +12,7 @@
     },
     {
       "begin": "\"",
-      "end": "\"|$",
+      "end": "\"|(?<!\\\\)(?:\\\\\\\\)*\\n",
       "name": "string.quoted.art",
       "patterns": [
         {
@@ -148,7 +148,7 @@
               "name": "variable.other.property.patch.art"
             }
           },
-          "end": "(?![^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))[A-Za-z_][A-Za-z0-9_]*))(?!(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]\\.(?!\\.|[0-9])(?=(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))[A-Za-z_][A-Za-z0-9_]*))",
+          "end": "(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))[A-Za-z_][A-Za-z0-9_]*))(?!(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]\\.(?!\\.|[0-9])(?=(?:[ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))[A-Za-z_][A-Za-z0-9_]*))",
           "patterns": [
             {
               "match": "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]",
@@ -292,7 +292,7 @@
       "name": "punctuation.art"
     },
     {
-      "match": "\\S",
+      "match": "[^\\n\\r\\t ]",
       "name": "invalid.illegal.art"
     }
   ],

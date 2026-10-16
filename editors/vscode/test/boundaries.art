@@ -149,3 +149,10 @@ body? ? :
 use foo? ?bar
 use foo? ? bar
 @target out/file? ?bar
+.he?ad
+circle1
+circle1
+"a\
+b"
+"a\\
+c"

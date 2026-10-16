@@ -904,6 +904,13 @@ fn boundary_source() -> String {
         "use foo? ?bar",
         "use foo? ? bar",
         "@target out/file? ?bar",
+        ".he?ad",
+        "circle\u{000c}1",
+        "circle\u{000b}1",
+        "\"a\\",
+        "b\"",
+        "\"a\\\\",
+        "c\"",
     ] {
         lines.push(line.into());
     }
@@ -946,6 +953,11 @@ fn discarded_gap_ribbons() {
         ("use foo? ?bar", "kkk iii! !iii"),
         ("use foo? ? bar", "kkk aaa! ! iii"),
         ("@target out/file? ?bar", "ddddddd iiioiiii! !iii"),
+        (".he?ad", "ppp!ii"),
+        ("circle\u{000c}1", "vvvvvv!n"),
+        ("circle\u{000b}1", "vvvvvv!n"),
+        ("\"a\\\nb\"", "sss\nss"),
+        ("\"a\\\\\nb\"", "ssss\nvs"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
