@@ -64,7 +64,8 @@ more check:
 Regions are in pixels of the 1x render, with the origin at the top left.
 
 `solution.patch` is a unified diff with `a/` and `b/` prefixes relative to the project root, as
-`git apply` reads it. Write it with `bench/author.py patch <id> <edited copy>`.
+`git apply` reads it. Write it with `bench/author.py patch <id> <edited copy>`. It may add and
+change sources but not delete them, because a transcript has no step that deletes a file.
 
 `steps.jsonl` is the reference transcript, one step per line, generated with
 `bench/author.py steps <id>`:
