@@ -2,6 +2,94 @@
   "outputs": [
     {
       "checks": [],
+      "hash": "e9faed244ec4fc06",
+      "line": 1,
+      "matrix": {},
+      "path": "character/moss_monk.png",
+      "scale": 1.0,
+      "source": "art/character/moss_monk.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "795d392ef0781be7",
+      "line": 2,
+      "matrix": {},
+      "path": "character/moss_monk.svg",
+      "scale": 1.0,
+      "source": "art/character/moss_monk.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "0c9c10b7f88bd335",
+      "line": 3,
+      "matrix": {},
+      "path": "character/moss_monk_blink.png",
+      "scale": 1.0,
+      "source": "art/character/moss_monk.art",
+      "status": "pass",
+      "target": "blink"
+    },
+    {
+      "checks": [],
+      "hash": "4ec58f557b39e7e2",
+      "line": 4,
+      "matrix": {},
+      "path": "character/moss_monk_yawn.png",
+      "scale": 1.0,
+      "source": "art/character/moss_monk.art",
+      "status": "pass",
+      "target": "yawn"
+    },
+    {
+      "checks": [],
+      "hash": "5d673c5325297cbc",
+      "line": 1,
+      "matrix": {},
+      "path": "monument/stone_lantern.png",
+      "scale": 1.0,
+      "source": "art/monument/stone_lantern.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "7f6d03c067775253",
+      "line": 2,
+      "matrix": {},
+      "path": "monument/stone_lantern.svg",
+      "scale": 1.0,
+      "source": "art/monument/stone_lantern.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "f8da73b42d034e2e",
+      "line": 1,
+      "matrix": {},
+      "path": "monument/vermilion_torii.png",
+      "scale": 1.0,
+      "source": "art/monument/vermilion_torii.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "27ba050c78c82753",
+      "line": 2,
+      "matrix": {},
+      "path": "monument/vermilion_torii.svg",
+      "scale": 1.0,
+      "source": "art/monument/vermilion_torii.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
       "hash": "4cedeeb0a0cec1ba",
       "line": 1,
       "matrix": {},
@@ -19,6 +107,50 @@
       "path": "produce/momo_peach.svg",
       "scale": 1.0,
       "source": "art/produce/momo_peach.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "1a8d62fe98572939",
+      "line": 1,
+      "matrix": {},
+      "path": "produce/sweet_strawberry.png",
+      "scale": 1.0,
+      "source": "art/produce/sweet_strawberry.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "b156c6d708d3d447",
+      "line": 2,
+      "matrix": {},
+      "path": "produce/sweet_strawberry.svg",
+      "scale": 1.0,
+      "source": "art/produce/sweet_strawberry.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "1eebbb983595f3f5",
+      "line": 1,
+      "matrix": {},
+      "path": "prop/matcha_teacup.png",
+      "scale": 1.0,
+      "source": "art/prop/matcha_teacup.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "f3a3ce7285b952f5",
+      "line": 2,
+      "matrix": {},
+      "path": "prop/matcha_teacup.svg",
+      "scale": 1.0,
+      "source": "art/prop/matcha_teacup.art",
       "status": "pass",
       "target": null
     }
