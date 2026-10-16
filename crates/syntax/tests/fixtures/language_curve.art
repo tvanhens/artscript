@@ -1,0 +1,8 @@
+curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body
+  ellipse 30,20 at:-20,-30 fill:p.peach.4 a:.6 blur:12   # soft light, upper left
+  subtract fill:p.peach.1 a:.5 blur:2                      # cel shadow, lower right
+    copy @body
+    copy @body at:-14,-10
+  fx rim 4 dir:1,1
+  fx grain .04
+  fx outline 4

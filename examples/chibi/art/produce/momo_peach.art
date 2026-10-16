@@ -1,0 +1,92 @@
+@target produce/momo_peach.png 1024x1024
+@target produce/momo_peach.svg 1024x1024
+
+use face/parts { happy_eye, blush, cat_mouth, sparkle }
+
+palette peach
+  cream ramp #f6e2c6 5
+  pink  ramp #f3a2a6 5
+  coral ramp #ec7a6a 5
+  leaf  ramp #7db956 5
+  twig  ramp #8b5a3c 5
+  face  #6a2f3c
+
+# Leaf along +x from its base, 200 long and 100 wide; `vein` picks the shaded half.
+def _leaf tone:peach.leaf vein:1
+  curve 0,0 16,27 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 16,-15 closed fill:grad(down shade(tone, 1) tone shade(tone, -1)) name:blade
+    subtract fill:shade(tone, -1) a:.65 blur:1.5
+      copy @blade
+      copy @blade at:0,50*vein
+    curve 0,0 60,23 120,27 180,9 stroke:shade(tone, -2),[5,4,3,1.5] taper:0,.6 a:.8
+    curve -2,-2 58,21 118,25 stroke:shade(tone, 2),[2.5,2,1.5] taper:0,.6 a:.6
+    each f in [.22, .42, .62]
+      let k = 100*(1 - .6*f)
+      let m = 200*f,28*sin(180*f)
+      each s in [-1, 1]
+        curve m m+(.08*k,s*.22*k) m+(.3*k,s*.36*k) stroke:shade(tone, -2),[2,1.6,.8] taper:0,.8 a:.3
+    ellipse 18,7 at:70,-14 fill:shade(tone, 2) a:.55 blur:5
+  fx rim 3 dir:1,1 color:p.rim a:.4
+  fx outline 4 color:mix(line(tone), shade(tone, -2), .35)
+
+layer ground_shadow
+  ellipse 290,32 at:520,866 fill:p.shadow a:.34 blur:16
+  ellipse 190,16 at:526,856 fill:p.shadow a:.26 blur:8
+
+layer twig
+  curve 524,440 528,390 530,344 522,306 508,284 stroke:peach.twig,[24,23,20,16,14] taper:0 name:stem
+    curve 530,442 534,392 536,346 528,308 514,286 stroke:peach.twig.1,[12,12,10,8,7] taper:0 blur:3
+    curve 523,390 525,344 517,306 stroke:peach.twig.3,[5,5,4] taper:.3 a:.85 blur:1.2
+    ellipse 9,6 at:508,284 rot:-30 fill:peach.twig.4 a:.9
+    curve 522,330 530,333 538,331 stroke:peach.twig.0,2 a:.6
+    curve 522,356 530,359 538,357 stroke:peach.twig.0,2 a:.6
+  fx grain .05 scale:1.5
+  fx outline 4
+
+layer leaf_back
+  _leaf tone:shade(peach.leaf, -.4) vein:-1 at:516,318 rot:210 scale:1.05,-.86
+
+layer body
+  curve 522,386 568,354 652,342 738,378 794,456 816,560 798,668 744,766 650,830 532,850 414,838 316,790 250,704 222,592 234,478 286,394 372,346 466,350 closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3, peach.cream, .6),.62 peach.cream,.85 peach.cream.1) name:skin
+    rect 100%x100% fill:radial(fade(peach.coral, .75) fade(peach.coral.3, .4),.45 fade(peach.coral.3, 0) at:.72,.25 r:300)
+    ellipse 150,80 at:380,420 fill:peach.pink a:.35 blur:40
+    subtract fill:mix(peach.pink.1, peach.cream.1, .4) a:.55 blur:2.5
+      copy @skin
+      copy @skin at:-96,-40
+    ellipse 50,170 at:770,620 fill:mix(peach.coral.1, peach.pink.0, .5) a:.35 blur:24
+    ellipse 230,34 at:560,846 fill:mix(peach.pink.1, peach.cream.0, .5) a:.5 blur:18
+    ellipse 150,14 at:470,826 fill:peach.coral.3 a:.35 blur:8
+    ellipse 52,26 at:522,382 fill:peach.coral.0 a:.5 blur:12
+    ellipse 20,10 at:526,392 fill:peach.coral.0 a:.5 blur:5
+    curve 530,388 640,360 760,420 812,560 790,720 690,760 690,620 650,500 closed fill:peach.coral a:.18 blur:20
+    curve 518,392 558,420 618,478 660,562 678,652 672,732 648,802 stroke:peach.coral.1,[16,18,18,15,11,6,2] taper:0,.6 a:.45 blur:8
+    curve 526,390 566,418 626,476 668,560 686,650 680,730 656,800 stroke:peach.coral.line,[7,8,7,6,4.5,2.5,1] taper:.05,.6 a:.75
+    curve 573,416 633,474 675,558 693,648 stroke:peach.coral.4,[4,5,4,2] taper:.4 a:.7 blur:2
+    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.55 blur:30
+    ellipse 32,14 at:330,452 rot:-35 fill:p.glint a:.45 blur:8
+    each i in 0..900
+      let r = sqrt(rand(0, 1))
+      let q = (516,598) + polar(1, rand(0, 360))*(290*r,250*r)
+      curve q q+polar(rand(2.5, 5), rand(-160, -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08, .2)
+    fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
+    fx rim 6 dir:1,1 color:p.rim a:.5
+    fx grain .045 scale:1.6
+    fx outline 5.5 color:mix(peach.coral.line, peach.coral.1, .4)
+  assert inside(@skin, canvas, margin:24)
+
+layer face
+  blush 72 at:362,674 color:peach.coral.3
+  blush 72 at:586,674 color:peach.coral.3
+  happy_eye 68 at:398,630 color:peach.face name:eye_l
+  happy_eye 68 at:550,630 color:peach.face name:eye_r
+  cat_mouth 46 at:474,668 color:peach.face
+  assert level(@eye_l, @eye_r) tol:.5
+
+layer leaf_front
+  _leaf at:530,326 rot:-27 scale:1.22,1.04
+  curve 676,244 687,235 696,246 690,257 679,257 closed fill:fade(p.dew, .55) stroke:fade(peach.leaf.0, .5),1.5
+  ellipse 3.5,2.2 at:683,244 fill:p.glint a:.95
+
+layer sparkles
+  sparkle 26 at:262,360
+  sparkle 14 at:810,330
+  sparkle 10 at:822,770

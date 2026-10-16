@@ -44,7 +44,10 @@ impl Diagnostic {
     }
 
     pub fn warning(code: &str, span: Span, message: impl Into<String>) -> Self {
-        Self { severity: Severity::Warning, ..Self::error(code, span, message) }
+        Self {
+            severity: Severity::Warning,
+            ..Self::error(code, span, message)
+        }
     }
 
     pub fn with_fix(mut self, fix: impl Into<String>) -> Self {

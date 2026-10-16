@@ -58,33 +58,90 @@ pub enum CheckKind {
 #[derive(Clone, Debug, PartialEq)]
 pub enum StmtKind {
     /// `use palette/dusk as p`, `use face/eye { eye, blush }`.
-    Use { path: String, alias: Option<String>, items: Vec<String> },
+    Use {
+        path: String,
+        alias: Option<String>,
+        items: Vec<String>,
+    },
     /// `palette dusk from base` with one entry per child line (each entry is a `Node`).
-    Palette { name: String, from: Option<String>, body: Vec<Stmt> },
+    Palette {
+        name: String,
+        from: Option<String>,
+        body: Vec<Stmt>,
+    },
     /// `style ink stroke:p.ink,2 join:round`.
-    Style { name: String, named: Vec<Named> },
+    Style {
+        name: String,
+        named: Vec<Named>,
+    },
     /// `def eye size:10 iris:p.sky.3` + body.
-    Def { name: String, params: Vec<Named>, body: Vec<Stmt> },
+    Def {
+        name: String,
+        params: Vec<Named>,
+        body: Vec<Stmt>,
+    },
     /// `rule icon_grid subject:@self size:64` + body of checks.
-    Rule { name: String, params: Vec<Named>, body: Vec<Stmt> },
-    Let { name: String, value: Expr },
+    Rule {
+        name: String,
+        params: Vec<Named>,
+        body: Vec<Stmt>,
+    },
+    Let {
+        name: String,
+        value: Expr,
+    },
     /// `shader name params` + `sksl """..."""`. Parsed, not implemented in v0.1.
-    Shader { name: String, params: Vec<Named>, sksl: Option<String> },
+    Shader {
+        name: String,
+        params: Vec<Named>,
+        sksl: Option<String>,
+    },
     /// `light sun dir:-1,-1.5`. Parsed, not implemented in v0.1.
-    Light { name: String, named: Vec<Named> },
+    Light {
+        name: String,
+        named: Vec<Named>,
+    },
     /// `brush ink stamp:@dab`. Parsed, not implemented in v0.1.
-    Brush { name: String, named: Vec<Named> },
-    Check { kind: CheckKind, expr: Expr, named: Vec<Named>, message: Option<String> },
-    If { cond: Expr, then: Vec<Stmt>, otherwise: Vec<Stmt> },
-    Each { var: String, iter: Expr, body: Vec<Stmt> },
+    Brush {
+        name: String,
+        named: Vec<Named>,
+    },
+    Check {
+        kind: CheckKind,
+        expr: Expr,
+        named: Vec<Named>,
+        message: Option<String>,
+    },
+    If {
+        cond: Expr,
+        then: Vec<Stmt>,
+        otherwise: Vec<Stmt>,
+    },
+    Each {
+        var: String,
+        iter: Expr,
+        body: Vec<Stmt>,
+    },
     /// Every drawing statement: `verb positional… key:value… [block]`.
     /// `flags` are trailing bare words that the parser cannot distinguish from
     /// positional identifiers; they stay in `args` as `Expr::Ident` and the evaluator decides.
-    Node { verb: String, args: Vec<Expr>, named: Vec<Named>, body: Vec<Stmt> },
+    Node {
+        verb: String,
+        args: Vec<Expr>,
+        named: Vec<Named>,
+        body: Vec<Stmt>,
+    },
     /// `head:` followed by a block.
-    SlotFill { name: String, body: Vec<Stmt> },
+    SlotFill {
+        name: String,
+        body: Vec<Stmt>,
+    },
     /// `.arm_r rot:-20`, `.cape off`, `.head.eye_l iris:p.accent`.
-    Patch { path: Vec<String>, named: Vec<Named>, off: bool },
+    Patch {
+        path: Vec<String>,
+        named: Vec<Named>,
+        off: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -141,6 +198,14 @@ pub enum Expr {
     Unary(UnOp, Box<Expr>),
     Binary(BinOp, Box<Expr>, Box<Expr>),
     /// `grad(down a b)`, `shade(c, -2)`, `radial(a b at:.3,.3)`, `oklch(.78 .07 55)`.
-    Call { func: String, args: Vec<Expr>, named: Vec<Named> },
-    If { cond: Box<Expr>, then: Box<Expr>, otherwise: Box<Expr> },
+    Call {
+        func: String,
+        args: Vec<Expr>,
+        named: Vec<Named>,
+    },
+    If {
+        cond: Box<Expr>,
+        then: Box<Expr>,
+        otherwise: Box<Expr>,
+    },
 }

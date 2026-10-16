@@ -1,0 +1,5 @@
+def eye size:10 iris:p.sky.3 look:0,0
+  circle size fill:#fff name:white
+    circle size*.55 at:look*size*.3 fill:iris
+  anchor brow 0,-size
+  slot lashes at:0,-size*.8

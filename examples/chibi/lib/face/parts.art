@@ -1,0 +1,42 @@
+# Chibi face parts tuned for the house style. Highlights sit upper left on both eyes, so `side`
+# flips the eye shape and lashes but not the glints.
+
+def eye w:68 h:80 iris:p.iris side:1 look:0,0
+  group scale:side*w/68,h/80
+    curve -32,-1 -22,-24 -6,-36 12,-36 27,-25 34,-10 32,11 22,30 3,39 -16,34 -29,18 closed fill:p.sclera name:white
+      copy @white fill:grad(down p.sclera_shade fade(p.sclera_shade, 0),.37) a:.8
+      ellipse 22.4,34.4 at:look.x*8.8,4+look.y*5.6 fill:grad(down shade(iris, -2) shade(iris, -1),.38 iris,.72 shade(iris, 1)) stroke:fade(line(iris), .9),2 name:disc
+        ellipse 25.8,14.4 at:0,-26.8 fill:line(iris) a:.6 blur:2.8
+        ellipse 16.1,10.3 at:0,21.3 fill:shade(iris, 2) a:.8 blur:3.2 blend:screen
+        ellipse 7.6,15.1 at:0,-1.4 fill:mix(line(iris), p.ink, .4) a:.92 blur:.5
+        curve -13.9,17.9 0,27.5 13.9,17.9 stroke:shade(iris, 2),1.2 a:.55
+        ellipse 9.6,11.6 at:-6.7*side,-12.4 rot:-25*side fill:p.glint a:.25 blur:1.4
+        ellipse 7.6,9.6 at:-6.7*side,-12.4 rot:-25*side fill:p.glint
+        circle 3.1 at:8.5*side,15.1 fill:p.glint a:.95
+        circle 1.3 at:-2.2*side,6.9 fill:p.glint a:.7
+      copy @white fill:grad(down fade(line(iris), .45) fade(line(iris), 0),.24) blend:multiply
+    curve -32.6,1.6 -22.4,-24.8 -6.1,-36.8 12.2,-36.8 26.5,-25.6 34,-10.4 40.8,-18.4 stroke:p.ink,[1.4,3.4,5.1,6.5,7.1,6.1,1.4] taper:.12,.16
+    curve 33.3,-5.6 37.4,-4.8 39.8,-1.6 stroke:p.ink,2.7 taper:0,.85
+    curve -10.2,38 6.8,38.8 21.1,31.2 stroke:p.ink,2 taper:.4 a:.45
+
+# Content `^ ^` arc.
+def happy_eye w:68 color:p.ink
+  curve -w*.5,w*.16 -w*.22,-w*.17 w*.1,-w*.2 w*.5,w*.12 stroke:color,[w*.044,w*.147,w*.147,w*.044] taper:.3,.35
+
+def blush w:72 h:32 color:p.blush lines:3
+  ellipse w/2,h/2 fill:color a:.6 blur:min(w, h)*.2
+  each k in 0..lines
+    let x = (k - (lines - 1)/2)*w*.22
+    curve x-w*.05,h*.18 x+w*.05,-h*.18 stroke:shade(color, -1),w*.045 taper:.5 a:.7
+
+def cat_mouth w:46 color:p.ink
+  mirror x
+    curve 0,-w*.04 w*.25,w*.22 w*.5,-w*.02 stroke:color,[w*.04,w*.08,w*.04] taper:.35
+
+def smile w:40 color:p.ink
+  curve -w/2,-w*.06 0,w*.2 w/2,-w*.06 stroke:color,[w*.05,w*.09,w*.05] taper:.35
+
+# Four-point twinkle with a soft glow.
+def sparkle r:20 color:p.glint glow:.35
+  circle r*.45 fill:color a:glow blur:r*.3
+  star 4 r:r inner:.18 fill:color

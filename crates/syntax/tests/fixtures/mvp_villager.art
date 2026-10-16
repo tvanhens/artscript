@@ -1,0 +1,11 @@
+use char/body
+use face/basic
+use palette/base as p
+
+def villager outfit:tunic hat:none skin:p.skin
+  body skin:skin
+    torso:
+      outfit
+    head:
+      basic_face
+      hat

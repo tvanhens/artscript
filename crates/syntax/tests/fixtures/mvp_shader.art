@@ -1,0 +1,12 @@
+# lib/shader/scales.art
+shader scales size:8 base:p.green.3 rim:p.green.5
+  sksl """
+  half4 main(float2 p) {
+    float2 c = fract(p / size) - .5;
+    float d = length(c + float2(0, .5));
+    return mix(base, rim, smoothstep(.35, .5, d));
+  }
+  """
+blob 40 fill:scales(6)          # as paint
+layer foil blend:holo()         # as a custom blender
+fx grade warm:.2                # a shader with a color-filter signature, as an effect

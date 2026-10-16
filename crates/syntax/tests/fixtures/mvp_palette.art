@@ -1,0 +1,5 @@
+palette dusk
+  sky    ramp #1b1f3a #f2a65a 7     # 7 stops, dark to light
+  skin   ramp oklch(.78 .07 55) 5 hue:20
+  ink    #1a1423
+  accent #ff5e5b

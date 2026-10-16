@@ -1,0 +1,7 @@
+use palette/base as p
+
+def tunic color:p.accent trim:p.ink needs:@torso
+  inside @torso
+    rect 100%x60% at:0,30% fill:color
+    rect 100%x3 at:0,58% fill:trim
+  fx inner 0,-2 blur:3 color:shade(color,-2) a:.5

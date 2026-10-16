@@ -1,0 +1,5 @@
+layer water
+  rect 100%x40% fill:grad(down p.sea.3 p.sea.5)
+  fx blur 6 of:@sky as:soft          # blur the sky layer
+  fx displace 4 by:simplex(30) of:soft as:ripple
+  fx merge ripple self a:.4,1         # reflection under the water

@@ -1,0 +1,23 @@
+@target chars/hero.svg 256x256
+@target chars/hero.png 256x256 scale:1,2
+
+use palette/dusk as p
+use face/eye
+use char/body
+use outfit/tunic
+
+canvas fill:p.sky.2
+
+layer bg
+  rect 100%x100% fill:grad(down p.sky.2 p.sky.5)
+  noise worley scale:24 fill:p.sky.3 a:.15
+
+layer hero at:50%,60%
+  body build:slim skin:p.skin
+    head:
+      eye 9 at:-14,0 look:.4,0
+      eye 9 at:14,0 look:.4,0
+    torso:
+      tunic color:p.accent
+    .arm_r rot:-20             # override a part of the body by path
+  fx shadow 0,6 blur:8 color:p.ink a:.3

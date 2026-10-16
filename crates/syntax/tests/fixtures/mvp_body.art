@@ -1,0 +1,10 @@
+use palette/base as p
+
+def body build:avg skin:p.skin
+  let w = if build == slim then 34 else 42
+  curve -w/2,0 w/2,0 w*.4,70 -w*.4,70 closed fill:skin name:torso
+  slot torso                      # outfits draw right above the torso
+  rect 8x40 at:w/2,6 r:4 fill:shade(skin,-1) name:arm_r pivot:0,-18
+  anchor neck 0,-4
+  circle 26 at:0,-30 fill:skin name:head
+  slot head at:0,-30              # faces, hair, hats

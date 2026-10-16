@@ -1,0 +1,6 @@
+light sun dir:-1,-1.5 color:p.warm.5 ambient:p.cool.2
+
+layer hero lit:sun
+  body
+  fx bevel 3                 # shading follows sun
+  fx rim 2 color:p.warm.5    # rim light on the side facing it

@@ -1,0 +1,7 @@
+use palette/dusk as p
+
+def eye size:10 iris:p.sky.3 look:0,0
+  circle size fill:#fff stroke:p.ink,1.5
+    circle size*.55 at:look*size*.3 fill:iris    # clipped to the white
+      circle size*.25 fill:p.ink
+      circle size*.12 at:-.3,-.3 fill:#fff a:.9 # catchlight

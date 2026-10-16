@@ -1,0 +1,11 @@
+@target icons/{name}.svg 64x64 as:icons each name:[sword, shield, potion]
+@target chars/knight-{armor}-{team}.png 128x128 scale:1,2 as:knights each armor:[plate, leather] team:[red, blue]
+
+use icons/set
+use char/knight
+use palette/teams as t
+
+if target == icons
+  icon name                         # dispatch on the matrix value
+else
+  knight armor:armor pal:t.{team}
