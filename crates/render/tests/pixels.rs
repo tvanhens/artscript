@@ -97,6 +97,74 @@ fn rim_brightens_the_bottom_right_edge() {
 }
 
 #[test]
+fn grain_on_a_flat_rect_is_not_striped() {
+    let png = grain_rect(0.45, 2.2, 7);
+    let buf = rgba(&png);
+    let (x0, x1, y0, y1) = (24i32, 168, 24, 168);
+    let mut cols = Vec::new();
+    let mut rows = Vec::new();
+    for x in x0..x1 {
+        let mut s = 0.0;
+        for y in y0..y1 {
+            s += buf[idx(x, y)][0] as f64;
+        }
+        cols.push(s / (y1 - y0) as f64);
+    }
+    for y in y0..y1 {
+        let mut s = 0.0;
+        for x in x0..x1 {
+            s += buf[idx(x, y)][0] as f64;
+        }
+        rows.push(s / (x1 - x0) as f64);
+    }
+    let ratio = variance(&cols) / variance(&rows);
+    assert!(
+        (0.5..2.0).contains(&ratio),
+        "column-mean variance / row-mean variance {ratio} on a square grained rect"
+    );
+}
+
+#[test]
+fn grain_strength_is_a_fixed_overlay() {
+    assert_eq!(pixel(&grain_rect(0.0, 2.0, 3), 96, 96), [128, 128, 128, 255]);
+    assert_eq!(pixel(&grain_rect(0.5, 2.0, 3), 96, 96), [177, 177, 177, 255]);
+    let half = pixel(&grain_rect(0.25, 2.0, 3), 80, 80);
+    let full = pixel(&grain_rect(0.5, 2.0, 3), 80, 80);
+    let d = |p: [u8; 4]| p[0] as i32 - 128;
+    assert!((2 * d(half) - d(full)).abs() <= 1, "half {half:?} full {full:?}");
+}
+
+fn grain_rect(strength: f32, scale: f32, seed: u32) -> Vec<u8> {
+    let mut node = solid(
+        "slab",
+        Path::rect(skia_safe::Rect::from_xywh(16.0, 16.0, 160.0, 160.0), None),
+        color(128, 128, 128, 255),
+    );
+    node.effects.push(effect(EffectOp::Grain { strength, scale, seed }));
+    render_png(&scene(192.0, 192.0, vec![node]), 1.0).unwrap()
+}
+
+fn rgba(png: &[u8]) -> Vec<[u8; 4]> {
+    let image = skia_safe::Image::from_encoded(skia_safe::Data::new_copy(png)).expect("png");
+    let w = image.width();
+    let h = image.height();
+    let info = skia_safe::ImageInfo::new((w, h), skia_safe::ColorType::RGBA8888, skia_safe::AlphaType::Unpremul, None);
+    let row = w as usize * 4;
+    let mut buf = vec![0u8; row * h as usize];
+    assert!(image.read_pixels(&info, &mut buf, row, (0, 0), skia_safe::image::CachingHint::Disallow));
+    buf.chunks(4).map(|p| [p[0], p[1], p[2], p[3]]).collect()
+}
+
+fn idx(x: i32, y: i32) -> usize {
+    y as usize * 192 + x as usize
+}
+
+fn variance(xs: &[f64]) -> f64 {
+    let m = xs.iter().sum::<f64>() / xs.len() as f64;
+    xs.iter().map(|v| (v - m) * (v - m)).sum::<f64>() / xs.len() as f64
+}
+
+#[test]
 fn grain_changes_only_opaque_pixels() {
     let plain = solid("disc", circle_at(40.0, 40.0, 24.0), color(180, 140, 120, 255));
     let mut gritty = plain.clone();

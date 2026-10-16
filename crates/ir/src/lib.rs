@@ -254,8 +254,9 @@ pub enum EffectOp {
     /// Line of `width` around the node's shape geometry, drawn behind the content.
     /// Earlier effects do not change the traced path.
     Outline { width: f32, color: Color },
-    /// Fine value noise inside the input's alpha, overlay-blended. `strength` is the brightness
-    /// swing (.05 = 5%), `scale` the finest feature in canvas units.
+    /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
+    /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
+    /// feature in canvas units.
     Grain { strength: f32, scale: f32, seed: u32 },
     /// Composites `inputs` bottom to top, each with its own opacity.
     Merge { inputs: Vec<EffectInput>, alphas: Vec<f32> },

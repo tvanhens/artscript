@@ -11,8 +11,9 @@ use crate::RenderError;
 
 const PREAMBLE: &str = r#"
 float hash21(float2 p) {
-    float h = dot(p, float2(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 
 float2 grad2(float2 cell, float2 sd) {

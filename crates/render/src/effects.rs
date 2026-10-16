@@ -360,8 +360,9 @@ uniform float scale;
 uniform float2 seed;
 
 float hash21(float2 p) {
-    float h = dot(p, float2(127.1, 311.7));
-    return fract(sin(h) * 43758.5453123);
+    float3 p3 = fract(float3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
 }
 float2 grad2(float2 cell, float2 sd) {
     float a = hash21(cell + sd) * 6.28318530718;
@@ -391,7 +392,9 @@ half4 main(float2 p) {
     float n = perlin2(p / scale, seed) * 0.5
         + perlin2(p / (scale * 2.0), seed + float2(17.0, 3.0)) * 0.25
         + perlin2(p / (scale * 4.0), seed + float2(43.0, 9.0)) * 0.125;
-    n = n / 0.875;
+    // Chibi divides this sum by its peak. The peak on a flat shape is about 0.58,
+    // and 0.875 (the weight sum) left the grain at about two thirds of that swing.
+    n = n / 0.58;
     float gray = clamp(0.5 + 0.5 * n, 0.0, 1.0);
     float ga = min(1.0, 2.0 * strength);
     half3 straight = src.rgb / src.a;

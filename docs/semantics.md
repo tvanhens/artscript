@@ -200,7 +200,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   Here `f` is the node's fill (the first solid stop of its fill, or the first descendant shape's fill), or `#8a8a8a` when there is none.
 - `a:` multiplies the effect color's alpha.
 - `rim` takes `dir` (default `1,1`).
-- `grain` defaults to scale 1.5, with its seed from the node path.
+- `grain` is a 3-octave Perlin overlay, in the style of chibi `pen.grain`. Octave weights are 1/2, 1/4, and 1/8. `scale` is the finest cell size in canvas units (default 1.5). The seed comes from the node path. Overlay opacity is `min(1, 2 * strength)`, so strength .05 swings a mid gray by 5% at the peaks. Chibi divides the octave sum by that crop's peak. The shader divides by 0.58, the peak of this noise on a flat shape.
 - `outline` traces the node's shape geometry and draws it behind the content. Earlier `blur`, `shadow`, and `glow` do not change the traced path. The areas are the filled geometry of the subtree. A shape's children are omitted, because they composite source-atop and do not change its alpha. A stroke contributes that stroke's filled path. Each area is filled and stroked at `2 * width` with round cap and join, in the outline color.
 - `as:` sets `Effect.name`. `of:` takes `self`, a name, or `@node`.
 
