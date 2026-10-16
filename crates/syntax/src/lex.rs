@@ -744,6 +744,10 @@ impl<'a> Scanner<'a> {
                                         .with_fix("use `\\\\`, `\\\"`, or `\\n`"),
                                     );
                                     self.bump();
+                                    // A CRLF pair is one ending. Leaving the LF here closes the string.
+                                    if letter == '\r' && self.peek() == Some('\n') {
+                                        self.bump();
+                                    }
                                 }
                             }
                             None => {

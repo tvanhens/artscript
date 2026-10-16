@@ -911,6 +911,10 @@ fn boundary_source() -> String {
         "b\"",
         "\"a\\\\",
         "c\"",
+        "\"a\\\r",
+        "b\"",
+        "\"a\\\\\r",
+        "d\"",
     ] {
         lines.push(line.into());
     }
@@ -958,6 +962,8 @@ fn discarded_gap_ribbons() {
         ("circle\u{000b}1", "vvvvvv!n"),
         ("\"a\\\nb\"", "sss\nss"),
         ("\"a\\\\\nb\"", "ssss\nvs"),
+        ("\"a\\\r\nb\"", "sss\nss"),
+        ("\"a\\\\\r\nb\"", "ssss\nvs"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
