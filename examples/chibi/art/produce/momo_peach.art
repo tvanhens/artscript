@@ -134,10 +134,10 @@ layer body
           curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.fuzz,.95 a:seg_light*.42 taper:0,.9
     else
       each k in 0..sample_count
-        if mod(k 6) == 1
-          let reach = rand(2.2 4 seed:k)
-          let hair = spot.{k}+(outx.{k},outy.{k})*5.2+(tx.{k},ty.{k})*wobble.{k}
-          curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.edge,1.15 a:.9 taper:0,.9
+        if mod(k 2) == 1
+          let reach = rand(2.2 3.4 seed:k)
+          let hair = spot.{k}+(outx.{k},outy.{k})*3.6+(tx.{k},ty.{k})*wobble.{k}
+          curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.edge,.7 a:.7 taper:0,.9
   assert inside(@skin canvas margin:24)
 
 layer face
