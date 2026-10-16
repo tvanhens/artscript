@@ -210,6 +210,15 @@ fn directive_target_matrix() {
         format(&clip),
         "@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n"
     );
+    let listed = must_parse("@target t-{clip}.gif 8x8 clip:[idle blink] each x:[one]\n");
+    assert_eq!(
+        format(&listed),
+        "@target t-{clip}.gif 8x8 each x:[one] clip:[idle blink]\n"
+    );
+    let again = must_parse(&format(&listed));
+    assert_eq!(again.directives[0].each.len(), 1);
+    assert_eq!(again.directives[0].each[0].key, "x");
+    assert!(again.directives[0].named.iter().any(|n| n.key == "clip"));
 }
 
 #[test]

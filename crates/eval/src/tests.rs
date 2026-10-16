@@ -602,7 +602,7 @@ fn stroke_range_is_e0320() {
         .collect();
     assert_eq!(
         restyle_fixes,
-        vec!["write `stroke:#111,[1 3]`".to_string()],
+        vec!["write `stroke:#222,[4 6]`".to_string()],
         "{}",
         show(&restyle.diagnostics)
     );
@@ -1927,6 +1927,74 @@ fn a_patch_expression_is_reported_on_the_anim() {
         .unwrap_or_else(|| panic!("{}", show(&unmatched.diagnostics)));
     assert_eq!(u.file, "art/t.art");
     assert_eq!(u.span.line, 4, "{u}");
+}
+
+#[test]
+fn two_calls_to_one_rule_stay_two_failures() {
+    let p = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\nrule bad\n  assert false\nassert bad()\nassert bad()\ncircle 1\n",
+    )]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let fails: Vec<_> = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "C0101")
+        .collect();
+    assert_eq!(fails.len(), 2, "{}", show(&sampled.diagnostics));
+    let mut sites: Vec<_> = fails
+        .iter()
+        .filter_map(|d| d.notes.iter().find(|n| n.contains("applied at")))
+        .collect();
+    sites.sort();
+    assert_eq!(sites.len(), 2, "{sites:?}");
+    assert_ne!(sites[0], sites[1]);
+}
+
+#[test]
+fn an_anim_style_replaces_the_rest_style() {
+    let s = scene(
+        "@target t.png 40x40\nstyle red fill:#ff0000\nstyle blue fill:#0000ff\nanim mood dur:1s\n  .c style:blue\ncircle 4 style:red name:c\nplay mood\n",
+    );
+    assert_eq!(fill_hex(node(&s, "c")), "#0000ff");
+}
+
+#[test]
+fn a_later_file_play_wins_over_a_play_under_the_instance() {
+    let later = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nhero\n  play inner\nplay outer\n",
+    );
+    let over = node(&later, "hero.eye").opacity;
+    assert!((over - 0.8).abs() < 1e-4, "{over}");
+    let earlier = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nplay outer\nhero\n  play inner\n",
+    );
+    let under = node(&earlier, "hero.eye").opacity;
+    assert!((under - 0.2).abs() < 1e-4, "{under}");
+}
+
+#[test]
+fn a_list_clip_stays_a_target_option_after_format() {
+    let src = "@target t-{clip}.gif 8x8 clip:[idle blink] each x:[one]\ncircle 1\n";
+    let formatted = artscript_syntax::format(&artscript_syntax::parse(src).unwrap());
+    let before = plan(&project(&[("art/t.art", src)]));
+    let after = plan(&project(&[("art/t.art", &formatted)]));
+    assert!(
+        before.jobs.is_empty() && after.jobs.is_empty(),
+        "{:?}",
+        after.jobs
+    );
+    let codes = |p: &crate::targets::Plan| -> Vec<String> {
+        p.diagnostics.iter().map(|d| d.code.clone()).collect()
+    };
+    assert_eq!(codes(&before), codes(&after));
+    assert!(
+        after.diagnostics.iter().any(|d| d.code == "E0207"),
+        "{:?}",
+        after.diagnostics
+    );
 }
 
 #[test]

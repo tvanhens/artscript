@@ -2,7 +2,7 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -204,6 +204,8 @@ pub(crate) struct Evaluator<'a> {
     anim_clock: Option<AnimClock>,
     pub plays: Vec<PlayMark>,
     channels: Vec<Channel>,
+    next_play: u32,
+    play_ords: HashMap<Span, VecDeque<u32>>,
     occurrences: HashMap<Span, usize>,
     silence: bool,
 }
@@ -235,6 +237,8 @@ struct Channel {
     patch_span: Span,
     patch_file: String,
     matched: Cell<bool>,
+    /// Source order. A play under an instance is scheduled later, and this keeps it earlier.
+    ord: u32,
 }
 
 fn blend_arg(
@@ -544,6 +548,8 @@ impl<'a> Evaluator<'a> {
             anim_clock: None,
             plays: Vec::new(),
             channels: Vec::new(),
+            next_play: 0,
+            play_ords: HashMap::new(),
             occurrences: HashMap::new(),
             silence: false,
         }
@@ -1220,6 +1226,18 @@ impl<'a> Evaluator<'a> {
             .collect()
     }
 
+    /// The last `style:` word, after patches and motion, becomes paint keys. Earlier keys stay
+    /// behind those paint keys so an explicit fill still wins.
+    fn expand_style(&mut self, a: &mut Args, sc: &Scope) -> R<()> {
+        let Some(sname) = a.word("style") else {
+            return Ok(());
+        };
+        let mut styled = self.style_named(&sname, sc)?;
+        styled.append(&mut a.named);
+        a.named = styled;
+        Ok(())
+    }
+
     fn transform(
         &mut self,
         a: &Args,
@@ -1439,15 +1457,12 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
-        let expanded_style = a.word("style");
-        if let Some(sname) = &expanded_style {
-            let mut s = self.style_named(sname, sc)?;
-            s.append(&mut a.named);
-            a.named = s;
-        }
         a.named.extend(patch_named);
-        if comp.is_some() && self.hide_motion(&path, &mut a, (0.0, 0.0)) {
-            return Ok(());
+        if comp.is_some() {
+            if self.hide_motion(&path, &mut a, (0.0, 0.0)) {
+                return Ok(());
+            }
+            self.expand_style(&mut a, sc)?;
         }
         let origin = format!("{}:{}", sc.file(), st.span.line);
         let name = registered.then(|| {
@@ -1489,15 +1504,6 @@ impl<'a> Evaluator<'a> {
             let file = sc.file().to_string();
             self.report(err.1, &file, err.0, &path);
         }
-        let child_style = match a.word("style") {
-            Some(_) => {
-                let mut s = (*sc.style).clone();
-                s.extend(a.named.iter().filter(|(k, _)| is_paint_key(k)).cloned());
-                Rc::new(s)
-            }
-            None => sc.style.clone(),
-        };
-
         let centered = CENTERED.contains(&verb);
         let group_like = matches!(
             verb,
@@ -1512,6 +1518,16 @@ impl<'a> Evaluator<'a> {
         if self.hide_motion(&path, &mut a, default_at) {
             return Ok(());
         }
+        self.expand_style(&mut a, sc)?;
+        let expanded_style = a.word("style");
+        let child_style = match &expanded_style {
+            Some(_) => {
+                let mut s = (*sc.style).clone();
+                s.extend(a.named.iter().filter(|(k, _)| is_paint_key(k)).cloned());
+                Rc::new(s)
+            }
+            None => sc.style.clone(),
+        };
         let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
         let world = sc.world * m;
         let mut node;
@@ -1642,8 +1658,8 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            // A patch is stored as a value. A stroke it supplies has no spelling, and a style it
-            // renames is not the style that was expanded above.
+            // A patch that sets stroke: is a value, so its spelling is gone. expanded_style is the
+            // style word after patches and motion, which is the style expand_style applied.
             let stroke_src = if patch_stroke {
                 None
             } else {
@@ -2694,6 +2710,103 @@ impl<'a> Evaluator<'a> {
                 at: (0.0, 0.0),
             },
         );
+        if comp.is_some() {
+            self.reserve_call_block(draw, sc);
+        }
+    }
+
+    /// Remember source order for plays in this call block. `absorb_scene` schedules them later,
+    /// after file-level plays that follow the call, and the reserved order puts those later plays last.
+    fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
+        let seed_base = self.seed_base.clone();
+        let seed_count = self.seed_count;
+        let mut inner = sc.clone();
+        inner.publish = false;
+        for item in draw.body.items() {
+            if let DrawItem::Scene(st) = item {
+                self.reserve_call_scene(st, &mut inner);
+            }
+        }
+        self.seed_base = seed_base;
+        self.seed_count = seed_count;
+    }
+
+    fn reserve_call_scene(&mut self, st: &Scene, sc: &mut Scope) {
+        match &st.kind {
+            SceneKind::Let { name, value } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
+                sc.env.push((name.clone(), v));
+            }
+            SceneKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let Ok(c) = self.quiet_expr(cond, sc) else {
+                    return;
+                };
+                let branch = if c.truthy() { then } else { otherwise };
+                for child in branch {
+                    self.reserve_call_scene(child, sc);
+                }
+            }
+            SceneKind::Each { var, iter, body } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
+                    return;
+                };
+                for (i, v) in items.into_iter().enumerate() {
+                    let mut inner = sc.clone();
+                    inner.env.push((var.clone(), v));
+                    inner.suffix = format!("{}#{i}", sc.suffix);
+                    for child in body {
+                        self.reserve_call_scene(child, &mut inner);
+                    }
+                }
+            }
+            SceneKind::Play { .. } => self.reserve_play(st.span),
+            SceneKind::Check { .. } | SceneKind::Slot { .. } | SceneKind::Draw(_) => {}
+        }
+    }
+
+    fn reserve_play(&mut self, span: Span) {
+        let ord = self.next_play;
+        self.next_play += 1;
+        self.play_ords.entry(span).or_default().push_back(ord);
+    }
+
+    fn take_ord(&mut self, span: Span) -> u32 {
+        if let Some(ord) = self.play_ords.get_mut(&span).and_then(VecDeque::pop_front) {
+            return ord;
+        }
+        let ord = self.next_play;
+        self.next_play += 1;
+        ord
+    }
+
+    fn push_channel(&mut self, channel: Channel) {
+        let i = self.channels.partition_point(|c| c.ord <= channel.ord);
+        self.channels.insert(i, channel);
     }
 
     fn absorb_item(
@@ -2852,6 +2965,7 @@ impl<'a> Evaluator<'a> {
         owner: &str,
     ) {
         let Some(name) = name else { return };
+        let ord = self.take_ord(span);
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
             None => {
@@ -2920,7 +3034,7 @@ impl<'a> Evaluator<'a> {
         let file = sc.file().to_string();
         for patch in &anim.body {
             if patch.off {
-                self.channels.push(Channel {
+                self.push_channel(Channel {
                     pattern: patch.path.clone(),
                     owner: owner.to_string(),
                     key: String::new(),
@@ -2934,6 +3048,7 @@ impl<'a> Evaluator<'a> {
                     patch_span: patch.span,
                     patch_file: anim.module.clone(),
                     matched: Cell::new(false),
+                    ord,
                 });
                 continue;
             }
@@ -2943,7 +3058,7 @@ impl<'a> Evaluator<'a> {
                     None => (!offset_channel(&n.key), &n.value),
                 };
                 match self.expr(expr, &dur_scope) {
-                    Ok(value) => self.channels.push(Channel {
+                    Ok(value) => self.push_channel(Channel {
                         pattern: patch.path.clone(),
                         owner: owner.to_string(),
                         key: n.key.clone(),
@@ -2957,6 +3072,7 @@ impl<'a> Evaluator<'a> {
                         patch_span: n.span,
                         patch_file: anim.module.clone(),
                         matched: Cell::new(false),
+                        ord,
                     }),
                     Err(f) => self.report(
                         f.note(format!("in anim `{name}`")),
