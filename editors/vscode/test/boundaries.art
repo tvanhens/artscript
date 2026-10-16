@@ -175,3 +175,9 @@ use asset12%
 @items.*.name
 use asset.50%
 @target out.50%
+use 50x60%
+@target 50x60%
+@target ./50x60%
+use 50x.5%
+use 10.5x60%
+use asset50x60%

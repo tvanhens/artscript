@@ -930,6 +930,12 @@ fn boundary_source() -> String {
         "@items.*.name",
         "use asset.50%",
         "@target out.50%",
+        "use 50x60%",
+        "@target 50x60%",
+        "@target ./50x60%",
+        "use 50x.5%",
+        "use 10.5x60%",
+        "use asset50x60%",
     ] {
         lines.push(line.into());
     }
@@ -997,6 +1003,12 @@ fn discarded_gap_ribbons() {
         ("use asset.50", "kkk aaaaaaaa"),
         ("@target.eye", "rrrrrrrrrrr"),
         ("@items.*.name", "rrrrrrrrrrrrr"),
+        ("use 50x60%", "kkk nnnnnn"),
+        ("@target 50x60%", "ddddddd nnnnnn"),
+        ("@target ./50x60%", "ddddddd oonnnnnn"),
+        ("use 50x.5%", "kkk nnnnnn"),
+        ("use 10.5x60%", "kkk nnnnnnnn"),
+        ("use asset50x60%", "kkk aaaaaaaaaa!"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
