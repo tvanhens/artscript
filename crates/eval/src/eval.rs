@@ -1237,7 +1237,7 @@ impl<'a> Evaluator<'a> {
             }
             "curve" => {
                 let values: Vec<Value> = match a.pos.as_slice() {
-                    [Value::List(xs)] => xs.clone(),
+                    [Value::List(xs)] => xs.as_ref().clone(),
                     _ if a.pos.iter().any(|v| matches!(v, Value::List(_))) => {
                         return Err(fail("E0320", "`curve` takes points, or one list of points")
                             .fix("write `curve pts` or `curve [each k in 0..n -> x,y]`"));
@@ -1688,7 +1688,7 @@ impl<'a> Evaluator<'a> {
                 self.member(&b, seg, sc)?
             }
             Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
-            Expr::List(xs) => Value::List(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
+            Expr::List(xs) => Value::List(Rc::new(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?)),
             Expr::Each { var, iter, body } => {
                 let items = each_items(self.expr(iter, sc)?)?;
                 let mut out = Vec::with_capacity(items.len());
@@ -1697,7 +1697,7 @@ impl<'a> Evaluator<'a> {
                     inner.env.push((var.clone(), v));
                     out.push(self.expr(body, &inner)?);
                 }
-                Value::List(out)
+                Value::List(Rc::new(out))
             }
             Expr::Range(a, b) => {
                 let (a, b) = (self.expr(a, sc)?, self.expr(b, sc)?);
@@ -1851,7 +1851,11 @@ impl<'a> Evaluator<'a> {
                 }
             }
             Value::Ref(r) => self.measure(r, seg)?,
-            Value::Tuple(xs) | Value::List(xs) => {
+            Value::Tuple(xs) => {
+                let i: usize = seg.parse().map_err(|_| missing("a list", vec!["0..n".into()]))?;
+                xs.get(i).cloned().ok_or_else(|| fail("E0350", format!("index {i} is out of range")))?
+            }
+            Value::List(xs) => {
                 let i: usize = seg.parse().map_err(|_| missing("a list", vec!["0..n".into()]))?;
                 xs.get(i).cloned().ok_or_else(|| fail("E0350", format!("index {i} is out of range")))?
             }
@@ -1904,7 +1908,7 @@ impl<'a> Evaluator<'a> {
             let seg = segs[i].as_str();
             let last = i == segs.len() - 1;
             if seg == "*" {
-                return Ok(Value::List(cur.children().into_iter().map(|c| Value::Ref(Rc::new(c))).collect()));
+                return Ok(Value::List(Rc::new(cur.children().into_iter().map(|c| Value::Ref(Rc::new(c))).collect())));
             }
             if seg == "geom" && i + 1 < segs.len() {
                 let m = segs[i + 1].as_str();

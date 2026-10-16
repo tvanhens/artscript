@@ -348,7 +348,7 @@ impl Evaluator<'_> {
                 need(1)?;
                 let ws = rs[0].stroke_widths();
                 self.note(format!("stroke_widths({}) = [{}]", rs[0].label, ws.iter().map(|w| num(*w)).collect::<Vec<_>>().join(", ")));
-                Value::List(ws.into_iter().map(Value::Num).collect())
+                Value::List(Rc::new(ws.into_iter().map(Value::Num).collect()))
             }
             _ => unreachable!(),
         })
