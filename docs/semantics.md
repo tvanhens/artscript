@@ -306,6 +306,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A `use` that names a project-relative entry file (`use art/b`) is E0201, the same as one that resolves through a lib root.
   - Top-level `let`s of a module are visible inside its `def`s.
   - Finishes are imported the same way as styles. `use x` and `use x { surface }` bind them by name. `use x as m` does not, and there is no `fx m.surface` form.
+  - A style and a finish may share a name. Both of those forms bind both.
 - **Node identity.**
   - The sibling suffix counter is keyed by the base name plus any `#i` suffix. So the copies of one `each` are `circle#0`, `circle#1`, and a second loop's copies are `circle2#0`, `circle2#1`.
   - Only nodes with `name:`, named layers and groups, and instances are registered for `@refs`. A bare `circle` is not addressable.

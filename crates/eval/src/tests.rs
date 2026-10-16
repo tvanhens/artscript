@@ -585,6 +585,23 @@ fn a_private_name_is_not_an_export() {
 }
 
 #[test]
+fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
+    let lib = (
+        "lib/finish/surface.art",
+        "style surface fill:#112233\nfinish surface width:4\n  fx rim width\n",
+    );
+    let ev = run_with(
+        "@target t.png 100x100\nuse finish/surface { surface }\ncircle 10 name:cap style:surface\n  fx surface\n",
+        &[lib],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else { panic!("fill") };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
 fn finish_parameters_are_named_and_typed_by_their_defaults() {
     let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface 6\n"), &[]);
     assert!(diag(&ev, "E0321").notes.iter().any(|n| n == "parameters: width, a"));

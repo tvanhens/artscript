@@ -548,17 +548,24 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         }
         for item in items {
+            let mut found = false;
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
                 module.globals.borrow_mut().insert(item.clone(), v.clone());
-            } else if !item.starts_with('_')
+                found = true;
+            }
+            if !item.starts_with('_')
                 && let Some(s) = styles.get(item)
             {
                 module.styles.borrow_mut().insert(item.clone(), s.clone());
-            } else if !item.starts_with('_')
+                found = true;
+            }
+            if !item.starts_with('_')
                 && let Some(f) = finishes.get(item)
             {
                 module.finishes.borrow_mut().insert(item.clone(), f.clone());
-            } else {
+                found = true;
+            }
+            if !found {
                 let names: Vec<String> = exports.iter().map(|(k, _)| k.clone()).collect();
                 return Err(fail("E0212", format!("`{path}` does not export `{item}`"))
                     .note(format!("exports: {}", names.join(", ")))
