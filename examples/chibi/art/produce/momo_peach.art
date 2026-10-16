@@ -11,31 +11,30 @@ palette peach
   twig ramp #8b5a3c 5
   face #6a2f3c
   edge #7e253c
+  fuzz #ffe3dc
+  lit #d4e678
 
 # Leaf along +x from its base, 200 long and 100 wide; `vein` picks the shaded half.
 def _leaf tone:peach.leaf vein:1
-  curve 0,0 18,18 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 18,-10 closed fill:grad(down shade(tone 1) tone shade(tone -1)) name:blade
-    subtract fill:shade(tone -1) a:.65 blur:1.5
+  curve 0,0 18,18 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 18,-10 closed fill:grad(down mix(shade(tone 2) peach.lit .42) shade(tone 1),.2 tone,.48 shade(tone -1),.72 shade(tone -2)) name:blade
+    subtract fill:shade(tone -2) a:.46 blur:1.4
       copy @blade
       copy @blade at:0,50*vein
-    curve 0,0 60,23 120,27 180,9 stroke:shade(tone -2),[5 4 3 1.5] taper:0,.6 a:.8
-    curve -2,-2 58,21 118,25 stroke:shade(tone 2),[2.5 2 1.5] taper:0,.6 a:.6
+    curve 0,0 60,23 120,27 180,9 stroke:shade(tone -2),[5.5 4.6 3.2 1.7] taper:0,.6 a:.92
+    curve -2,-2 58,21 118,25 stroke:mix(shade(tone 2) shade(peach.lit 1) .5),[2.6 2 1.4] taper:0,.6 a:.8
     each f in [.22 .42 .62]
       let k = 100*(1-.6*f)
       let m = 200*f,28*sin(180*f)
       each s in [-1 1]
-        curve m m+(.08*k,s*.22*k) m+(.3*k,s*.36*k) stroke:shade(tone -2),[2 1.6 .8] taper:0,.8 a:.3
-    ellipse 18,7 at:70,-14 fill:shade(tone 2) a:.55 blur:5
+        curve m m+(.08*k,s*.22*k) m+(.3*k,s*.36*k) stroke:shade(tone -2),[2.3 1.8 .9] taper:0,.8 a:.7
+    ellipse 58,20 at:86,-8 fill:mix(shade(tone 2) peach.lit .5) a:.32 blur:8
+    ellipse 16,6 at:72,-16 fill:shade(peach.lit 1) a:.22 blur:3
   fx rim 3 dir:1,1 color:p.rim a:.4
   fx outline 4 color:mix(line(tone) shade(tone -2) .35)
-  fx adjust sat:-.04 light:.012
 
 let skin_pts = [522,386 568,354 652,342 738,378 794,456 816,560 798,668 744,766 650,830 532,850 414,838 316,790 250,704 222,592 234,478 286,394 372,346 466,350]
 let skin_count = 18
-let fringe_steps = 80
-# Bases sit under the silhouette line. The body covers them, so only the tips read as fuzz.
-let fuzz_offset = 3.4
-let fuzz_ink = mix(peach.pink.3 peach.coral.2 .45)
+let fringe_steps = 72
 
 layer ground_shadow
   ellipse 290,32 at:520,866 fill:p.shadow a:.34 blur:16
@@ -53,11 +52,43 @@ layer twig
   fx outline 4
 
 layer leaf_back
-  _leaf tone:shade(peach.leaf -.15) vein:1 at:516,318 rot:210 scale:1.05,-.86
-    fx adjust hue:5 light:-.01
+  _leaf tone:peach.leaf vein:1 at:516,318 rot:210 scale:1.05,-.86
+    fx adjust light:-.06 sat:.05
 
 layer body
-  # Drawn under the body so the maroon line stays clean and the comb's spine stays hidden.
+  curve skin_pts closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3 peach.cream .6),.62 peach.cream,.85 peach.cream.1) name:skin
+    rect 100%x100% fill:radial(fade(peach.coral .75) fade(peach.coral.3 .4),.45 fade(peach.coral.3 0) at:.72,.25 r:300)
+    ellipse 150,80 at:380,420 fill:peach.pink a:.35 blur:40
+    subtract fill:mix(peach.pink.1 peach.cream.1 .4) a:.55 blur:2.5
+      copy @skin
+      copy @skin at:-96,-40
+    ellipse 50,170 at:770,620 fill:mix(peach.coral.1 peach.pink.0 .5) a:.35 blur:24
+    ellipse 230,34 at:560,846 fill:mix(peach.pink.1 peach.cream.0 .5) a:.5 blur:18
+    ellipse 150,14 at:470,826 fill:peach.coral.3 a:.35 blur:8
+    ellipse 52,26 at:522,382 fill:peach.coral.0 a:.5 blur:12
+    ellipse 20,10 at:526,392 fill:peach.coral.0 a:.5 blur:5
+    curve 530,388 640,360 760,420 812,560 790,720 690,760 690,620 650,500 closed fill:peach.coral a:.18 blur:20
+    curve 518,392 558,420 618,478 660,562 678,652 672,732 648,802 stroke:peach.coral.1,[16 18 18 15 11 6 2] taper:0,.6 a:.45 blur:8
+    curve 526,390 566,418 626,476 668,560 686,650 680,730 656,800 stroke:peach.coral.line,[7 8 7 6 4.5 2.5 1] taper:.05,.6 a:.75
+    curve 573,416 633,474 675,558 693,648 stroke:peach.coral.4,[4 5 4 2] taper:.4 a:.7 blur:2
+    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.55 blur:30
+    ellipse 32,14 at:330,452 rot:-35 fill:p.glint a:.45 blur:8
+    ellipse 210,58 at:474,624 fill:peach.coral a:.05 blur:18
+    each i in 0..900
+      let r = sqrt(rand(0 1))
+      let q = (516,598)+polar(1 rand(0 360))*(290*r,250*r)
+      curve q q+polar(rand(2.5 5) rand(-160 -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08 .2)
+    fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
+    fx rim 6 dir:1,1 color:p.rim a:.5
+    fx grain .045 scale:1.6
+    # The outline is the outer half of a centered stroke, about 5.2px past the fill, opaque #7e253c.
+    fx outline 5.2 color:peach.edge
+  # Covers that outer 5.2px and four more past it. Alpha .4 of pale pink over the maroon reads as the lit mauve, and the same paint on empty ground is the halo. The mask fades it off toward the shadow.
+  group feather:58
+    mask:
+      ellipse 420,280 at:270,290 fill:peach.cream
+    outside @skin
+      curve skin_pts closed tension:.55 stroke:peach.fuzz,18.4 a:.4 blur:.45
   each segment in 0..skin_count
     let i_prev = mod(segment-1 skin_count)
     let i_next = mod(segment+1 skin_count)
@@ -88,36 +119,17 @@ layer body
     let flip = [each k in 0..sample_count -> if facing.{k} < 0 then 0-1 else 1]
     let outx = [each k in 0..sample_count -> ty.{k}*flip.{k}]
     let outy = [each k in 0..sample_count -> ny.{k}*flip.{k}]
-    let reach = [each k in 0..sample_count -> if outx.{k}+outy.{k} < 0 then rand(2.9 4.1 seed:k) else rand(2.15 3.05 seed:k)]
+    let seg_mid = floor(sample_count/2)
+    let seg_light = min(1 max(0 (0-outx.{seg_mid}-outy.{seg_mid})*.85))
     let wobble = [each k in 0..sample_count -> rand(-.16 .16 seed:k)]
-    let comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(fuzz_offset+(if mod(k 3) == 1 then reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*reach.{k} else 0)]
-    curve comb tension:0 stroke:fuzz_ink,.6 a:.8
-  curve skin_pts closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3 peach.cream .6),.62 peach.cream,.85 peach.cream.1) name:skin
-    rect 100%x100% fill:radial(fade(peach.coral .75) fade(peach.coral.3 .4),.45 fade(peach.coral.3 0) at:.72,.25 r:300)
-    ellipse 150,80 at:380,420 fill:peach.pink a:.35 blur:40
-    subtract fill:mix(peach.pink.1 peach.cream.1 .4) a:.55 blur:2.5
-      copy @skin
-      copy @skin at:-96,-40
-    ellipse 50,170 at:770,620 fill:mix(peach.coral.1 peach.pink.0 .5) a:.35 blur:24
-    ellipse 230,34 at:560,846 fill:mix(peach.pink.1 peach.cream.0 .5) a:.5 blur:18
-    ellipse 150,14 at:470,826 fill:peach.coral.3 a:.35 blur:8
-    ellipse 52,26 at:522,382 fill:peach.coral.0 a:.5 blur:12
-    ellipse 20,10 at:526,392 fill:peach.coral.0 a:.5 blur:5
-    curve 530,388 640,360 760,420 812,560 790,720 690,760 690,620 650,500 closed fill:peach.coral a:.18 blur:20
-    curve 518,392 558,420 618,478 660,562 678,652 672,732 648,802 stroke:peach.coral.1,[16 18 18 15 11 6 2] taper:0,.6 a:.45 blur:8
-    curve 526,390 566,418 626,476 668,560 686,650 680,730 656,800 stroke:peach.coral.line,[7 8 7 6 4.5 2.5 1] taper:.05,.6 a:.75
-    curve 573,416 633,474 675,558 693,648 stroke:peach.coral.4,[4 5 4 2] taper:.4 a:.7 blur:2
-    ellipse 80,56 at:352,470 fill:peach.cream.4 a:.55 blur:30
-    ellipse 32,14 at:330,452 rot:-35 fill:p.glint a:.45 blur:8
-    each i in 0..900
-      let r = sqrt(rand(0 1))
-      let q = (516,598)+polar(1 rand(0 360))*(290*r,250*r)
-      curve q q+polar(rand(2.5 5) rand(-160 -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08 .2)
-    fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
-    fx rim 6 dir:1,1 color:p.rim a:.5
-    fx grain .045 scale:1.6
-    # Reference edge pixels on the clean side are opaque rgb(126, 37, 60), about 5px outside the fill.
-    fx outline 5.2 color:peach.edge
+    if seg_light < .42
+      let rose_reach = [each k in 0..sample_count -> rand(1.5 2.4 seed:k)]
+      let rose_comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(4.5+(if mod(k 3) == 1 then rose_reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*.5 else 0)]
+      curve rose_comb tension:0 stroke:peach.edge,1.05 a:.8 blur:.3
+    if seg_light > .36
+      let pale_reach = [each k in 0..sample_count -> rand(2.2 3.4 seed:k+11)]
+      let pale_comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(7.2+(if mod(k 3) == 1 then pale_reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*.5 else 0)]
+      curve pale_comb tension:0 stroke:peach.fuzz,1.2 a:seg_light*.5 blur:.28
   assert inside(@skin canvas margin:24)
 
 layer face
