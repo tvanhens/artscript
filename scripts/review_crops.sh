@@ -2,8 +2,9 @@
 # Render the before/after sheets and crops an art review needs (bench/REVIEW.md).
 # Usage: scripts/review_crops.sh [--before REF] [--out DIR] [--crop PIECE:X,Y,WxH]... PIECE...
 #   PIECE is a target path without extension, such as produce/momo_peach.
-#   Before is examples/chibi at REF (default HEAD). After is the working tree, built twice from
-#   clean copies so the two builds can be compared byte for byte.
+#   Before is examples/chibi at REF (default HEAD), rendered by artscript built from REF. After is
+#   the working tree, rendered by artscript built from the working tree, twice from clean copies so
+#   the two builds can be compared byte for byte.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -21,12 +22,24 @@ while [ "$#" -gt 0 ]; do
 	esac
 done
 if [ "${#pieces[@]}" -eq 0 ]; then
-	sed -n '2,6p' "$0" >&2
+	sed -n '2,7p' "$0" >&2
 	exit 1
 fi
 
-bin="$root/target/release/artscript"
-[ -x "$bin" ] || cargo build --release -p artscript --manifest-path "$root/Cargo.toml"
+engine=(crates Cargo.toml Cargo.lock)
+cargo build --quiet --release -p artscript --manifest-path "$root/Cargo.toml"
+after_bin="$root/target/release/artscript"
+before_bin="$after_bin"
+if ! git -C "$root" diff --quiet "$before_ref" -- "${engine[@]}" ||
+	[ -n "$(git -C "$root" ls-files --others --exclude-standard -- "${engine[@]}")" ]; then
+	before_src="$root/target/review-before/src"
+	rm -rf "$before_src"
+	mkdir -p "$before_src"
+	git -C "$root" archive "$before_ref" "${engine[@]}" | tar -x -C "$before_src"
+	cargo build --quiet --release -p artscript --manifest-path "$before_src/Cargo.toml" \
+		--target-dir "$root/target/review-before/target"
+	before_bin="$root/target/review-before/target/release/artscript"
+fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -37,6 +50,8 @@ for copy in after_1 after_2; do
 done
 for copy in before after_1 after_2; do
 	rm -rf "$work/$copy/assets" "$work/$copy/.artscript"
+	bin="$after_bin"
+	[ "$copy" = before ] && bin="$before_bin"
 	for piece in "${pieces[@]}"; do
 		(cd "$work/$copy" && "$bin" build --only "$piece.png" > /dev/null)
 	done
