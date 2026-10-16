@@ -206,7 +206,7 @@ fn monk_gif_frames_match_the_sampled_palette() {
         }
         let flat: Vec<u8> = rasters.iter().flatten().copied().collect();
         let nq = color_quant::NeuQuant::new(10, 256, &flat);
-        let delays = artscript_eval::frame_delays(sampled.frames.len(), sampled.dur);
+        let delays = artscript_eval::frame_delays(sampled.frames.len(), sampled.dur).unwrap();
         let mut seen = 0usize;
         while let Some(frame) = reader.read_next_frame().unwrap() {
             assert_eq!(
@@ -230,5 +230,31 @@ fn monk_gif_frames_match_the_sampled_palette() {
         }
         assert_eq!(seen, sampled.frames.len());
     }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-centi-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"centi\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let err = text(&out);
+    assert!(
+        err.contains("E0206") && err.contains("a gif has more frames than centiseconds"),
+        "{err}"
+    );
+    assert!(!dir.join("assets/tiny.gif").exists(), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }

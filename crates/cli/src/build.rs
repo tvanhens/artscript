@@ -266,7 +266,23 @@ fn run_gif(project: &Project, out_dir: &Path, job: &TargetJob, key: String) -> O
                     .with_fix("add a `play`, or set `dur:` on the target"),
             );
         } else {
-            let delays = frame_delays(sampled.frames.len(), sampled.dur);
+            let delays = match frame_delays(sampled.frames.len(), sampled.dur) {
+                Ok(delays) => delays,
+                Err(msg) => {
+                    diagnostics.push(
+                        Diagnostic::error("E0206", job.span, msg)
+                            .in_file(&job.source)
+                            .with_fix(
+                                "lower `fps` or lengthen `dur` so each frame lasts at least 1cs",
+                            ),
+                    );
+                    return Outcome {
+                        job: job.clone(),
+                        outputs,
+                        diagnostics,
+                    };
+                }
+            };
             let scenes: Vec<_> = sampled.frames.iter().map(|f| &f.scene).collect();
             for out in &job.outputs {
                 let bytes =

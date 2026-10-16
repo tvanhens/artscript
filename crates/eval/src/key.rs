@@ -106,7 +106,7 @@ pub fn sample_track(values: &[Value], at: &[f64], eases: &[Ease], u: f64) -> Res
             return Err(format!("cannot animate {} yet", phrase(v)));
         }
     }
-    if values.len() == 1 || u <= at[0] {
+    if values.len() == 1 || u < at[0] {
         return Ok(first.clone());
     }
     if u >= at[at.len() - 1] {
@@ -234,9 +234,9 @@ pub fn even_at(n: usize) -> Vec<f64> {
     (0..n).map(|i| i as f64 / (n - 1) as f64).collect()
 }
 
-pub fn frame_delays(frame_count: usize, dur: f64) -> Vec<u16> {
+pub fn frame_delays(frame_count: usize, dur: f64) -> Result<Vec<u16>, &'static str> {
     if frame_count == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let total = (dur * 100.0).round().max(0.0) as u64;
     let n = frame_count as u64;
@@ -248,17 +248,10 @@ pub fn frame_delays(frame_count: usize, dur: f64) -> Vec<u16> {
         acc %= n;
         delays.push(d as u16);
     }
-    if dur > 0.0 {
-        for i in 0..delays.len() {
-            if delays[i] == 0 {
-                delays[i] = 1;
-                if let Some(j) = delays.iter().position(|d| *d > 1) {
-                    delays[j] -= 1;
-                }
-            }
-        }
+    if dur > 0.0 && delays.contains(&0) {
+        return Err("a gif has more frames than centiseconds");
     }
-    delays
+    Ok(delays)
 }
 
 pub fn frame_count(dur: f64, fps: f64) -> usize {
@@ -352,12 +345,38 @@ mod tests {
 
     #[test]
     fn twenty_four_fps_alternates_four_and_five() {
-        let d = frame_delays(24, 1.0);
+        let d = frame_delays(24, 1.0).unwrap();
         assert_eq!(d.iter().map(|n| *n as u32).sum::<u32>(), 100);
         assert!(d.iter().all(|n| *n == 4 || *n == 5));
         assert_eq!(&d[..6], &[4, 4, 4, 4, 4, 5]);
-        assert_eq!(frame_delays(5, 0.2), vec![4, 4, 4, 4, 4]);
+        assert_eq!(frame_delays(5, 0.2).unwrap(), vec![4, 4, 4, 4, 4]);
         assert_eq!(frame_count(0.2, 24.0), 5);
         assert_eq!(frame_count(2.0, 24.0), 48);
+    }
+
+    #[test]
+    fn a_duplicated_start_time_uses_the_later_key() {
+        let jumped =
+            sample_track(&nums(&[0.0, 1.0, 2.0]), &[0.0, 0.0, 1.0], &smooth(3), 0.0).unwrap();
+        assert_eq!(jumped.num(), Some(1.0));
+        let rest = sample_track(&nums(&[0.0, 10.0]), &[0.0, 1.0], &smooth(2), 0.0).unwrap();
+        assert_eq!(rest.num(), Some(0.0));
+        let before = sample_track(&nums(&[4.0, 10.0]), &[0.2, 1.0], &smooth(2), 0.1).unwrap();
+        assert_eq!(before.num(), Some(4.0));
+    }
+
+    #[test]
+    fn more_frames_than_centiseconds_is_an_error() {
+        assert_eq!(
+            frame_delays(120, 1.0).unwrap_err(),
+            "a gif has more frames than centiseconds"
+        );
+        assert_eq!(
+            frame_delays(101, 1.0).unwrap_err(),
+            "a gif has more frames than centiseconds"
+        );
+        let fitted = frame_delays(100, 1.0).unwrap();
+        assert_eq!(fitted.len(), 100);
+        assert_eq!(fitted.iter().map(|n| *n as u32).sum::<u32>(), 100);
     }
 }

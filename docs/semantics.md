@@ -342,7 +342,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
 - **Codes added in this version.**
   - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
-  - E0206: a bad `@target` size, scale, extension, profile, matrix axis, `fps`, `dur`, or `t`. Also a GIF with no duration, or a GIF whose background is missing or not opaque (`a gif needs an opaque bg:`).
+  - E0206: a bad `@target` size, scale, extension, profile, matrix axis, `fps`, `dur`, or `t`. Also a GIF with no duration, a GIF whose background is missing or not opaque (`a gif needs an opaque bg:`), or a GIF with more frames than centiseconds (`a gif has more frames than centiseconds`).
   - E0308: `play` names an anim that is not in scope.
   - E0320 also covers a value that cannot be animated, a bad `key` (`dur`, `at`, `ease`), a non-positive duration, and a `key` outside an anim with no `dur:`. The message is `cannot animate <kind> yet` when the kind has no interpolation.
   - E0341: an `anim` body contains something other than a patch line.
@@ -385,4 +385,4 @@ These pin down points the sections above leave open. Earlier sections still gove
   - Local time is `t - start` (`start` defaults to 0, evaluated at the `play`). A looping anim is always live and wraps with `rem_euclid`. A non-looping anim is live only on `[0, dur)`. A path that matches nothing is E0340 at the `play`, once per anim and path, including when this frame is outside the window.
   - The clip duration, when `dur:` is omitted, is the latest `end` among plays reached at `t = 0`. A clip loops when any reached play's anim loops.
 - **Sampling.** `sample` is the entry point for a time-based target. Frame `i` is at `t = i / fps`, over `[0, dur)`, for both looping and non-looping clips. Checks run on every frame. One failure is reported once, with notes `first at {t}s` and `worst at {t}s`. The worst frame is the greatest absolute number found in the failure's notes, otherwise the greatest failing `t`.
-- **GIF.** One NeuQuant palette, `sample_fac` 10, built from every frame. Delays are centiseconds. The total is `round(dur * 100)`, spread with Bresenham so 24 fps over 1 second is `4,4,4,4,4,5`. A zero delay is raised to 1 and stolen from a later delay above 1. A looping clip repeats forever. Any other clip plays once. A missing background, a background alpha below 1, or any pixel with alpha below 255 is E0206.
+- **GIF.** One NeuQuant palette, `sample_fac` 10, built from every frame. Delays are centiseconds. The total is `round(dur * 100)`, spread with Bresenham so 24 fps over 1 second is `4,4,4,4,4,5`. A delay of 0 is E0206 and no GIF is written. A looping clip repeats forever. Any other clip plays once. A missing background, a background alpha below 1, or any pixel with alpha below 255 is E0206.
