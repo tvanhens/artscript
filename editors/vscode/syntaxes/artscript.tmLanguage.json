@@ -38,15 +38,24 @@
       "name": "invalid.illegal.art"
     },
     {
-      "captures": {
+      "begin": "(?<=^[^ #\\r\\n\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))",
+      "beginCaptures": {
         "1": {
           "name": "keyword.other.directive.art"
-        },
-        "2": {
+        }
+      },
+      "end": "([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#))|(?![ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])",
+      "endCaptures": {
+        "1": {
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "(?<=^[^ #\\r\\n\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#)))?"
+      "patterns": [
+        {
+          "match": "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]",
+          "name": "invalid.illegal.art"
+        }
+      ]
     },
     {
       "captures": {
@@ -62,13 +71,36 @@
     {
       "captures": {
         "1": {
-          "name": "keyword.control.import.art"
+          "name": "entity.name.tag.slot.art"
         },
         "2": {
+          "name": "invalid.illegal.art"
+        },
+        "3": {
+          "name": "keyword.operator.art"
+        }
+      },
+      "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)(:)(?=[ \\t]*(?:\\r?$|#(?!(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))))"
+    },
+    {
+      "begin": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(use)(?![A-Za-z0-9_])",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.control.import.art"
+        }
+      },
+      "end": "([A-Za-z0-9_./{}*-]+)(?!(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#))|(?![ \\t]|[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])",
+      "endCaptures": {
+        "1": {
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=(?:$|[ \\t]|#)|(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])+(?:$|[ \\t]|#)))?"
+      "patterns": [
+        {
+          "match": "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]",
+          "name": "invalid.illegal.art"
+        }
+      ]
     },
     {
       "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(?:from|use|as)(?![A-Za-z0-9_])",
@@ -91,27 +123,37 @@
       "name": "constant.language.art"
     },
     {
-      "begin": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(\\.)(?!\\.|[0-9])([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
+      "begin": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)(\\.)(?!\\.|[0-9])([ \\t]*)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)?([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
       "beginCaptures": {
         "1": {
           "name": "variable.other.property.patch.art"
         },
         "3": {
+          "name": "invalid.illegal.art"
+        },
+        "5": {
           "name": "variable.other.property.patch.art"
         }
       },
-      "end": "(?!\\.[ \\t]*(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))",
+      "end": "(?!(?:[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-])*\\.([ \\t]*)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)?([ \\t]*)(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))",
       "patterns": [
+        {
+          "match": "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]",
+          "name": "invalid.illegal.art"
+        },
         {
           "captures": {
             "1": {
               "name": "variable.other.property.patch.art"
             },
             "3": {
+              "name": "invalid.illegal.art"
+            },
+            "5": {
               "name": "variable.other.property.patch.art"
             }
           },
-          "match": "(\\.)([ \\t]*)(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*)"
+          "match": "(\\.)([ \\t]*)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)?([ \\t]*)(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*)"
         }
       ]
     },
@@ -125,6 +167,20 @@
         }
       },
       "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)([A-Za-z_][A-Za-z0-9_]*)(:)(?=[ \\t]*(?:\\r?$|#(?!(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))))"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "entity.name.tag.slot.art"
+        },
+        "2": {
+          "name": "invalid.illegal.art"
+        },
+        "3": {
+          "name": "keyword.operator.art"
+        }
+      },
+      "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)([A-Za-z_][A-Za-z0-9_]*)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)(:)(?=[ \\t]*(?:\\r?$|#(?!(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))))"
     },
     {
       "match": "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)[A-Za-z_][A-Za-z0-9_]*",
@@ -145,6 +201,20 @@
     {
       "match": "(?:[0-9]+(?:\\.[0-9]+)?|(?<![A-Za-z0-9_)])\\.[0-9]+)(?:(?:deg|turn)(?![A-Za-z0-9_])|%(?:x(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]+)?)%?)?|x(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]+)?)%?)?",
       "name": "constant.numeric.art"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.key.art"
+        },
+        "2": {
+          "name": "invalid.illegal.art"
+        },
+        "3": {
+          "name": "keyword.operator.art"
+        }
+      },
+      "match": "(?<![A-Za-z_])([A-Za-z_][A-Za-z0-9_]*)([^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]+)(:)"
     },
     {
       "captures": {

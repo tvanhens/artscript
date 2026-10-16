@@ -861,6 +861,17 @@ fn boundary_source() -> String {
         "?circle 1",
         "?use foo",
         "?@target out/file",
+        "use?foo/bar",
+        "use??foo/bar",
+        "use ? ?foo/bar",
+        "@target?out/file",
+        "circle fill?:red",
+        "circle fill? :red",
+        "body?:",
+        "body? :",
+        "mask?:",
+        ".?head",
+        ".head.?eye",
     ] {
         lines.push(line.into());
     }

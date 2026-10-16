@@ -117,6 +117,7 @@ pub(crate) enum Pattern {
         end: String,
         name: Option<&'static str>,
         begin_captures: Vec<(u8, &'static str)>,
+        end_captures: Vec<(u8, &'static str)>,
         inner: Vec<Pattern>,
     },
 }
@@ -129,6 +130,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
             end: "\"\"\"".into(),
             name: Some(scope(Class::String)),
             begin_captures: vec![],
+            end_captures: vec![],
             inner: vec![],
         },
         Pattern::Region {
@@ -136,6 +138,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
             end: "\"|$".into(),
             name: Some(scope(Class::String)),
             begin_captures: vec![],
+            end_captures: vec![],
             inner: vec![
                 Pattern::Match {
                     re: escape_re(),
@@ -160,15 +163,17 @@ pub(crate) fn emit() -> Vec<Pattern> {
             captures: vec![],
         },
         indent_tab(invalid),
-        directive(),
+        directive(invalid),
         keyword_slot(),
-        use_path(),
+        keyword_slot_gap(),
+        use_path(invalid),
     ];
     for kw_group in KwGroup::all() {
         patterns.push(keyword_head(*kw_group));
     }
     patterns.push(patch());
     patterns.push(slot());
+    patterns.push(slot_gap());
     patterns.push(verb());
     patterns.push(Pattern::Match {
         re: format!("@{ident}(?:\\.(?:{ident}|[0-9]+|\\*))*", ident = IDENT),
@@ -189,6 +194,20 @@ pub(crate) fn emit() -> Vec<Pattern> {
         re: number_re(),
         name: Some(scope(Class::Number)),
         captures: vec![],
+    });
+    patterns.push(Pattern::Match {
+        re: format!(
+            "{before}({ident})({dropped}+)(:)",
+            before = NOT_IDENT_BEFORE,
+            ident = IDENT,
+            dropped = dropped_class()
+        ),
+        name: None,
+        captures: vec![
+            (1, scope(Class::Key)),
+            (2, scope(Class::Invalid)),
+            (3, scope(Class::Operator)),
+        ],
     });
     patterns.push(Pattern::Match {
         re: format!(
@@ -247,31 +266,43 @@ fn indent_tab(invalid: &'static str) -> Pattern {
     }
 }
 
-fn directive() -> Pattern {
-    let path = path_class();
-    Pattern::Match {
-        re: format!(
-            "{at}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*){end})?",
+fn directive(invalid: &'static str) -> Pattern {
+    Pattern::Region {
+        begin: format!(
+            "{at}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))",
             at = AT_DIRECTIVE,
-            ident = IDENT,
-            end = path_chunk_end()
+            ident = IDENT
+        ),
+        end: format!(
+            "({path}*[/.{{]{path}*){chunk}|{stop}",
+            path = path_class(),
+            chunk = path_chunk_end(),
+            stop = glue_stop()
         ),
         name: None,
-        captures: vec![(1, scope(Class::Directive)), (2, scope(Class::Path))],
+        begin_captures: vec![(1, scope(Class::Directive))],
+        end_captures: vec![(1, scope(Class::Path))],
+        inner: vec![invalid_dropped(invalid)],
     }
 }
 
-fn use_path() -> Pattern {
-    Pattern::Match {
-        re: format!(
-            "{at}(use){after}(?:[ \\t]*({path}+){end})?",
+fn use_path(invalid: &'static str) -> Pattern {
+    Pattern::Region {
+        begin: format!(
+            "{at}(use){after}",
             at = AT_STATEMENT,
-            after = NOT_IDENT_AFTER,
+            after = NOT_IDENT_AFTER
+        ),
+        end: format!(
+            "({path}+){chunk}|{stop}",
             path = path_class(),
-            end = path_chunk_end()
+            chunk = path_chunk_end(),
+            stop = glue_stop()
         ),
         name: None,
-        captures: vec![(1, KwGroup::Import.scope()), (2, scope(Class::Path))],
+        begin_captures: vec![(1, KwGroup::Import.scope())],
+        end_captures: vec![(1, scope(Class::Path))],
+        inner: vec![invalid_dropped(invalid)],
     }
 }
 
@@ -291,7 +322,8 @@ fn keyword_head(kw_group: KwGroup) -> Pattern {
 fn patch() -> Pattern {
     let patch = scope(Class::Patch);
     let name = format!("{not_kw}({ident})", not_kw = not_keyword(), ident = IDENT);
-    let segment = format!("(\\.)([ \\t]*){name}");
+    let gap = glue_name_gap();
+    let segment = format!("(\\.){gap}{name}");
     let optional_non_keyword_name = format!(
         "(?:{not_kw}({ident}))?",
         not_kw = not_keyword(),
@@ -299,19 +331,32 @@ fn patch() -> Pattern {
     );
     Pattern::Region {
         begin: format!(
-            "{at}(\\.)(?!\\.|[0-9])([ \\t]*){optional_non_keyword_name}",
+            "{at}(\\.)(?!\\.|[0-9]){gap}{optional_non_keyword_name}",
             at = AT_STATEMENT,
+            gap = gap,
             optional_non_keyword_name = optional_non_keyword_name
         ),
-        end: format!("(?!\\.[ \\t]*{name})"),
+        end: format!(
+            "(?!(?:{dropped})*\\.{gap}{name})",
+            dropped = dropped_class(),
+            gap = gap
+        ),
         name: None,
-        begin_captures: vec![(1, patch), (3, patch)],
-        inner: vec![Pattern::Match {
-            re: segment,
-            name: None,
-            captures: vec![(1, patch), (3, patch)],
-        }],
+        begin_captures: vec![(1, patch), (3, scope(Class::Invalid)), (5, patch)],
+        end_captures: vec![],
+        inner: vec![
+            invalid_dropped(scope(Class::Invalid)),
+            Pattern::Match {
+                re: segment,
+                name: None,
+                captures: vec![(1, patch), (3, scope(Class::Invalid)), (5, patch)],
+            },
+        ],
     }
+}
+
+fn glue_name_gap() -> String {
+    format!("([ \\t]*)({dropped}+)?([ \\t]*)", dropped = dropped_class())
 }
 
 fn not_keyword() -> String {
@@ -332,17 +377,42 @@ fn keyword_alts() -> String {
     words.join("|")
 }
 
+fn slot_tail() -> String {
+    format!(
+        "(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
+        hex = hex_body(),
+        delims = delim_class()
+    )
+}
+
 fn slot() -> Pattern {
     Pattern::Match {
         re: format!(
-            "{at}({ident})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
+            "{at}({ident})(:){tail}",
             at = AT_STATEMENT,
             ident = IDENT,
-            hex = hex_body(),
-            delims = delim_class()
+            tail = slot_tail()
         ),
         name: None,
         captures: vec![(1, scope(Class::Slot)), (2, scope(Class::Slot))],
+    }
+}
+
+fn slot_gap() -> Pattern {
+    Pattern::Match {
+        re: format!(
+            "{at}({ident})({dropped}+)(:){tail}",
+            at = AT_STATEMENT,
+            ident = IDENT,
+            dropped = dropped_class(),
+            tail = slot_tail()
+        ),
+        name: None,
+        captures: vec![
+            (1, scope(Class::Slot)),
+            (2, scope(Class::Invalid)),
+            (3, scope(Class::Operator)),
+        ],
     }
 }
 
@@ -367,19 +437,48 @@ fn kw_alt(kw_group: KwGroup) -> String {
 fn keyword_slot() -> Pattern {
     Pattern::Match {
         re: format!(
-            "{at}({alts})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
+            "{at}({alts})(:){tail}",
             at = AT_STATEMENT,
             alts = keyword_alts(),
-            hex = hex_body(),
-            delims = delim_class()
+            tail = slot_tail()
         ),
         name: None,
         captures: vec![(1, scope(Class::Slot)), (2, scope(Class::Slot))],
     }
 }
 
+fn keyword_slot_gap() -> Pattern {
+    Pattern::Match {
+        re: format!(
+            "{at}({alts})({dropped}+)(:){tail}",
+            at = AT_STATEMENT,
+            alts = keyword_alts(),
+            dropped = dropped_class(),
+            tail = slot_tail()
+        ),
+        name: None,
+        captures: vec![
+            (1, scope(Class::Slot)),
+            (2, scope(Class::Invalid)),
+            (3, scope(Class::Operator)),
+        ],
+    }
+}
+
 fn path_class() -> String {
     format!("[{PATH_CHARS}]")
+}
+
+fn glue_stop() -> String {
+    format!("(?![ \\t]|{})", dropped_class())
+}
+
+fn invalid_dropped(invalid: &'static str) -> Pattern {
+    Pattern::Match {
+        re: dropped_class().into(),
+        name: Some(invalid),
+        captures: vec![],
+    }
 }
 
 fn path_chunk_end() -> String {
@@ -521,6 +620,7 @@ fn pattern_value(pattern: &Pattern) -> Value {
             end,
             name,
             begin_captures,
+            end_captures,
             inner,
         } => {
             map.insert("begin".into(), Value::String(begin.clone()));
@@ -530,6 +630,9 @@ fn pattern_value(pattern: &Pattern) -> Value {
             }
             if !begin_captures.is_empty() {
                 map.insert("beginCaptures".into(), captures_value(begin_captures));
+            }
+            if !end_captures.is_empty() {
+                map.insert("endCaptures".into(), captures_value(end_captures));
             }
             if !inner.is_empty() {
                 map.insert(
