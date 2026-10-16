@@ -213,7 +213,7 @@ fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
 }
 
-/// An empty frame has no extent. A percent of it used to become 0, which hides a missing box.
+/// A percent of an empty frame would resolve to 0 and hide a missing box.
 fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
     let Coord::Pct(p) = coord else {
         return Ok(());
