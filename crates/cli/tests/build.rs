@@ -310,3 +310,40 @@ fn check_samples_a_gif_so_a_later_assert_fails() {
     assert!(err.contains("C0101"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn check_reports_a_gif_build_would_refuse() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-giftime-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"giftime\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let err = text(&out);
+    assert!(
+        err.contains("E0206") && err.contains("a gif has more frames than centiseconds"),
+        "{err}"
+    );
+    fs::write(
+        dir.join("art/main.art"),
+        "@target tiny.gif 8x8 bg:#ffffff\n",
+    )
+    .unwrap();
+    let bare = artscript(&dir, &["check"]);
+    assert_eq!(bare.status.code(), Some(1), "{}", text(&bare));
+    assert!(
+        text(&bare).contains("clip has no duration"),
+        "{}",
+        text(&bare)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

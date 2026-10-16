@@ -167,13 +167,42 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             per_frame.push((t, ev.diagnostics));
         }
     }
+    let mut diagnostics = aggregate_frames(&per_frame);
+    if !diagnostics.iter().any(|d| d.code.starts_with('E'))
+        && let Some(d) = gif_timing_error(job, frames.len(), dur)
+    {
+        diagnostics.push(d);
+    }
     Sample {
         frames,
-        diagnostics: aggregate_frames(&per_frame),
+        diagnostics,
         loops,
         dur,
         fps,
     }
+}
+
+/// The duration and centisecond checks `build` uses before it encodes. `check` reads them from `sample`.
+fn gif_timing_error(job: &TargetJob, frames: usize, dur: f64) -> Option<Diagnostic> {
+    if frames == 0 || dur <= 0.0 {
+        return Some(
+            Diagnostic::error("E0206", job.span, "clip has no duration")
+                .in_file(&job.source)
+                .with_fix("add a `play`, or set `dur:` on the target"),
+        );
+    }
+    let msg = frame_delays(frames, dur).err()?;
+    let fix = match msg {
+        "a gif frame is longer than 65535cs" => {
+            "raise `fps` or shorten `dur` so each frame is at most 65535cs"
+        }
+        _ => "lower `fps` or lengthen `dur` so each frame lasts at least 1cs",
+    };
+    Some(
+        Diagnostic::error("E0206", job.span, msg)
+            .in_file(&job.source)
+            .with_fix(fix),
+    )
 }
 
 fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {

@@ -1802,6 +1802,40 @@ fn off_canvas_on_a_later_frame_is_kept() {
 }
 
 #[test]
+fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
+    let fast = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff fps:120 dur:1s\ncircle 2\n",
+    )]);
+    let fast_plan = plan(&fast);
+    let fast_sample = crate::sample(&fast, &fast_plan.jobs[0]);
+    let zero = fast_sample
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0206")
+        .unwrap_or_else(|| panic!("{}", show(&fast_sample.diagnostics)));
+    assert!(
+        zero.message.contains("more frames than centiseconds"),
+        "{zero}"
+    );
+    assert_eq!(
+        zero.fix.as_deref(),
+        Some("lower `fps` or lengthen `dur` so each frame lasts at least 1cs")
+    );
+    let bare = project(&[("art/t.art", "@target t.gif 8x8 bg:#ffffff\ncircle 2\n")]);
+    let bare_plan = plan(&bare);
+    let bare_sample = crate::sample(&bare, &bare_plan.jobs[0]);
+    assert!(
+        bare_sample
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0206" && d.message.contains("clip has no duration")),
+        "{}",
+        show(&bare_sample.diagnostics)
+    );
+}
+
+#[test]
 fn a_clip_past_the_frame_cap_is_e0206() {
     let p = project(&[(
         "art/t.art",

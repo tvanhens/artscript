@@ -268,72 +268,39 @@ fn run_gif(project: &Project, out_dir: &Path, job: &TargetJob, key: String) -> O
     let compile_error = diagnostics
         .iter()
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
-    if !compile_error {
-        if sampled.frames.is_empty() || sampled.dur <= 0.0 {
-            diagnostics.push(
-                Diagnostic::error("E0206", job.span, "clip has no duration")
-                    .in_file(&job.source)
-                    .with_fix("add a `play`, or set `dur:` on the target"),
-            );
-        } else {
-            let delays = match frame_delays(sampled.frames.len(), sampled.dur) {
-                Ok(delays) => delays,
-                Err(msg) => {
-                    let fix = match msg {
-                        "a gif frame is longer than 65535cs" => {
-                            "raise `fps` or shorten `dur` so each frame is at most 65535cs"
-                        }
-                        _ => "lower `fps` or lengthen `dur` so each frame lasts at least 1cs",
-                    };
+    if !compile_error
+        && let Ok(delays) = frame_delays(sampled.frames.len(), sampled.dur)
+        && !delays.is_empty()
+    {
+        let scenes: Vec<_> = sampled.frames.iter().map(|f| &f.scene).collect();
+        for out in &job.outputs {
+            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sampled.loops);
+            let bytes = match bytes {
+                Ok(b) => b,
+                Err(artscript_render::RenderError::TransparentGif) => {
                     diagnostics.push(
-                        Diagnostic::error("E0206", job.span, msg)
+                        Diagnostic::error("E0206", job.span, "a gif needs an opaque `bg:`")
                             .in_file(&job.source)
-                            .with_fix(fix),
+                            .with_fix("set `bg:` to an opaque color; transparent gifs come later"),
                     );
-                    return Outcome {
-                        job: job.clone(),
-                        outputs,
-                        diagnostics,
-                    };
+                    continue;
+                }
+                Err(e) => {
+                    diagnostics.push(render_error(job, e));
+                    continue;
                 }
             };
-            let scenes: Vec<_> = sampled.frames.iter().map(|f| &f.scene).collect();
-            for out in &job.outputs {
-                let bytes =
-                    artscript_render::render_gif(&scenes, out.scale, &delays, sampled.loops);
-                let bytes = match bytes {
-                    Ok(b) => b,
-                    Err(artscript_render::RenderError::TransparentGif) => {
-                        diagnostics.push(
-                            Diagnostic::error("E0206", job.span, "a gif needs an opaque `bg:`")
-                                .in_file(&job.source)
-                                .with_fix(
-                                    "set `bg:` to an opaque color; transparent gifs come later",
-                                ),
-                        );
-                        continue;
-                    }
-                    Err(e) => {
-                        diagnostics.push(render_error(job, e));
-                        continue;
-                    }
-                };
-                let path = out_dir.join(&out.path);
-                let written = path
-                    .parent()
-                    .map_or(Ok(()), fs::create_dir_all)
-                    .and_then(|_| fs::write(&path, &bytes));
-                match written {
-                    Ok(()) => outputs.push((out.path.clone(), hex(&bytes))),
-                    Err(e) => diagnostics.push(
-                        Diagnostic::error(
-                            "E0400",
-                            job.span,
-                            format!("cannot write {}: {e}", out.path),
-                        )
+            let path = out_dir.join(&out.path);
+            let written = path
+                .parent()
+                .map_or(Ok(()), fs::create_dir_all)
+                .and_then(|_| fs::write(&path, &bytes));
+            match written {
+                Ok(()) => outputs.push((out.path.clone(), hex(&bytes))),
+                Err(e) => diagnostics.push(
+                    Diagnostic::error("E0400", job.span, format!("cannot write {}: {e}", out.path))
                         .in_file(&job.source),
-                    ),
-                }
+                ),
             }
         }
     }
