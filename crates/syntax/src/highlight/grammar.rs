@@ -222,7 +222,7 @@ fn directive() -> Pattern {
     let path = path_class();
     Pattern::Match {
         re: format!(
-            "^(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]+({path}*[/.{{]{path}*)(?=$|[ \\t#]))?",
+            "^(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*)(?=$|[ \\t#]))?",
             ident = IDENT
         ),
         name: None,
@@ -233,7 +233,7 @@ fn directive() -> Pattern {
 fn use_path(invalid: &'static str) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}(use){after}(?:[ \\t]+({path}+)(?=$|[ \\t#]))?",
+            "{head}(use){after}(?:[ \\t]*({path}+)(?=$|[ \\t#]))?",
             head = HEAD,
             after = NOT_IDENT_AFTER,
             path = path_class()

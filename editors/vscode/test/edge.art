@@ -14,7 +14,9 @@ mask: #fff
 .head.eye fill:red off
 .head. eye fill:red
 use foo/bar!baz
+use/foo/bar
 @target out/file!bad
+@target/out.png
 	# tabbed comment
 	tabbed 1
 fill:"esc \" \\ \n \q" bad:"unclosed
