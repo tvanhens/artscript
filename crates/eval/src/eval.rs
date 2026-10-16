@@ -9,7 +9,7 @@ use artscript_ir::{
     Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
     Point, Rect, Shape, Stroke,
 };
-use artscript_syntax::Diagnostic;
+use artscript_syntax::{format_expr, Diagnostic};
 use artscript_syntax::ast::{
     self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene, SceneKind, Span, Swatch, SwatchKind,
     UnOp,
@@ -26,6 +26,7 @@ use crate::scope::{
 };
 use crate::seed::{self, Rng};
 use crate::targets::{MatrixValue, TargetJob, is_entry};
+use crate::range::Range;
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
 
 /// An evaluation failure, turned into a [`Diagnostic`] at the statement that caused it.
@@ -276,6 +277,13 @@ fn axis_scale(m: &Matrix) -> f64 {
 }
 
 fn each_items(it: Value) -> R<Vec<Value>> {
+    if let Value::Range(r) = &it {
+        let prefix: Vec<Value> = r.steps().take(100_001).map(Value::Num).collect();
+        if prefix.len() > 100_000 {
+            return Err(fail("E0306", "`each` is limited to 100000 iterations"));
+        }
+        return Ok(prefix);
+    }
     let items = it.items().ok_or_else(|| {
         fail("E0306", format!("`each` needs a list or range, got {}", it.kind())).fix("write `each x in [a b]` or `each i in 0..8`")
     })?;
@@ -283,6 +291,28 @@ fn each_items(it: Value) -> R<Vec<Value>> {
         return Err(fail("E0306", "`each` is limited to 100000 iterations"));
     }
     Ok(items)
+}
+
+fn stroke_expr(named: &[Named], style: Option<&str>, sc: &Scope) -> Option<Expr> {
+    if let Some(n) = named.iter().rev().find(|n| n.key == "stroke") {
+        return Some(n.value.clone());
+    }
+    let sname = style?;
+    let styles = sc.module.styles.borrow();
+    styles.get(sname).and_then(|s| s.named.iter().rev().find(|n| n.key == "stroke").map(|n| n.value.clone()))
+}
+
+fn range_width(stroke: Option<&Expr>) -> Fail {
+    let rewrite = match stroke {
+        Some(Expr::Range(a, b)) => format!("stroke:[{} {}]", format_expr(a), format_expr(b)),
+        Some(Expr::Tuple(xs)) if xs.len() == 2 => match &xs[1] {
+            Expr::Range(a, b) => format!("stroke:{},[{} {}]", format_expr(&xs[0]), format_expr(a), format_expr(b)),
+            _ => "stroke:paint,[2 6]".into(),
+        },
+        // An inherited style has already been evaluated, so the source spelling is gone.
+        _ => "stroke:paint,[2 6]".into(),
+    };
+    fail("E0320", "a range is not a stroke width").fix(format!("write `{rewrite}`"))
 }
 
 fn blend_of(w: &str) -> Option<Blend> {
@@ -868,6 +898,7 @@ impl<'a> Evaluator<'a> {
         let leaf = out.name(&base, &sc.suffix);
         let path = if sc.path.is_empty() { leaf.clone() } else { format!("{}.{leaf}", sc.path) };
         let (patch_named, off) = self.take_patches(&path);
+        let patch_stroke = patch_named.iter().any(|(k, _)| k == "stroke");
         if off {
             return Ok(());
         }
@@ -882,8 +913,9 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
-        if let Some(sname) = a.word("style") {
-            let mut s = self.style_named(&sname, sc)?;
+        let expanded_style = a.word("style");
+        if let Some(sname) = &expanded_style {
+            let mut s = self.style_named(sname, sc)?;
             s.append(&mut a.named);
             a.named = s;
         }
@@ -999,7 +1031,10 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
+            // A patch is stored as a value. A stroke it supplies has no spelling, and a style it
+            // renames is not the style that was expanded above.
+            let stroke_src = if patch_stroke { None } else { stroke_expr(named, expanded_style.as_deref(), sc) };
+            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world, stroke_src.as_ref())?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
                 record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at }));
@@ -1252,7 +1287,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix) -> R<Shape> {
+    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix, stroke_src: Option<&Expr>) -> R<Shape> {
         let pick = |k: &str| a.get(k).cloned().or_else(|| style.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone()));
         let bounds = geom::bounds(&geometry);
         let fill_v = pick("fill");
@@ -1274,14 +1309,14 @@ impl<'a> Evaluator<'a> {
             None if !closed && fill.is_none() => (Value::Color(Col::plain(color::line(Rgba::GRAY))), Some(W::Const(2.0))),
             None | Some(Value::None) => (Value::None, None),
             Some(Value::Num(w)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::Const(w))),
-            Some(Value::Range(x, y)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(vec![x, y]))),
+            Some(Value::Range(_)) => return Err(range_width(stroke_src)),
             Some(Value::List(ws)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(ws.iter().filter_map(Value::num).collect()))),
             Some(Value::Tuple(xs)) if xs.len() == 2 => {
                 let w = match &xs[1] {
                     Value::Num(w) => W::Const(*w),
-                    Value::Range(x, y) => W::List(vec![*x, *y]),
+                    Value::Range(_) => return Err(range_width(stroke_src)),
                     Value::List(ws) => W::List(ws.iter().filter_map(Value::num).collect()),
-                    other => return Err(fail("E0320", format!("stroke width must be a number, list or range, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
+                    other => return Err(fail("E0320", format!("stroke width must be a number or list, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
                 };
                 (xs[0].clone(), Some(w))
             }
@@ -1666,7 +1701,7 @@ impl<'a> Evaluator<'a> {
             Expr::Range(a, b) => {
                 let (a, b) = (self.expr(a, sc)?, self.expr(b, sc)?);
                 match (a.num(), b.num()) {
-                    (Some(a), Some(b)) => Value::Range(a, b),
+                    (Some(a), Some(b)) => Value::Range(Range::new(a, b)),
                     _ => return Err(fail("E0320", "a range needs numbers on both ends")),
                 }
             }
@@ -1703,8 +1738,9 @@ impl<'a> Evaluator<'a> {
             BinOp::Add => ar(Arith::Add)?,
             BinOp::Sub => ar(Arith::Sub)?,
             BinOp::Mul | BinOp::Div => match (&a, b.num()) {
-                (Value::Range(x, y), Some(k)) => {
-                    if op == BinOp::Mul { Value::Range(x * k, y * k) } else { Value::Range(x / k, y / k) }
+                (Value::Range(r), Some(k)) => {
+                    let arith_op = if op == BinOp::Mul { Arith::Mul } else { Arith::Div };
+                    Value::Range(r.scale(arith_op, k))
                 }
                 _ => ar(if op == BinOp::Mul { Arith::Mul } else { Arith::Div })?,
             },
@@ -1741,10 +1777,10 @@ impl<'a> Evaluator<'a> {
                 Value::Bool(ok)
             }
             BinOp::In => match (&a, &b) {
-                (Value::Num(x), Value::Range(lo, hi)) => {
-                    let ok = x >= lo && x <= hi;
+                (Value::Num(x), Value::Range(r)) => {
+                    let ok = r.contains(*x);
                     if !ok {
-                        self.note(format!("{} is outside {}..{}", num(*x), num(*lo), num(*hi)));
+                        self.note(r.miss_note(*x));
                     }
                     Value::Bool(ok)
                 }
