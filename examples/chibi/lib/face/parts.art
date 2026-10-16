@@ -4,9 +4,9 @@
 # `lid` 0..1 lowers the upper lid toward .45 of the half height, and 1 draws the closed lash.
 # The sclera gradients stay pinned to the open eye's top (75 tall, top drops 54 at lid 1), so a
 # lowered lid covers them instead of restarting them under the lash.
-def eye w:68 h:80 iris:p.iris side:1 look:0,0 lid:0
+def eye size:68x80 iris:p.iris side:1 look:0,0 lid:0
   let lash = mix(line(iris) p.ink .7)
-  group scale:side*w/68,h/80
+  group scale:side*size.w/68,size.h/80
     if lid >= 1
       curve -33.32,.8 -17.68,16 2.04,20.8 20.4,13.6 33.32,-.8 39.44,-8 stroke:lash,[2.04 6.8 8.84 8.16 5.44 1.7] taper:.15,.3
       curve 17,15.2 19.38,20.8 20.4,26.4 stroke:lash,3.06 taper:0,.8
@@ -29,35 +29,35 @@ def eye w:68 h:80 iris:p.iris side:1 look:0,0 lid:0
       curve -10.2,38 6.8,38.8 21.1,31.2 stroke:lash,2 taper:.4 a:.45
 
 # Content `^ ^` arc.
-def happy_eye w:68 color:p.ink
-  curve -w*.5,w*.16 -w*.22,-w*.17 w*.1,-w*.2 w*.5,w*.12 stroke:color,[w*.044 w*.147 w*.147 w*.044] taper:.3,.35
+def happy_eye size:68 color:p.ink
+  curve 0%,size*.16 size*-.22,size*-.17 size*.1,size*-.2 100%,size*.12 stroke:color,[size*.044 size*.147 size*.147 size*.044] taper:.3,.35
 
-def blush w:72 h:32 color:p.blush lines:3
-  ellipse w/2,h/2 fill:color a:.6 blur:min(w h)*.2
+def blush size:72x32 color:p.blush lines:3
+  ellipse 50%,50% fill:color a:.6 blur:min(size.w size.h)*.2
   each k in 0..lines
-    let x = (k-(lines-1)/2)*w*.22
-    curve x-w*.05,h*.18 x+w*.05,-h*.18 stroke:shade(color -1),w*.045 taper:.5 a:.7
+    let x = (k-(lines-1)/2)*size.w*.22
+    curve x-size.w*.05,size.h*.18 x+size.w*.05,size.h*-.18 stroke:shade(color -1),size.w*.045 taper:.5 a:.7
 
-def cat_mouth w:46 color:p.ink
+def cat_mouth size:46 color:p.ink
   mirror x
-    curve 0,-w*.04 w*.25,w*.22 w*.5,-w*.02 stroke:color,[w*.04 w*.08 w*.04] taper:.35
+    curve 50%,size*-.04 75%,size*.22 100%,size*-.02 stroke:color,[size*.04 size*.08 size*.04] taper:.35
 
-def smile w:40 color:p.ink
-  curve -w/2,-w*.06 0,w*.2 w/2,-w*.06 stroke:color,[w*.05 w*.09 w*.05] taper:.35
+def smile size:40 color:p.ink
+  curve 0%,size*-.06 50%,size*.2 100%,size*-.06 stroke:color,[size*.05 size*.09 size*.05] taper:.35
 
 # A shape's stroke paints under its children, so the lip line is a copy drawn after the tongue.
-def open_mouth w:30 color:p.ink
-  curve -w/2,0 0,w*.06 w/2,0 w*.36,w*.34 0,w*.56 -w*.36,w*.34 closed tension:.45 fill:p.mouth name:lips
-    ellipse w*.3,w*.2 at:w*.04,w*.52 fill:p.tongue
-  copy @lips fill:none stroke:color,w*.05
+def open_mouth size:30 color:p.ink
+  curve 0%,50% 50%,size*.06 100%,50% size*.36,size*.34 50%,size*.56 size*-.36,size*.34 closed tension:.45 fill:p.mouth name:lips
+    ellipse size*.3,size*.2 at:size*.04,size*.52 fill:p.tongue
+  copy @lips fill:none stroke:color,size*.05
 
 # Round `o` yawn with a tongue.
-def o_mouth w:36 color:p.ink
-  curve 0,-w*.3 w*.26,w*.02 0,w*.36 -w*.26,w*.02 closed fill:p.mouth name:lips
-    ellipse w*.2,w*.13 at:0,w*.3 fill:p.tongue
-  copy @lips fill:none stroke:color,w*.06
+def o_mouth size:36 color:p.ink
+  curve 50%,size*-.3 size*.26,size*.02 50%,size*.36 size*-.26,size*.02 closed fill:p.mouth name:lips
+    ellipse size*.2,size*.13 at:0,size*.3 fill:p.tongue
+  copy @lips fill:none stroke:color,size*.06
 
 # Four-point twinkle with a soft glow. Each side is a quadratic pulled toward the center.
-def sparkle r:20 color:p.glint glow:.35
-  circle r*.45 fill:color a:glow blur:r*.3
-  path "M0 -100Q9 -9 100 0Q9 9 0 100Q-9 9 -100 0Q-9 -9 0 -100Z" scale:r/100 fill:color
+def sparkle size:40 color:p.glint glow:.35
+  circle 22.5% fill:color a:glow blur:size*.15
+  path "M0 -100Q9 -9 100 0Q9 9 0 100Q-9 9 -100 0Q-9 -9 0 -100Z" scale:size/200 fill:color

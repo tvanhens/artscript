@@ -164,11 +164,11 @@ layer head
   fx outline 6 color:skin.line
 layer cheeks
   each s in [-1 1]
-    blush 70 h:32 at:512+150*s,498 color:monk.blush lines:3
+    blush 70x32 at:512+150*s,498 color:monk.blush lines:3
 layer eyes
   each s in [-1 1]
     curve 512+120*s,362 512+92*s,348 512+60*s,354 stroke:fade(skin.line .7),[2 5 2] taper:.35
-    eye 104 h:112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else .6 at:512+88*s,440
+    eye 104x112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else .6 at:512+88*s,440
 layer mouth
   if target == yawn
     o_mouth 36 at:512,508 color:monk.mouth
@@ -215,6 +215,6 @@ layer beads
   _bead 13 at:512,810
   fx outline 3 color:cedar.line
 layer sparkles
-  sparkle 22 at:742,196 color:monk.star
-  sparkle 13 at:318,222 color:monk.star
+  sparkle 44 at:742,196 color:monk.star
+  sparkle 26 at:318,222 color:monk.star
 assert inside(@robe canvas margin:24)

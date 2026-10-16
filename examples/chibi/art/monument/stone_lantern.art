@@ -157,7 +157,7 @@ layer mossy_rock pivot:512,820
       curve 479,644 488,650 497,644 stroke:lantern.face,3.6 taper:.4 name:eye_l
       curve 527,644 536,650 545,644 stroke:lantern.face,3.6 taper:.4 name:eye_r
       each x in [476 548]
-        blush 20 h:10 lines:0 at:x,662 color:lantern.blush
+        blush 20x10 lines:0 at:x,662 color:lantern.blush
       smile 10 at:512,662 color:lantern.face
       assert level(@eye_l @eye_r) tol:.5
     layer eyes_open pivot:512,646 a:0
@@ -283,4 +283,4 @@ layer firefly_a
   _fly 236 420 5
 layer firefly_b
   _fly 784 488 4
-  sparkle 9 at:812,452 color:lantern.spark glow:.25
+  sparkle 18 at:812,452 color:lantern.spark glow:.25
