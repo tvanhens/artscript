@@ -1,10 +1,10 @@
 # Token budgets in o200k_base, enforced by scripts/card_budget.py.
 
-# A ratchet, not a target: the card's size when the budget was set (2809), rounded up to the next
-# 50. Lower it whenever the card shrinks. bench/CARD_EXPERIMENT.md decides the core card's real size.
+# A ratchet, not a target: the card's size when the budget was set (3081, after `finish` landed
+# in #8), rounded up to the next 50. Lower it whenever the card shrinks. bench/CARD_EXPERIMENT.md decides the core card's real size.
 [card]
 path = "docs/language.md"
-tokens = 2850
+tokens = 3100
 
 # Each per-topic help page, once they exist.
 [help]

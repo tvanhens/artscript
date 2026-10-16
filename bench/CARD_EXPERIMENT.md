@@ -8,9 +8,9 @@ turns and worse art. This protocol measures that. It has not been run yet.
 
 | setup | prompt holds | help |
 |---|---|---|
-| `full` | `docs/language.md` (2809 tokens) | none |
+| `full` | `docs/language.md` (3081 tokens) | none |
 | `core1500` | a core of about 1500 tokens | `artscript help <topic>` |
-| `core800` | `bench/card_core_800.md` (794 tokens) | `artscript help <topic>` |
+| `core800` | `bench/card_core_800.md` (796 tokens) | `artscript help <topic>` |
 
 `core1500` is `docs/language.md` with these parts moved behind help, then trimmed to 1500 ± 50
 tokens: the Fields section, slots and overrides from Components, the check function list, the CLI
@@ -32,7 +32,7 @@ setups otherwise don't see. Every topic in either core's index has a row.
 | poly, star, path, dash, cap, join, jitter, style, seed | semantics 7. Paint and geometry defaults |
 | skew, pivot, frames | semantics 3. Coordinates and frames |
 | repeat, grid, outside | semantics 13. Clarifications from implementation |
-| fx as/of/merge, fx details | semantics 8. Effects |
+| fx as/of/merge, fx details, finish | semantics 8. Effects |
 | mask, slots, needs, overrides | semantics 9. Components, slots and overrides |
 | rule, expect, checks | semantics 10. Checks |
 | conic, blob, xor, mirror, feather, anchor, fields | the card's sentence or table row for the topic |

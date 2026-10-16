@@ -49,4 +49,4 @@ curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:plum.skin name:body
 
 ## Index
 
-targets, privacy, palette from, conic, poly, star, blob, path, xor, mirror, repeat, grid, outside, mask, feather, jitter, dash, cap, join, skew, pivot, fx as/of/merge, fields, seed, anchor, slots, needs, overrides, style, rule, expect, checks, CLI.
+targets, privacy, palette from, conic, poly, star, blob, path, xor, mirror, repeat, grid, outside, mask, feather, jitter, dash, cap, join, skew, pivot, fx as/of/merge, fields, seed, anchor, slots, needs, overrides, style, finish, rule, expect, checks, CLI.
