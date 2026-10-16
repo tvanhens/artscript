@@ -15,7 +15,7 @@ The author-facing reference is `docs/language.md`. This file settles the details
 - **Sizes.** A number or percent, then `x`, then a number or percent with no spaces is one size token: `256x256`, `100%x60%`, `8x40`. `mirror x` stays an identifier because `x` is not glued to a number.
 - **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Every grammar word has one row in the word table in `crates/syntax/src/words.rs`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none fx mask slot`. The future words (`sksl field warp backdrop profile pose joint ease t frames anim key`) are reserved too. A reserved word used as a name is E0105, so `let fx = 1` is an error. `ramp` and `color` head palette rows and are ordinary names everywhere else, so `color:p.ink`, a def parameter named `color`, and the `ramp(...)` builtin keep working.
 - **References.** `@` followed by an identifier, then `.segment` repeats where a segment is an identifier, digits or `*`.
-- **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by an identifier is a patch.
+- **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by a name is a patch. A segment may be a keyword, because a slot may be named one: `slot mask`, then `.mask off`.
 - **Strings.** `"..."` supports the escapes `\" \\ \n`. `"""..."""` is raw and may span lines. Its common leading indentation is stripped.
 - **Whitespace.** Every token records whether whitespace preceded it, and the parser needs this.
 

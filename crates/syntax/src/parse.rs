@@ -1020,13 +1020,13 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let mut path = vec![self.expect_name()];
+        let mut path = vec![self.part_name()];
         while self
             .cur()
             .is_some_and(|t| matches!(t.kind, Tok::Dot) && !t.ws_before)
         {
             self.bump();
-            path.push(self.expect_name());
+            path.push(self.part_name());
         }
         let mut named = Vec::new();
         let mut off = false;
@@ -1666,19 +1666,32 @@ impl<'a> Parser<'a> {
     }
 
     fn slot_name(&mut self) -> String {
+        self.take_word().unwrap_or_else(|| {
+            self.fail_here("expected a slot name", "write `slot name`");
+            String::new()
+        })
+    }
+
+    /// A patch segment names a part or a slot. A slot may be declared with a keyword (`slot mask`),
+    /// so the segment is not a binding and is not reserved.
+    fn part_name(&mut self) -> String {
+        self.take_word().unwrap_or_else(|| {
+            self.fail_here("expected a part name", "write `.part` or `.head.eye`");
+            String::new()
+        })
+    }
+
+    fn take_word(&mut self) -> Option<String> {
         match self.cur().map(|t| t.kind.clone()) {
             Some(Tok::Ident(s)) => {
                 self.bump();
-                s
+                Some(s)
             }
             Some(Tok::Kw(k)) => {
                 self.bump();
-                k.as_str().to_string()
+                Some(k.as_str().to_string())
             }
-            _ => {
-                self.fail_here("expected a slot name", "write `slot name`");
-                String::new()
-            }
+            _ => None,
         }
     }
 

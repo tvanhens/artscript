@@ -503,6 +503,9 @@ fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
     let s = scene_with("@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n", &[lib]);
     assert!(node(&s, "cup").mask.is_none(), "`mask:` fills the slot, it does not mask");
     node(&s, "cup.mask.circle");
+
+    let s = scene_with("@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n  .mask off\n", &[lib]);
+    assert!(!paths(&s).iter().any(|p| p.starts_with("cup.mask")));
 }
 
 #[test]

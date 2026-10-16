@@ -1567,6 +1567,9 @@ impl<'a> Evaluator<'a> {
         let path = format!("{}.{leaf}", sc.path);
         let (patch_named, off) = self.take_patches(&path);
         if off {
+            if inst.fills.iter().any(|f| f.name == name) {
+                inst.used_fills.borrow_mut().push(name.to_string());
+            }
             return Ok(());
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;

@@ -121,7 +121,7 @@ def eye size:10 iris:p.sky.3 look:0,0
 - `size` is the def's box, centered on the origin. `size:40` is a square. `size:72x32` is 72 wide and 32 tall. A bare percent uses the smaller side. Percents in the body measure that box, and a child with no `at:` stays at the origin.
 - Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
 - `slot name` exposes an insertion point, filled by the caller with a `name:` block. A def body may hold `fx`, which attach to every instance and run before the call site's. A mask, a slot fill, or a patch cannot sit directly in a def body. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
-- `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
+- `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning. A segment may be a keyword when the part is a slot of that name, as in `.mask off`.
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants. A style takes keys only, never a block. A style holds keys that children inherit, while a finish holds effects that one node gets.
 

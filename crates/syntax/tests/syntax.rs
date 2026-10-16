@@ -769,6 +769,15 @@ fn a_trailing_colon_on_a_keyword_is_still_a_slot() {
     }
     assert!(cup.body.fx().next().is_none());
     must_parse("slot fx\n  circle 1\nslot mask\n");
+    let file = must_parse("cup\n  .mask off\n  .head.fx rot:1\n");
+    match draw(&file).body.items() {
+        [DrawItem::Patch(mask), DrawItem::Patch(fx)] => {
+            assert_eq!(mask.path, vec!["mask".to_string()]);
+            assert!(mask.off);
+            assert_eq!(fx.path, vec!["head".to_string(), "fx".to_string()]);
+        }
+        other => panic!("{other:?}"),
+    }
 }
 
 #[test]
