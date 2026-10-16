@@ -74,6 +74,64 @@ pub(crate) const ANGLE_SUFFIXES: &[(&str, f64)] = &[("deg", 1.0), ("turn", 360.0
 /// Escape letter after `\`, and the char it produces.
 pub(crate) const STRING_ESCAPES: &[(char, char)] = &[('\\', '\\'), ('"', '"'), ('n', '\n')];
 
+/// `@` plus one non-empty segment.
+pub(crate) fn is_directive_ref(tokens: &[Token]) -> bool {
+    matches!(
+        tokens.first().map(|t| &t.kind),
+        Some(Tok::Ref(segs)) if segs.len() == 1 && !segs[0].is_empty()
+    )
+}
+
+/// `name:` glued, and the colon is the last token. A keyword never qualifies.
+pub(crate) fn is_slot_at(tokens: &[Token], index: usize) -> bool {
+    if !matches!(tokens.get(index).map(|t| &t.kind), Some(Tok::Ident(_))) {
+        return false;
+    }
+    let Some(colon) = tokens.get(index + 1) else {
+        return false;
+    };
+    matches!(colon.kind, Tok::Colon) && !colon.ws_before && index + 2 == tokens.len()
+}
+
+/// `name:` or `keyword:` with the colon glued. A following value is not required.
+pub(crate) fn is_glued_key(tokens: &[Token], index: usize) -> bool {
+    if !matches!(
+        tokens.get(index).map(|t| &t.kind),
+        Some(Tok::Ident(_) | Tok::Kw(_))
+    ) {
+        return false;
+    }
+    matches!(
+        tokens.get(index + 1),
+        Some(colon) if matches!(colon.kind, Tok::Colon) && !colon.ws_before
+    )
+}
+
+/// Leading `.name(.name)*` token count. The first name may follow a space. Later dots must be glued.
+#[allow(dead_code)]
+pub(crate) fn patch_path_len(tokens: &[Token]) -> usize {
+    if !matches!(tokens.first().map(|t| &t.kind), Some(Tok::Dot)) {
+        return 0;
+    }
+    let mut i = 1;
+    if tokens
+        .get(i)
+        .is_some_and(|t| matches!(t.kind, Tok::Ident(_)))
+    {
+        i += 1;
+    }
+    while tokens
+        .get(i)
+        .is_some_and(|t| matches!(t.kind, Tok::Dot) && !t.ws_before)
+        && tokens
+            .get(i + 1)
+            .is_some_and(|t| matches!(t.kind, Tok::Ident(_)))
+    {
+        i += 2;
+    }
+    i
+}
+
 impl Tok {
     pub(crate) fn desc(&self) -> String {
         match self {

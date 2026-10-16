@@ -105,7 +105,7 @@ impl<'a> Parser<'a> {
     }
 
     fn starts_directive(&self) -> bool {
-        matches!(self.cur().map(|t| &t.kind), Some(Tok::Ref(segs)) if segs.len() == 1 && !segs[0].is_empty())
+        lex::is_directive_ref(&self.lines[self.li].tokens[self.ti..])
     }
 
     fn parse_directive(&mut self) -> Directive {
@@ -1109,14 +1109,8 @@ impl<'a> Parser<'a> {
     }
 
     fn is_named(&self) -> bool {
-        let Some(tok) = self.cur() else { return false };
-        if !is_key(&tok.kind) {
-            return false;
-        }
-        let Some(colon) = self.lines[self.li].tokens.get(self.ti + 1) else {
-            return false;
-        };
-        matches!(colon.kind, Tok::Colon) && !colon.ws_before
+        // `cur` is empty after a recovery failure. The line rule itself does not know that.
+        !self.line_failed && lex::is_glued_key(&self.lines[self.li].tokens, self.ti)
     }
 
     fn parse_named(&mut self) -> Named {
@@ -1618,10 +1612,7 @@ impl<'a> Parser<'a> {
             self.parse_prec(PREC_MAP + 1)
         };
         if !self.eat(&Tok::Arrow) {
-            self.fail_here(
-                "expected `->`",
-                "write `[each name in <expr> -> <expr>]`",
-            );
+            self.fail_here("expected `->`", "write `[each name in <expr> -> <expr>]`");
             return Expr::Each {
                 var,
                 iter: Box::new(iter),
@@ -1901,10 +1892,6 @@ impl<'a> Parser<'a> {
             false
         }
     }
-}
-
-fn is_key(kind: &Tok) -> bool {
-    matches!(kind, Tok::Ident(_) | Tok::Kw(_))
 }
 
 fn binop_of(kind: &Tok) -> Option<(BinOp, u8)> {
