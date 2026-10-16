@@ -22,6 +22,11 @@ pub fn format(file: &ast::File) -> String {
     fmt::format_file(file)
 }
 
+/// Canonical source for one expression, the same spelling `format` uses.
+pub fn format_expr(expr: &ast::Expr) -> String {
+    fmt::fmt_expr(expr)
+}
+
 /// Parses `src` and prints it in canonical form, keeping comments attached by line.
 /// `format_source` applied twice is the same string.
 pub fn format_source(src: &str) -> Result<String, Vec<Diagnostic>> {

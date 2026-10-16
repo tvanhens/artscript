@@ -8,7 +8,7 @@ use std::rc::Rc;
 use artscript_ir::{
     Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect, Shape, Stroke,
 };
-use artscript_syntax::Diagnostic;
+use artscript_syntax::{format_expr, Diagnostic};
 use artscript_syntax::ast::{BinOp, Expr, File, FxLine, Named, Span, Stmt, StmtKind, UnOp};
 
 use crate::checks::{CheckState, Pending};
@@ -298,13 +298,24 @@ fn each_items(it: Value) -> R<Vec<Value>> {
     Ok(items)
 }
 
-fn range_width(r: &Range, color: Option<&Value>) -> Fail {
-    let shown = r.to_string();
-    let (a, b) = shown.split_once("..").unwrap_or(("?", "?"));
-    let samples = format!("[{a} {b}]");
-    let rewrite = match color {
-        Some(c) => format!("stroke:{},{samples}", c.show()),
-        None => format!("stroke:{samples}"),
+fn stroke_expr(named: &[Named], a: &Args, sc: &Scope) -> Option<Expr> {
+    if let Some(n) = named.iter().rev().find(|n| n.key == "stroke") {
+        return Some(n.value.clone());
+    }
+    let sname = a.word("style")?;
+    let styles = sc.module.styles.borrow();
+    styles.get(&sname).and_then(|s| s.named.iter().rev().find(|n| n.key == "stroke").map(|n| n.value.clone()))
+}
+
+fn range_width(stroke: Option<&Expr>) -> Fail {
+    let rewrite = match stroke {
+        Some(Expr::Range(a, b)) => format!("stroke:[{} {}]", format_expr(a), format_expr(b)),
+        Some(Expr::Tuple(xs)) if xs.len() == 2 => match &xs[1] {
+            Expr::Range(a, b) => format!("stroke:{},[{} {}]", format_expr(&xs[0]), format_expr(a), format_expr(b)),
+            _ => "stroke:paint,[2 6]".into(),
+        },
+        // An inherited style has already been evaluated, so the source spelling is gone.
+        _ => "stroke:paint,[2 6]".into(),
     };
     fail("E0320", "a range is not a stroke width").fix(format!("write `{rewrite}`"))
 }
@@ -1044,7 +1055,8 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
+            let stroke_src = stroke_expr(named, &a, sc);
+            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world, stroke_src.as_ref())?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
                 record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at }));
@@ -1295,7 +1307,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix) -> R<Shape> {
+    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix, stroke_src: Option<&Expr>) -> R<Shape> {
         let pick = |k: &str| a.get(k).cloned().or_else(|| style.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone()));
         let bounds = geom::bounds(&geometry);
         let fill_v = pick("fill");
@@ -1317,12 +1329,12 @@ impl<'a> Evaluator<'a> {
             None if !closed && fill.is_none() => (Value::Color(Col::plain(color::line(Rgba::GRAY))), Some(W::Const(2.0))),
             None | Some(Value::None) => (Value::None, None),
             Some(Value::Num(w)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::Const(w))),
-            Some(Value::Range(r)) => return Err(range_width(&r, None)),
+            Some(Value::Range(_)) => return Err(range_width(stroke_src)),
             Some(Value::List(ws)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(ws.iter().filter_map(Value::num).collect()))),
             Some(Value::Tuple(xs)) if xs.len() == 2 => {
                 let w = match &xs[1] {
                     Value::Num(w) => W::Const(*w),
-                    Value::Range(r) => return Err(range_width(r, Some(&xs[0]))),
+                    Value::Range(_) => return Err(range_width(stroke_src)),
                     Value::List(ws) => W::List(ws.iter().filter_map(Value::num).collect()),
                     other => return Err(fail("E0320", format!("stroke width must be a number or list, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
                 };

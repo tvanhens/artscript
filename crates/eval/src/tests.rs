@@ -232,6 +232,19 @@ fn expect_failure_is_warning_c0201() {
     let d = &ev.diagnostics[0];
     assert_eq!((d.code.as_str(), d.severity), ("C0201", artscript_syntax::Severity::Warning));
     assert_eq!(d.notes, ["head as wide as the body", "head.w = 10", "body.w = 40", "0.25 is outside 0.9..1.4"]);
+
+    let inside = run_with(
+        "@target t.png 100x100\nrect 12x10 name:head\nrect 10x10 name:body\nexpect @head.w / @body.w in .9..1.4 \"head as wide as the body\"\n",
+        &[],
+    );
+    assert!(inside.diagnostics.is_empty(), "{}", show(&inside.diagnostics));
+
+    let end = run_with(
+        "@target t.png 100x100\nrect 14x10 name:head\nrect 10x10 name:body\nexpect @head.w / @body.w in .9..1.4 \"head as wide as the body\"\n",
+        &[],
+    );
+    let note = end.diagnostics.iter().find(|d| d.code == "C0201").unwrap_or_else(|| panic!("{}", show(&end.diagnostics)));
+    assert!(note.notes.iter().any(|n| n == "1.4 is outside 0.9..1.4 (the end is excluded)"), "{:?}", note.notes);
 }
 
 #[test]
@@ -334,7 +347,7 @@ fn range_end_is_excluded_for_in_and_each() {
 #[test]
 fn stroke_range_is_e0320() {
     let ev = run_with(
-        "@target t.png 40x40\ncurve 0,0 50,0 100,0 stroke:#111,2..6\ncurve 0,0 50,0 100,0 stroke:2..6\n",
+        "@target t.png 40x40\npalette p\n  ink #112233\ncurve 0,0 50,0 100,0 stroke:#111,2..6\ncurve 0,0 50,0 100,0 stroke:2..6\ncurve 0,0 50,0 100,0 stroke:p.ink,2.004..5.996\n",
         &[],
     );
     let fixes: Vec<_> = ev
@@ -343,8 +356,16 @@ fn stroke_range_is_e0320() {
         .filter(|d| d.code == "E0320")
         .map(|d| d.fix.clone().unwrap_or_default())
         .collect();
-    assert_eq!(fixes.len(), 2, "{}", show(&ev.diagnostics));
-    assert!(fixes.iter().all(|f| f.contains("[2 6]")), "{fixes:?}");
+    assert_eq!(
+        fixes,
+        vec![
+            "write `stroke:#111,[2 6]`".to_string(),
+            "write `stroke:[2 6]`".to_string(),
+            "write `stroke:p.ink,[2.004 5.996]`".to_string(),
+        ],
+        "{}",
+        show(&ev.diagnostics)
+    );
 }
 
 #[test]

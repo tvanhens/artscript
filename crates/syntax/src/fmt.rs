@@ -374,7 +374,7 @@ fn fmt_named(n: &Named) -> String {
     format!("{}:{}", n.key, fmt_expr(&n.value))
 }
 
-fn fmt_expr(e: &Expr) -> String {
+pub(crate) fn fmt_expr(e: &Expr) -> String {
     fmt_at(e, 0, false)
 }
 
