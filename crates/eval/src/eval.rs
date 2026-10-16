@@ -637,17 +637,24 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope, skip_pos: usize) -> R<Args> {
+    fn eval_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope, skip_pos: usize, span: Span) -> R<Args> {
         let mut out = Args { pos: Vec::new(), named: Vec::new() };
+        let file = sc.file().to_string();
+        let node = sc.path.clone();
         for e in args.iter().skip(skip_pos) {
-            out.pos.push(self.expr(e, sc)?);
+            match self.expr(e, sc) {
+                Ok(v) => out.pos.push(v),
+                Err(f) => self.report(f, &file, span, &node),
+            }
         }
         for n in named {
             if n.key == "name" {
                 continue;
             }
-            let v = self.expr(&n.value, sc)?;
-            out.named.push((n.key.clone(), v));
+            match self.expr(&n.value, sc) {
+                Ok(v) => out.named.push((n.key.clone(), v)),
+                Err(f) => self.report(f, &file, n.span, &node),
+            }
         }
         Ok(out)
     }
@@ -757,7 +764,7 @@ impl<'a> Evaluator<'a> {
             "anchor" => return self.anchor(args, sc),
             "slot" => return self.slot(st, args, named, body, sc, out),
             "canvas" if sc.top => {
-                let a = self.eval_args(args, named, sc, 0)?;
+                let a = self.eval_args(args, named, sc, 0, st.span)?;
                 if let Some(v) = a.get("fill") {
                     self.background = v.color().map(|c| c.rgba);
                 }
@@ -789,7 +796,12 @@ impl<'a> Evaluator<'a> {
             if !comps.is_empty() {
                 f = f.note(format!("components in scope: {}", comps.join(", ")));
             }
-            return Err(f.fix(format!("check the spelling, or `use` the library that defines `{verb}`")));
+            let file = sc.file().to_string();
+            self.report(f.fix(format!("check the spelling, or `use` the library that defines `{verb}`")), &file, st.span, &sc.path);
+            if body.is_empty() {
+                return Ok(());
+            }
+            return self.eval_node(st, "group", &[], &[], body, sc, out);
         }
         let explicit = named.iter().find(|n| n.key == "name").and_then(|n| ident_of(&n.value)).map(str::to_string);
         let positional_name = matches!(verb, "layer" | "group").then(|| args.first().and_then(ident_of).map(str::to_string)).flatten();
@@ -816,19 +828,25 @@ impl<'a> Evaluator<'a> {
             .filter(|e| !(matches!(ident_of(e), Some("closed")) || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y")))))
             .cloned()
             .collect();
-        let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
+        let mut a = self.eval_args(&pos_exprs, named, sc, 0, st.span)?;
         if let Some(sname) = a.word("style") {
-            let mut s = self.style_named(&sname, sc)?;
-            s.append(&mut a.named);
-            a.named = s;
+            match self.style_named(&sname, sc) {
+                Ok(mut s) => {
+                    s.append(&mut a.named);
+                    a.named = s;
+                }
+                Err(f) => self.report(f, &sc.file().to_string(), st.span, &path),
+            }
         }
         let Body { fx, inline, mask: mask_block, rest } = self.split_body(body);
-        for st in &inline {
-            if let StmtKind::Node { verb, args, .. } = &st.kind
+        for child in &inline {
+            if let StmtKind::Node { verb, args, .. } = &child.kind
                 && let Some(e) = args.first()
             {
-                let v = self.expr(e, sc)?;
-                a.named.push((verb.clone(), v));
+                match self.expr(e, sc) {
+                    Ok(v) => a.named.push((verb.clone(), v)),
+                    Err(f) => self.report(f, &sc.file().to_string(), child.span, &path),
+                }
             }
         }
         a.named.extend(patch_named);
@@ -1269,9 +1287,9 @@ impl<'a> Evaluator<'a> {
         let rest: Vec<Expr> = args[1..].to_vec();
         let plain_named: Vec<Named> = named.iter().filter(|n| n.key != "of" && n.key != "as").cloned().collect();
         let a = if op_name == "merge" {
-            self.eval_args(&[], &plain_named, sc, 0)?
+            self.eval_args(&[], &plain_named, sc, 0, st.span)?
         } else {
-            self.eval_args(&rest, &plain_named, sc, 0)?
+            self.eval_args(&rest, &plain_named, sc, 0, st.span)?
         };
         let alpha = a.num("a").unwrap_or(1.0);
         let color = |default: Rgba| -> R<artscript_ir::Color> {
@@ -1548,7 +1566,7 @@ impl<'a> Evaluator<'a> {
         if off {
             return Ok(());
         }
-        let mut a = self.eval_args(&[], named, sc, 0)?;
+        let mut a = self.eval_args(&[], named, sc, 0, st.span)?;
         a.named.extend(patch_named);
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, true)?;
         let world = sc.world * m;

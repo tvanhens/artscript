@@ -1,5 +1,8 @@
 //! Evaluator behaviour tests over in-memory projects.
 
+use std::fs;
+use std::path::Path;
+
 use artscript_ir::{Node, NodeKind, Paint, Scene};
 use artscript_syntax::Diagnostic;
 
@@ -26,6 +29,19 @@ fn scene(src: &str) -> Scene {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     ev.scene.unwrap()
+}
+
+fn eval_src(src: &str) -> Evaluation {
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(!plan.jobs.is_empty(), "{}", show(&plan.diagnostics));
+    evaluate(&p, &plan.jobs[0])
+}
+
+fn shape_count(s: &Scene) -> usize {
+    let mut all = Vec::new();
+    walk(&s.children, &mut all);
+    all.into_iter().filter(|n| matches!(n.kind, NodeKind::Shape(_))).count()
 }
 
 fn show(ds: &[Diagnostic]) -> String {
@@ -462,4 +478,65 @@ fn raw_color_lint_skips_palettes() {
     let ev = evaluate(&p, &plan.jobs[0]);
     let lints: Vec<(&str, u32)> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
     assert_eq!(lints, [("L0101", 5)]);
+}
+
+#[test]
+fn line_prefixes_of_a_fixture_entry_render_a_scene() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../crates/syntax/tests/fixtures/mvp_hero.art");
+    let src = fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let lines: Vec<&str> = src.lines().collect();
+    let mut last = 0usize;
+    for n in 1..=lines.len() {
+        let prefix = format!("{}\n", lines[..n].join("\n"));
+        let ev = eval_src(&prefix);
+        let scene = ev.scene.unwrap_or_else(|| panic!("prefix of {n} lines has no scene\n{}", show(&ev.diagnostics)));
+        let count = paths(&scene).len();
+        let parsed = artscript_syntax::parse_partial(&prefix);
+        let incomplete = parsed.diagnostics.iter().any(|d| d.span.line == n as u32);
+        if !incomplete {
+            assert!(count >= last, "prefix of {n} lines dropped from {last} nodes to {count}");
+            last = count;
+        }
+    }
+    assert!(last > 0, "the full fixture drew nothing");
+}
+
+#[test]
+fn a_broken_line_between_shapes_keeps_both() {
+    let ev = eval_src("@target t.png 40x40\ncircle 10 name:a\nlet\nrect 8x8 name:b\n");
+    let scene = ev.scene.expect("scene");
+    assert_eq!(shape_count(&scene), 2, "{:?}", paths(&scene));
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0101"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_bad_fill_keeps_the_circle_and_its_stroke() {
+    let ev = eval_src("@target t.png 80x80\npalette p\n  ink #112233\ncircle 40 fill:p.nosuch stroke:p.ink,3 name:c\n");
+    let scene = ev.scene.expect("scene");
+    let NodeKind::Shape(shape) = &node(&scene, "c").kind else { panic!("c is not a shape") };
+    let stroke = shape.stroke.as_ref().expect("stroke");
+    assert!((stroke.width - 3.0).abs() < 1e-3, "{}", stroke.width);
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0350"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn an_unclosed_gradient_still_fills() {
+    let ev = eval_src("@target t.png 40x40\ncircle 20 name:g fill:grad(down #fff #000\n");
+    let scene = ev.scene.expect("scene");
+    let NodeKind::Shape(shape) = &node(&scene, "g").kind else { panic!("g is not a shape") };
+    assert!(matches!(shape.fill, Some(Paint::Linear { .. })), "{:?}", shape.fill);
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0101"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn an_unknown_verb_with_a_block_draws_its_children() {
+    let ev = eval_src("@target t.png 40x40\nwiggle\n  circle 8 name:a\n  rect 4x4 name:b\n");
+    let scene = ev.scene.expect("scene");
+    assert_eq!(shape_count(&scene), 2, "{:?}", paths(&scene));
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0301"), "{}", show(&ev.diagnostics));
+
+    let bare = eval_src("@target t.png 40x40\nwiggle\n");
+    let scene = bare.scene.expect("scene");
+    assert_eq!(shape_count(&scene), 0, "{:?}", paths(&scene));
+    assert!(bare.diagnostics.iter().any(|d| d.code == "E0301"), "{}", show(&bare.diagnostics));
 }
