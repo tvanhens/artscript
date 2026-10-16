@@ -8,8 +8,8 @@ const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 /// A digit may sit in front of a word. `5degx` is a number and then a name.
 const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
-const HEAD: &str = "^[ ]*([ \\t]*\\t[ \\t]*)?";
-const DIRECTIVE_HEAD: &str = "^(\\t+)?";
+const AT_STATEMENT: &str = "(?<=^[ \\t]*)";
+const AT_DIRECTIVE: &str = "(?<=^\\t*)";
 
 const ESCAPE_SCOPE: &str = "constant.character.escape.art";
 
@@ -159,16 +159,16 @@ pub(crate) fn emit() -> Vec<Pattern> {
             name: Some(scope(Class::Comment)),
             captures: vec![],
         },
-        directive(invalid),
-        use_path(invalid),
+        indent_tab(invalid),
+        directive(),
+        use_path(),
     ];
     for kw_group in KwGroup::all() {
-        patterns.push(keyword_head(*kw_group, invalid));
+        patterns.push(keyword_head(*kw_group));
     }
-    patterns.push(patch(invalid));
-    patterns.push(slot(invalid));
-    patterns.push(verb(invalid));
-    patterns.push(unmatched_indent_tab(invalid));
+    patterns.push(patch());
+    patterns.push(slot());
+    patterns.push(verb());
     patterns.push(Pattern::Match {
         re: format!("@{ident}(?:\\.(?:{ident}|[0-9]+|\\*))*", ident = IDENT),
         name: Some(scope(Class::Reference)),
@@ -238,64 +238,56 @@ pub(crate) fn emit() -> Vec<Pattern> {
     patterns
 }
 
-fn directive(invalid: &'static str) -> Pattern {
+fn indent_tab(invalid: &'static str) -> Pattern {
+    Pattern::Match {
+        re: "(?<=^[ \\t]*)\\t".into(),
+        name: Some(invalid),
+        captures: vec![],
+    }
+}
+
+fn directive() -> Pattern {
     let path = path_class();
     Pattern::Match {
         re: format!(
-            "{head}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*){end})?",
-            head = DIRECTIVE_HEAD,
+            "{at}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*){end})?",
+            at = AT_DIRECTIVE,
             ident = IDENT,
             end = path_chunk_end()
         ),
         name: None,
-        captures: vec![
-            (1, invalid),
-            (2, scope(Class::Directive)),
-            (3, scope(Class::Path)),
-        ],
+        captures: vec![(1, scope(Class::Directive)), (2, scope(Class::Path))],
     }
 }
 
-fn use_path(invalid: &'static str) -> Pattern {
+fn use_path() -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}(use){after}(?:[ \\t]*({path}+){end})?",
-            head = HEAD,
+            "{at}(use){after}(?:[ \\t]*({path}+){end})?",
+            at = AT_STATEMENT,
             after = NOT_IDENT_AFTER,
             path = path_class(),
             end = path_chunk_end()
         ),
         name: None,
-        captures: vec![
-            (1, invalid),
-            (2, KwGroup::Import.scope()),
-            (3, scope(Class::Path)),
-        ],
+        captures: vec![(1, KwGroup::Import.scope()), (2, scope(Class::Path))],
     }
 }
 
-fn keyword_head(kw_group: KwGroup, invalid: &'static str) -> Pattern {
+fn keyword_head(kw_group: KwGroup) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}({alt}){after}",
-            head = HEAD,
+            "{at}(?:{alt}){after}",
+            at = AT_STATEMENT,
             alt = kw_alt(kw_group),
             after = NOT_IDENT_AFTER
         ),
-        name: None,
-        captures: vec![(1, invalid), (2, kw_group.scope())],
+        name: Some(kw_group.scope()),
+        captures: vec![],
     }
 }
 
-fn unmatched_indent_tab(invalid: &'static str) -> Pattern {
-    Pattern::Match {
-        re: "^[ ]*(\\t+)".into(),
-        name: None,
-        captures: vec![(1, invalid)],
-    }
-}
-
-fn patch(invalid: &'static str) -> Pattern {
+fn patch() -> Pattern {
     let patch = scope(Class::Patch);
     let name = format!("{not_kw}({ident})", not_kw = not_keyword(), ident = IDENT);
     let segment = format!("(\\.)([ \\t]*){name}");
@@ -306,13 +298,13 @@ fn patch(invalid: &'static str) -> Pattern {
     );
     Pattern::Region {
         begin: format!(
-            "{head}(\\.)([ \\t]*){optional_non_keyword_name}",
-            head = HEAD,
+            "{at}(\\.)([ \\t]*){optional_non_keyword_name}",
+            at = AT_STATEMENT,
             optional_non_keyword_name = optional_non_keyword_name
         ),
         end: format!("(?!\\.[ \\t]*{name})"),
         name: None,
-        begin_captures: vec![(1, invalid), (2, patch), (4, patch)],
+        begin_captures: vec![(1, patch), (3, patch)],
         inner: vec![Pattern::Match {
             re: segment,
             name: None,
@@ -339,29 +331,25 @@ fn keyword_alts() -> String {
     words.join("|")
 }
 
-fn slot(invalid: &'static str) -> Pattern {
+fn slot() -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}({ident})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
-            head = HEAD,
+            "{at}({ident})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
+            at = AT_STATEMENT,
             ident = IDENT,
             hex = hex_body(),
             delims = delim_class()
         ),
         name: None,
-        captures: vec![
-            (1, invalid),
-            (2, scope(Class::Slot)),
-            (3, scope(Class::Slot)),
-        ],
+        captures: vec![(1, scope(Class::Slot)), (2, scope(Class::Slot))],
     }
 }
 
-fn verb(invalid: &'static str) -> Pattern {
+fn verb() -> Pattern {
     Pattern::Match {
-        re: format!("{head}({ident})", head = HEAD, ident = IDENT),
-        name: None,
-        captures: vec![(1, invalid), (2, scope(Class::Verb))],
+        re: format!("{at}{ident}", at = AT_STATEMENT, ident = IDENT),
+        name: Some(scope(Class::Verb)),
+        captures: vec![],
     }
 }
 

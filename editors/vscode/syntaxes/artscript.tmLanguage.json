@@ -34,98 +34,58 @@
       "name": "comment.line.number-sign.art"
     },
     {
+      "match": "(?<=^[ \\t]*)\\t",
+      "name": "invalid.illegal.art"
+    },
+    {
       "captures": {
         "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
           "name": "keyword.other.directive.art"
         },
-        "3": {
+        "2": {
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "^(\\t+)?(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
+      "match": "(?<=^\\t*)(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
     },
     {
       "captures": {
         "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
           "name": "keyword.control.import.art"
         },
-        "3": {
+        "2": {
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
+      "match": "(?<=^[ \\t]*)(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "keyword.control.import.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(from|use|as)(?![A-Za-z0-9_])"
+      "match": "(?<=^[ \\t]*)(?:from|use|as)(?![A-Za-z0-9_])",
+      "name": "keyword.control.import.art"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "storage.type.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(palette|finish|shader|style|light|brush|rule|def|let)(?![A-Za-z0-9_])"
+      "match": "(?<=^[ \\t]*)(?:palette|finish|shader|style|light|brush|rule|def|let)(?![A-Za-z0-9_])",
+      "name": "storage.type.art"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "keyword.control.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(assert|expect|then|else|each|mask|slot|if|in|fx)(?![A-Za-z0-9_])"
+      "match": "(?<=^[ \\t]*)(?:assert|expect|then|else|each|mask|slot|if|in|fx)(?![A-Za-z0-9_])",
+      "name": "keyword.control.art"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "keyword.operator.logical.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(and|not|or)(?![A-Za-z0-9_])"
+      "match": "(?<=^[ \\t]*)(?:and|not|or)(?![A-Za-z0-9_])",
+      "name": "keyword.operator.logical.art"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "constant.language.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(false|true|none)(?![A-Za-z0-9_])"
+      "match": "(?<=^[ \\t]*)(?:false|true|none)(?![A-Za-z0-9_])",
+      "name": "constant.language.art"
     },
     {
-      "begin": "^[ ]*([ \\t]*\\t[ \\t]*)?(\\.)([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
+      "begin": "(?<=^[ \\t]*)(\\.)([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
       "beginCaptures": {
         "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
           "name": "variable.other.property.patch.art"
         },
-        "4": {
+        "3": {
           "name": "variable.other.property.patch.art"
         }
       },
@@ -147,35 +107,17 @@
     {
       "captures": {
         "1": {
-          "name": "invalid.illegal.art"
+          "name": "entity.name.tag.slot.art"
         },
         "2": {
           "name": "entity.name.tag.slot.art"
-        },
-        "3": {
-          "name": "entity.name.tag.slot.art"
         }
       },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?([A-Za-z_][A-Za-z0-9_]*)(:)(?=[ \\t]*(?:\\r?$|#(?!(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))))"
+      "match": "(?<=^[ \\t]*)([A-Za-z_][A-Za-z0-9_]*)(:)(?=[ \\t]*(?:\\r?$|#(?!(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))))"
     },
     {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        },
-        "2": {
-          "name": "entity.name.function.verb.art"
-        }
-      },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?([A-Za-z_][A-Za-z0-9_]*)"
-    },
-    {
-      "captures": {
-        "1": {
-          "name": "invalid.illegal.art"
-        }
-      },
-      "match": "^[ ]*(\\t+)"
+      "match": "(?<=^[ \\t]*)[A-Za-z_][A-Za-z0-9_]*",
+      "name": "entity.name.function.verb.art"
     },
     {
       "match": "@[A-Za-z_][A-Za-z0-9_]*(?:\\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\\*))*",

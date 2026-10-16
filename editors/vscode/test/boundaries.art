@@ -39,21 +39,43 @@ use/foo/bar
 123
 # c
 circle 1
+use foo
   @target out/file
   @a.b
   123
   # c
   circle 1
+  use foo
 	@target out/file
 	@a.b
 	123
 	# c
 	circle 1
+	use foo
  	@target out/file
  	@a.b
  	123
  	# c
  	circle 1
+ 	use foo
+	 @target out/file
+	 @a.b
+	 123
+	 # c
+	 circle 1
+	 use foo
+	  @target out/file
+	  @a.b
+	  123
+	  # c
+	  circle 1
+	  use foo
+	 	@target out/file
+	 	@a.b
+	 	123
+	 	# c
+	 	circle 1
+	 	use foo
 	
 circle	1
 .if

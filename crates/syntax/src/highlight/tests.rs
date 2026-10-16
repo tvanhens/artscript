@@ -821,8 +821,15 @@ fn boundary_source() -> String {
             lines.push(format!("{host}{tail}"));
         }
     }
-    for indent in ["", "  ", "\t", " \t"] {
-        for body in ["@target out/file", "@a.b", "123", "# c", "circle 1"] {
+    for indent in ["", "  ", "\t", " \t", "\t ", "\t  ", "\t \t"] {
+        for body in [
+            "@target out/file",
+            "@a.b",
+            "123",
+            "# c",
+            "circle 1",
+            "use foo",
+        ] {
             lines.push(format!("{indent}{body}"));
         }
     }
