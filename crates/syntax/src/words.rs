@@ -1,0 +1,130 @@
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Word {
+    Use,
+    As,
+    From,
+    Palette,
+    Style,
+    Finish,
+    Def,
+    Rule,
+    Let,
+    Shader,
+    Light,
+    Brush,
+    Assert,
+    Expect,
+    If,
+    Then,
+    Else,
+    Each,
+    In,
+    And,
+    Or,
+    Not,
+    True,
+    False,
+    None,
+    Fx,
+    Mask,
+    Slot,
+    Ramp,
+    Color,
+    Sksl,
+    Field,
+    Warp,
+    Backdrop,
+    Profile,
+    Pose,
+    Joint,
+    Ease,
+    T,
+    Frames,
+    Anim,
+    Key,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Class {
+    Keyword,
+    ReservedName,
+    PaletteHead,
+}
+
+const WORDS: &[(Word, &str, Class)] = &[
+    (Word::Use, "use", Class::Keyword),
+    (Word::As, "as", Class::Keyword),
+    (Word::From, "from", Class::Keyword),
+    (Word::Palette, "palette", Class::Keyword),
+    (Word::Style, "style", Class::Keyword),
+    (Word::Finish, "finish", Class::Keyword),
+    (Word::Def, "def", Class::Keyword),
+    (Word::Rule, "rule", Class::Keyword),
+    (Word::Let, "let", Class::Keyword),
+    (Word::Shader, "shader", Class::Keyword),
+    (Word::Light, "light", Class::Keyword),
+    (Word::Brush, "brush", Class::Keyword),
+    (Word::Assert, "assert", Class::Keyword),
+    (Word::Expect, "expect", Class::Keyword),
+    (Word::If, "if", Class::Keyword),
+    (Word::Then, "then", Class::Keyword),
+    (Word::Else, "else", Class::Keyword),
+    (Word::Each, "each", Class::Keyword),
+    (Word::In, "in", Class::Keyword),
+    (Word::And, "and", Class::Keyword),
+    (Word::Or, "or", Class::Keyword),
+    (Word::Not, "not", Class::Keyword),
+    (Word::True, "true", Class::Keyword),
+    (Word::False, "false", Class::Keyword),
+    (Word::None, "none", Class::Keyword),
+    (Word::Fx, "fx", Class::Keyword),
+    (Word::Mask, "mask", Class::Keyword),
+    (Word::Slot, "slot", Class::Keyword),
+    (Word::Ramp, "ramp", Class::PaletteHead),
+    (Word::Color, "color", Class::PaletteHead),
+    (Word::Sksl, "sksl", Class::ReservedName),
+    (Word::Field, "field", Class::ReservedName),
+    (Word::Warp, "warp", Class::ReservedName),
+    (Word::Backdrop, "backdrop", Class::ReservedName),
+    (Word::Profile, "profile", Class::ReservedName),
+    (Word::Pose, "pose", Class::ReservedName),
+    (Word::Joint, "joint", Class::ReservedName),
+    (Word::Ease, "ease", Class::ReservedName),
+    (Word::T, "t", Class::ReservedName),
+    (Word::Frames, "frames", Class::ReservedName),
+    (Word::Anim, "anim", Class::ReservedName),
+    (Word::Key, "key", Class::ReservedName),
+];
+
+impl Word {
+    pub(crate) fn lookup(text: &str) -> Option<Word> {
+        WORDS.iter().find(|row| row.1 == text).map(|row| row.0)
+    }
+
+    fn row(self) -> &'static (Word, &'static str, Class) {
+        WORDS
+            .iter()
+            .find(|row| row.0 == self)
+            .expect("every word has a row")
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        self.row().1
+    }
+
+    pub(crate) fn class(self) -> Class {
+        self.row().2
+    }
+
+    pub(crate) fn reserved(self) -> bool {
+        self.class() != Class::PaletteHead
+    }
+}
+
+pub(crate) fn keyword(text: &str) -> Option<Word> {
+    Word::lookup(text).filter(|w| w.class() == Class::Keyword)
+}
+
+pub(crate) fn is_reserved(text: &str) -> bool {
+    Word::lookup(text).is_some_and(Word::reserved)
+}

@@ -2,8 +2,8 @@
 
 use std::collections::HashSet;
 
-use artscript_ir::{Matrix, Node, NodeKind, Rect, Scene};
-use artscript_syntax::ast::{Expr, File, Named, Span, Stmt, StmtKind};
+use artscript_ir::{Matrix, Node, NodeKind, Rect};
+use artscript_syntax::ast::{Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span, SwatchKind};
 use artscript_syntax::{Diagnostic, Severity};
 
 use crate::project::{LintLevel, Manifest};
@@ -44,59 +44,114 @@ fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     }
 }
 
-/// Every expression of a statement with the span to report it at, plus nested statements.
-fn stmt_exprs<'a>(st: &'a Stmt, out: &mut Vec<(&'a Expr, Span)>, skip_palettes: bool) {
-    let named = |ns: &'a [Named], out: &mut Vec<(&'a Expr, Span)>| ns.iter().for_each(|n| out.push((&n.value, n.span)));
-    match &st.kind {
-        StmtKind::Palette { .. } if skip_palettes => {}
-        StmtKind::Palette { body, .. } => body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes)),
-        StmtKind::Style { named: ns, .. } | StmtKind::Light { named: ns, .. } | StmtKind::Brush { named: ns, .. } => named(ns, out),
-        StmtKind::Def { params, body, .. } | StmtKind::Rule { params, body, .. } => {
-            named(params, out);
-            body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes));
-        }
-        StmtKind::Finish { params, body, .. } => {
-            named(params, out);
-            for line in body {
-                line.args.iter().for_each(|a| out.push((a, line.span)));
-                named(&line.named, out);
+fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
+    f(s);
+    match &s.kind {
+        SceneKind::If { then, otherwise, .. } => then.iter().chain(otherwise.iter()).for_each(|c| walk_scene(c, f)),
+        SceneKind::Each { body, .. } => body.iter().for_each(|c| walk_scene(c, f)),
+        SceneKind::Slot { fallback, .. } => fallback.iter().for_each(|c| walk_scene(c, f)),
+        SceneKind::Draw(d) => {
+            for item in d.body.items() {
+                match item {
+                    DrawItem::Scene(c) => walk_scene(c, f),
+                    DrawItem::SlotFill(fill) => fill.body.iter().for_each(|c| walk_scene(c, f)),
+                    DrawItem::Mask { mask: Mask::Block(body), .. } => body.iter().for_each(|c| walk_scene(c, f)),
+                    DrawItem::Mask { mask: Mask::Value(_), .. } | DrawItem::Fx(_) | DrawItem::Patch(_) => {}
+                }
             }
         }
-        StmtKind::Shader { params, .. } => named(params, out),
-        StmtKind::Let { value, .. } => out.push((value, st.span)),
-        StmtKind::Check { expr, named: ns, .. } => {
-            out.push((expr, st.span));
-            named(ns, out);
-        }
-        StmtKind::If { cond, then, otherwise } => {
-            out.push((cond, st.span));
-            then.iter().chain(otherwise).for_each(|s| stmt_exprs(s, out, skip_palettes));
-        }
-        StmtKind::Each { iter, body, .. } => {
-            out.push((iter, st.span));
-            body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes));
-        }
-        StmtKind::Node { args, named: ns, body, .. } => {
-            args.iter().for_each(|a| out.push((a, st.span)));
-            named(ns, out);
-            body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes));
-        }
-        StmtKind::Fx(line) => {
-            line.args.iter().for_each(|a| out.push((a, st.span)));
-            named(&line.named, out);
-        }
-        StmtKind::SlotFill { body, .. } => body.iter().for_each(|s| stmt_exprs(s, out, skip_palettes)),
-        StmtKind::Patch { named: ns, .. } => named(ns, out),
-        StmtKind::Use { .. } => {}
+        SceneKind::Let { .. } | SceneKind::Check { .. } => {}
     }
+}
+
+fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(&'a Scene)) {
+    for item in items {
+        match item {
+            Item::Scene(s) => walk_scene(s, f),
+            Item::Decl(Decl { kind: DeclKind::Def { body, .. }, .. }) => {
+                body.iter().filter_map(DefItem::scene).for_each(|s| walk_scene(s, f))
+            }
+            Item::Decl(Decl { kind: DeclKind::Rule { body, .. }, .. }) => body.iter().for_each(|s| walk_scene(s, f)),
+            Item::Decl(_) => {}
+        }
+    }
+}
+
+type Exprs<'a> = Vec<(&'a Expr, Span)>;
+
+fn named<'a>(ns: &'a [Named], out: &mut Exprs<'a>) {
+    ns.iter().for_each(|n| out.push((&n.value, n.span)));
+}
+
+fn fx_exprs<'a>(fx: &'a Fx, out: &mut Exprs<'a>) {
+    fx.args.iter().for_each(|a| out.push((a, fx.span)));
+    named(&fx.named, out);
+}
+
+fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
+    match &s.kind {
+        SceneKind::Let { value, .. } => out.push((value, s.span)),
+        SceneKind::Check { expr, named: ns, .. } => {
+            out.push((expr, s.span));
+            named(ns, out);
+        }
+        SceneKind::If { cond, .. } => out.push((cond, s.span)),
+        SceneKind::Each { iter, .. } => out.push((iter, s.span)),
+        SceneKind::Slot { named: ns, .. } => named(ns, out),
+        SceneKind::Draw(d) => {
+            d.args.iter().for_each(|a| out.push((a, s.span)));
+            named(&d.named, out);
+            for item in d.body.items() {
+                match item {
+                    DrawItem::Fx(fx) => fx_exprs(fx, out),
+                    DrawItem::Mask { mask: Mask::Value(e), span } => out.push((e, *span)),
+                    DrawItem::Patch(p) => named(&p.named, out),
+                    DrawItem::Scene(_) | DrawItem::SlotFill(_) | DrawItem::Mask { .. } => {}
+                }
+            }
+        }
+    }
+}
+
+fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
+    let mut out = Vec::new();
+    for d in file.decls() {
+        match &d.kind {
+            DeclKind::Palette { .. } if skip_palettes => {}
+            DeclKind::Palette { body, .. } => {
+                for sw in body {
+                    match &sw.kind {
+                        SwatchKind::Color(e) => out.push((e, sw.span)),
+                        SwatchKind::Ramp { pos, hue } => {
+                            pos.exprs().into_iter().for_each(|e| out.push((e, sw.span)));
+                            if let Some(h) = hue {
+                                out.push((h, sw.span));
+                            }
+                        }
+                    }
+                }
+            }
+            DeclKind::Style { named: ns, .. } | DeclKind::Light { named: ns, .. } | DeclKind::Brush { named: ns, .. } => named(ns, &mut out),
+            DeclKind::Finish { params, body, .. } => {
+                named(params, &mut out);
+                body.iter().for_each(|fx| fx_exprs(fx, &mut out));
+            }
+            DeclKind::Shader { params, .. } | DeclKind::Rule { params, .. } => named(params, &mut out),
+            DeclKind::Def { params, body, .. } => {
+                named(params, &mut out);
+                body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut out));
+            }
+            DeclKind::Use { .. } => {}
+        }
+    }
+    all_scenes(&file.items, &mut |s| scene_line_and_direct_fx_mask_patch_exprs(s, &mut out));
+    out
 }
 
 pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
     let level = manifest.lint_level("raw-color", LintLevel::Warn);
-    let mut exprs = Vec::new();
-    file.stmts.iter().for_each(|s| stmt_exprs(s, &mut exprs, true));
     let mut out = Vec::new();
-    for (e, span) in exprs {
+    for (e, span) in file_exprs(file, true) {
         walk_expr(e, &mut |x| {
             let lit = match x {
                 Expr::Hex(h) => Some(format!("#{h}")),
@@ -113,9 +168,7 @@ pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic
     out
 }
 
-fn idents(stmts: &[Stmt], out: &mut HashSet<String>) {
-    let mut exprs = Vec::new();
-    stmts.iter().for_each(|s| stmt_exprs(s, &mut exprs, false));
+fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     for (e, _) in exprs {
         walk_expr(e, &mut |x| match x {
             Expr::Ident(n) => {
@@ -132,75 +185,68 @@ fn idents(stmts: &[Stmt], out: &mut HashSet<String>) {
             _ => {}
         });
     }
-    fn verbs(stmts: &[Stmt], out: &mut HashSet<String>) {
-        for s in stmts {
-            match &s.kind {
-                StmtKind::Node { verb, body, named, .. } => {
-                    out.insert(verb.clone());
-                    if let Some(st) = named.iter().find(|n| n.key == "style")
-                        && let Expr::Ident(n) = &st.value
-                    {
-                        out.insert(n.clone());
-                    }
-                    verbs(body, out);
+    for s in scenes {
+        if let SceneKind::Draw(d) = &s.kind {
+            out.insert(d.verb.clone());
+            if let Some(st) = d.named.iter().find(|n| n.key == "style")
+                && let Expr::Ident(n) = &st.value
+            {
+                out.insert(n.clone());
+            }
+            for item in d.body.items() {
+                if let DrawItem::Fx(fx) = item {
+                    out.insert(fx.op.clone());
                 }
-                StmtKind::Fx(line) => {
-                    out.insert(line.op.clone());
-                }
-                StmtKind::Def { body, .. } | StmtKind::SlotFill { body, .. } | StmtKind::Each { body, .. } | StmtKind::Rule { body, .. } => {
-                    verbs(body, out)
-                }
-                StmtKind::If { then, otherwise, .. } => {
-                    verbs(then, out);
-                    verbs(otherwise, out);
-                }
-                _ => {}
             }
         }
     }
-    verbs(stmts, out);
 }
 
 pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
     let level = manifest.lint_level("unused", LintLevel::Warn);
+    let mut scenes = Vec::new();
+    all_scenes(&file.items, &mut |s| scenes.push(s));
     let mut used = HashSet::new();
-    idents(&file.stmts, &mut used);
+    idents(file_exprs(file, false), &scenes, &mut used);
+    for d in file.decls() {
+        if let DeclKind::Def { body, .. } = &d.kind {
+            body.iter().filter_map(DefItem::fx).for_each(|fx| {
+                used.insert(fx.op.clone());
+            });
+        }
+    }
     let mut out = Vec::new();
     let mut push = |span: Span, msg: String, fix: &str| {
         if let Some(d) = diag(level, "L0103", span, msg) {
             out.push(d.in_file(path).with_fix(fix));
         }
     };
-    fn lets(stmts: &[Stmt], acc: &mut Vec<(String, Span)>) {
-        for s in stmts {
-            match &s.kind {
-                StmtKind::Let { name, .. } => acc.push((name.clone(), s.span)),
-                StmtKind::Node { body, .. } | StmtKind::Def { body, .. } | StmtKind::SlotFill { body, .. } | StmtKind::Each { body, .. } => lets(body, acc),
-                StmtKind::If { then, otherwise, .. } => {
-                    lets(then, acc);
-                    lets(otherwise, acc);
-                }
-                _ => {}
-            }
-        }
-    }
-    for st in &file.stmts {
-        match &st.kind {
-            StmtKind::Use { path: p, alias, items } => {
+    for d in file.decls() {
+        match &d.kind {
+            DeclKind::Use { path: p, alias, items } => {
                 if let Some(a) = alias
                     && !used.contains(a)
                 {
-                    push(st.span, format!("`use {p} as {a}` is never used"), "remove the import");
+                    push(d.span, format!("`use {p} as {a}` is never used"), "remove the import");
                 }
                 for item in items {
                     if !used.contains(item) {
-                        push(st.span, format!("imported `{item}` is never used"), "remove it from the import list");
+                        push(d.span, format!("imported `{item}` is never used"), "remove it from the import list");
                     }
                 }
             }
-            StmtKind::Def { name, params, body } => {
+            DeclKind::Def { name, params, body } => {
+                let mut exprs = Vec::new();
+                let mut inner_scenes = Vec::new();
+                body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut exprs));
+                for s in body.iter().filter_map(DefItem::scene) {
+                    walk_scene(s, &mut |c| {
+                        scene_line_and_direct_fx_mask_patch_exprs(c, &mut exprs);
+                        inner_scenes.push(c);
+                    });
+                }
                 let mut inner = HashSet::new();
-                idents(body, &mut inner);
+                idents(exprs, &inner_scenes, &mut inner);
                 for p in params.iter().filter(|p| p.key != "needs" && p.key != "size") {
                     if !inner.contains(&p.key) {
                         push(p.span, format!("parameter `{}` of `{name}` is never used", p.key), "use it in the body or remove it");
@@ -210,18 +256,18 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
             _ => {}
         }
     }
-    let mut ls = Vec::new();
-    lets(&file.stmts, &mut ls);
-    for (name, span) in ls {
-        if !used.contains(&name) {
-            push(span, format!("`let {name}` is never used"), "remove the binding");
+    for s in &scenes {
+        if let SceneKind::Let { name, .. } = &s.kind
+            && !used.contains(name)
+        {
+            push(s.span, format!("`let {name}` is never used"), "remove the binding");
         }
     }
     out
 }
 
 /// Shapes not clipped by a parent shape whose bounds leave the canvas.
-pub fn off_canvas(scene: &Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
+pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
     let level = manifest.lint_level("off-canvas", LintLevel::Warn);
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();

@@ -5,20 +5,20 @@
 use face/parts { eye blush smile o_mouth sparkle }
 use shade/cel { cel }
 palette monk
-  moss ramp #7f9a52 5
-  leaf ramp #8cbc4c 5
-  ochre ramp #d6a23c 5
-  skin ramp #f4c8a2 5
-  cedar ramp #8d5a3a 5
-  stone ramp #9a958c 5
-  shadow #3d3428
-  rim #b6c9e4
-  blush #f2968a
-  mouth #7a3a36
-  glint #fffaf0
-  iris #9a6a3a
-  star #fff3cf
-  stubble #9aa6c4
+  ramp moss #7f9a52 5
+  ramp leaf #8cbc4c 5
+  ramp ochre #d6a23c 5
+  ramp skin #f4c8a2 5
+  ramp cedar #8d5a3a 5
+  ramp stone #9a958c 5
+  color shadow #3d3428
+  color rim #b6c9e4
+  color blush #f2968a
+  color mouth #7a3a36
+  color glint #fffaf0
+  color iris #9a6a3a
+  color star #fff3cf
+  color stubble #9aa6c4
 let moss = monk.moss
 let leaf = monk.leaf
 let ochre = monk.ochre

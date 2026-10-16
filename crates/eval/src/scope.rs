@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
-use artscript_syntax::ast::{FxLine, Named, Span, Stmt};
+use artscript_syntax::ast::{DefItem, FxLine, Named, Scene, Span};
 
 use crate::geom;
 use crate::value::Value;
@@ -101,7 +101,7 @@ pub struct Component {
     pub params: Vec<Named>,
     /// Part names a host must have when this def is slot content (`needs:@torso`).
     pub needs: Vec<String>,
-    pub body: Vec<Stmt>,
+    pub body: Vec<DefItem>,
     pub module: String,
     pub span: Span,
 }
@@ -109,7 +109,7 @@ pub struct Component {
 pub struct RuleDef {
     pub name: String,
     pub params: Vec<Named>,
-    pub body: Vec<Stmt>,
+    pub body: Vec<Scene>,
     pub module: String,
     pub span: Span,
 }

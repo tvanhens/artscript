@@ -1,5 +1,4 @@
-//! Untyped syntax tree. The parser produces it, `fmt` prints it, the evaluator consumes it.
-//! Every statement keeps the span of its first token so diagnostics can point at it.
+//! Every line keeps the span of its first token so diagnostics can point at it.
 
 use std::fmt;
 
@@ -20,7 +19,38 @@ impl fmt::Display for Span {
 #[derive(Clone, Debug, PartialEq)]
 pub struct File {
     pub directives: Vec<Directive>,
-    pub stmts: Vec<Stmt>,
+    pub items: Vec<Item>,
+}
+
+impl File {
+    pub fn decls(&self) -> impl Iterator<Item = &Decl> {
+        self.items.iter().filter_map(|i| match i {
+            Item::Decl(d) => Some(d),
+            Item::Scene(_) => None,
+        })
+    }
+
+    pub fn scenes(&self) -> impl Iterator<Item = &Scene> {
+        self.items.iter().filter_map(|i| match i {
+            Item::Scene(s) => Some(s),
+            Item::Decl(_) => None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Item {
+    Decl(Decl),
+    Scene(Scene),
+}
+
+impl Item {
+    pub fn span(&self) -> Span {
+        match self {
+            Item::Decl(d) => d.span,
+            Item::Scene(s) => s.span,
+        }
+    }
 }
 
 /// `@target chars/hero.png 256x256 scale:1,2 each team:[red, blue]`.
@@ -44,41 +74,24 @@ pub struct Named {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Stmt {
-    pub kind: StmtKind,
+pub struct Decl {
+    pub kind: DeclKind,
     pub span: Span,
 }
 
-/// `fx rim 4 dir:1,1 a:.45`. It lowers onto the effects of the node it is nested under, and of no
-/// other node.
 #[derive(Clone, Debug, PartialEq)]
-pub struct FxLine {
-    /// A built-in effect name, or the name of a finish.
-    pub op: String,
-    pub args: Vec<Expr>,
-    pub named: Vec<Named>,
-    pub span: Span,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CheckKind {
-    Assert,
-    Expect,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum StmtKind {
+pub enum DeclKind {
     /// `use palette/dusk as p`, `use face/eye { eye, blush }`.
     Use {
         path: String,
         alias: Option<String>,
         items: Vec<String>,
     },
-    /// `palette dusk from base` with one entry per child line (each entry is a `Node`).
+    /// `palette dusk from base` with one swatch per child line.
     Palette {
         name: String,
         from: Option<String>,
-        body: Vec<Stmt>,
+        body: Vec<Swatch>,
     },
     /// `style ink stroke:p.ink,2 join:round`. Keys only; paint keys reach descendants.
     Style {
@@ -90,23 +103,19 @@ pub enum StmtKind {
     Finish {
         name: String,
         params: Vec<Named>,
-        body: Vec<FxLine>,
+        body: Vec<Fx>,
     },
     /// `def eye size:10 iris:p.sky.3` + body.
     Def {
         name: String,
         params: Vec<Named>,
-        body: Vec<Stmt>,
+        body: Vec<DefItem>,
     },
     /// `rule icon_grid subject:@self size:64` + body of checks.
     Rule {
         name: String,
         params: Vec<Named>,
-        body: Vec<Stmt>,
-    },
-    Let {
-        name: String,
-        value: Expr,
+        body: Vec<Scene>,
     },
     /// `shader name params` + `sksl """..."""`. Parsed, not implemented in v0.1.
     Shader {
@@ -124,44 +133,204 @@ pub enum StmtKind {
         name: String,
         named: Vec<Named>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Swatch {
+    pub name: String,
+    pub kind: SwatchKind,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SwatchKind {
+    Color(Expr),
+    Ramp { pos: Box<RampPos>, hue: Option<Expr> },
+}
+
+/// A ramp's positionals. The evaluator decides which are colors and which is the stop count,
+/// because a name can be either.
+#[derive(Clone, Debug, PartialEq)]
+pub enum RampPos {
+    One(Expr),
+    Two(Expr, Expr),
+    Three(Expr, Expr, Expr),
+}
+
+impl RampPos {
+    pub fn exprs(&self) -> Vec<&Expr> {
+        match self {
+            RampPos::One(a) => vec![a],
+            RampPos::Two(a, b) => vec![a, b],
+            RampPos::Three(a, b, c) => vec![a, b, c],
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scene {
+    pub kind: SceneKind,
+    pub span: Span,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CheckKind {
+    Assert,
+    Expect,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum SceneKind {
+    Let {
+        name: String,
+        value: Expr,
+    },
+    If {
+        cond: Expr,
+        then: Vec<Scene>,
+        otherwise: Vec<Scene>,
+    },
+    Each {
+        var: String,
+        iter: Expr,
+        body: Vec<Scene>,
+    },
     Check {
         kind: CheckKind,
         expr: Expr,
         named: Vec<Named>,
         message: Option<String>,
     },
-    If {
-        cond: Expr,
-        then: Vec<Stmt>,
-        otherwise: Vec<Stmt>,
-    },
-    Each {
-        var: String,
-        iter: Expr,
-        body: Vec<Stmt>,
-    },
-    /// Every drawing statement: `verb positional… key:value… [block]`.
-    /// `flags` are trailing bare words that the parser cannot distinguish from
-    /// positional identifiers; they stay in `args` as `Expr::Ident` and the evaluator decides.
-    Node {
-        verb: String,
-        args: Vec<Expr>,
-        named: Vec<Named>,
-        body: Vec<Stmt>,
-    },
-    /// An `fx` line under a node, an instance, or a finish.
-    Fx(FxLine),
-    /// `head:` followed by a block.
-    SlotFill {
+    Slot {
         name: String,
-        body: Vec<Stmt>,
-    },
-    /// `.arm_r rot:-20`, `.cape off`, `.head.eye_l iris:p.accent`.
-    Patch {
-        path: Vec<String>,
         named: Vec<Named>,
-        off: bool,
+        fallback: Vec<Scene>,
     },
+    Draw(Draw),
+}
+
+/// Every drawing statement: `verb positional… key:value… [block]`. The verb is a shape, a
+/// structure verb, or a component name. Trailing bare words such as `closed` stay in `args` as
+/// `Expr::Ident` and the evaluator decides.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Draw {
+    pub verb: String,
+    pub args: Vec<Expr>,
+    pub named: Vec<Named>,
+    pub body: DrawBody,
+}
+
+/// A draw's children in source order, holding at most one [`Mask`].
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct DrawBody {
+    items: Vec<DrawItem>,
+}
+
+pub(crate) struct SecondMask(pub(crate) Span);
+
+impl DrawBody {
+    pub fn items(&self) -> &[DrawItem] {
+        &self.items
+    }
+
+    pub fn mask(&self) -> Option<&Mask> {
+        self.items.iter().find_map(|i| match i {
+            DrawItem::Mask { mask, .. } => Some(mask),
+            _ => None,
+        })
+    }
+
+    pub fn scenes(&self) -> impl Iterator<Item = &Scene> + Clone {
+        self.items.iter().filter_map(|i| match i {
+            DrawItem::Scene(s) => Some(s),
+            _ => None,
+        })
+    }
+
+    pub fn fx(&self) -> impl Iterator<Item = &Fx> {
+        self.items.iter().filter_map(|i| match i {
+            DrawItem::Fx(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    pub(crate) fn push(&mut self, item: DrawItem) -> Result<(), SecondMask> {
+        if let DrawItem::Mask { span, .. } = item
+            && self.mask().is_some()
+        {
+            return Err(SecondMask(span));
+        }
+        self.items.push(item);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum DrawItem {
+    Scene(Scene),
+    Fx(Fx),
+    Mask { mask: Mask, span: Span },
+    SlotFill(SlotFill),
+    Patch(Patch),
+}
+
+/// `mask @body`, `mask simplex(30) > .5`, or `mask` over an indented block.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Mask {
+    Value(Expr),
+    Block(Vec<Scene>),
+}
+
+/// `fx rim 4 dir:1,1 color:p.rim a:.5 as:soft`. `as:` and `of:` stay in `named`.
+/// The name is a built-in effect, or a finish.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fx {
+    pub op: String,
+    pub args: Vec<Expr>,
+    pub named: Vec<Named>,
+    pub span: Span,
+}
+
+/// The effect record `fx` lowering walks. Same fields as [`Fx`].
+pub type FxLine = Fx;
+
+/// `head:` followed by a block. The name may be `mask`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SlotFill {
+    pub name: String,
+    pub body: Vec<Scene>,
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Patch {
+    pub path: Vec<String>,
+    pub named: Vec<Named>,
+    pub off: bool,
+    pub span: Span,
+}
+
+/// A def body line. Effects attach to the instance. A def body holds no mask, slot fill, or patch.
+#[derive(Clone, Debug, PartialEq)]
+pub enum DefItem {
+    Scene(Scene),
+    Fx(Fx),
+}
+
+impl DefItem {
+    pub fn scene(&self) -> Option<&Scene> {
+        match self {
+            DefItem::Scene(s) => Some(s),
+            DefItem::Fx(_) => None,
+        }
+    }
+
+    pub fn fx(&self) -> Option<&Fx> {
+        match self {
+            DefItem::Fx(f) => Some(f),
+            DefItem::Scene(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

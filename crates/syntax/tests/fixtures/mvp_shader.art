@@ -9,4 +9,4 @@ shader scales size:8 base:p.green.3 rim:p.green.5
   """
 blob 40 fill:scales(6)          # as paint
 layer foil blend:holo()         # as a custom blender
-fx grade warm:.2                # a shader with a color-filter signature, as an effect
+  fx grade warm:.2              # a shader with a color-filter signature, as an effect

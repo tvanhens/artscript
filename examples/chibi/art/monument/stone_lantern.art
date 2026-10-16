@@ -2,22 +2,22 @@
 @target monument/stone_lantern.svg 1024x1024
 use face/parts { blush smile sparkle }
 palette lantern
-  stone ramp #a1aa95 5
-  rock ramp #87917f 5
-  moss ramp #7f9c45 5
-  amber ramp #f0a23c 5
-  teal ramp #2f6d6b 5
-  cream ramp #eadcc0 5
-  blush #e89a8a
-  night #2c3a3e
-  rim #8fd0cc
-  firefly #e4f27c
-  face #4e4250
-  wick #3a2a24
-  glint #fbf7ee
-  core #fffbea
-  hot #fbffe0
-  spark #f3f7c8
+  ramp stone #a1aa95 5
+  ramp rock #87917f 5
+  ramp moss #7f9c45 5
+  ramp amber #f0a23c 5
+  ramp teal #2f6d6b 5
+  ramp cream #eadcc0 5
+  color blush #e89a8a
+  color night #2c3a3e
+  color rim #8fd0cc
+  color firefly #e4f27c
+  color face #4e4250
+  color wick #3a2a24
+  color glint #fbf7ee
+  color core #fffbea
+  color hot #fbffe0
+  color spark #f3f7c8
 let stone_cel = mix(lantern.stone.1 lantern.teal.1 .35)
 let stone_line = mix(lantern.stone.line lantern.teal.line .4)
 let rock_cel = mix(lantern.rock.1 lantern.teal.1 .35)
