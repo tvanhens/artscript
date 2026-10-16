@@ -792,6 +792,49 @@ fn emit_ribbons() {
 }
 
 #[test]
+fn boundary_fixture_matches_generator() {
+    let path = workspace().join("editors/vscode/test/boundaries.art");
+    let fresh = boundary_source();
+    if std::env::var("ARTSCRIPT_BLESS").ok().as_deref() == Some("1") {
+        fs::write(&path, fresh).unwrap();
+    } else {
+        let have = fs::read_to_string(&path).unwrap_or_default();
+        assert_eq!(have, fresh, "bless with ARTSCRIPT_BLESS=1");
+    }
+}
+
+fn boundary_source() -> String {
+    let mut lines = Vec::new();
+    let tails = [
+        "",
+        "foo",
+        "foo/bar",
+        "foo/bar!baz",
+        "foo#fff",
+        "foo/bar#note",
+        "foo#fffff",
+        "foo/bar#fff",
+        "/foo/bar",
+    ];
+    for host in ["use ", "use", "@target ", "@target"] {
+        for tail in tails {
+            lines.push(format!("{host}{tail}"));
+        }
+    }
+    for indent in ["", "  ", "\t", " \t"] {
+        for body in ["@target out/file", "@a.b", "123", "# c", "circle 1"] {
+            lines.push(format!("{indent}{body}"));
+        }
+    }
+    lines.push("\t".into());
+    lines.push("circle\t1".into());
+    for patch in [".if", ".head.if", ".head. eye", ".mask off", ".head.eye"] {
+        lines.push(patch.into());
+    }
+    lines.join("\n") + "\n"
+}
+
+#[test]
 fn edge_fixture_exercises_every_class() {
     let src = fs::read_to_string(workspace().join("editors/vscode/test/edge.art")).unwrap();
     span_set_equals_lex(&src);
@@ -815,9 +858,11 @@ fn corpus() -> Vec<PathBuf> {
     for dir in ["examples", "crates/syntax/tests/fixtures"] {
         collect(&root.join(dir), &mut files);
     }
-    let edge = root.join("editors/vscode/test/edge.art");
-    if edge.exists() {
-        files.push(edge);
+    for name in ["edge.art", "boundaries.art"] {
+        let path = root.join("editors/vscode/test").join(name);
+        if path.exists() {
+            files.push(path);
+        }
     }
     files.sort();
     files

@@ -1,0 +1,63 @@
+use 
+use foo
+use foo/bar
+use foo/bar!baz
+use foo#fff
+use foo/bar#note
+use foo#fffff
+use foo/bar#fff
+use /foo/bar
+use
+usefoo
+usefoo/bar
+usefoo/bar!baz
+usefoo#fff
+usefoo/bar#note
+usefoo#fffff
+usefoo/bar#fff
+use/foo/bar
+@target 
+@target foo
+@target foo/bar
+@target foo/bar!baz
+@target foo#fff
+@target foo/bar#note
+@target foo#fffff
+@target foo/bar#fff
+@target /foo/bar
+@target
+@targetfoo
+@targetfoo/bar
+@targetfoo/bar!baz
+@targetfoo#fff
+@targetfoo/bar#note
+@targetfoo#fffff
+@targetfoo/bar#fff
+@target/foo/bar
+@target out/file
+@a.b
+123
+# c
+circle 1
+  @target out/file
+  @a.b
+  123
+  # c
+  circle 1
+	@target out/file
+	@a.b
+	123
+	# c
+	circle 1
+ 	@target out/file
+ 	@a.b
+ 	123
+ 	# c
+ 	circle 1
+	
+circle	1
+.if
+.head.if
+.head. eye
+.mask off
+.head.eye
