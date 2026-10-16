@@ -68,6 +68,15 @@ class MigrateStatementHeads(unittest.TestCase):
             "  fx rim 4 color:p.rim\n",
         )
 
+    def test_mask_if_expression_is_lifted_whole(self):
+        out, _ = migrate("rect 4 mask:if wet then @a else @b a:.5\n")
+        self.assertEqual(out, "rect 4 a:.5\n  mask if wet then @a else @b\n")
+
+    def test_let_fx_picks_a_free_name_when_fiber_x_exists(self):
+        src = "group\n  let fiber_x = 9\n  let fx = 1\n  curve fiber_x fx\n"
+        out, _ = migrate(src)
+        self.assertEqual(out, "group\n  let fiber_x = 9\n  let fiber_x2 = 1\n  curve fiber_x fiber_x2\n")
+
     def test_let_fx_rename_leaves_quoted_text(self):
         src = 'group\n  let fx = 1\n  text "fx" fx\n'
         out, _ = migrate(src)

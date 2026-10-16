@@ -7,6 +7,7 @@ usage: python3 scripts/migrate_statement_heads.py FILE...
 - `mask:` ending a line becomes `mask` over the same block. `mask:<value>` becomes `mask <value>`.
 - A `mask:<value>` named argument on a draw line moves to a child line `mask <value>`.
 - `let fx` is renamed to `fiber_x` through the end of its block, and a `let fy` beside it to `fiber_y`.
+  If that name is already used, the next free `fiber_x2` or `fiber_y2` is chosen.
   A line whose first word is the keyword `fx` keeps it.
 
 A top-level `fx` line has no draw to attach to. It is reported and left for a hand fix.
@@ -103,14 +104,54 @@ def glued_chunk_len(text: str) -> int:
     return len(text)
 
 
+def word_at(text: str, i: int, word: str) -> bool:
+    end = i + len(word)
+    if not text.startswith(word, i):
+        return False
+    return end == len(text) or not (text[end].isalnum() or text[end] == "_")
+
+
 def expression_len(text: str) -> int:
-    n = glued_chunk_len(text)
+    n = prefix_len(text, 0)
     while True:
         m = re.match(r"\s+(>=|<=|==|!=|->|>|<|\+|-|\*|/|and|or)\s+", text[n:])
         if not m:
             return n
         n += len(m.group(0))
-        n += glued_chunk_len(text[n:])
+        n += prefix_len(text, n) - n
+
+
+def prefix_len(text: str, i: int) -> int:
+    if word_at(text, i, "if"):
+        n = i + 2
+        gap = re.match(r"\s+", text[n:])
+        if gap is None:
+            return n
+        n += len(gap.group(0))
+        n = expression_len_from(text, n)
+        then = re.match(r"\s+then\b", text[n:])
+        if then is None:
+            return n
+        n += len(then.group(0))
+        gap = re.match(r"\s+", text[n:])
+        if gap is None:
+            return n
+        n += len(gap.group(0))
+        n = expression_len_from(text, n)
+        otherwise = re.match(r"\s+else\b", text[n:])
+        if otherwise is None:
+            return n
+        n += len(otherwise.group(0))
+        gap = re.match(r"\s+", text[n:])
+        if gap is None:
+            return n
+        n += len(gap.group(0))
+        return expression_len_from(text, n)
+    return i + glued_chunk_len(text[i:])
+
+
+def expression_len_from(text: str, i: int) -> int:
+    return i + expression_len(text[i:])
 
 
 def lift_mask_args(lines: list[str]) -> list[str]:
@@ -143,12 +184,26 @@ def rename_fx_lets(lines: list[str]) -> list[str]:
         if not re.match(r"^\s*let fx\s*=", line):
             continue
         end = block_end_same_level(lines, i)
-        pairs = {"fx": "fiber_x"}
+        pairs = {"fx": fresh_name(lines, "fiber_x")}
         if any(re.match(rf"^{' ' * indent_of(line)}let fy\s*=", l) for l in lines[i:end]):
-            pairs["fy"] = "fiber_y"
+            pairs["fy"] = fresh_name(lines, "fiber_y")
         for j in range(i, end):
             lines[j] = rename_in_line(lines[j], pairs)
     return lines
+
+
+def ident_used(lines: list[str], name: str) -> bool:
+    pat = re.compile(rf"(?<![\w.#@]){name}(?![\w:])")
+    return any(pat.search(split_comment(line).code) for line in lines)
+
+
+def fresh_name(lines: list[str], base: str) -> str:
+    name = base
+    n = 2
+    while ident_used(lines, name):
+        name = f"{base}{n}"
+        n += 1
+    return name
 
 
 def block_end_same_level(lines: list[str], i: int) -> int:
