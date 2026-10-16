@@ -872,10 +872,48 @@ fn boundary_source() -> String {
         "mask?:",
         ".?head",
         ".head.?eye",
+        "? @target out/file",
+        " @target out/file",
+        "use foo ?bar",
+        "use foo ? bar",
+        "use foo ?",
+        "@target out/file ?bar",
+        ". ? ? head",
+        ".head. ? ? eye",
+        "body ?:",
+        "body ? ?:",
+        "body ? :",
+        "mask ?:",
+        "circle fill ?:red",
+        "circle fill ? :red",
     ] {
         lines.push(line.into());
     }
     lines.join("\n") + "\n"
+}
+
+#[test]
+fn discarded_gap_ribbons() {
+    let cases = [
+        ("? @target out/file", "! ddddddd aaaaaaaa"),
+        (" @target out/file", " rrrrrrr iiioiiii"),
+        ("use foo ?bar", "kkk iii !iii"),
+        ("use foo ? bar", "kkk aaa ! iii"),
+        ("use foo ?", "kkk aaa !"),
+        ("@target out/file ?bar", "ddddddd iiioiiii !iii"),
+        (". ? ? head", "p ! ! pppp"),
+        (".head.if", "pppppokk"),
+        (".head. ? ? eye", "pppppp ! ! ppp"),
+        ("body ?:", "llll !o"),
+        ("body ? ?:", "llll ! !o"),
+        ("body ? :", "vvvv ! o"),
+        ("mask ?:", "llll !o"),
+        ("circle fill ?:red", "vvvvvv yyyy !oiii"),
+        ("circle fill ? :red", "vvvvvv iiii ! oiii"),
+    ];
+    for (src, expect) in cases {
+        assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
+    }
 }
 
 #[test]

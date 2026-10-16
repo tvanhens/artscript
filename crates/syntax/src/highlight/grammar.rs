@@ -9,7 +9,6 @@ const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
 const AT_STATEMENT: &str = "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)";
-const AT_DIRECTIVE: &str = "(?<=^[^ #\\r\\n\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)";
 
 const ESCAPE_SCOPE: &str = "constant.character.escape.art";
 
@@ -166,6 +165,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
         directive(invalid),
         keyword_slot(),
         keyword_slot_gap(),
+        keyword_slot_erased(),
         use_path(invalid),
     ];
     for kw_group in KwGroup::all() {
@@ -174,6 +174,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
     patterns.push(patch());
     patterns.push(slot());
     patterns.push(slot_gap());
+    patterns.push(slot_erased());
     patterns.push(verb());
     patterns.push(Pattern::Match {
         re: format!("@{ident}(?:\\.(?:{ident}|[0-9]+|\\*))*", ident = IDENT),
@@ -195,6 +196,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
         name: Some(scope(Class::Number)),
         captures: vec![],
     });
+    patterns.push(key_erased());
     patterns.push(Pattern::Match {
         re: format!(
             "{before}({ident})({dropped}+)(:)",
@@ -270,7 +272,7 @@ fn directive(invalid: &'static str) -> Pattern {
     Pattern::Region {
         begin: format!(
             "{at}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))",
-            at = AT_DIRECTIVE,
+            at = at_directive(),
             ident = IDENT
         ),
         end: format!(
@@ -321,42 +323,56 @@ fn keyword_head(kw_group: KwGroup) -> Pattern {
 
 fn patch() -> Pattern {
     let patch = scope(Class::Patch);
-    let name = format!("{not_kw}({ident})", not_kw = not_keyword(), ident = IDENT);
-    let gap = glue_name_gap();
-    let segment = format!("(\\.){gap}{name}");
-    let optional_non_keyword_name = format!(
-        "(?:{not_kw}({ident}))?",
-        not_kw = not_keyword(),
-        ident = IDENT
-    );
     Pattern::Region {
-        begin: format!(
-            "{at}(\\.)(?!\\.|[0-9]){gap}{optional_non_keyword_name}",
-            at = AT_STATEMENT,
-            gap = gap,
-            optional_non_keyword_name = optional_non_keyword_name
-        ),
+        begin: format!("{at}(\\.)(?!\\.|[0-9])", at = AT_STATEMENT),
         end: format!(
-            "(?!(?:{dropped})*\\.{gap}{name})",
+            "(?<=[A-Za-z0-9_])|(?![ \\t]|{dropped})(?!{name})",
             dropped = dropped_class(),
-            gap = gap
+            name = non_keyword_name()
         ),
         name: None,
-        begin_captures: vec![(1, patch), (3, scope(Class::Invalid)), (5, patch)],
+        begin_captures: vec![(1, patch)],
         end_captures: vec![],
-        inner: vec![
-            invalid_dropped(scope(Class::Invalid)),
-            Pattern::Match {
-                re: segment,
-                name: None,
-                captures: vec![(1, patch), (3, scope(Class::Invalid)), (5, patch)],
-            },
-        ],
+        inner: vec![invalid_dropped(scope(Class::Invalid)), patch_name(patch)],
     }
 }
 
-fn glue_name_gap() -> String {
-    format!("([ \\t]*)({dropped}+)?([ \\t]*)", dropped = dropped_class())
+fn patch_name(patch: &'static str) -> Pattern {
+    Pattern::Region {
+        begin: format!("({name})", name = non_keyword_name()),
+        end: format!(
+            "(?!{dropped})(?!\\.(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name}))",
+            dropped = dropped_class(),
+            name = non_keyword_name()
+        ),
+        name: None,
+        begin_captures: vec![(1, patch)],
+        end_captures: vec![],
+        inner: vec![invalid_dropped(scope(Class::Invalid)), patch_segment(patch)],
+    }
+}
+
+fn patch_segment(patch: &'static str) -> Pattern {
+    Pattern::Region {
+        begin: format!(
+            "(\\.)(?!\\.|[0-9])(?=(?:[ \\t]|{dropped})*{name})",
+            dropped = dropped_class(),
+            name = non_keyword_name()
+        ),
+        end: format!(
+            "({name})|{stop}",
+            name = non_keyword_name(),
+            stop = glue_stop()
+        ),
+        name: None,
+        begin_captures: vec![(1, patch)],
+        end_captures: vec![(1, patch)],
+        inner: vec![invalid_dropped(scope(Class::Invalid))],
+    }
+}
+
+fn non_keyword_name() -> String {
+    format!("{not_kw}{ident}", not_kw = not_keyword(), ident = IDENT)
 }
 
 fn not_keyword() -> String {
@@ -447,6 +463,66 @@ fn keyword_slot() -> Pattern {
     }
 }
 
+fn keyword_slot_erased() -> Pattern {
+    colon_erased_region(
+        format!("{at}({alts})", at = AT_STATEMENT, alts = keyword_alts()),
+        scope(Class::Slot),
+    )
+}
+
+fn slot_erased() -> Pattern {
+    colon_erased_region(
+        format!("{at}({ident})", at = AT_STATEMENT, ident = IDENT),
+        scope(Class::Slot),
+    )
+}
+
+fn key_erased() -> Pattern {
+    Pattern::Region {
+        begin: format!(
+            "{before}({ident})(?={erased}:)",
+            before = NOT_IDENT_BEFORE,
+            ident = IDENT,
+            erased = erased_before_colon()
+        ),
+        end: format!("(:)|{stop}", stop = glue_stop()),
+        name: None,
+        begin_captures: vec![(1, scope(Class::Key))],
+        end_captures: vec![(1, scope(Class::Operator))],
+        inner: vec![invalid_dropped(scope(Class::Invalid))],
+    }
+}
+
+fn colon_erased_region(head: String, head_scope: &'static str) -> Pattern {
+    Pattern::Region {
+        begin: format!(
+            "{head}(?={erased}:{after})",
+            erased = erased_before_colon(),
+            after = slot_after()
+        ),
+        end: format!("(:)|{stop}", stop = glue_stop()),
+        name: None,
+        begin_captures: vec![(1, head_scope)],
+        end_captures: vec![(1, scope(Class::Operator))],
+        inner: vec![invalid_dropped(scope(Class::Invalid))],
+    }
+}
+
+fn erased_before_colon() -> String {
+    format!(
+        "[ \\t]+(?:{dropped}+[ \\t]+)*{dropped}+",
+        dropped = dropped_class()
+    )
+}
+
+fn slot_after() -> String {
+    format!(
+        "[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims})))",
+        hex = hex_body(),
+        delims = delim_class()
+    )
+}
+
 fn keyword_slot_gap() -> Pattern {
     Pattern::Match {
         re: format!(
@@ -481,6 +557,13 @@ fn invalid_dropped(invalid: &'static str) -> Pattern {
     }
 }
 
+fn at_directive() -> String {
+    format!(
+        "(?<=^\\t*(?:{dropped}+[ \\t]*)*)",
+        dropped = dropped_class()
+    )
+}
+
 fn path_chunk_end() -> String {
     let gap = "(?:$|[ \\t]|#)";
     let dropped = dropped_class();
@@ -489,7 +572,10 @@ fn path_chunk_end() -> String {
         hex = hex_body(),
         delims = delim_class()
     );
-    format!("(?!(?:{dropped})*{color})(?={gap}|(?:{dropped})+{gap})")
+    let glued = format!(
+        "[ \\t]+(?:{dropped}+[ \\t]+)*{dropped}+(?:[@\"A-Za-z0-9_./{{}}*+=!<>~:,()\\[\\]-]|{color})"
+    );
+    format!("(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?:{dropped})+{gap})")
 }
 
 fn dropped_class() -> &'static str {

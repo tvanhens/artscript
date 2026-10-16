@@ -117,3 +117,17 @@ body? :
 mask?:
 .?head
 .head.?eye
+? @target out/file
+ @target out/file
+use foo ?bar
+use foo ? bar
+use foo ?
+@target out/file ?bar
+. ? ? head
+.head. ? ? eye
+body ?:
+body ? ?:
+body ? :
+mask ?:
+circle fill ?:red
+circle fill ? :red
