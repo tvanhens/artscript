@@ -176,6 +176,43 @@ fn repeat_and_grid_make_indexed_copies() {
 }
 
 #[test]
+fn a_tight_comma_is_one_argument_and_a_real_tuple_stays_a_tuple() {
+    let tight = run_with("@target t.png 40x40\ncircle 10 fill:shade(#cc6644,-2) name:tight\n", &[]);
+    let d = tight
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0320")
+        .unwrap_or_else(|| panic!("shade(c,-2) should be E0320, got:\n{}", show(&tight.diagnostics)));
+    assert!(d.message.contains("color"), "{d}");
+
+    let level = run_with(
+        "@target t.png 40x40\ncircle 5 at:30,40 name:eye_l\ncircle 5 at:70,43 name:eye_r\nassert level(@eye_l,@eye_r) tol:.5\n",
+        &[],
+    );
+    assert!(level.diagnostics.iter().any(|d| d.code == "E0320"), "{}", show(&level.diagnostics));
+    assert!(level.diagnostics.iter().all(|d| d.code != "C0101"), "tight comma must not compare two nodes\n{}", show(&level.diagnostics));
+
+    let s = scene("@target t.png 40x40\ncircle 10 fill:shade(#cc6644 -2) name:spaced\ncircle 8 at:14,0 stroke:#112233,2 name:point\ncircle 4 at:min(1 2 0),0 name:low\ncircle 4 at:min([1 2 0]),16 name:list\n");
+    assert_ne!(fill_hex(node(&s, "spaced")), "#cc6644");
+    let point = node(&s, "point");
+    assert_eq!(at(point), (14.0, 0.0));
+    let NodeKind::Shape(shape) = &point.kind else { panic!("point is not a shape") };
+    let stroke = shape.stroke.as_ref().expect("stroke tuple");
+    assert_eq!(stroke.width, 2.0);
+    let Paint::Solid(color) = &stroke.paint else { panic!("stroke paint {:?}", shape.stroke) };
+    assert_eq!(color.hex(), "#112233");
+    assert_eq!(at(node(&s, "low")).0, 0.0);
+    assert_eq!(at(node(&s, "list")).0, 0.0);
+
+    let min_comma = run_with("@target t.png 40x40\ncircle 4 at:min(1,2,0),0 name:comma\n", &[]);
+    assert!(
+        min_comma.diagnostics.iter().any(|d| d.code == "E0320"),
+        "min(1,2,0) should not reduce the tuple\n{}",
+        show(&min_comma.diagnostics)
+    );
+}
+
+#[test]
 fn level_failure_is_c0101_with_measurements_and_a_fix() {
     let ev = run_with(
         "@target t.png 100x100\ncircle 5 at:30,40 name:eye_l\ncircle 5 at:70,43 name:eye_r\nassert level(@eye_l @eye_r) tol:.5\n",
