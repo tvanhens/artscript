@@ -95,12 +95,10 @@ pub(crate) fn classify(src: &str) -> Vec<Run> {
     let lexed = lex::lex(src);
     let mut runs = Vec::new();
     for comment in &lexed.comments {
-        if comment.end > comment.start {
-            runs.push(Run {
-                range: comment.start..comment.end,
-                class: Class::Comment,
-            });
-        }
+        runs.push(Run {
+            range: comment.start..comment.end,
+            class: Class::Comment,
+        });
     }
     for line in &lexed.lines {
         let role = head_role(src, line);
@@ -254,9 +252,7 @@ fn fill_invalid_gaps(src: &str, runs: &mut Vec<Run>) {
     let mut covered = vec![false; src.len()];
     for run in runs.iter() {
         for byte in run.range.clone() {
-            if let Some(slot) = covered.get_mut(byte) {
-                *slot = true;
-            }
+            covered[byte] = true;
         }
     }
     let bytes = src.as_bytes();
