@@ -79,7 +79,10 @@ pub(crate) fn is_directive_ref(tokens: &[Token]) -> bool {
 }
 
 pub(crate) fn is_slot_at(tokens: &[Token], index: usize) -> bool {
-    if !matches!(tokens.get(index).map(|t| &t.kind), Some(Tok::Ident(_))) {
+    if !matches!(
+        tokens.get(index).map(|t| &t.kind),
+        Some(Tok::Ident(_) | Tok::Kw(_))
+    ) {
         return false;
     }
     let Some(colon) = tokens.get(index + 1) else {

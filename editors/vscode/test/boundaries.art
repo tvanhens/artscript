@@ -97,3 +97,12 @@ circle	1
 .head.eye
 .5
 ..
+mask:
+fx:
+use:
+use foo?#fff
+use foo?#note
+@target out/file?#fff
+?circle 1
+?use foo
+?@target out/file

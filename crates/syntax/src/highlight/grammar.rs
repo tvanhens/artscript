@@ -8,8 +8,8 @@ const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 /// A digit may sit in front of a word. `5degx` is a number and then a name.
 const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
-const AT_STATEMENT: &str = "(?<=^[ \\t]*)";
-const AT_DIRECTIVE: &str = "(?<=^\\t*)";
+const AT_STATEMENT: &str = "(?<=^[^#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)";
+const AT_DIRECTIVE: &str = "(?<=^[^ #\\r\\n\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]*)";
 
 const ESCAPE_SCOPE: &str = "constant.character.escape.art";
 
@@ -161,6 +161,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
         },
         indent_tab(invalid),
         directive(),
+        keyword_slot(),
         use_path(),
     ];
     for kw_group in KwGroup::all() {
@@ -363,19 +364,37 @@ fn kw_alt(kw_group: KwGroup) -> String {
     words.join("|")
 }
 
+fn keyword_slot() -> Pattern {
+    Pattern::Match {
+        re: format!(
+            "{at}({alts})(:)(?=[ \\t]*(?:\\r?$|#(?!(?:{hex})(?=$|{delims}))))",
+            at = AT_STATEMENT,
+            alts = keyword_alts(),
+            hex = hex_body(),
+            delims = delim_class()
+        ),
+        name: None,
+        captures: vec![(1, scope(Class::Slot)), (2, scope(Class::Slot))],
+    }
+}
+
 fn path_class() -> String {
     format!("[{PATH_CHARS}]")
 }
 
 fn path_chunk_end() -> String {
     let gap = "(?:$|[ \\t]|#)";
-    // Characters the scanner drops never enter the token, so they stay outside the chunk.
-    let dropped = "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]";
-    format!(
-        "(?!#(?:{hex})(?=$|{delims}))(?={gap}|(?:{dropped})+{gap})",
+    let dropped = dropped_class();
+    let color = format!(
+        "#(?:{hex})(?=$|{delims})",
         hex = hex_body(),
         delims = delim_class()
-    )
+    );
+    format!("(?!(?:{dropped})*{color})(?={gap}|(?:{dropped})+{gap})")
+}
+
+fn dropped_class() -> &'static str {
+    "[^ \\t\\r\\n#\"@A-Za-z0-9_./{}*+=!<>~:,()\\[\\]-]"
 }
 
 fn hex_body() -> String {

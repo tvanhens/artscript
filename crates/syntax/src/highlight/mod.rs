@@ -133,6 +133,9 @@ fn head_role(src: &str, line: &Line) -> HeadRole {
             path: directive_path(src, tokens, 1),
         };
     }
+    if lex::is_slot_at(tokens, 0) {
+        return HeadRole::Slot;
+    }
     if matches!(first.kind, Tok::Kw(Word::Use)) {
         return HeadRole::Use {
             path: glued_path(src, tokens, 1),
@@ -144,9 +147,6 @@ fn head_role(src: &str, line: &Line) -> HeadRole {
     let patch = lex::patch_path_len(tokens);
     if patch > 0 {
         return HeadRole::Patch { tokens: patch };
-    }
-    if lex::is_slot_at(tokens, 0) {
-        return HeadRole::Slot;
     }
     if matches!(first.kind, Tok::Ident(_)) {
         return HeadRole::Verb;

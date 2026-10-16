@@ -320,10 +320,12 @@ fn span_set_equals_lex(src: &str) {
                 Tok::Kw(_) => {
                     let key = index > 0 && lex::is_glued_key(&line.tokens, index);
                     let in_path = path_chunk_contains(line, index);
+                    let slot = lex::is_slot_at(&line.tokens, index);
                     let ok = match run.class {
-                        Class::Keyword => !key,
+                        Class::Keyword => !key && !slot,
                         Class::Key => key,
                         Class::Path => in_path,
+                        Class::Slot => slot,
                         _ => false,
                     };
                     assert!(
@@ -848,6 +850,19 @@ fn boundary_source() -> String {
         "..",
     ] {
         lines.push(patch.into());
+    }
+    for line in [
+        "mask:",
+        "fx:",
+        "use:",
+        "use foo?#fff",
+        "use foo?#note",
+        "@target out/file?#fff",
+        "?circle 1",
+        "?use foo",
+        "?@target out/file",
+    ] {
+        lines.push(line.into());
     }
     lines.join("\n") + "\n"
 }
