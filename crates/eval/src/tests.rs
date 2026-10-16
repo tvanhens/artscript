@@ -1,6 +1,6 @@
 //! Evaluator behaviour tests over in-memory projects.
 
-use artscript_ir::{Node, NodeKind, Paint, Scene};
+use artscript_ir::{EffectOp, Node, NodeKind, Paint, Scene};
 use artscript_syntax::Diagnostic;
 
 use crate::{Evaluation, Project, evaluate, plan};
@@ -101,172 +101,6 @@ fn unnamed_siblings_get_count_suffixes_and_loops_append_the_index() {
         ]
     );
     assert_eq!(at(node(&s, "bg.circle3#2")), (20.0, 0.0));
-}
-
-#[test]
-fn toggling_an_if_keeps_later_sibling_paths_and_seeds() {
-    let src = |show: bool| {
-        format!(
-            "@target t.png 100x100\nlet show = {show}\ncircle 4 at:rand(0 40),0\nif show\n  circle 4\ncircle 4 at:rand(0 40),10\n"
-        )
-    };
-    let hidden = scene(&src(false));
-    let shown = scene(&src(true));
-    assert_eq!(paths(&hidden), ["circle", "circle3"]);
-    assert_eq!(paths(&shown), ["circle", "circle2", "circle3"]);
-    assert_eq!(at(node(&hidden, "circle3")), at(node(&shown, "circle3")));
-    assert_eq!(at(node(&hidden, "circle")), at(node(&shown, "circle")));
-}
-
-#[test]
-fn key_samples_smooth_easing_and_steps() {
-    let s = scene("@target t.png 100x100 t:.25s\nrect 4 at:key(0 10 0 dur:1s),0 name:box\n");
-    assert!(
-        (at(node(&s, "box")).0 - 5.625).abs() < 1e-3,
-        "{}",
-        at(node(&s, "box")).0
-    );
-    let linear =
-        scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:linear dur:1s),0 name:box\n");
-    assert!((at(node(&linear, "box")).0 - 5.0).abs() < 1e-3);
-    let inn = scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:in dur:1s),0 name:box\n");
-    assert!((at(node(&inn, "box")).0 - 2.5).abs() < 1e-3);
-    let out =
-        scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:out dur:1s),0 name:box\n");
-    assert!((at(node(&out, "box")).0 - 7.5).abs() < 1e-3);
-    let hold =
-        scene("@target t.png 100x100 t:.9s\nrect 4 at:key(1 9 ease:hold dur:1s),0 name:box\n");
-    assert!((at(node(&hold, "box")).0 - 1.0).abs() < 1e-3);
-    let ev = run_with(
-        "@target t.png 100x100 t:.9s\nlet w = key(red blue dur:1s)\nassert w == red\nrect 4\n",
-        &[],
-    );
-    assert!(
-        ev.diagnostics.iter().all(|d| !d.code.starts_with('C')),
-        "{}",
-        show(&ev.diagnostics)
-    );
-    let bad = run_with(
-        "@target t.png 100x100\nlet w = key([1] [2] dur:1s)\nrect 4\n",
-        &[],
-    );
-    assert!(
-        bad.diagnostics
-            .iter()
-            .any(|d| d.code == "E0320" && d.message.contains("cannot animate a list")),
-        "{}",
-        show(&bad.diagnostics)
-    );
-}
-
-#[test]
-fn play_offsets_add_and_abs_replaces_and_later_sets_win() {
-    let src = "\
-@target t.png 100x100 t:.5s clip:go
-anim nudge dur:1s
-  .box at:10,0
-  .box rot:5
-anim shove dur:1s
-  .box at:0,4
-  .box rot:abs(1)
-anim paint dur:1s
-  .box fill:#ff0000
-anim paint2 dur:1s
-  .box fill:#00ff00
-if clip == go
-  play nudge
-  play shove
-  play paint
-  play paint2
-rect 10 at:1,2 fill:#0000ff name:box
-";
-    let s = scene(src);
-    let n = node(&s, "box");
-    assert!(
-        (at(n).0 - 11.0).abs() < 1e-3 && (at(n).1 - 6.0).abs() < 1e-3,
-        "{:?}",
-        at(n)
-    );
-    let (sin, cos) = (n.transform.skew_y(), n.transform.scale_x());
-    assert!(
-        (sin.atan2(cos).to_degrees() - 1.0).abs() < 1e-2,
-        "{}",
-        sin.atan2(cos).to_degrees()
-    );
-    assert_eq!(fill_hex(n), "#00ff00");
-}
-
-#[test]
-fn an_anim_without_time_branching_keeps_one_path_set() {
-    let src = "\
-@target t.gif 40x40 bg:#ffffff dur:1s fps:4 clip:go
-anim bob dur:1s
-  .box at:0,key(0 8)
-if clip == go
-  play bob
-rect 8 at:10,10 name:box
-";
-    let p = project(&[("art/t.art", src)]);
-    let plan = plan(&p);
-    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
-    let sampled = crate::sample(&p, &plan.jobs[0]);
-    assert!(
-        sampled.diagnostics.iter().all(|d| !d.code.starts_with('E')),
-        "{}",
-        show(&sampled.diagnostics)
-    );
-    let sets: Vec<Vec<String>> = sampled
-        .frames
-        .iter()
-        .map(|f| {
-            let mut all = Vec::new();
-            walk(&f.scene.children, &mut all);
-            all.into_iter().map(|n| n.path.clone()).collect()
-        })
-        .collect();
-    assert!(sets.len() > 1);
-    assert!(sets.iter().all(|s| s == &sets[0]), "{sets:?}");
-}
-
-#[test]
-fn per_frame_checks_report_first_and_worst() {
-    let src = "\
-@target t.gif 20x20 bg:#ffffff dur:1s fps:4
-assert t < .5
-circle 2
-";
-    let p = project(&[("art/t.art", src)]);
-    let plan = plan(&p);
-    let sampled = crate::sample(&p, &plan.jobs[0]);
-    let fail = sampled
-        .diagnostics
-        .iter()
-        .find(|d| d.code == "C0101")
-        .unwrap_or_else(|| panic!("{}", show(&sampled.diagnostics)));
-    assert_eq!(
-        sampled
-            .diagnostics
-            .iter()
-            .filter(|d| d.code == "C0101")
-            .count(),
-        1
-    );
-    assert!(
-        fail.notes.iter().any(|n| n.contains("first at 0.5s")),
-        "{:?}",
-        fail.notes
-    );
-    assert!(
-        fail.notes.iter().any(|n| n.contains("worst at 0.75s")),
-        "{:?}",
-        fail.notes
-    );
-}
-
-#[test]
-fn project_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync>() {}
-    assert_send_sync::<Project>();
 }
 
 #[test]
@@ -517,6 +351,33 @@ fn expect_failure_is_warning_c0201() {
             "0.25 is outside 0.9..1.4"
         ]
     );
+
+    let inside = run_with(
+        "@target t.png 100x100\nrect 12x10 name:head\nrect 10x10 name:body\nexpect @head.w / @body.w in .9..1.4 \"head as wide as the body\"\n",
+        &[],
+    );
+    assert!(
+        inside.diagnostics.is_empty(),
+        "{}",
+        show(&inside.diagnostics)
+    );
+
+    let end = run_with(
+        "@target t.png 100x100\nrect 14x10 name:head\nrect 10x10 name:body\nexpect @head.w / @body.w in .9..1.4 \"head as wide as the body\"\n",
+        &[],
+    );
+    let note = end
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "C0201")
+        .unwrap_or_else(|| panic!("{}", show(&end.diagnostics)));
+    assert!(
+        note.notes
+            .iter()
+            .any(|n| n == "1.4 is outside 0.9..1.4 (the end is excluded)"),
+        "{:?}",
+        note.notes
+    );
 }
 
 #[test]
@@ -631,6 +492,120 @@ fn each_walks_a_list_of_points() {
     assert_eq!(at(node(&s, "circle#0")), (0.0, 0.0));
     assert_eq!(at(node(&s, "circle#1")), (10.0, 4.0));
     assert_eq!(at(node(&s, "circle#2")), (20.0, -3.0));
+}
+
+#[test]
+fn range_end_is_excluded_for_in_and_each() {
+    let s = scene(
+        "@target t.png 40x40\nexpect 0 in 0..3\nexpect 2.999 in 0..3\nexpect 5..1 == 3..3\nexpect max(0..5) == 4\nexpect [each k in 1.2..2.2 -> k] == [1.2]\nexpect [each k in .5..3.2 -> k] == [.5 1.5 2.5]\nexpect [each k in (1/3)..(1/3+2) -> k] == [1/3 1/3+1]\nexpect (2..4) * 2 == 4..8\neach i in 5..5\n  circle 1 name:skip\neach i in 0..3\n  circle 1 at:i*10,0 name:n\n",
+    );
+    assert!(
+        !paths(&s).iter().any(|p| p.contains("skip")),
+        "{:?}",
+        paths(&s)
+    );
+    assert_eq!(at(node(&s, "n#0")), (0.0, 0.0));
+    assert_eq!(at(node(&s, "n#1")), (10.0, 0.0));
+    assert_eq!(at(node(&s, "n#2")), (20.0, 0.0));
+
+    let outside = |expr: &str| {
+        let ev = run_with(
+            &format!("@target t.png 10x10\nexpect {expr}\ncircle 1\n"),
+            &[],
+        );
+        let d = ev
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "C0201")
+            .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+        d.notes.clone()
+    };
+    assert_eq!(
+        outside("3 in 0..3"),
+        ["3 is outside 0..3 (the end is excluded)"]
+    );
+    assert_eq!(
+        outside("5 in 5..5"),
+        ["5 is outside 5..5 (the end is excluded)"]
+    );
+    assert_eq!(
+        outside("2 in 6..2"),
+        ["2 is outside 6..2 (the end is excluded)"]
+    );
+
+    let unequal = run_with(
+        "@target t.png 10x10\nexpect .5..3.2 == .5..3\nexpect 0..3 == [0 1 2]\ncircle 1\n",
+        &[],
+    );
+    let misses: Vec<_> = unequal
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "C0201")
+        .collect();
+    assert_eq!(misses.len(), 2, "{}", show(&unequal.diagnostics));
+    assert!(
+        unequal.diagnostics.iter().all(|d| d.code == "C0201"),
+        "{}",
+        show(&unequal.diagnostics)
+    );
+}
+
+#[test]
+fn stroke_range_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\npalette p\n  color ink #112233\ncurve 0,0 50,0 100,0 stroke:#111,2..6\ncurve 0,0 50,0 100,0 stroke:2..6\ncurve 0,0 50,0 100,0 stroke:p.ink,2.004..5.996\n",
+        &[],
+    );
+    let fixes: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        fixes,
+        vec![
+            "write `stroke:#111,[2 6]`".to_string(),
+            "write `stroke:[2 6]`".to_string(),
+            "write `stroke:p.ink,[2.004 5.996]`".to_string(),
+        ],
+        "{}",
+        show(&ev.diagnostics)
+    );
+
+    let patched = run_with(
+        "@target t.png 40x40\ndef ink\n  curve 0,0 30,0 name:line stroke:#111,1..3\nink\n  .line stroke:#222,4..6\n",
+        &[],
+    );
+    let patch_fixes: Vec<_> = patched
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        patch_fixes,
+        vec!["write `stroke:paint,[2 6]`".to_string()],
+        "{}",
+        show(&patched.diagnostics)
+    );
+
+    let restyle = run_with(
+        "@target t.png 40x40\nstyle old stroke:#111,1..3\nstyle new stroke:#222,4..6\ndef ink\n  curve 0,0 30,0 name:line style:old\nink\n  .line style:new\n",
+        &[],
+    );
+    let restyle_fixes: Vec<_> = restyle
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        restyle_fixes,
+        vec!["write `stroke:#111,[1 3]`".to_string()],
+        "{}",
+        show(&restyle.diagnostics)
+    );
 }
 
 #[test]
@@ -869,7 +844,7 @@ fn assert_pixels_close(a: &[u8], b: &[u8], mean_limit: f64) {
 fn raw_color_lint_skips_palettes() {
     let p = Project::from_sources(
         "[project]\nout = \"out\"\nlib = [\"lib\"]\n",
-        [("art/t.art".to_string(), "@target t.png 10x10\npalette x\n  a #ff0000\ncircle 3 fill:x.a\nrect 2x2 fill:#00ff00\n".to_string())].into(),
+        [("art/t.art".to_string(), "@target t.png 10x10\npalette x\n  color a #ff0000\ncircle 3 fill:x.a\nrect 2x2 fill:#00ff00\n".to_string())].into(),
     )
     .unwrap();
     let plan = plan(&p);
@@ -880,6 +855,128 @@ fn raw_color_lint_skips_palettes() {
         .map(|d| (d.code.as_str(), d.span.line))
         .collect();
     assert_eq!(lints, [("L0101", 5)]);
+}
+
+#[test]
+fn palette_rows_evaluate_to_colors_and_ramps() {
+    let s = scene(
+        "@target t.png 10x10\npalette x\n  ramp sky #102030 #f0e0d0 3\n  ramp leaf #7db956 5 hue:12\n  color ink #3d2632\n\
+         circle 1 fill:x.ink name:ink\ncircle 1 fill:x.leaf.2 name:leaf\ncircle 1 fill:x.sky.0 name:dark\ncircle 1 fill:x.sky.2 name:bright\n",
+    );
+    assert_eq!(fill_hex(node(&s, "ink")), "#3d2632");
+    assert_eq!(fill_hex(node(&s, "leaf")), "#7db956");
+    assert_eq!(fill_hex(node(&s, "dark")), "#102030");
+    assert_eq!(fill_hex(node(&s, "bright")), "#f0e0d0");
+
+    let ev = run_with(
+        "@target t.png 10x10\npalette x\n  color ink x2\ncircle 1\n",
+        &[],
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0305")
+        .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.message, "`color` takes a color, got a word");
+}
+
+#[test]
+fn mask_value_and_mask_block_both_mask_the_draw() {
+    let s = scene(
+        "@target t.png 100x100\ncircle 10 name:body\ngroup g\n  rect 4x4\n  mask @body\ngroup f\n  mask simplex(30) > .5\n  rect 4x4\ngroup b\n  mask\n    circle 3\n",
+    );
+    let source = |p: &str| {
+        node(&s, p)
+            .mask
+            .as_ref()
+            .map(|m| &m.source)
+            .unwrap_or_else(|| panic!("{p} has no mask"))
+    };
+    assert!(matches!(source("g"), artscript_ir::MaskSource::Nodes(n) if n.len() == 1));
+    assert!(
+        matches!(source("f"), artscript_ir::MaskSource::Field { threshold: Some(t), .. } if (*t - 0.5).abs() < 1e-6)
+    );
+    assert!(
+        matches!(source("b"), artscript_ir::MaskSource::Nodes(n) if n[0].path == "b.mask.circle")
+    );
+}
+
+#[test]
+fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
+    let lib = (
+        "lib/cup.art",
+        "def cup\n  circle 4\n  fx blur 1\n  slot mask\n",
+    );
+    let s = scene_with(
+        "@target t.png 100x100\nuse cup\ncup\n  fx glow 6\n  mask\n    circle 2\n",
+        &[lib],
+    );
+    let cup = node(&s, "cup");
+    let ops: Vec<&artscript_ir::EffectOp> = cup.effects.iter().map(|e| &e.op).collect();
+    assert!(
+        matches!(
+            ops.as_slice(),
+            [
+                artscript_ir::EffectOp::Blur { .. },
+                artscript_ir::EffectOp::Glow { .. }
+            ]
+        ),
+        "{ops:?}"
+    );
+    assert!(cup.mask.is_some());
+
+    let s = scene_with(
+        "@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n",
+        &[lib],
+    );
+    assert!(
+        node(&s, "cup").mask.is_none(),
+        "`mask:` fills the slot, it does not mask"
+    );
+    node(&s, "cup.mask.circle");
+
+    let s = scene_with(
+        "@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n  .mask off\n",
+        &[lib],
+    );
+    assert!(!paths(&s).iter().any(|p| p.starts_with("cup.mask")));
+}
+
+#[test]
+fn a_fill_line_is_a_draw_with_an_unknown_verb() {
+    let ev = run_with("@target t.png 10x10\nfill #fff\n", &[]);
+    assert_eq!(
+        ev.diagnostics
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect::<Vec<_>>(),
+        ["E0301"],
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
+fn slot_fill_under_a_shape_is_still_e0331() {
+    let ev = run_with(
+        "@target t.png 10x10\ncircle 4\n  head:\n    circle 1\n",
+        &[],
+    );
+    assert_eq!(
+        ev.diagnostics
+            .iter()
+            .map(|d| d.code.as_str())
+            .collect::<Vec<_>>(),
+        ["E0331"],
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+fn scene_with(src: &str, libs: &[(&str, &str)]) -> Scene {
+    let ev = run_with(src, libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    ev.scene.unwrap()
 }
 
 fn assert_box(s: &Scene, path: &str, w: f64, h: f64) {
@@ -1071,6 +1168,288 @@ fn absolute_size_still_boxes_a_child_of_a_sizeless_def() {
     );
 }
 
+fn fx_ops(n: &Node) -> Vec<String> {
+    n.effects
+        .iter()
+        .map(|e| {
+            format!("{:?}", e.op)
+                .split([' ', '{'])
+                .next()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .collect()
+}
+
+fn fx_debug(s: &Scene, path: &str) -> String {
+    format!("{:?}", node(s, path).effects)
+}
+
+fn grain_seed(n: &Node) -> u32 {
+    n.effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Grain { seed, .. } => Some(seed),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{} has no grain", n.path))
+}
+
+fn diag<'a>(ev: &'a Evaluation, code: &str) -> &'a Diagnostic {
+    ev.diagnostics
+        .iter()
+        .find(|d| d.code == code)
+        .unwrap_or_else(|| panic!("no {code} in\n{}", show(&ev.diagnostics)))
+}
+
+const SURFACE: &str =
+    "finish surface width:5 a:.55\n  fx rim width dir:1,1 a:a\n  fx grain .035 scale:2\n";
+
+#[test]
+fn finish_splices_its_lines_at_the_fx_line_between_local_lines() {
+    let s = scene(&format!(
+        "@target t.png 100x100\n{SURFACE}circle 10 name:c\n  fx shadow 0,4\n  fx surface width:6\n  fx outline 3\n"
+    ));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Rim", "Grain", "Outline"]);
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx shadow 0,4\n  fx rim 6 dir:1,1 a:.55\n  fx grain .035 scale:2\n  fx outline 3\n",
+    );
+    assert_eq!(fx_debug(&s, "c"), fx_debug(&written, "c"));
+}
+
+#[test]
+fn finish_reaches_only_the_node_its_fx_line_is_under() {
+    let s = scene(&format!(
+        "@target t.png 100x100\n{SURFACE}layer l\n  circle 10 name:c\n    circle 3 name:dot\n    fx surface\n"
+    ));
+    assert_eq!(fx_ops(node(&s, "l.c")), ["Rim", "Grain"]);
+    assert!(node(&s, "l").effects.is_empty());
+    assert!(node(&s, "l.c.dot").effects.is_empty());
+}
+
+#[test]
+fn shared_finish_seeds_grain_per_node_like_written_lines() {
+    let shared = scene(&format!(
+        "@target t.png 100x100\n{SURFACE}circle 10 name:cap\n  fx surface\ncircle 10 name:shimaki\n  fx surface\n"
+    ));
+    let written = scene(
+        "@target t.png 100x100\n\
+         circle 10 name:cap\n  fx rim 5 dir:1,1 a:.55\n  fx grain .035 scale:2\n\
+         circle 10 name:shimaki\n  fx rim 5 dir:1,1 a:.55\n  fx grain .035 scale:2\n",
+    );
+    assert_ne!(
+        grain_seed(node(&shared, "cap")),
+        grain_seed(node(&shared, "shimaki"))
+    );
+    for path in ["cap", "shimaki"] {
+        assert_eq!(fx_debug(&shared, path), fx_debug(&written, path));
+    }
+}
+
+#[test]
+fn library_finish_resolves_names_in_the_library_and_seeds_from_the_use_site() {
+    let lib = (
+        "lib/finish/surface.art",
+        "let shine = #ff0000\nfinish surface width:4\n  fx rim width color:shine\n  fx grain .04 scale:2.5\n",
+    );
+    let ev = run_with(
+        "@target t.png 100x100\nuse finish/surface { surface }\nlet shine = #0000ff\nlet w = 7\ncircle 10 name:cap\n  fx surface width:w\n",
+        &[lib],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let used = ev.scene.unwrap();
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:cap\n  fx rim 7 color:#ff0000\n  fx grain .04 scale:2.5\n",
+    );
+    assert_eq!(fx_debug(&used, "cap"), fx_debug(&written, "cap"));
+}
+
+#[test]
+fn def_body_finish_comes_before_call_block_fx() {
+    let lib = (
+        "lib/leaf.art",
+        "finish _edge tone:#00aa00\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\ndef leaf tone:#00ff00\n  circle 10 fill:tone\n  fx _edge tone:tone\n",
+    );
+    let written = (
+        "lib/leaf.art",
+        "def leaf tone:#00ff00\n  circle 10 fill:tone\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\n",
+    );
+    let src = "@target t.png 100x100\nuse leaf\nleaf tone:#008800\n  fx adjust light:-.06\n";
+    let ev = run_with(src, &[lib]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(
+        fx_ops(node(&s, "leaf")),
+        ["Rim", "Grain", "Outline", "Adjust"]
+    );
+    let w = run_with(src, &[written]);
+    assert!(w.diagnostics.is_empty(), "{}", show(&w.diagnostics));
+    assert_eq!(fx_debug(&s, "leaf"), fx_debug(&w.scene.unwrap(), "leaf"));
+}
+
+#[test]
+fn finish_as_a_node_key_is_e0339_pointing_at_an_fx_line() {
+    let ev = run_with(
+        &format!("@target t.png 100x100\n{SURFACE}circle 10 finish:surface\n"),
+        &[],
+    );
+    let d = diag(&ev, "E0339");
+    assert_eq!(d.span.line, 5);
+    assert_eq!(d.fix.as_deref(), Some("write `fx surface` under the node"));
+
+    let ev = run_with(
+        &format!("@target t.png 100x100\n{SURFACE}circle 10 style:surface\n"),
+        &[],
+    );
+    assert_eq!(
+        diag(&ev, "E0307").fix.as_deref(),
+        Some("write `fx surface` under the node")
+    );
+}
+
+#[test]
+fn finish_body_is_plain_built_in_effects() {
+    let ev = run_with(
+        "@target t.png 100x100\nfinish a\n  fx blur 2 as:soft\n  fx merge soft self of:self\ncircle 4\n",
+        &[],
+    );
+    let lines: Vec<(&str, u32)> = ev
+        .diagnostics
+        .iter()
+        .map(|d| (d.code.as_str(), d.span.line))
+        .collect();
+    assert_eq!(
+        lines,
+        [("E0336", 3), ("E0336", 4)],
+        "{}",
+        show(&ev.diagnostics)
+    );
+
+    let ev = run_with(
+        &format!(
+            "@target t.png 100x100\n{SURFACE}finish outer\n  fx rim 2\n  fx surface\ncircle 4\n"
+        ),
+        &[],
+    );
+    let d = diag(&ev, "E0338");
+    assert_eq!(d.span.line, 7);
+    assert!(
+        d.notes
+            .iter()
+            .any(|n| n == "`surface` is a finish, and finishes do not nest"),
+        "{d}"
+    );
+
+    let ev = run_with(
+        "@target t.png 100x100\nfinish rim\n  fx grain .1\ncircle 4\n",
+        &[],
+    );
+    assert_eq!(diag(&ev, "E0337").span.line, 2);
+
+    let ev = run_with(
+        "@target t.png 100x100\nuse bad\ncircle 4\n",
+        &[("lib/bad.art", "finish f\n  fx rim 3\n  circle 4\n")],
+    );
+    let d = diag(&ev, "E0101");
+    assert_eq!(
+        (d.file.as_str(), d.span.line, d.message.as_str()),
+        ("lib/bad.art", 3, "a finish holds only `fx` lines")
+    );
+}
+
+#[test]
+fn a_private_name_is_not_an_export() {
+    let lib = (
+        "lib/finish/surface.art",
+        "finish _surface width:4\n  fx rim width\nfinish surface width:4\n  fx rim width\nstyle _ink fill:#112233\nstyle ink fill:#112233\n",
+    );
+    let explicit = run_with(
+        "@target t.png 100x100\nuse finish/surface { _surface }\ncircle 10\n  fx _surface\n",
+        &[lib],
+    );
+    assert_eq!(
+        diag(&explicit, "E0212").message,
+        "`finish/surface` does not export `_surface`"
+    );
+
+    let style = run_with(
+        "@target t.png 100x100\nuse finish/surface { _ink }\ncircle 10 style:_ink\n",
+        &[lib],
+    );
+    assert_eq!(
+        diag(&style, "E0212").message,
+        "`finish/surface` does not export `_ink`"
+    );
+
+    let wild = run_with(
+        "@target t.png 100x100\nuse finish/surface\ncircle 10 name:cap\n  fx _surface\n",
+        &[lib],
+    );
+    assert_eq!(diag(&wild, "E0391").message, "unknown effect `_surface`");
+
+    let public = run_with(
+        "@target t.png 100x100\nuse finish/surface { surface ink }\ncircle 10 name:cap style:ink\n  fx surface\n",
+        &[lib],
+    );
+    assert!(
+        public.diagnostics.is_empty(),
+        "{}",
+        show(&public.diagnostics)
+    );
+    let s = public.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+        panic!("fill")
+    };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
+fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
+    let lib = (
+        "lib/finish/surface.art",
+        "style surface fill:#112233\nfinish surface width:4\n  fx rim width\n",
+    );
+    let ev = run_with(
+        "@target t.png 100x100\nuse finish/surface { surface }\ncircle 10 name:cap style:surface\n  fx surface\n",
+        &[lib],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+        panic!("fill")
+    };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
+fn finish_parameters_are_named_and_typed_by_their_defaults() {
+    let ev = run_with(
+        &format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface 6\n"),
+        &[],
+    );
+    assert!(
+        diag(&ev, "E0321")
+            .notes
+            .iter()
+            .any(|n| n == "parameters: width, a")
+    );
+    let ev = run_with(
+        &format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface depth:6\n"),
+        &[],
+    );
+    assert_eq!(
+        diag(&ev, "E0321").message,
+        "finish `surface` has no parameter `depth`"
+    );
+    let ev = run_with(
+        &format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface width:#ff0000\n"),
+        &[],
+    );
+    assert_eq!(diag(&ev, "E0320").span.line, 6);
+}
+
 #[test]
 fn non_positive_size_is_e0320() {
     let ev = run_with(
@@ -1084,4 +1463,170 @@ fn non_positive_size_is_e0320() {
         .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
     assert!(d.message.contains("must be positive"), "{d}");
     assert_eq!(d.fix.as_deref(), Some("write `size:40` or `size:72x32`"));
+}
+
+#[test]
+fn toggling_an_if_keeps_later_sibling_paths_and_seeds() {
+    let src = |show: bool| {
+        format!(
+            "@target t.png 100x100\nlet show = {show}\ncircle 4 at:rand(0 40),0\nif show\n  circle 4\ncircle 4 at:rand(0 40),10\n"
+        )
+    };
+    let hidden = scene(&src(false));
+    let shown = scene(&src(true));
+    assert_eq!(paths(&hidden), ["circle", "circle3"]);
+    assert_eq!(paths(&shown), ["circle", "circle2", "circle3"]);
+    assert_eq!(at(node(&hidden, "circle3")), at(node(&shown, "circle3")));
+    assert_eq!(at(node(&hidden, "circle")), at(node(&shown, "circle")));
+}
+
+#[test]
+fn key_samples_smooth_easing_and_steps() {
+    let s = scene("@target t.png 100x100 t:.25s\nrect 4 at:key(0 10 0 dur:1s),0 name:box\n");
+    assert!(
+        (at(node(&s, "box")).0 - 5.625).abs() < 1e-3,
+        "{}",
+        at(node(&s, "box")).0
+    );
+    let linear =
+        scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:linear dur:1s),0 name:box\n");
+    assert!((at(node(&linear, "box")).0 - 5.0).abs() < 1e-3);
+    let inn = scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:in dur:1s),0 name:box\n");
+    assert!((at(node(&inn, "box")).0 - 2.5).abs() < 1e-3);
+    let out =
+        scene("@target t.png 100x100 t:.5s\nrect 4 at:key(0 10 ease:out dur:1s),0 name:box\n");
+    assert!((at(node(&out, "box")).0 - 7.5).abs() < 1e-3);
+    let hold =
+        scene("@target t.png 100x100 t:.9s\nrect 4 at:key(1 9 ease:hold dur:1s),0 name:box\n");
+    assert!((at(node(&hold, "box")).0 - 1.0).abs() < 1e-3);
+    let ev = run_with(
+        "@target t.png 100x100 t:.9s\nlet w = key(red blue dur:1s)\nassert w == red\nrect 4\n",
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().all(|d| !d.code.starts_with('C')),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    let bad = run_with(
+        "@target t.png 100x100\nlet w = key([1] [2] dur:1s)\nrect 4\n",
+        &[],
+    );
+    assert!(
+        bad.diagnostics
+            .iter()
+            .any(|d| d.code == "E0320" && d.message.contains("cannot animate a list")),
+        "{}",
+        show(&bad.diagnostics)
+    );
+}
+
+#[test]
+fn play_offsets_add_and_abs_replaces_and_later_sets_win() {
+    let src = "\
+@target t.png 100x100 t:.5s clip:go
+anim nudge dur:1s
+  .box at:10,0
+  .box rot:5
+anim shove dur:1s
+  .box at:0,4
+  .box rot:abs(1)
+anim paint dur:1s
+  .box fill:#ff0000
+anim paint2 dur:1s
+  .box fill:#00ff00
+if clip == go
+  play nudge
+  play shove
+  play paint
+  play paint2
+rect 10 at:1,2 fill:#0000ff name:box
+";
+    let s = scene(src);
+    let n = node(&s, "box");
+    assert!(
+        (at(n).0 - 11.0).abs() < 1e-3 && (at(n).1 - 6.0).abs() < 1e-3,
+        "{:?}",
+        at(n)
+    );
+    let (sin, cos) = (n.transform.skew_y(), n.transform.scale_x());
+    assert!(
+        (sin.atan2(cos).to_degrees() - 1.0).abs() < 1e-2,
+        "{}",
+        sin.atan2(cos).to_degrees()
+    );
+    assert_eq!(fill_hex(n), "#00ff00");
+}
+
+#[test]
+fn an_anim_without_time_branching_keeps_one_path_set() {
+    let src = "\
+@target t.gif 40x40 bg:#ffffff dur:1s fps:4 clip:go
+anim bob dur:1s
+  .box at:0,key(0 8)
+if clip == go
+  play bob
+rect 8 at:10,10 name:box
+";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    assert!(
+        sampled.diagnostics.iter().all(|d| !d.code.starts_with('E')),
+        "{}",
+        show(&sampled.diagnostics)
+    );
+    let sets: Vec<Vec<String>> = sampled
+        .frames
+        .iter()
+        .map(|f| {
+            let mut all = Vec::new();
+            walk(&f.scene.children, &mut all);
+            all.into_iter().map(|n| n.path.clone()).collect()
+        })
+        .collect();
+    assert!(sets.len() > 1);
+    assert!(sets.iter().all(|s| s == &sets[0]), "{sets:?}");
+}
+
+#[test]
+fn per_frame_checks_report_first_and_worst() {
+    let src = "\
+@target t.gif 20x20 bg:#ffffff dur:1s fps:4
+assert t < .5
+circle 2
+";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let fail = sampled
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "C0101")
+        .unwrap_or_else(|| panic!("{}", show(&sampled.diagnostics)));
+    assert_eq!(
+        sampled
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "C0101")
+            .count(),
+        1
+    );
+    assert!(
+        fail.notes.iter().any(|n| n.contains("first at 0.5s")),
+        "{:?}",
+        fail.notes
+    );
+    assert!(
+        fail.notes.iter().any(|n| n.contains("worst at 0.75s")),
+        "{:?}",
+        fail.notes
+    );
+}
+
+#[test]
+fn project_is_send_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<Project>();
 }

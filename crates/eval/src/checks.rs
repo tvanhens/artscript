@@ -6,14 +6,14 @@ use std::rc::Rc;
 
 use artscript_ir::Rect;
 use skia_safe::Vector;
-use artscript_syntax::ast::{CheckKind, Expr, File, Named, Span, Stmt, StmtKind};
+use artscript_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, Span};
 
 use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect};
 use crate::scope::{RefVal, RuleDef};
 use crate::value::{Value, num};
 
 pub(crate) struct Pending {
-    pub stmt: Stmt,
+    pub stmt: Scene,
     pub scope: Scope,
 }
 
@@ -29,8 +29,8 @@ pub(crate) struct CheckState {
     pub span: Span,
 }
 
-fn source_of(stmt: &Stmt) -> String {
-    artscript_syntax::format(&File { directives: vec![], stmts: vec![stmt.clone()] }).trim().to_string()
+fn source_of(stmt: &Scene) -> String {
+    artscript_syntax::format(&File { directives: vec![], items: vec![Item::Scene(stmt.clone())] }).trim().to_string()
 }
 
 fn refs(v: &[Value]) -> Vec<Rc<RefVal>> {
@@ -67,8 +67,8 @@ impl Evaluator<'_> {
     }
 
     /// Evaluates one check and reports its failure. Returns whether it passed.
-    fn run_check(&mut self, stmt: &Stmt, sc: &Scope) -> bool {
-        let StmtKind::Check { kind, expr, named, message } = &stmt.kind else { return true };
+    fn run_check(&mut self, stmt: &Scene, sc: &Scope) -> bool {
+        let SceneKind::Check { kind, expr, named, message } = &stmt.kind else { return true };
         let file = sc.file().to_string();
         let tol = match named.iter().find(|n| n.key == "tol").map(|n| self.expr(&n.value, sc)) {
             Some(Ok(v)) => v.num().unwrap_or(0.5),
@@ -133,7 +133,7 @@ impl Evaluator<'_> {
         let before = self.diags.len();
         let mut ok = true;
         for st in &rule.body {
-            if matches!(st.kind, StmtKind::Check { .. }) {
+            if matches!(st.kind, SceneKind::Check { .. }) {
                 ok &= self.run_check(st, &rsc);
             }
         }

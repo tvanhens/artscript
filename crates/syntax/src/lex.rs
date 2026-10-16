@@ -1,5 +1,6 @@
 use crate::Diagnostic;
 use crate::ast::Span;
+use crate::words::{self, Word};
 
 #[derive(Clone, Debug)]
 pub(crate) struct Comment {
@@ -26,7 +27,7 @@ pub(crate) enum SizePart {
 #[derive(Clone, Debug)]
 pub(crate) enum Tok {
     Ident(String),
-    Kw(Kw),
+    Kw(Word),
     Num(f64),
     Percent(f64),
     Angle(f64),
@@ -58,101 +59,6 @@ pub(crate) enum Tok {
     RBrack,
     LBrace,
     RBrace,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Kw {
-    Use,
-    As,
-    From,
-    Palette,
-    Style,
-    Def,
-    Rule,
-    Let,
-    Shader,
-    Light,
-    Brush,
-    Assert,
-    Expect,
-    If,
-    Then,
-    Else,
-    Each,
-    In,
-    And,
-    Or,
-    Not,
-    True,
-    False,
-    None,
-    Anim,
-    Play,
-}
-
-impl Kw {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Kw::Use => "use",
-            Kw::As => "as",
-            Kw::From => "from",
-            Kw::Palette => "palette",
-            Kw::Style => "style",
-            Kw::Def => "def",
-            Kw::Rule => "rule",
-            Kw::Let => "let",
-            Kw::Shader => "shader",
-            Kw::Light => "light",
-            Kw::Brush => "brush",
-            Kw::Assert => "assert",
-            Kw::Expect => "expect",
-            Kw::If => "if",
-            Kw::Then => "then",
-            Kw::Else => "else",
-            Kw::Each => "each",
-            Kw::In => "in",
-            Kw::And => "and",
-            Kw::Or => "or",
-            Kw::Not => "not",
-            Kw::True => "true",
-            Kw::False => "false",
-            Kw::None => "none",
-            Kw::Anim => "anim",
-            Kw::Play => "play",
-        }
-    }
-
-    fn from_ident(s: &str) -> Option<Self> {
-        Some(match s {
-            "use" => Kw::Use,
-            "as" => Kw::As,
-            "from" => Kw::From,
-            "palette" => Kw::Palette,
-            "style" => Kw::Style,
-            "def" => Kw::Def,
-            "rule" => Kw::Rule,
-            "let" => Kw::Let,
-            "shader" => Kw::Shader,
-            "light" => Kw::Light,
-            "brush" => Kw::Brush,
-            "assert" => Kw::Assert,
-            "expect" => Kw::Expect,
-            "if" => Kw::If,
-            "then" => Kw::Then,
-            "else" => Kw::Else,
-            "each" => Kw::Each,
-            "in" => Kw::In,
-            "and" => Kw::And,
-            "or" => Kw::Or,
-            "not" => Kw::Not,
-            "true" => Kw::True,
-            "false" => Kw::False,
-            "none" => Kw::None,
-            "anim" => Kw::Anim,
-            "play" => Kw::Play,
-            _ => return None,
-        })
-    }
 }
 
 impl Tok {
@@ -554,7 +460,7 @@ impl<'a> Scanner<'a> {
             self.bump();
         }
         let word = &self.src[start..self.i];
-        if let Some(kw) = Kw::from_ident(word) {
+        if let Some(kw) = words::keyword(word) {
             Tok::Kw(kw)
         } else {
             Tok::Ident(word.to_string())

@@ -1,12 +1,12 @@
-//! What names resolve to: modules and their exports, palettes, components, rules, styles, and
-//! the records of named nodes that `@ref`s and checks measure.
+//! What names resolve to: modules and their exports, palettes, components, rules, styles,
+//! finishes, and the records of named nodes that `@ref`s and checks measure.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
-use artscript_syntax::ast::{Expr, Named, Span, Stmt};
+use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
 use crate::value::Value;
@@ -16,8 +16,9 @@ pub struct Module {
     pub path: String,
     pub globals: RefCell<HashMap<String, Value>>,
     pub styles: RefCell<HashMap<String, Rc<StyleDef>>>,
-    pub palettes: RefCell<Vec<Rc<Palette>>>,
+    pub finishes: RefCell<HashMap<String, Rc<FinishDef>>>,
     pub anims: RefCell<HashMap<String, Rc<AnimDef>>>,
+    pub palettes: RefCell<Vec<Rc<Palette>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
 }
@@ -28,8 +29,9 @@ impl Module {
             path: path.to_string(),
             globals: RefCell::new(HashMap::new()),
             styles: RefCell::new(HashMap::new()),
-            palettes: RefCell::new(Vec::new()),
+            finishes: RefCell::new(HashMap::new()),
             anims: RefCell::new(HashMap::new()),
+            palettes: RefCell::new(Vec::new()),
             own: RefCell::new(Vec::new()),
         }
     }
@@ -83,18 +85,30 @@ impl Palette {
     }
 }
 
+pub struct StyleDef {
+    pub module: String,
+    pub named: Vec<Named>,
+}
+
 pub struct AnimDef {
     pub name: String,
     pub dur: Expr,
     pub loop_: bool,
-    pub body: Vec<Stmt>,
+    pub body: Vec<Patch>,
     pub module: String,
     pub span: Span,
 }
 
-pub struct StyleDef {
+/// A named, ordered list of built-in `fx` lines. It holds no keys, so nothing about it reaches
+/// `Scope.style`.
+pub struct FinishDef {
+    pub name: String,
+    /// Named only, typed by their defaults, like `def` params.
+    pub params: Vec<Named>,
+    pub lines: Vec<FxLine>,
+    /// The module whose names the lines and the param defaults resolve in.
     pub module: String,
-    pub named: Vec<Named>,
+    pub span: Span,
 }
 
 pub struct Component {
@@ -102,7 +116,7 @@ pub struct Component {
     pub params: Vec<Named>,
     /// Part names a host must have when this def is slot content (`needs:@torso`).
     pub needs: Vec<String>,
-    pub body: Vec<Stmt>,
+    pub body: Vec<DefItem>,
     pub module: String,
     pub span: Span,
 }
@@ -110,7 +124,7 @@ pub struct Component {
 pub struct RuleDef {
     pub name: String,
     pub params: Vec<Named>,
-    pub body: Vec<Stmt>,
+    pub body: Vec<Scene>,
     pub module: String,
     pub span: Span,
 }

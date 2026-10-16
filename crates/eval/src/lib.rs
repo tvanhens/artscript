@@ -7,12 +7,14 @@ mod checks;
 pub mod color;
 mod eval;
 mod explain;
+mod fx;
 mod geom;
 mod key;
 mod lints;
 mod motion;
 mod paint;
 pub mod project;
+mod range;
 mod scope;
 mod seed;
 pub mod targets;
@@ -22,7 +24,7 @@ use std::collections::BTreeSet;
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::StmtKind;
+use artscript_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use key::{frame_count, frame_delays};
@@ -30,10 +32,8 @@ pub use project::{LintLevel, Manifest, Project, find_root, load};
 pub use seed::fnv1a;
 pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
 
-use crate::eval::PlayMark;
-
 use crate::color::Rgba;
-use crate::eval::Evaluator;
+use crate::eval::{Evaluator, PlayMark};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -74,8 +74,9 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     };
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
-    ev.collect_entry(&file.stmts, &sc);
-    let children = ev.eval_block_nodes(&file.stmts, &mut sc);
+    let scenes: Vec<_> = file.scenes().cloned().collect();
+    ev.collect_entry(&scenes, &sc);
+    let children = ev.eval_block_nodes(file.scenes(), &mut sc);
     ev.finish_channels("");
     let checks = sc.checks.clone();
     ev.run_checks(&checks);
@@ -274,8 +275,8 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
         let Ok(file) = artscript_syntax::parse(src) else {
             continue;
         };
-        for st in &file.stmts {
-            if let StmtKind::Use { path, .. } = &st.kind {
+        for d in file.decls() {
+            if let DeclKind::Use { path, .. } = &d.kind {
                 let rooted = format!("{path}.art");
                 if let Some(t) = project
                     .resolve_use(path)

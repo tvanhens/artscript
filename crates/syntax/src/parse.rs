@@ -1,8 +1,13 @@
 use std::collections::HashSet;
 
 use crate::Diagnostic;
-use crate::ast::{BinOp, CheckKind, Directive, Expr, File, Named, Span, Stmt, StmtKind, UnOp};
-use crate::lex::{self, Kw, Line, SizePart, Tok};
+use crate::ast::{
+    BinOp, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody, DrawItem, Expr, File, Fx,
+    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SlotFill, Span, Swatch,
+    SwatchKind, UnOp,
+};
+use crate::lex::{self, Line, SizePart, Tok};
+use crate::words::{self, Word};
 
 const PREC_IF: u8 = 1;
 const PREC_OR: u8 = 2;
@@ -52,14 +57,20 @@ struct Parser<'a> {
     dedent_reported: HashSet<u32>,
 }
 
-fn is_each_axis(value: &Expr, no_axis_yet: bool) -> bool {
-    matches!(value, Expr::List(_)) || no_axis_yet
+enum Head {
+    Decl,
+    Fx,
+    Mask,
+    SlotFill(String),
+    Patch,
+    GluedColon { name: String, rest: String },
+    Scene,
 }
 
 impl<'a> Parser<'a> {
     fn parse_file(&mut self) -> File {
         let mut directives = Vec::new();
-        let mut stmts = Vec::new();
+        let mut items = Vec::new();
         let mut seen_stmt = false;
         while self.li < self.lines.len() {
             self.ti = 0;
@@ -84,11 +95,13 @@ impl<'a> Parser<'a> {
                 directives.push(self.parse_directive());
             } else {
                 seen_stmt = true;
-                stmts.push(self.parse_stmt());
+                if let Some(item) = self.top_line() {
+                    items.push(item);
+                }
             }
             self.li += 1;
         }
-        File { directives, stmts }
+        File { directives, items }
     }
 
     fn starts_directive(&self) -> bool {
@@ -110,7 +123,7 @@ impl<'a> Parser<'a> {
             path = self.take_glued_chunk();
         }
         while !self.eol() {
-            if self.eat_kw(Kw::Each) {
+            if self.eat_kw(Word::Each) {
                 while !self.eol() {
                     if self.is_named() {
                         if !each.is_empty() && !self.cur().is_some_and(|t| t.ws_before) {
@@ -182,61 +195,310 @@ impl<'a> Parser<'a> {
         Some(text)
     }
 
-    fn parse_stmt(&mut self) -> Stmt {
-        let Some(kind) = self.cur().map(|t| t.kind.clone()) else {
-            let span = Span {
-                line: self.cur_line_no(),
-                col: 1,
-            };
-            return self.dummy(span);
+    fn line_rest(&self, from: usize) -> String {
+        let tokens = &self.lines[self.li].tokens;
+        match (tokens.get(from), tokens.last()) {
+            (Some(a), Some(b)) => self.src[a.start..b.end].to_string(),
+            _ => String::new(),
+        }
+    }
+
+    fn head(&self) -> Head {
+        let Some(tok) = self.cur() else {
+            return Head::Scene;
         };
-        match kind {
-            Tok::Kw(Kw::Use) => self.parse_use(),
-            Tok::Kw(Kw::Palette) => self.parse_palette(),
-            Tok::Kw(Kw::Style) => self.parse_style(),
-            Tok::Kw(Kw::Def) => self.parse_def(),
-            Tok::Kw(Kw::Rule) => self.parse_rule(),
-            Tok::Kw(Kw::Let) => self.parse_let(),
-            Tok::Kw(Kw::Shader) => self.parse_shader(),
-            Tok::Kw(Kw::Light) => self.parse_light(),
-            Tok::Kw(Kw::Brush) => self.parse_brush(),
-            Tok::Kw(Kw::Assert) => self.parse_check(CheckKind::Assert),
-            Tok::Kw(Kw::Expect) => self.parse_check(CheckKind::Expect),
-            Tok::Kw(Kw::If) => self.parse_if(),
-            Tok::Kw(Kw::Each) => self.parse_each(),
-            Tok::Kw(Kw::Anim) => self.parse_anim(),
-            Tok::Kw(Kw::Play) => self.parse_play(),
-            Tok::Kw(Kw::Else) => {
-                let span = self.cur_span();
-                self.fail(
-                    span,
-                    "`else` must directly follow an `if` block at the same indent",
-                    "place `else` on the line after an `if` block, or remove it",
-                );
-                self.dummy(span)
-            }
-            Tok::Dot => self.parse_patch(),
-            Tok::Ident(name) => {
-                if self.is_slot() {
-                    self.parse_slot(name)
-                } else {
-                    self.parse_node(name)
+        let tokens = &self.lines[self.li].tokens;
+        let glued_colon = tokens
+            .get(self.ti + 1)
+            .is_some_and(|c| matches!(c.kind, Tok::Colon) && !c.ws_before);
+        let word = match &tok.kind {
+            Tok::Ident(s) => Some(s.clone()),
+            Tok::Kw(w) => Some(w.as_str().to_string()),
+            _ => None,
+        };
+        if let Some(word) = word
+            && glued_colon
+        {
+            return if self.ti + 2 >= tokens.len() {
+                Head::SlotFill(word)
+            } else {
+                Head::GluedColon {
+                    name: word,
+                    rest: self.line_rest(self.ti + 2),
                 }
-            }
-            _ => {
-                let span = self.cur_span();
-                let desc = kind.desc();
-                self.fail(
-                    span,
-                    format!("expected a statement, found {desc}"),
-                    "start the line with a verb, declaration, or directive",
+            };
+        }
+        match tok.kind {
+            Tok::Kw(
+                Word::Use
+                | Word::Palette
+                | Word::Style
+                | Word::Finish
+                | Word::Def
+                | Word::Rule
+                | Word::Shader
+                | Word::Light
+                | Word::Brush
+                | Word::Anim,
+            ) => Head::Decl,
+            Tok::Kw(Word::Fx) => Head::Fx,
+            Tok::Kw(Word::Mask) => Head::Mask,
+            Tok::Dot => Head::Patch,
+            _ => Head::Scene,
+        }
+    }
+
+    fn reject_line_and_block(&mut self, message: impl Into<String>, fix: impl Into<String>) {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.fail(span, message, fix);
+        self.skip_block(indent);
+    }
+
+    fn skip_block(&mut self, indent: usize) {
+        while self
+            .lines
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent)
+        {
+            self.li += 1;
+        }
+    }
+
+    fn top_line(&mut self) -> Option<Item> {
+        match self.head() {
+            Head::Decl => self.parse_decl().map(Item::Decl),
+            head => self.scene_head(head, "at the top level").map(Item::Scene),
+        }
+    }
+
+    fn scene_line(&mut self, error_where: &str) -> Option<Scene> {
+        let head = self.head();
+        self.scene_head(head, error_where)
+    }
+
+    fn scene_head(&mut self, head: Head, error_where: &str) -> Option<Scene> {
+        match head {
+            Head::Scene => self.parse_scene(),
+            Head::Decl => {
+                self.reject_line_and_block(
+                    format!("a declaration cannot go {error_where}"),
+                    "move it to the top level of the file",
                 );
-                self.dummy(span)
+                None
+            }
+            Head::Fx => {
+                self.reject_line_and_block(
+                    format!("`fx` cannot go {error_where}"),
+                    "indent the `fx` line directly under the shape, group, def, or component call it applies to",
+                );
+                None
+            }
+            Head::Mask => {
+                self.reject_line_and_block(
+                    format!("`mask` cannot go {error_where}"),
+                    "indent `mask` directly under the draw it masks",
+                );
+                None
+            }
+            Head::SlotFill(name) => {
+                self.reject_line_and_block(
+                    format!("slot fill `{name}:` cannot go {error_where}"),
+                    "indent it directly under the component call that has the slot",
+                );
+                None
+            }
+            Head::Patch => {
+                self.reject_line_and_block(
+                    format!("a patch cannot go {error_where}"),
+                    "indent it directly under the component call it overrides",
+                );
+                None
+            }
+            Head::GluedColon { name, rest } => {
+                self.reject_line_and_block(
+                    format!("`{name}:` must end the line"),
+                    format!("write `{name} {rest}`, or end the line with `{name}:` to fill a slot"),
+                );
+                None
             }
         }
     }
 
-    fn parse_use(&mut self) -> Stmt {
+    fn draw_line(&mut self) -> Option<DrawItem> {
+        match self.head() {
+            Head::Fx => self.parse_fx().map(DrawItem::Fx),
+            Head::Mask => self.parse_mask(),
+            Head::SlotFill(name) => self.parse_slot_fill(name).map(DrawItem::SlotFill),
+            Head::Patch => self.parse_patch().map(DrawItem::Patch),
+            head => self.scene_head(head, "under a draw").map(DrawItem::Scene),
+        }
+    }
+
+    fn def_line(&mut self) -> Option<DefItem> {
+        match self.head() {
+            Head::Fx => self.parse_fx().map(DefItem::Fx),
+            Head::Mask => {
+                self.reject_line_and_block(
+                    "a `def` body cannot hold a mask",
+                    "put the mask under a draw inside the def, or under the call site",
+                );
+                None
+            }
+            Head::SlotFill(name) => {
+                self.reject_line_and_block(
+                    format!("a `def` body cannot hold slot fill `{name}:`"),
+                    format!("declare it with `slot {name}`, or fill it under a component call"),
+                );
+                None
+            }
+            Head::Patch => {
+                self.reject_line_and_block(
+                    "a `def` body cannot hold a patch",
+                    "write the patch under a call of the component",
+                );
+                None
+            }
+            head => self.scene_head(head, "in a def").map(DefItem::Scene),
+        }
+    }
+
+    fn swatch_line(&mut self) -> Option<Swatch> {
+        let tokens = &self.lines[self.li].tokens;
+        let first = match &tokens[self.ti].kind {
+            Tok::Ident(s) => Some(s.clone()),
+            _ => None,
+        };
+        let ramp = match first.as_deref().and_then(Word::lookup) {
+            Some(Word::Ramp) => true,
+            Some(Word::Color) => false,
+            _ => {
+                let fix = match (&first, tokens.get(self.ti + 1).map(|t| &t.kind)) {
+                    (Some(name), Some(Tok::Ident(r))) if Word::lookup(r) == Some(Word::Ramp) => {
+                        format!("write `ramp {name} {}`", self.line_rest(self.ti + 2))
+                    }
+                    (Some(name), Some(_)) => {
+                        format!("write `color {name} {}`", self.line_rest(self.ti + 1))
+                    }
+                    _ => "start the row with `ramp <name>` or `color <name>`".to_string(),
+                };
+                self.reject_line_and_block("a palette row starts with `ramp` or `color`", fix);
+                return None;
+            }
+        };
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, named) = self.parse_items();
+        self.no_block(indent);
+        if self.line_failed {
+            return None;
+        }
+        let kind = if ramp {
+            let mut hue = None;
+            for n in named {
+                if n.key == "hue" && hue.is_none() {
+                    hue = Some(n.value);
+                } else {
+                    self.fail(
+                        n.span,
+                        format!("a ramp takes no `{}:`", n.key),
+                        "`hue:` is the only named argument of a ramp",
+                    );
+                    return None;
+                }
+            }
+            let mut args = args.into_iter();
+            let pos = match (args.next(), args.next(), args.next(), args.next()) {
+                (Some(a), None, None, None) => RampPos::One(a),
+                (Some(a), Some(b), None, None) => RampPos::Two(a, b),
+                (Some(a), Some(b), Some(c), None) => RampPos::Three(a, b, c),
+                (None, ..) => {
+                    self.fail(
+                        span,
+                        format!("`ramp {name}` needs a color"),
+                        format!("write `ramp {name} #f3a2a6 5`"),
+                    );
+                    return None;
+                }
+                _ => {
+                    self.fail(
+                        span,
+                        "a ramp takes one or two colors and an optional stop count",
+                        format!("write `ramp {name} <color> [<color>] [<count>]`"),
+                    );
+                    return None;
+                }
+            };
+            SwatchKind::Ramp {
+                pos: Box::new(pos),
+                hue,
+            }
+        } else {
+            match (args.len(), named.is_empty()) {
+                (1, true) => SwatchKind::Color(args.into_iter().next().expect("one arg")),
+                _ => {
+                    self.fail(
+                        span,
+                        format!("`color {name}` takes one color"),
+                        format!("write `color {name} #3d2632`"),
+                    );
+                    return None;
+                }
+            }
+        };
+        Some(Swatch { name, kind, span })
+    }
+
+    fn parse_decl(&mut self) -> Option<Decl> {
+        let span = self.cur_span();
+        let kind = match self.cur().map(|t| t.kind.clone()) {
+            Some(Tok::Kw(Word::Use)) => self.parse_use(),
+            Some(Tok::Kw(Word::Palette)) => self.parse_palette(),
+            Some(Tok::Kw(Word::Style)) => self.parse_style(),
+            Some(Tok::Kw(Word::Finish)) => self.parse_finish(),
+            Some(Tok::Kw(Word::Def)) => self.parse_def(),
+            Some(Tok::Kw(Word::Rule)) => self.parse_rule(),
+            Some(Tok::Kw(Word::Shader)) => self.parse_shader(),
+            Some(Tok::Kw(Word::Light)) => self.parse_light(),
+            Some(Tok::Kw(Word::Brush)) => self.parse_brush(),
+            Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
+            _ => None,
+        }?;
+        Some(Decl { kind, span })
+    }
+
+    fn parse_scene(&mut self) -> Option<Scene> {
+        let kind = self.cur().map(|t| t.kind.clone())?;
+        match kind {
+            Tok::Kw(Word::Let) => self.parse_let(),
+            Tok::Kw(Word::Assert) => self.parse_check(CheckKind::Assert),
+            Tok::Kw(Word::Expect) => self.parse_check(CheckKind::Expect),
+            Tok::Kw(Word::If) => self.parse_if(),
+            Tok::Kw(Word::Each) => self.parse_each(),
+            Tok::Kw(Word::Slot) => self.parse_slot(),
+            Tok::Kw(Word::Play) => self.parse_play(),
+            Tok::Kw(Word::Else) => {
+                self.reject_line_and_block(
+                    "`else` must directly follow an `if` block at the same indent",
+                    "place `else` on the line after an `if` block, or remove it",
+                );
+                None
+            }
+            Tok::Ident(name) => self.parse_draw(name),
+            _ => {
+                let desc = kind.desc();
+                self.reject_line_and_block(
+                    format!("expected a statement, found {desc}"),
+                    "start the line with a verb, declaration, or directive",
+                );
+                None
+            }
+        }
+    }
+
+    fn parse_use(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
@@ -246,12 +508,13 @@ impl<'a> Parser<'a> {
                 "expected a path after `use`",
                 "write `use path/to/lib`",
             );
-            return self.dummy(span);
+            self.no_block(indent);
+            return None;
         }
         let path = self.take_glued_chunk().unwrap_or_default();
         let mut alias = None;
         let mut items = Vec::new();
-        if self.eat_kw(Kw::As) {
+        if self.eat_kw(Word::As) {
             alias = Some(self.expect_name());
         }
         if self.eat(&Tok::LBrace) {
@@ -268,36 +531,30 @@ impl<'a> Parser<'a> {
         }
         self.expect_eol("remove the extra tokens after `use`");
         self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Use { path, alias, items },
-            span,
-        }
+        Some(DeclKind::Use { path, alias, items })
     }
 
-    fn parse_palette(&mut self) -> Stmt {
+    fn parse_palette(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let from = if self.eat_kw(Kw::From) {
+        let from = if self.eat_kw(Word::From) {
             Some(self.expect_name())
         } else {
             None
         };
         self.expect_eol("remove the extra tokens after the palette name");
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Palette { name, from, body },
-            span,
-        }
+        let body = self.block(indent, span.line, Self::swatch_line);
+        Some(DeclKind::Palette { name, from, body })
     }
 
-    fn parse_style(&mut self) -> Stmt {
+    fn parse_style(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let (args, named) = self.parse_items(false);
+        let (args, named) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -305,19 +562,65 @@ impl<'a> Parser<'a> {
                 "write `style name key:value`",
             );
         }
-        self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Style { name, named },
-            span,
-        }
+        self.reject_block(
+            indent,
+            "a style takes named keys only, not a block",
+            "declare `finish <name>` with this block and write `fx <name>` under the node",
+        );
+        Some(DeclKind::Style { name, named })
     }
 
-    fn parse_def(&mut self) -> Stmt {
+    fn parse_finish(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let (args, params) = self.parse_items(false);
+        let (args, params) = self.parse_items();
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "finish parameters are named arguments",
+                "write `finish name key:value`",
+            );
+        }
+        self.reject_param_names(&params);
+        let has_child = self
+            .lines
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent);
+        let body = self.block(indent, span.line, Self::finish_line);
+        if body.is_empty() && !has_child {
+            self.errors.push(
+                Diagnostic::error(
+                    "E0101",
+                    span,
+                    format!("finish `{name}` needs an indented block of `fx` lines"),
+                )
+                .with_fix(format!("indent `fx` lines under `finish {name}`")),
+            );
+        }
+        Some(DeclKind::Finish { name, params, body })
+    }
+
+    fn finish_line(&mut self) -> Option<Fx> {
+        match self.head() {
+            Head::Fx => self.parse_fx(),
+            _ => {
+                self.reject_line_and_block(
+                    "a finish holds only `fx` lines",
+                    "move this line under the node, or write it as `fx <effect> …`",
+                );
+                None
+            }
+        }
+    }
+
+    fn parse_def(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -325,19 +628,17 @@ impl<'a> Parser<'a> {
                 "write `def name key:value`",
             );
         }
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Def { name, params, body },
-            span,
-        }
+        self.reject_param_names(&params);
+        let body = self.block(indent, span.line, Self::def_line);
+        Some(DeclKind::Def { name, params, body })
     }
 
-    fn parse_rule(&mut self) -> Stmt {
+    fn parse_rule(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let (args, params) = self.parse_items(false);
+        let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -345,48 +646,17 @@ impl<'a> Parser<'a> {
                 "write `rule name key:value`",
             );
         }
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Rule { name, params, body },
-            span,
-        }
+        self.reject_param_names(&params);
+        let body = self.block(indent, span.line, |p| p.scene_line("in a rule"));
+        Some(DeclKind::Rule { name, params, body })
     }
 
-    fn parse_let(&mut self) -> Stmt {
+    fn parse_shader(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        if !self.eat(&Tok::Eq) {
-            self.fail(
-                span,
-                "expected `=` after the name",
-                "write `let name = <expr>`",
-            );
-            self.no_block(indent);
-            return Stmt {
-                kind: StmtKind::Let {
-                    name,
-                    value: Expr::Ident(String::new()),
-                },
-                span,
-            };
-        }
-        let value = self.parse_tuple();
-        self.expect_eol("a `let` binding is one expression");
-        self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Let { name, value },
-            span,
-        }
-    }
-
-    fn parse_shader(&mut self) -> Stmt {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let name = self.expect_name();
-        let (args, params) = self.parse_items(false);
+        let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -394,6 +664,7 @@ impl<'a> Parser<'a> {
                 "write `shader name key:value`",
             );
         }
+        self.reject_param_names(&params);
         let mut sksl = None;
         let mut child_indent: Option<usize> = None;
         loop {
@@ -440,18 +711,15 @@ impl<'a> Parser<'a> {
             }
             self.expect_eol("remove the extra tokens after `sksl`");
         }
-        Stmt {
-            kind: StmtKind::Shader { name, params, sksl },
-            span,
-        }
+        Some(DeclKind::Shader { name, params, sksl })
     }
 
-    fn parse_light(&mut self) -> Stmt {
+    fn parse_light(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let (args, named) = self.parse_items(false);
+        let (args, named) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -460,18 +728,15 @@ impl<'a> Parser<'a> {
             );
         }
         self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Light { name, named },
-            span,
-        }
+        Some(DeclKind::Light { name, named })
     }
 
-    fn parse_brush(&mut self) -> Stmt {
+    fn parse_brush(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        let (args, named) = self.parse_items(false);
+        let (args, named) = self.parse_items();
         if !args.is_empty() {
             self.fail(
                 span,
@@ -480,138 +745,10 @@ impl<'a> Parser<'a> {
             );
         }
         self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Brush { name, named },
-            span,
-        }
+        Some(DeclKind::Brush { name, named })
     }
 
-    fn parse_check(&mut self, kind: CheckKind) -> Stmt {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let expr = if self.eol() {
-            self.fail(
-                span,
-                "expected an expression to check",
-                "write `assert <expr>`",
-            );
-            Expr::Ident(String::new())
-        } else {
-            self.parse_tuple()
-        };
-        let mut named = Vec::new();
-        while self.is_named() {
-            named.push(self.parse_named());
-        }
-        let message = if self
-            .cur()
-            .is_some_and(|t| matches!(t.kind, Tok::Str(_)) && t.ws_before)
-        {
-            match self.bump().kind {
-                Tok::Str(s) => Some(s),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        self.expect_eol("remove the extra tokens after the check");
-        self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Check {
-                kind,
-                expr,
-                named,
-                message,
-            },
-            span,
-        }
-    }
-
-    fn parse_if(&mut self) -> Stmt {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        self.finish_if(span, indent)
-    }
-
-    fn finish_if(&mut self, span: Span, indent: usize) -> Stmt {
-        let cond = if self.eol() {
-            self.fail(span, "expected a condition after `if`", "write `if <expr>`");
-            Expr::Ident(String::new())
-        } else {
-            self.parse_tuple()
-        };
-        if self.at_kw(Kw::Then) {
-            self.fail(
-                self.cur_span(),
-                "unexpected keyword `then`",
-                "statement `if` takes a block; remove `then`",
-            );
-        } else {
-            self.expect_eol("the `if` condition must fit on one line");
-        }
-        let then = self.parse_block(indent, span.line);
-        let otherwise = if self.next_is_kw(indent, Kw::Else) {
-            self.enter(self.li + 1);
-            self.parse_else(indent)
-        } else {
-            Vec::new()
-        };
-        Stmt {
-            kind: StmtKind::If {
-                cond,
-                then,
-                otherwise,
-            },
-            span,
-        }
-    }
-
-    fn parse_else(&mut self, indent: usize) -> Vec<Stmt> {
-        let else_line = self.cur_line_no();
-        self.bump();
-        if self.at_kw(Kw::If) {
-            let span = self.cur_span();
-            self.bump();
-            vec![self.finish_if(span, indent)]
-        } else {
-            self.expect_eol("`else` takes a block, or write `else if`");
-            self.parse_block(indent, else_line)
-        }
-    }
-
-    fn parse_each(&mut self) -> Stmt {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let var = self.expect_name();
-        if !self.eat_kw(Kw::In) {
-            self.fail(
-                span,
-                "expected `in` after the loop name",
-                "write `each name in <expr>`",
-            );
-        }
-        let iter = if self.eol() {
-            self.fail(
-                span,
-                "expected the list or range after `in`",
-                "write `each name in <expr>`",
-            );
-            Expr::Ident(String::new())
-        } else {
-            self.parse_tuple()
-        };
-        self.expect_eol("the `each` header must fit on one line");
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Each { var, iter, body },
-            span,
-        }
-    }
-
-    fn parse_anim(&mut self) -> Stmt {
+    fn parse_anim(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
@@ -641,23 +778,38 @@ impl<'a> Parser<'a> {
             self.fail(span, "`anim` needs `dur:`", "write `anim name dur:1s`");
             Expr::Time(1.0)
         });
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Anim {
-                name,
-                dur,
-                loop_,
-                body,
-            },
-            span,
-        }
+        let body = self.block(indent, span.line, Self::anim_line);
+        Some(DeclKind::Anim {
+            name,
+            dur,
+            loop_,
+            body,
+        })
     }
 
-    fn parse_play(&mut self) -> Stmt {
+    fn anim_line(&mut self) -> Option<Patch> {
+        if matches!(self.head(), Head::Patch) {
+            return self.parse_patch();
+        }
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.errors.push(
+            Diagnostic::error("E0341", span, "an anim body may only contain patch lines")
+                .with_fix("write `.part key:value` under the anim"),
+        );
+        self.skip_block(indent);
+        self.line_failed = true;
+        if self.li < self.lines.len() {
+            self.ti = self.lines[self.li].tokens.len();
+        }
+        None
+    }
+
+    fn parse_play(&mut self) -> Option<Scene> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let name = if self.eat_kw(Kw::None) {
+        let name = if self.eat_kw(Word::None) {
             None
         } else if self.eol() {
             self.fail(
@@ -691,23 +843,300 @@ impl<'a> Parser<'a> {
             }
         }
         self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Play { name, start },
+        Some(Scene {
+            kind: SceneKind::Play { name, start },
             span,
-        }
+        })
     }
 
-    fn parse_patch(&mut self) -> Stmt {
+    fn parse_let(&mut self) -> Option<Scene> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let mut path = vec![self.patch_seg()];
+        let name = self.expect_name();
+        if !self.eat(&Tok::Eq) {
+            self.fail(
+                span,
+                "expected `=` after the name",
+                "write `let name = <expr>`",
+            );
+            self.no_block(indent);
+            return None;
+        }
+        let value = self.parse_tuple();
+        self.expect_eol("a `let` binding is one expression");
+        self.no_block(indent);
+        Some(Scene {
+            kind: SceneKind::Let { name, value },
+            span,
+        })
+    }
+
+    fn parse_check(&mut self, kind: CheckKind) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        if self.eol() {
+            self.fail(
+                span,
+                "expected an expression to check",
+                "write `assert <expr>`",
+            );
+            self.no_block(indent);
+            return None;
+        }
+        let expr = self.parse_tuple();
+        let mut named = Vec::new();
+        while self.is_named() {
+            named.push(self.parse_named());
+        }
+        let message = if self
+            .cur()
+            .is_some_and(|t| matches!(t.kind, Tok::Str(_)) && t.ws_before)
+        {
+            match self.bump().kind {
+                Tok::Str(s) => Some(s),
+                _ => None,
+            }
+        } else {
+            None
+        };
+        self.expect_eol("remove the extra tokens after the check");
+        self.no_block(indent);
+        Some(Scene {
+            kind: SceneKind::Check {
+                kind,
+                expr,
+                named,
+                message,
+            },
+            span,
+        })
+    }
+
+    fn parse_if(&mut self) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        self.finish_if(span, indent)
+    }
+
+    fn finish_if(&mut self, span: Span, indent: usize) -> Option<Scene> {
+        let cond = if self.eol() {
+            self.fail(span, "expected a condition after `if`", "write `if <expr>`");
+            None
+        } else {
+            Some(self.parse_tuple())
+        };
+        if self.at_kw(Word::Then) {
+            self.fail(
+                self.cur_span(),
+                "unexpected keyword `then`",
+                "statement `if` takes a block; remove `then`",
+            );
+        } else {
+            self.expect_eol("the `if` condition must fit on one line");
+        }
+        let then = self.block(indent, span.line, |p| p.scene_line("directly under `if`"));
+        let otherwise = if self.next_is_kw(indent, Word::Else) {
+            self.enter(self.li + 1);
+            self.parse_else(indent)
+        } else {
+            Vec::new()
+        };
+        Some(Scene {
+            kind: SceneKind::If {
+                cond: cond?,
+                then,
+                otherwise,
+            },
+            span,
+        })
+    }
+
+    fn parse_else(&mut self, indent: usize) -> Vec<Scene> {
+        let else_line = self.cur_line_no();
+        self.bump();
+        if self.at_kw(Word::If) {
+            let span = self.cur_span();
+            self.bump();
+            self.finish_if(span, indent).into_iter().collect()
+        } else {
+            self.expect_eol("`else` takes a block, or write `else if`");
+            self.block(indent, else_line, |p| p.scene_line("directly under `else`"))
+        }
+    }
+
+    fn parse_each(&mut self) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let var = self.expect_name();
+        if !self.eat_kw(Word::In) {
+            self.fail(
+                span,
+                "expected `in` after the loop name",
+                "write `each name in <expr>`",
+            );
+        }
+        let iter = if self.eol() {
+            self.fail(
+                span,
+                "expected the list or range after `in`",
+                "write `each name in <expr>`",
+            );
+            None
+        } else {
+            Some(self.parse_tuple())
+        };
+        self.expect_eol("the `each` header must fit on one line");
+        let body = self.block(indent, span.line, |p| p.scene_line("directly under `each`"));
+        Some(Scene {
+            kind: SceneKind::Each {
+                var,
+                iter: iter?,
+                body,
+            },
+            span,
+        })
+    }
+
+    fn parse_slot(&mut self) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.slot_name();
+        let (args, named) = self.parse_items();
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "a slot takes its name and named arguments only",
+                "write `slot name key:value`",
+            );
+        }
+        let fallback = self.block(indent, span.line, |p| p.scene_line("in a slot fallback"));
+        if name.is_empty() {
+            return None;
+        }
+        Some(Scene {
+            kind: SceneKind::Slot {
+                name,
+                named,
+                fallback,
+            },
+            span,
+        })
+    }
+
+    fn parse_draw(&mut self, verb: String) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.reject_reserved(&verb, span);
+        self.bump();
+        let (args, named) = self.parse_items();
+        if let Some(m) = named.iter().find(|n| n.key == "mask") {
+            self.fail(
+                m.span,
+                "`mask` is a child line, not a named argument",
+                "move it to an indented line under the draw, such as `mask @body`",
+            );
+        }
+        let mut body = DrawBody::default();
+        for item in self.block(indent, span.line, Self::draw_line) {
+            if let Err(SecondMask(span)) = body.push(item) {
+                self.errors.push(
+                    Diagnostic::error("E0101", span, "a draw takes one mask")
+                        .with_fix("merge the masks into one `mask` block, or remove one"),
+                );
+            }
+        }
+        Some(Scene {
+            kind: SceneKind::Draw(Draw {
+                verb,
+                args,
+                named,
+                body,
+            }),
+            span,
+        })
+    }
+
+    fn parse_fx(&mut self) -> Option<Fx> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let op = match self.cur().map(|t| t.kind.clone()) {
+            Some(Tok::Ident(op)) => {
+                self.bump();
+                op
+            }
+            _ => {
+                self.fail(
+                    span,
+                    "expected an effect name after `fx`",
+                    "write `fx shadow 0,6 blur:8`",
+                );
+                self.no_block(indent);
+                return None;
+            }
+        };
+        let (args, named) = self.parse_items();
+        self.no_block(indent);
+        Some(Fx {
+            op,
+            args,
+            named,
+            span,
+        })
+    }
+
+    fn parse_mask(&mut self) -> Option<DrawItem> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let value = (!self.eol()).then(|| self.parse_tuple());
+        self.expect_eol("a mask value is one expression");
+        let has_block = self
+            .lines
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent);
+        let mask = match (value, has_block) {
+            (Some(_), true) => {
+                self.fail(
+                    span,
+                    "a mask takes a value or a block, not both",
+                    "write `mask <value>` with nothing indented under it, or `mask` alone over the block",
+                );
+                self.skip_block(indent);
+                return None;
+            }
+            (Some(v), false) => Mask::Value(v),
+            (None, true) => {
+                Mask::Block(self.block(indent, span.line, |p| p.scene_line("in a mask block")))
+            }
+            (None, false) => {
+                self.fail(
+                    span,
+                    "`mask` needs a value or an indented block",
+                    "write `mask @body`, `mask simplex(30) > .5`, or indent shapes under `mask`",
+                );
+                return None;
+            }
+        };
+        Some(DrawItem::Mask { mask, span })
+    }
+
+    fn parse_patch(&mut self) -> Option<Patch> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let mut path = vec![self.part_name()];
         while self
             .cur()
             .is_some_and(|t| matches!(t.kind, Tok::Dot) && !t.ws_before)
         {
             self.bump();
-            path.push(self.patch_seg());
+            path.push(self.part_name());
         }
         let mut named = Vec::new();
         let mut off = false;
@@ -729,97 +1158,38 @@ impl<'a> Parser<'a> {
             }
         }
         self.no_block(indent);
-        Stmt {
-            kind: StmtKind::Patch { path, named, off },
+        Some(Patch {
+            path,
+            named,
+            off,
             span,
-        }
+        })
     }
 
-    fn patch_seg(&mut self) -> String {
-        if self
-            .cur()
-            .is_some_and(|t| matches!(t.kind, Tok::Star) && !t.ws_before)
-        {
-            self.bump();
-            "*".into()
-        } else {
-            self.expect_name()
-        }
-    }
-
-    fn parse_slot(&mut self, name: String) -> Stmt {
+    fn parse_slot_fill(&mut self, name: String) -> Option<SlotFill> {
         let span = self.cur_span();
         let indent = self.cur_indent();
-        self.reject_reserved(&name, span);
         self.bump();
         self.bump();
-        self.expect_eol("a slot fill is `name:` with an indented block");
-        let body = self.parse_block(indent, span.line);
-        if body.is_empty() && !self.line_failed {
-            self.errors.push(
-                Diagnostic::error(
-                    "E0101",
-                    span,
-                    format!("slot `{name}:` needs an indented block"),
-                )
-                .with_fix(format!("indent the slot body under `{name}:`")),
-            );
-        }
-        Stmt {
-            kind: StmtKind::SlotFill { name, body },
-            span,
-        }
-    }
-
-    fn is_slot(&self) -> bool {
-        let Some(colon) = self
+        if !self
             .lines
-            .get(self.li)
-            .and_then(|l| l.tokens.get(self.ti + 1))
-        else {
-            return false;
-        };
-        matches!(colon.kind, Tok::Colon)
-            && !colon.ws_before
-            && self.ti + 2 >= self.lines[self.li].tokens.len()
-    }
-
-    fn parse_node(&mut self, verb: String) -> Stmt {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.reject_reserved(&verb, span);
-        self.bump();
-        let (args, named) = self.parse_items(true);
-        let body = self.parse_block(indent, span.line);
-        Stmt {
-            kind: StmtKind::Node {
-                verb,
-                args,
-                named,
-                body,
-            },
-            span,
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent)
+        {
+            self.fail(
+                span,
+                format!("slot `{name}:` needs an indented block"),
+                format!("indent the slot body under `{name}:`"),
+            );
+            return None;
         }
+        let body = self.block(indent, span.line, |p| p.scene_line("in a slot fill"));
+        Some(SlotFill { name, body, span })
     }
 
-    fn parse_items(&mut self, colon_value: bool) -> (Vec<Expr>, Vec<Named>) {
+    fn parse_items(&mut self) -> (Vec<Expr>, Vec<Named>) {
         let mut args = Vec::new();
         let mut named = Vec::new();
-        if colon_value
-            && self
-                .cur()
-                .is_some_and(|t| matches!(t.kind, Tok::Colon) && !t.ws_before)
-        {
-            self.bump();
-            if self.eol() || self.cur().is_some_and(|t| t.ws_before) {
-                self.fail_here(
-                    "expected a value glued to `:`",
-                    "remove the space after `:`, or end the line to open a slot",
-                );
-            } else {
-                args.push(self.parse_tuple());
-            }
-        }
         while !self.eol() {
             self.push_item(&mut args, &mut named);
         }
@@ -898,7 +1268,12 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_block(&mut self, parent_indent: usize, parent_line: u32) -> Vec<Stmt> {
+    fn block<T>(
+        &mut self,
+        parent_indent: usize,
+        parent_line: u32,
+        mut line: impl FnMut(&mut Self) -> Option<T>,
+    ) -> Vec<T> {
         let mut body = Vec::new();
         let mut child_indent: Option<usize> = None;
         loop {
@@ -930,12 +1305,22 @@ impl<'a> Parser<'a> {
                 }
             }
             self.enter(next);
-            body.push(self.parse_stmt());
+            if let Some(item) = line(self) {
+                body.push(item);
+            }
         }
         body
     }
 
     fn no_block(&mut self, indent: usize) {
+        self.reject_block(
+            indent,
+            "this statement cannot have an indented block",
+            "dedent the following lines",
+        );
+    }
+
+    fn reject_block(&mut self, indent: usize, message: &str, fix: &str) {
         loop {
             let next = self.li + 1;
             if next >= self.lines.len() || self.lines[next].indent <= indent {
@@ -943,11 +1328,7 @@ impl<'a> Parser<'a> {
             }
             self.enter(next);
             let span = self.cur_span();
-            self.fail(
-                span,
-                "this statement cannot have an indented block",
-                "dedent the following lines",
-            );
+            self.fail(span, message, fix);
             self.ti = self.lines[self.li].tokens.len();
         }
     }
@@ -1020,11 +1401,11 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_prefix(&mut self, min: u8) -> Expr {
-        if min <= PREC_IF && self.at_kw(Kw::If) {
+        if min <= PREC_IF && self.at_kw(Word::If) {
             self.bump();
             return self.parse_if_expr();
         }
-        if min <= PREC_NOT && self.at_kw(Kw::Not) {
+        if min <= PREC_NOT && self.at_kw(Word::Not) {
             self.bump();
             let operand = self.parse_prec(PREC_NOT + 1);
             return Expr::Unary(UnOp::Not, Box::new(operand));
@@ -1039,7 +1420,7 @@ impl<'a> Parser<'a> {
 
     fn parse_if_expr(&mut self) -> Expr {
         let cond = self.parse_prec(PREC_IF + 1);
-        if !self.eat_kw(Kw::Then) {
+        if !self.eat_kw(Word::Then) {
             self.fail_here(
                 "expected `then`",
                 "write `if <cond> then <expr> else <expr>`",
@@ -1047,7 +1428,7 @@ impl<'a> Parser<'a> {
             return cond;
         }
         let then_e = self.parse_prec(PREC_IF);
-        if !self.eat_kw(Kw::Else) {
+        if !self.eat_kw(Word::Else) {
             self.fail_here("expected `else`", "add `else <expr>`");
             return then_e;
         }
@@ -1236,6 +1617,10 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Angle(n)
             }
+            Tok::Time(n) => {
+                self.bump();
+                Expr::Time(n)
+            }
             Tok::Size(a, b) => {
                 self.bump();
                 Expr::Size(Box::new(size_part(a)), Box::new(size_part(b)))
@@ -1252,23 +1637,19 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Ident(s)
             }
-            Tok::Time(n) => {
-                self.bump();
-                Expr::Time(n)
-            }
-            Tok::Kw(Kw::True) => {
+            Tok::Kw(Word::True) => {
                 self.bump();
                 Expr::Ident("true".into())
             }
-            Tok::Kw(Kw::False) => {
+            Tok::Kw(Word::False) => {
                 self.bump();
                 Expr::Ident("false".into())
             }
-            Tok::Kw(Kw::None) => {
+            Tok::Kw(Word::None) => {
                 self.bump();
                 Expr::Ident("none".into())
             }
-            Tok::Kw(Kw::In) => {
+            Tok::Kw(Word::In) => {
                 self.bump();
                 Expr::Ident("in".into())
             }
@@ -1296,7 +1677,7 @@ impl<'a> Parser<'a> {
 
     fn parse_list(&mut self) -> Expr {
         self.bump();
-        if self.at_kw(Kw::Each) {
+        if self.at_kw(Word::Each) {
             return self.parse_each_expr();
         }
         let mut items = Vec::new();
@@ -1336,7 +1717,7 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         self.bump();
         let var = self.expect_name();
-        if !self.eat_kw(Kw::In) {
+        if !self.eat_kw(Word::In) {
             self.fail(
                 span,
                 "expected `in` after the loop name",
@@ -1398,6 +1779,40 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn slot_name(&mut self) -> String {
+        self.take_word().unwrap_or_else(|| {
+            self.fail_here("expected a slot name", "write `slot name`");
+            String::new()
+        })
+    }
+
+    /// A patch segment names a part or a slot. A slot may be declared with a keyword (`slot mask`),
+    /// so the segment is not a binding and is not reserved.
+    fn part_name(&mut self) -> String {
+        if self.cur().is_some_and(|t| matches!(t.kind, Tok::Star)) {
+            self.bump();
+            return "*".into();
+        }
+        self.take_word().unwrap_or_else(|| {
+            self.fail_here("expected a part name", "write `.part` or `.head.eye`");
+            String::new()
+        })
+    }
+
+    fn take_word(&mut self) -> Option<String> {
+        match self.cur().map(|t| t.kind.clone()) {
+            Some(Tok::Ident(s)) => {
+                self.bump();
+                Some(s)
+            }
+            Some(Tok::Kw(k)) => {
+                self.bump();
+                Some(k.as_str().to_string())
+            }
+            _ => None,
+        }
+    }
+
     fn expect_name(&mut self) -> String {
         if self.eol() {
             self.fail_here("expected a name", "write a name");
@@ -1412,18 +1827,8 @@ impl<'a> Parser<'a> {
             }
             Some(Tok::Kw(k)) => {
                 self.bump();
-                let name = k.as_str();
-                if crate::RESERVED.contains(&name) {
-                    self.reject_reserved(name, span);
-                    name.to_string()
-                } else {
-                    self.fail(
-                        span,
-                        format!("expected a name, found keyword `{name}`"),
-                        format!("choose a name other than `{name}`"),
-                    );
-                    String::new()
-                }
+                self.reject_reserved(k.as_str(), span);
+                k.as_str().to_string()
             }
             Some(other) => {
                 let desc = other.desc();
@@ -1438,8 +1843,14 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn reject_param_names(&mut self, params: &[Named]) {
+        for p in params {
+            self.reject_reserved(&p.key, p.span);
+        }
+    }
+
     fn reject_reserved(&mut self, name: &str, span: Span) {
-        if crate::RESERVED.contains(&name) {
+        if words::is_reserved(name) {
             self.errors.push(
                 Diagnostic::error("E0105", span, format!("`{name}` is reserved"))
                     .with_fix(format!("rename `{name}` to a word that is not reserved")),
@@ -1529,7 +1940,7 @@ impl<'a> Parser<'a> {
         );
     }
 
-    fn next_is_kw(&self, indent: usize, kw: Kw) -> bool {
+    fn next_is_kw(&self, indent: usize, kw: Word) -> bool {
         let next = self.li + 1;
         let Some(line) = self.lines.get(next) else {
             return false;
@@ -1582,7 +1993,7 @@ impl<'a> Parser<'a> {
         self.cur().is_some_and(|t| tok_eq(&t.kind, kind))
     }
 
-    fn at_kw(&self, kw: Kw) -> bool {
+    fn at_kw(&self, kw: Word) -> bool {
         self.cur()
             .is_some_and(|t| matches!(t.kind, Tok::Kw(k) if k == kw))
     }
@@ -1600,7 +2011,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn eat_kw(&mut self, kw: Kw) -> bool {
+    fn eat_kw(&mut self, kw: Word) -> bool {
         if self.at_kw(kw) {
             self.ti += 1;
             true
@@ -1608,22 +2019,14 @@ impl<'a> Parser<'a> {
             false
         }
     }
-
-    fn dummy(&self, span: Span) -> Stmt {
-        Stmt {
-            kind: StmtKind::Node {
-                verb: String::new(),
-                args: Vec::new(),
-                named: Vec::new(),
-                body: Vec::new(),
-            },
-            span,
-        }
-    }
 }
 
 fn is_key(kind: &Tok) -> bool {
     matches!(kind, Tok::Ident(_) | Tok::Kw(_))
+}
+
+fn is_each_axis(value: &Expr, no_axis_yet: bool) -> bool {
+    matches!(value, Expr::List(_)) || no_axis_yet
 }
 
 fn binop_of(kind: &Tok) -> Option<(BinOp, u8)> {
@@ -1639,10 +2042,10 @@ fn binop_of(kind: &Tok) -> Option<(BinOp, u8)> {
         Tok::Gt => (BinOp::Gt, PREC_CMP),
         Tok::Ge => (BinOp::Ge, PREC_CMP),
         Tok::Approx => (BinOp::Approx, PREC_CMP),
-        Tok::Kw(Kw::In) => (BinOp::In, PREC_CMP),
+        Tok::Kw(Word::In) => (BinOp::In, PREC_CMP),
         Tok::Arrow => (BinOp::Map, PREC_MAP),
-        Tok::Kw(Kw::And) => (BinOp::And, PREC_AND),
-        Tok::Kw(Kw::Or) => (BinOp::Or, PREC_OR),
+        Tok::Kw(Word::And) => (BinOp::And, PREC_AND),
+        Tok::Kw(Word::Or) => (BinOp::Or, PREC_OR),
         _ => return None,
     })
 }

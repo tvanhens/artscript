@@ -1,34 +1,41 @@
 use std::collections::HashMap;
 
-use artscript_syntax::ast::{Expr, Named, Span, Stmt, StmtKind};
+use artscript_syntax::ast::{Expr, Named, Scene, SceneKind, Span};
 
-pub fn occurrences(stmts: &[Stmt]) -> HashMap<Span, usize> {
+pub fn occurrences<'a>(scenes: impl IntoIterator<Item = &'a Scene>) -> HashMap<Span, usize> {
     let mut counts: HashMap<String, usize> = HashMap::new();
     let mut map = HashMap::new();
-    walk(stmts, &mut counts, &mut map);
+    walk(scenes, &mut counts, &mut map);
     map
 }
 
-fn walk(stmts: &[Stmt], counts: &mut HashMap<String, usize>, map: &mut HashMap<Span, usize>) {
-    for st in stmts {
-        match &st.kind {
-            StmtKind::If {
+fn walk<'a>(
+    scenes: impl IntoIterator<Item = &'a Scene>,
+    counts: &mut HashMap<String, usize>,
+    map: &mut HashMap<Span, usize>,
+) {
+    for scene in scenes {
+        match &scene.kind {
+            SceneKind::If {
                 then, otherwise, ..
             } => {
                 walk(then, counts, map);
                 walk(otherwise, counts, map);
             }
-            StmtKind::Each { body, .. } => walk(body, counts, map),
-            StmtKind::Node {
-                verb, args, named, ..
-            } => {
-                if let Some(base) = static_base(verb, args, named) {
+            SceneKind::Each { body, .. } => walk(body, counts, map),
+            SceneKind::Draw(draw) => {
+                if let Some(base) = static_base(&draw.verb, &draw.args, &draw.named) {
                     let n = counts.entry(base).or_insert(0);
                     *n += 1;
-                    map.insert(st.span, *n);
+                    map.insert(scene.span, *n);
                 }
             }
-            _ => {}
+            SceneKind::Slot { name, .. } => {
+                let n = counts.entry(name.clone()).or_insert(0);
+                *n += 1;
+                map.insert(scene.span, *n);
+            }
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
 }
@@ -46,9 +53,6 @@ pub fn static_base(verb: &str, args: &[Expr], named: &[Named]) -> Option<String>
         .and_then(|n| ident(&n.value))
     {
         return Some(name.to_string());
-    }
-    if verb == "slot" {
-        return args.first().and_then(ident).map(str::to_string);
     }
     if matches!(verb, "layer" | "group")
         && let Some(name) = args.first().and_then(ident)

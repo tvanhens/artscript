@@ -2,22 +2,22 @@
 @target prop/matcha_teacup.svg 1024x1024
 use face/parts { eye blush open_mouth sparkle }
 palette tea
-  matcha ramp #8db54a 5
-  jade ramp #5f8f78 5
-  cream ramp #f0e2c8 5
-  clay ramp #c98b6b 5
-  blush #f2909c
-  steam #fffaf2
-  haze #cfc6d8
-  shadow #4a3530
-  ink #6b3340
-  iris #5f8f3e
-  twinkle #fff3cf
-  foam_hi #f8ffe8
-  spec #fffaf0
-  drip_hi #f4fff6
-  rim #b4cbe6
-  mist #ffffff
+  ramp matcha #8db54a 5
+  ramp jade #5f8f78 5
+  ramp cream #f0e2c8 5
+  ramp clay #c98b6b 5
+  color blush #f2909c
+  color steam #fffaf2
+  color haze #cfc6d8
+  color shadow #4a3530
+  color ink #6b3340
+  color iris #5f8f3e
+  color twinkle #fff3cf
+  color foam_hi #f8ffe8
+  color spec #fffaf0
+  color drip_hi #f4fff6
+  color rim #b4cbe6
+  color mist #ffffff
 def _eye side:1 lid:0 look:.1,.12
   eye 86x100 iris:tea.iris side:side lid:lid look:look
 def _wisp pts:[0,0] w:[1] n:5

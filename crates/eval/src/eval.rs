@@ -6,19 +6,24 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
-    NodeKind, Paint, Path, Point, Rect, Shape, Stroke,
+    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect,
+    Shape, Stroke,
 };
-use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::{BinOp, Expr, File, Named, Span, Stmt, StmtKind, UnOp};
+use artscript_syntax::ast::{
+    self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
+    SceneKind, Span, Swatch, SwatchKind, UnOp,
+};
+use artscript_syntax::{Diagnostic, format_expr};
 
 use crate::checks::{CheckState, Pending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
+use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
-use crate::key::{self, Ease};
-use crate::motion::{self, absolute_channel, offset_channel, path_match};
+use crate::key::Ease;
+use crate::motion::{absolute_channel, offset_channel, path_match};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
+use crate::range::Range;
 use crate::scope::{
     AnimDef, Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, Table, new_table,
     table_get, table_names,
@@ -68,18 +73,9 @@ const MEASURES: &[&str] = &[
     "x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area",
 ];
 const NODE_KEYS: &[&str] = &[
-    "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "mask", "feather",
+    "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
-
-/// A node's block split by role: effects, inline `fill:`/`stroke:`/`mask:` lines, a `mask:` block,
-/// and the drawable rest.
-struct Body<'s> {
-    fx: Vec<&'s Stmt>,
-    inline: Vec<&'s Stmt>,
-    mask: Option<&'s [Stmt]>,
-    rest: Vec<Stmt>,
-}
 
 pub(crate) struct Instance {
     pub def_name: String,
@@ -91,7 +87,7 @@ pub(crate) struct Instance {
 
 struct Fill {
     name: String,
-    body: Vec<Stmt>,
+    body: Vec<Scene>,
     scope: Scope,
     span: Span,
 }
@@ -146,31 +142,6 @@ struct PatchRec {
     owner: String,
     depth: usize,
     rel: String,
-    span: Span,
-    file: String,
-    matched: Cell<bool>,
-}
-
-#[derive(Clone, Debug)]
-pub struct PlayMark {
-    pub end: f64,
-    pub loops: bool,
-}
-
-struct AnimClock {
-    local: f64,
-    dur: f64,
-}
-
-struct Channel {
-    pattern: Vec<String>,
-    owner: String,
-    key: String,
-    absolute: bool,
-    value: Value,
-    off: bool,
-    live: bool,
-    anim: String,
     span: Span,
     file: String,
     matched: Cell<bool>,
@@ -234,11 +205,29 @@ pub(crate) struct Evaluator<'a> {
     occurrences: HashMap<Span, usize>,
 }
 
-fn ident_of(e: &Expr) -> Option<&str> {
-    match e {
-        Expr::Ident(s) => Some(s),
-        _ => None,
-    }
+#[derive(Clone, Debug)]
+pub struct PlayMark {
+    pub end: f64,
+    pub loops: bool,
+}
+
+struct AnimClock {
+    local: f64,
+    dur: f64,
+}
+
+struct Channel {
+    pattern: Vec<String>,
+    owner: String,
+    key: String,
+    absolute: bool,
+    value: Value,
+    off: bool,
+    live: bool,
+    anim: String,
+    span: Span,
+    file: String,
+    matched: Cell<bool>,
 }
 
 fn blend_arg(
@@ -286,6 +275,13 @@ fn blend_arg(
         _ => a.named.push((key.to_string(), value.clone())),
     }
     Ok(())
+}
+
+pub(crate) fn ident_of(e: &Expr) -> Option<&str> {
+    match e {
+        Expr::Ident(s) => Some(s),
+        _ => None,
+    }
 }
 
 fn mat_trs(
@@ -422,6 +418,13 @@ fn axis_scale(m: &Matrix) -> f64 {
 }
 
 fn each_items(it: Value) -> R<Vec<Value>> {
+    if let Value::Range(r) = &it {
+        let prefix: Vec<Value> = r.steps().take(100_001).map(Value::Num).collect();
+        if prefix.len() > 100_000 {
+            return Err(fail("E0306", "`each` is limited to 100000 iterations"));
+        }
+        return Ok(prefix);
+    }
     let items = it.items().ok_or_else(|| {
         fail(
             "E0306",
@@ -433,6 +436,39 @@ fn each_items(it: Value) -> R<Vec<Value>> {
         return Err(fail("E0306", "`each` is limited to 100000 iterations"));
     }
     Ok(items)
+}
+
+fn stroke_expr(named: &[Named], style: Option<&str>, sc: &Scope) -> Option<Expr> {
+    if let Some(n) = named.iter().rev().find(|n| n.key == "stroke") {
+        return Some(n.value.clone());
+    }
+    let sname = style?;
+    let styles = sc.module.styles.borrow();
+    styles.get(sname).and_then(|s| {
+        s.named
+            .iter()
+            .rev()
+            .find(|n| n.key == "stroke")
+            .map(|n| n.value.clone())
+    })
+}
+
+fn range_width(stroke: Option<&Expr>) -> Fail {
+    let rewrite = match stroke {
+        Some(Expr::Range(a, b)) => format!("stroke:[{} {}]", format_expr(a), format_expr(b)),
+        Some(Expr::Tuple(xs)) if xs.len() == 2 => match &xs[1] {
+            Expr::Range(a, b) => format!(
+                "stroke:{},[{} {}]",
+                format_expr(&xs[0]),
+                format_expr(a),
+                format_expr(b)
+            ),
+            _ => "stroke:paint,[2 6]".into(),
+        },
+        // An inherited style has already been evaluated, so the source spelling is gone.
+        _ => "stroke:paint,[2 6]".into(),
+    };
+    fail("E0320", "a range is not a stroke width").fix(format!("write `{rewrite}`"))
 }
 
 fn blend_of(w: &str) -> Option<Blend> {
@@ -505,8 +541,8 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn leaf_name(&self, st: &Stmt, base: &str, suffix: &str) -> String {
-        let n = self.occurrences.get(&st.span).copied().unwrap_or(1);
+    fn leaf_name(&self, span: Span, base: &str, suffix: &str) -> String {
+        let n = self.occurrences.get(&span).copied().unwrap_or(1);
         if n <= 1 {
             format!("{base}{suffix}")
         } else {
@@ -589,9 +625,9 @@ impl<'a> Evaluator<'a> {
                 Err(f) => self.report(f, file, Span { line: 1, col: 1 }, ""),
             }
         }
-        for st in &parsed.stmts {
-            if let Err(f) = self.declare(&module, st, entry) {
-                self.report(f, file, st.span, "");
+        for item in &parsed.items {
+            if let Err(f) = self.declare(&module, item, entry) {
+                self.report(f, file, item.span(), "");
             }
         }
         self.loading.pop();
@@ -599,16 +635,38 @@ impl<'a> Evaluator<'a> {
         Ok(module)
     }
 
-    fn declare(&mut self, module: &Rc<Module>, st: &Stmt, entry: bool) -> R<()> {
-        match &st.kind {
-            StmtKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
-            StmtKind::Palette { name, from, body } => {
+    fn declare(&mut self, module: &Rc<Module>, item: &Item, entry: bool) -> R<()> {
+        let decl = match item {
+            Item::Decl(d) => d,
+            Item::Scene(Scene {
+                kind: SceneKind::Let { name, value },
+                ..
+            }) if !entry => {
+                let sc = self.module_scope(module);
+                self.seed_at(format!("{}\0{name}", module.path));
+                let v = self.expr(value, &sc)?;
+                module.define(name, v);
+                return Ok(());
+            }
+            Item::Scene(_) if entry => return Ok(()),
+            Item::Scene(_) => {
+                return Err(fail(
+                    "E0204",
+                    "a library may only hold declarations at its top level",
+                )
+                .note("allowed: use, palette, style, finish, def, rule, let, anim")
+                .fix("wrap the drawing in a `def` and place it from an entry file"));
+            }
+        };
+        match &decl.kind {
+            DeclKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
+            DeclKind::Palette { name, from, body } => {
                 let pal = self.palette(module, name, from.as_deref(), body)?;
                 module.palettes.borrow_mut().push(pal.clone());
                 module.define(name, Value::Palette(pal));
                 Ok(())
             }
-            StmtKind::Style { name, named } => {
+            DeclKind::Style { name, named } => {
                 module.styles.borrow_mut().insert(
                     name.clone(),
                     Rc::new(StyleDef {
@@ -619,7 +677,10 @@ impl<'a> Evaluator<'a> {
                 module.own.borrow_mut().push(format!("style:{name}"));
                 Ok(())
             }
-            StmtKind::Def { name, params, body } => {
+            DeclKind::Finish { name, params, body } => {
+                self.declare_finish(module, name, params, body, decl.span)
+            }
+            DeclKind::Def { name, params, body } => {
                 let mut needs = Vec::new();
                 let mut ps = Vec::new();
                 for p in params {
@@ -643,33 +704,43 @@ impl<'a> Evaluator<'a> {
                     needs,
                     body: body.clone(),
                     module: module.path.clone(),
-                    span: st.span,
+                    span: decl.span,
                 };
                 module.define(name, Value::Component(Rc::new(comp)));
                 Ok(())
             }
-            StmtKind::Rule { name, params, body } => {
+            DeclKind::Rule { name, params, body } => {
                 let rule = RuleDef {
                     name: name.clone(),
                     params: params.clone(),
                     body: body.clone(),
                     module: module.path.clone(),
-                    span: st.span,
+                    span: decl.span,
                 };
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
-            StmtKind::Let { name, value } if !entry => {
-                let sc = self.module_scope(module);
-                self.seed_at(format!("{}\0{name}", module.path));
-                let v = self.expr(value, &sc)?;
-                module.define(name, v);
+            DeclKind::Anim {
+                name,
+                dur,
+                loop_,
+                body,
+            } => {
+                let anim = Rc::new(AnimDef {
+                    name: name.clone(),
+                    dur: dur.clone(),
+                    loop_: *loop_,
+                    body: body.clone(),
+                    module: module.path.clone(),
+                    span: decl.span,
+                });
+                module.anims.borrow_mut().insert(name.clone(), anim);
                 Ok(())
             }
-            StmtKind::Shader { .. } | StmtKind::Light { .. } | StmtKind::Brush { .. } => {
-                let what = match &st.kind {
-                    StmtKind::Shader { .. } => "shader (Phase 2)",
-                    StmtKind::Light { .. } => "light (Phase 2)",
+            DeclKind::Shader { .. } | DeclKind::Light { .. } | DeclKind::Brush { .. } => {
+                let what = match &decl.kind {
+                    DeclKind::Shader { .. } => "shader (Phase 2)",
+                    DeclKind::Light { .. } => "light (Phase 2)",
                     _ => "brush (Phase 2)",
                 };
                 Err(
@@ -677,38 +748,6 @@ impl<'a> Evaluator<'a> {
                         .fix("remove the declaration, or use built-in fields and fx lines"),
                 )
             }
-            StmtKind::Let { .. } => Ok(()),
-            StmtKind::Anim {
-                name,
-                dur,
-                loop_,
-                body,
-            } => {
-                if !body
-                    .iter()
-                    .all(|s| matches!(s.kind, StmtKind::Patch { .. }))
-                {
-                    return Err(fail("E0336", "an anim body may only contain patch lines")
-                        .fix("move `if`, `play` and drawing out of the anim; put them next to `play`"));
-                }
-                let anim = Rc::new(AnimDef {
-                    name: name.clone(),
-                    dur: dur.clone(),
-                    loop_: *loop_,
-                    body: body.clone(),
-                    module: module.path.clone(),
-                    span: st.span,
-                });
-                module.anims.borrow_mut().insert(name.clone(), anim);
-                Ok(())
-            }
-            _ if entry => Ok(()),
-            _ => Err(fail(
-                "E0204",
-                "a library may only hold declarations at its top level",
-            )
-            .note("allowed: use, palette, style, def, rule, let, anim")
-            .fix("wrap the drawing in a `def` and place it from an entry file")),
         }
     }
 
@@ -753,6 +792,7 @@ impl<'a> Evaluator<'a> {
         }
         let exports = m.exports();
         let styles = m.styles.borrow().clone();
+        let finishes = m.finishes.borrow().clone();
         let anims = m.anims.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
@@ -761,19 +801,39 @@ impl<'a> Evaluator<'a> {
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
             }
+            for (k, f) in finishes.into_iter().filter(|(k, _)| !k.starts_with('_')) {
+                module.finishes.borrow_mut().insert(k, f);
+            }
             for (k, a) in anims.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.anims.borrow_mut().insert(k, a);
             }
             return Ok(());
         }
         for item in items {
+            let mut found = false;
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
                 module.globals.borrow_mut().insert(item.clone(), v.clone());
-            } else if let Some(s) = styles.get(item) {
+                found = true;
+            }
+            if !item.starts_with('_')
+                && let Some(s) = styles.get(item)
+            {
                 module.styles.borrow_mut().insert(item.clone(), s.clone());
-            } else if let Some(a) = anims.get(item) {
+                found = true;
+            }
+            if !item.starts_with('_')
+                && let Some(f) = finishes.get(item)
+            {
+                module.finishes.borrow_mut().insert(item.clone(), f.clone());
+                found = true;
+            }
+            if !item.starts_with('_')
+                && let Some(a) = anims.get(item)
+            {
                 module.anims.borrow_mut().insert(item.clone(), a.clone());
-            } else {
+                found = true;
+            }
+            if !found {
                 let names: Vec<String> = exports.iter().map(|(k, _)| k.clone()).collect();
                 return Err(fail("E0212", format!("`{path}` does not export `{item}`"))
                     .note(format!("exports: {}", names.join(", ")))
@@ -785,7 +845,7 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn module_scope(&self, module: &Rc<Module>) -> Scope {
+    pub(crate) fn module_scope(&self, module: &Rc<Module>) -> Scope {
         let t = new_table();
         Scope {
             env: Vec::new(),
@@ -817,7 +877,7 @@ impl<'a> Evaluator<'a> {
         module: &Rc<Module>,
         name: &str,
         from: Option<&str>,
-        body: &[Stmt],
+        body: &[Swatch],
     ) -> R<Rc<Palette>> {
         let mut entries = Vec::new();
         if let Some(parent) = from {
@@ -832,25 +892,10 @@ impl<'a> Evaluator<'a> {
             }
         }
         let sc = self.module_scope(module);
-        for st in body {
-            let StmtKind::Node {
-                verb, args, named, ..
-            } = &st.kind
-            else {
-                self.report(
-                    fail(
-                        "E0305",
-                        "a palette entry is `name <color>` or `name ramp …`",
-                    ),
-                    &module.path,
-                    st.span,
-                    "",
-                );
-                continue;
-            };
-            match self.palette_entry(args, named, &sc) {
-                Ok(v) => entries.push((verb.clone(), v)),
-                Err(f) => self.report(f, &module.path, st.span, &format!("{name}.{verb}")),
+        for sw in body {
+            match self.swatch(&sw.kind, &sc) {
+                Ok(v) => entries.push((sw.name.clone(), v)),
+                Err(f) => self.report(f, &module.path, sw.span, &format!("{name}.{}", sw.name)),
             }
         }
         Ok(Rc::new(Palette {
@@ -859,29 +904,28 @@ impl<'a> Evaluator<'a> {
         }))
     }
 
-    fn palette_entry(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
-        if args.first().and_then(ident_of) == Some("ramp") {
-            let vals: Vec<Value> = args[1..]
-                .iter()
-                .map(|e| self.expr(e, sc))
-                .collect::<R<_>>()?;
-            let hue = match named.iter().find(|n| n.key == "hue") {
-                Some(n) => self.expr(&n.value, sc)?.num().unwrap_or(DEFAULT_HUE_STEP),
-                None => DEFAULT_HUE_STEP,
-            };
-            return self.ramp(&vals, hue);
-        }
-        let first = args
-            .first()
-            .ok_or_else(|| fail("E0305", "palette entry needs a color"))?;
-        let v = self.expr(first, sc)?;
-        match v.kind() {
-            Kind::Color => Ok(v),
-            k => Err(fail(
-                "E0305",
-                format!("palette entries are colors or ramps, got {k}"),
-            )
-            .fix("write `name #rrggbb` or `name ramp #rrggbb 5`")),
+    fn swatch(&mut self, kind: &SwatchKind, sc: &Scope) -> R<Value> {
+        match kind {
+            SwatchKind::Ramp { pos, hue } => {
+                let vals: Vec<Value> = pos
+                    .exprs()
+                    .into_iter()
+                    .map(|e| self.expr(e, sc))
+                    .collect::<R<_>>()?;
+                let hue = match hue {
+                    Some(e) => self.expr(e, sc)?.num().unwrap_or(DEFAULT_HUE_STEP),
+                    None => DEFAULT_HUE_STEP,
+                };
+                self.ramp(&vals, hue)
+            }
+            SwatchKind::Color(e) => {
+                let v = self.expr(e, sc)?;
+                match v.kind() {
+                    Kind::Color => Ok(v),
+                    k => Err(fail("E0305", format!("`color` takes a color, got {k}"))
+                        .fix("write `color name #rrggbb`, or `ramp name #rrggbb 5` for a ramp")),
+                }
+            }
         }
     }
 
@@ -909,16 +953,26 @@ impl<'a> Evaluator<'a> {
 
     // ---------------------------------------------------------------- statements
 
-    pub fn eval_block_nodes(&mut self, stmts: &[Stmt], sc: &mut Scope) -> Vec<Node> {
-        let map = motion::occurrences(stmts);
+    pub fn eval_block_nodes<'s>(
+        &mut self,
+        stmts: impl IntoIterator<Item = &'s Scene>,
+        sc: &mut Scope,
+    ) -> Vec<Node> {
+        let stmts: Vec<&Scene> = stmts.into_iter().collect();
+        let map = crate::motion::occurrences(stmts.iter().copied());
         let prev = std::mem::replace(&mut self.occurrences, map);
         let mut sib = Siblings::default();
-        self.eval_block(stmts, sc, &mut sib);
+        self.eval_block(stmts.iter().copied(), sc, &mut sib);
         self.occurrences = prev;
         sib.finish()
     }
 
-    fn eval_block(&mut self, stmts: &[Stmt], sc: &mut Scope, out: &mut Siblings) {
+    fn eval_block<'s>(
+        &mut self,
+        stmts: impl IntoIterator<Item = &'s Scene>,
+        sc: &mut Scope,
+        out: &mut Siblings,
+    ) {
         for st in stmts {
             if let Err(f) = self.eval_stmt(st, sc, out) {
                 let node = sc.path.clone();
@@ -928,9 +982,9 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn eval_stmt(&mut self, st: &Stmt, sc: &mut Scope, out: &mut Siblings) -> R<()> {
+    fn eval_stmt(&mut self, st: &Scene, sc: &mut Scope, out: &mut Siblings) -> R<()> {
         match &st.kind {
-            StmtKind::Let { name, value } => {
+            SceneKind::Let { name, value } => {
                 self.seed_at(format!(
                     "{}\0{}{}\0{}",
                     sc.file(),
@@ -955,7 +1009,7 @@ impl<'a> Evaluator<'a> {
                 sc.env.push((name.clone(), v));
                 Ok(())
             }
-            StmtKind::If {
+            SceneKind::If {
                 cond,
                 then,
                 otherwise,
@@ -972,7 +1026,7 @@ impl<'a> Evaluator<'a> {
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
-            StmtKind::Each { var, iter, body } => {
+            SceneKind::Each { var, iter, body } => {
                 self.seed_at(format!(
                     "{}\0{}{}\0{}",
                     sc.file(),
@@ -989,50 +1043,29 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            StmtKind::Check { .. } => {
+            SceneKind::Check { .. } => {
                 sc.checks.borrow_mut().push(Pending {
                     stmt: st.clone(),
                     scope: sc.clone(),
                 });
                 Ok(())
             }
-            StmtKind::Node {
-                verb,
-                args,
+            SceneKind::Slot {
+                name,
                 named,
-                body,
-            } => self.eval_node(st, verb, args, named, body, sc, out),
-            StmtKind::SlotFill { name, .. } if name == "mask" => Ok(()),
-            StmtKind::SlotFill { name, .. } => Err(fail(
-                "E0331",
-                format!("slot fill `{name}:` is only valid under a component call"),
-            )
-            .fix("indent it under the component that exposes the slot")),
-            StmtKind::Patch { .. } | StmtKind::Play { .. } | StmtKind::Anim { .. } if sc.top => {
-                Ok(())
-            }
-            StmtKind::Play { .. } => Err(fail(
-                "E0337",
+                fallback,
+            } => self.slot(st, name, named, fallback, sc, out),
+            SceneKind::Play { .. } if sc.top => Ok(()),
+            SceneKind::Play { .. } => Err(fail(
+                "E0342",
                 "`play` is only valid at the top level of an entry file or under an instance",
             )
             .fix("move `play` out of this block, or indent it under the instance it drives")),
-            StmtKind::Patch { path, .. } => Err(fail(
-                "E0332",
-                format!(
-                    "patch `.{}` is only valid under a component call",
-                    path.join(".")
-                ),
-            )
-            .fix("indent it under the component instance it overrides")),
-            _ if sc.top => Ok(()),
-            _ => Err(
-                fail("E0303", "declarations belong at the top level of a file")
-                    .fix("move it to the top level"),
-            ),
+            SceneKind::Draw(draw) => self.eval_node(st, draw, sc, out),
         }
     }
 
-    fn eval_args(
+    pub(crate) fn eval_args(
         &mut self,
         args: &[Expr],
         named: &[Named],
@@ -1065,9 +1098,14 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .ok_or_else(|| {
                 let names: Vec<String> = sc.module.styles.borrow().keys().cloned().collect();
-                fail("E0307", format!("no style `{name}`"))
-                    .note(format!("styles: {}", names.join(", ")))
-                    .fix("declare `style name key:value` or import it")
+                let f = fail("E0307", format!("no style `{name}`"))
+                    .note(format!("styles: {}", names.join(", ")));
+                if sc.module.finishes.borrow().contains_key(name) {
+                    f.note(format!("`{name}` is a finish"))
+                        .fix(format!("write `fx {name}` under the node"))
+                } else {
+                    f.fix("declare `style name key:value` or import it")
+                }
             })?;
         let module = self
             .modules
@@ -1186,49 +1224,16 @@ impl<'a> Evaluator<'a> {
         r
     }
 
-    fn split_body<'s>(&self, body: &'s [Stmt]) -> Body<'s> {
-        let mut parts = Body {
-            fx: Vec::new(),
-            inline: Vec::new(),
-            mask: None,
-            rest: Vec::new(),
-        };
-        for st in body {
-            match &st.kind {
-                StmtKind::Node { verb, .. } if verb == "fx" => parts.fx.push(st),
-                StmtKind::Node { verb, .. }
-                    if matches!(verb.as_str(), "fill" | "stroke" | "mask") =>
-                {
-                    parts.inline.push(st)
-                }
-                StmtKind::SlotFill { name, body } if name == "mask" => {
-                    parts.mask = Some(body.as_slice())
-                }
-                _ => parts.rest.push(st.clone()),
-            }
-        }
-        parts
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn eval_node(
-        &mut self,
-        st: &Stmt,
-        verb: &str,
-        args: &[Expr],
-        named: &[Named],
-        body: &[Stmt],
-        sc: &mut Scope,
-        out: &mut Siblings,
-    ) -> R<()> {
+    fn eval_node(&mut self, st: &Scene, draw: &Draw, sc: &mut Scope, out: &mut Siblings) -> R<()> {
+        let Draw {
+            verb,
+            args,
+            named,
+            body,
+        } = draw;
+        let verb = verb.as_str();
         match verb {
-            "fx" => {
-                return Err(fail("E0333", "`fx` applies to the node it is nested under")
-                    .fix("indent the `fx` line under a shape, layer or instance"));
-            }
-            "fill" | "stroke" | "mask" => return Ok(()),
             "anchor" => return self.anchor(args, sc),
-            "slot" => return self.slot(st, args, named, body, sc, out),
             "canvas" if sc.top => {
                 let a = self.eval_args(args, named, sc, 0)?;
                 if let Some(v) = a.get("fill") {
@@ -1284,6 +1289,11 @@ impl<'a> Evaluator<'a> {
                 "check the spelling, or `use` the library that defines `{verb}`"
             )));
         }
+        if let Some(n) = named.iter().find(|n| n.key == "finish") {
+            let name = ident_of(&n.value).unwrap_or("<name>");
+            return Err(fail("E0339", "`finish:` is not a node key")
+                .fix(format!("write `fx {name}` under the node")));
+        }
         let explicit = named
             .iter()
             .find(|n| n.key == "name")
@@ -1299,13 +1309,14 @@ impl<'a> Evaluator<'a> {
             .or_else(|| comp.as_ref().map(|c| c.name.clone()))
             .unwrap_or_else(|| verb.to_string());
         let registered = explicit.is_some() || positional_name.is_some() || comp.is_some();
-        let leaf = self.leaf_name(st, &base, &sc.suffix);
+        let leaf = self.leaf_name(st.span, &base, &sc.suffix);
         let path = if sc.path.is_empty() {
             leaf.clone()
         } else {
             format!("{}.{leaf}", sc.path)
         };
         let (patch_named, off) = self.take_patches(&path);
+        let patch_stroke = patch_named.iter().any(|(k, _)| k == "stroke");
         if off {
             self.mark_channels(&path);
             return Ok(());
@@ -1328,24 +1339,11 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
-        if let Some(sname) = a.word("style") {
-            let mut s = self.style_named(&sname, sc)?;
+        let expanded_style = a.word("style");
+        if let Some(sname) = &expanded_style {
+            let mut s = self.style_named(sname, sc)?;
             s.append(&mut a.named);
             a.named = s;
-        }
-        let Body {
-            fx,
-            inline,
-            mask: mask_block,
-            rest,
-        } = self.split_body(body);
-        for st in &inline {
-            if let StmtKind::Node { verb, args, .. } = &st.kind
-                && let Some(e) = args.first()
-            {
-                let v = self.expr(e, sc)?;
-                a.named.push((verb.clone(), v));
-            }
         }
         a.named.extend(patch_named);
         if comp.is_some() && self.hide_motion(&path, &mut a, (0.0, 0.0)) {
@@ -1361,6 +1359,35 @@ impl<'a> Evaluator<'a> {
 
         if let Some(comp) = comp {
             return self.instance(&comp, a, body, sc, out, path, origin, name);
+        }
+        for item in body.items() {
+            let err = match item {
+                DrawItem::SlotFill(fill) => (
+                    fill.span,
+                    fail(
+                        "E0331",
+                        format!(
+                            "slot fill `{}:` is only valid under a component call",
+                            fill.name
+                        ),
+                    )
+                    .fix("indent it under the component that exposes the slot"),
+                ),
+                DrawItem::Patch(p) => (
+                    p.span,
+                    fail(
+                        "E0332",
+                        format!(
+                            "patch `.{}` is only valid under a component call",
+                            p.path.join(".")
+                        ),
+                    )
+                    .fix("indent it under the component instance it overrides"),
+                ),
+                _ => continue,
+            };
+            let file = sc.file().to_string();
+            self.report(err.1, &file, err.0, &path);
         }
         let child_style = match a.word("style") {
             Some(_) => {
@@ -1436,13 +1463,13 @@ impl<'a> Evaluator<'a> {
             }
             let children = match verb {
                 "mirror" => self.mirror(
-                    &rest,
+                    body,
                     &mut inner,
                     if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) },
                 ),
-                "repeat" => self.repeat(&rest, &mut inner, &a)?,
-                "grid" => self.grid(&rest, &mut inner, &a)?,
-                _ => self.eval_block_nodes(&rest, &mut inner),
+                "repeat" => self.repeat(body, &mut inner, &a)?,
+                "grid" => self.grid(body, &mut inner, &a)?,
+                _ => self.eval_block_nodes(body.scenes(), &mut inner),
             };
             node = new_node(
                 path.clone(),
@@ -1466,7 +1493,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let local_frame = inverse(&m).map_rect(frame).0;
                     let mut inner = sc.child(&path, local_frame, inner_world);
-                    let operands = self.eval_block_nodes(&rest, &mut inner);
+                    let operands = self.eval_block_nodes(body.scenes(), &mut inner);
                     let sils: Vec<Path> = operands
                         .iter()
                         .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
@@ -1515,8 +1542,22 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            let shape =
-                self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
+            // A patch is stored as a value. A stroke it supplies has no spelling, and a style it
+            // renames is not the style that was expanded above.
+            let stroke_src = if patch_stroke {
+                None
+            } else {
+                stroke_expr(named, expanded_style.as_deref(), sc)
+            };
+            let shape = self.paint_shape(
+                &a,
+                geometry,
+                knots.as_deref(),
+                closed,
+                &sc.style,
+                &world,
+                stroke_src.as_ref(),
+            )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
                 record = Some(self.register(
@@ -1532,14 +1573,16 @@ impl<'a> Evaluator<'a> {
                     },
                 ));
             }
-            if !matches!(verb, "subtract" | "union" | "intersect" | "xor") && !rest.is_empty() {
+            if !matches!(verb, "subtract" | "union" | "intersect" | "xor")
+                && body.scenes().next().is_some()
+            {
                 let gb = match &node.kind {
                     NodeKind::Shape(s) => geom::bounds(&s.geometry),
                     _ => Rect::new_empty(),
                 };
                 let mut inner = sc.child(&path, gb, inner_world);
                 inner.style = child_style;
-                let kids = self.eval_block_nodes(&rest, &mut inner);
+                let kids = self.eval_block_nodes(body.scenes(), &mut inner);
                 if let NodeKind::Shape(s) = &mut node.kind {
                     s.children = kids;
                 }
@@ -1547,16 +1590,15 @@ impl<'a> Evaluator<'a> {
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = sc.child(&path, sc.frame, world);
-        for f in fx {
-            match self.effect(f, &fx_scope, fill_key, &path) {
-                Ok(e) => node.effects.push(e),
-                Err(e) => {
-                    let file = sc.file().to_string();
-                    self.report(e, &file, f.span, &path);
-                }
-            }
-        }
-        self.mask(&mut node, &a, mask_block, sc, world)?;
+        let sites: Vec<FxSite> = body
+            .fx()
+            .map(|line| FxSite {
+                line,
+                scope: &fx_scope,
+            })
+            .collect();
+        node.effects = self.lower_fx(&sites, &path, fill_key);
+        self.mask(&mut node, &a, body.mask(), sc, world)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
@@ -1584,18 +1626,20 @@ impl<'a> Evaluator<'a> {
         &mut self,
         node: &mut Node,
         a: &Args,
-        block: Option<&[Stmt]>,
+        mask: Option<&ast::Mask>,
         sc: &Scope,
         world: Matrix,
     ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
-        let source = if let Some(body) = block {
-            let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
-            Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
-        } else {
-            match a.get("mask") {
-                None | Some(Value::None) => None,
-                Some(Value::Ref(r)) => {
+        let source = match mask {
+            None => None,
+            Some(ast::Mask::Block(body)) => {
+                let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
+                Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
+            }
+            Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
+                Value::None => None,
+                Value::Ref(r) => {
                     let geometry = r.silhouette().make_transform(&inverse(&world));
                     let shape = Shape {
                         geometry,
@@ -1620,25 +1664,25 @@ impl<'a> Evaluator<'a> {
                     );
                     Some(MaskSource::Nodes(vec![n]))
                 }
-                Some(Value::FieldMask(f, t)) => Some(MaskSource::Field {
-                    field: (**f).clone(),
-                    threshold: Some(*t as f32),
+                Value::FieldMask(f, t) => Some(MaskSource::Field {
+                    field: (*f).clone(),
+                    threshold: Some(t as f32),
                 }),
-                Some(Value::Field(f)) => Some(MaskSource::Field {
-                    field: (**f).clone(),
+                Value::Field(f) => Some(MaskSource::Field {
+                    field: (*f).clone(),
                     threshold: None,
                 }),
-                Some(other) => {
+                other => {
                     return Err(fail(
                         "E0320",
                         format!(
-                            "`mask:` expects a node reference or a field, got {}",
+                            "`mask` expects a node reference or a field, got {}",
                             other.kind()
                         ),
                     )
-                    .fix("write `mask:@body` or `mask:simplex(30) > .5`"));
+                    .fix("write `mask @body` or `mask simplex(30) > .5`"));
                 }
-            }
+            },
         };
         if let Some(source) = source {
             node.mask = Some(Box::new(Mask {
@@ -1681,8 +1725,8 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn mirror(&mut self, body: &[Stmt], sc: &mut Scope, flip: (f32, f32)) -> Vec<Node> {
-        let originals = self.eval_block_nodes(body, sc);
+    fn mirror(&mut self, body: &DrawBody, sc: &mut Scope, flip: (f32, f32)) -> Vec<Node> {
+        let originals = self.eval_block_nodes(body.scenes(), sc);
         let mut out = originals.clone();
         for n in originals {
             let mut m = n.clone();
@@ -1710,7 +1754,7 @@ impl<'a> Evaluator<'a> {
         out
     }
 
-    fn repeat(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn repeat(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
         let n = a.pos.first().and_then(Value::num).ok_or_else(|| {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
@@ -1725,7 +1769,7 @@ impl<'a> Evaluator<'a> {
             inner.env.push(("i".into(), Value::Num(fi)));
             inner.suffix = format!("{}#{i}", sc.suffix);
             inner.world = sc.world * copy_m;
-            for mut node in self.eval_block_nodes(body, &mut inner) {
+            for mut node in self.eval_block_nodes(body.scenes(), &mut inner) {
                 node.transform = copy_m * node.transform;
                 out.push(node);
             }
@@ -1733,7 +1777,7 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn grid(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn grid(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
         let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| {
             fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`")
         })?;
@@ -1748,7 +1792,7 @@ impl<'a> Evaluator<'a> {
                 inner.env.push(("row".into(), Value::Num(row as f64)));
                 inner.env.push(("col".into(), Value::Num(col as f64)));
                 inner.suffix = format!("{}#{i}", sc.suffix);
-                copies.push(((row, col), self.eval_block_nodes(body, &mut inner)));
+                copies.push(((row, col), self.eval_block_nodes(body.scenes(), &mut inner)));
             }
         }
         let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
@@ -1906,6 +1950,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn paint_shape(
         &mut self,
         a: &Args,
@@ -1914,6 +1959,7 @@ impl<'a> Evaluator<'a> {
         closed: bool,
         style: &[(String, Value)],
         world: &Matrix,
+        stroke_src: Option<&Expr>,
     ) -> R<Shape> {
         let pick = |k: &str| {
             a.get(k).cloned().or_else(|| {
@@ -1955,10 +2001,7 @@ impl<'a> Evaluator<'a> {
             ),
             None | Some(Value::None) => (Value::None, None),
             Some(Value::Num(w)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::Const(w))),
-            Some(Value::Range(x, y)) => (
-                Value::Color(Col::plain(line_of(&fill))),
-                Some(W::List(vec![x, y])),
-            ),
+            Some(Value::Range(_)) => return Err(range_width(stroke_src)),
             Some(Value::List(ws)) => (
                 Value::Color(Col::plain(line_of(&fill))),
                 Some(W::List(ws.iter().filter_map(Value::num).collect())),
@@ -1966,13 +2009,13 @@ impl<'a> Evaluator<'a> {
             Some(Value::Tuple(xs)) if xs.len() == 2 => {
                 let w = match &xs[1] {
                     Value::Num(w) => W::Const(*w),
-                    Value::Range(x, y) => W::List(vec![*x, *y]),
+                    Value::Range(_) => return Err(range_width(stroke_src)),
                     Value::List(ws) => W::List(ws.iter().filter_map(Value::num).collect()),
                     other => {
                         return Err(fail(
                             "E0320",
                             format!(
-                                "stroke width must be a number, list or range, got {}",
+                                "stroke width must be a number or list, got {}",
                                 other.kind()
                             ),
                         )
@@ -2066,156 +2109,53 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    fn effect(&mut self, st: &Stmt, sc: &Scope, f: Rgba, path: &str) -> R<Effect> {
-        let StmtKind::Node { args, named, .. } = &st.kind else {
-            unreachable!()
-        };
-        let op_name = args.first().and_then(ident_of).ok_or_else(|| {
-            fail("E0320", "`fx` needs an effect name").fix("write `fx shadow 0,6 blur:8`")
-        })?;
-        let input_of = |e: &Expr, ev: &mut Self| -> R<EffectInput> {
-            Ok(match e {
-                Expr::Ident(s) if s == "self" => EffectInput::Source,
-                Expr::Ident(s) => EffectInput::Named(s.clone()),
-                Expr::Ref(_) => match ev.expr(e, sc)? {
-                    Value::Ref(r) => EffectInput::Node(r.record.path.clone()),
-                    _ => EffectInput::Previous,
-                },
-                _ => {
-                    return Err(fail(
-                        "E0320",
-                        "an effect input is `self`, a name, or `@node`",
-                    ));
+    pub(crate) fn bind_params(
+        &mut self,
+        owner: &str,
+        params: &[Named],
+        module: &Rc<Module>,
+        given: &[(String, Value)],
+        span: Span,
+    ) -> R<Vec<(String, Value)>> {
+        let def_scope = self.module_scope(module);
+        let mut env: Vec<(String, Value)> = Vec::new();
+        for p in params {
+            let mut dsc = def_scope.clone();
+            dsc.env = env.clone();
+            let default = self.expr(&p.value, &dsc);
+            let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
+                Some((_, v)) => {
+                    if let Ok(d) = &default
+                        && !d.accepts(v)
+                    {
+                        return Err(fail(
+                            "E0320",
+                            format!(
+                                "`{}` of `{owner}` expects {}, got {}",
+                                p.key,
+                                d.kind(),
+                                v.kind()
+                            ),
+                        )
+                        .fix(format!(
+                            "pass {} like `{}:{}`",
+                            d.kind(),
+                            p.key,
+                            d.show()
+                        )));
+                    }
+                    v.clone()
                 }
-            })
-        };
-        let rest: Vec<Expr> = args[1..].to_vec();
-        let plain_named: Vec<Named> = named
-            .iter()
-            .filter(|n| n.key != "of" && n.key != "as")
-            .cloned()
-            .collect();
-        let a = if op_name == "merge" {
-            self.eval_args(&[], &plain_named, sc, 0)?
-        } else {
-            self.eval_args(&rest, &plain_named, sc, 0)?
-        };
-        let alpha = a.num("a").unwrap_or(1.0);
-        let color = |default: Rgba| -> R<artscript_ir::Color> {
-            let c = match a.get("color") {
-                Some(v) => {
-                    v.color()
-                        .ok_or_else(|| fail("E0320", "`color:` expects a color"))?
-                        .rgba
-                }
-                None => default,
+                None => default.map_err(|f| {
+                    f.note(format!(
+                        "in the default of `{}` ({}:{})",
+                        p.key, module.path, span.line
+                    ))
+                })?,
             };
-            Ok(c.with_alpha(c.a * alpha).to_ir())
-        };
-        let n0 = a.pos.first().and_then(Value::num);
-        let offset = a
-            .pos
-            .first()
-            .and_then(Value::vec2)
-            .filter(|_| !matches!(a.pos.first(), Some(Value::Num(_))));
-        let op = match op_name {
-            "blur" => EffectOp::Blur {
-                sigma: n0.or(a.num("blur")).unwrap_or(4.0) as f32,
-            },
-            "shadow" | "inner" => {
-                let (dx, dy) = offset.unwrap_or((0.0, 4.0));
-                let blur = a.num("blur").unwrap_or(4.0) as f32;
-                let c = color(color::step(f, -2.0, DEFAULT_HUE_STEP).with_alpha(0.35))?;
-                if op_name == "shadow" {
-                    EffectOp::Shadow {
-                        dx: dx as f32,
-                        dy: dy as f32,
-                        blur,
-                        color: c,
-                    }
-                } else {
-                    EffectOp::Inner {
-                        dx: dx as f32,
-                        dy: dy as f32,
-                        blur,
-                        color: c,
-                    }
-                }
-            }
-            "glow" => EffectOp::Glow {
-                radius: n0.unwrap_or(8.0) as f32,
-                color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))?,
-            },
-            "rim" => {
-                let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
-                let rim = color::from_oklch(
-                    color::Lch {
-                        l: 0.86,
-                        c: 0.05,
-                        h: 265.0,
-                    },
-                    1.0,
-                );
-                EffectOp::Rim {
-                    width: n0.unwrap_or(3.0) as f32,
-                    dir: Point::new(dir.0 as f32, dir.1 as f32),
-                    color: color(rim)?,
-                }
-            }
-            "adjust" => EffectOp::Adjust {
-                hue: a.num("hue").unwrap_or(0.0) as f32,
-                sat: a.num("sat").unwrap_or(0.0) as f32,
-                light: a.num("light").unwrap_or(0.0) as f32,
-            },
-            "outline" => EffectOp::Outline {
-                width: n0.unwrap_or(2.0) as f32,
-                color: color(color::line(f))?,
-            },
-            "grain" => {
-                let extra = a.num("seed").unwrap_or(0.0) as u64;
-                EffectOp::Grain {
-                    strength: n0.unwrap_or(0.05) as f32,
-                    scale: a.num("scale").unwrap_or(1.5) as f32,
-                    seed: seed::node_seed(sc.file(), &format!("{path}#grain"), extra) as u32,
-                }
-            }
-            "merge" => {
-                let inputs = rest
-                    .iter()
-                    .map(|e| input_of(e, self))
-                    .collect::<R<Vec<_>>>()?;
-                let alphas = match a.get("a") {
-                    Some(v) => v
-                        .items()
-                        .map(|xs| xs.iter().filter_map(Value::num).map(|x| x as f32).collect())
-                        .unwrap_or_else(|| vec![v.num().unwrap_or(1.0) as f32]),
-                    None => vec![1.0; inputs.len()],
-                };
-                EffectOp::Merge { inputs, alphas }
-            }
-            "bevel" | "displace" | "halftone" | "posterize" => {
-                return Err(fail(
-                    "E0391",
-                    format!("`fx {op_name}` is a Phase 2 effect, not yet implemented in v0.1"),
-                )
-                .fix("use blur, shadow, inner, glow, rim, adjust, outline or grain"));
-            }
-            other => {
-                return Err(fail("E0391", format!("unknown effect `{other}`"))
-                    .note("effects: blur shadow inner glow rim adjust outline grain merge")
-                    .fix("pick one of the listed effects"));
-            }
-        };
-        let input = match named.iter().find(|n| n.key == "of") {
-            Some(n) => input_of(&n.value, self)?,
-            None => EffectInput::Previous,
-        };
-        let name = named
-            .iter()
-            .find(|n| n.key == "as")
-            .and_then(|n| ident_of(&n.value))
-            .map(str::to_string);
-        Ok(Effect { op, input, name })
+            env.push((p.key.clone(), value));
+        }
+        Ok(env)
     }
 
     // ---------------------------------------------------------------- components
@@ -2225,7 +2165,7 @@ impl<'a> Evaluator<'a> {
         &mut self,
         comp: &Rc<Component>,
         a: Args,
-        block: &[Stmt],
+        block: &DrawBody,
         sc: &mut Scope,
         out: &mut Siblings,
         path: String,
@@ -2344,19 +2284,9 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let table = new_table();
         let mut fills = Vec::new();
-        let mut block_fx = Vec::new();
-        let mut mask_block = None;
-        self.absorb(
-            block,
-            sc,
-            &path,
-            &comp.name,
-            false,
-            &mut fills,
-            &mut block_fx,
-            &mut mask_block,
-            &mut node_args,
-        )?;
+        for b in block.items() {
+            self.absorb_item(b, sc, &path, &comp.name, &mut fills)?;
+        }
         let inst = Rc::new(Instance {
             def_name: comp.name.clone(),
             fills,
@@ -2382,12 +2312,8 @@ impl<'a> Evaluator<'a> {
             checks: checks.clone(),
             top: false,
         };
-        let Body {
-            fx: body_fx,
-            rest: body_rest,
-            ..
-        } = self.split_body(&comp.body);
-        let children = self.eval_block_nodes(&body_rest, &mut body_scope);
+        let children =
+            self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
         let mut node = new_node(
             path.clone(),
             origin,
@@ -2399,20 +2325,18 @@ impl<'a> Evaluator<'a> {
         );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(&path, body_scope.frame, world);
-        for (fst, scope) in body_fx
+        let sites: Vec<FxSite> = comp
+            .body
             .iter()
-            .map(|s| (*s, &fx_scope))
-            .chain(block_fx.iter().map(|s| (*s, &*sc)))
-        {
-            match self.effect(fst, scope, f, &path) {
-                Ok(e) => node.effects.push(e),
-                Err(e) => {
-                    let file = scope.file().to_string();
-                    self.report(e, &file, fst.span, &path);
-                }
-            }
-        }
-        self.mask(&mut node, &node_args, mask_block, sc, world)?;
+            .filter_map(DefItem::fx)
+            .map(|line| FxSite {
+                line,
+                scope: &fx_scope,
+            })
+            .chain(block.fx().map(|line| FxSite { line, scope: &*sc }))
+            .collect();
+        node.effects = self.lower_fx(&sites, &path, f);
+        self.mask(&mut node, &node_args, block.mask(), sc, world)?;
         let z = self.finish_node(&mut node, &node_args)?;
         let reg_name = name.unwrap_or(comp.name.clone());
         let rec = self.register(
@@ -2473,24 +2397,24 @@ impl<'a> Evaluator<'a> {
 
     fn slot(
         &mut self,
-        st: &Stmt,
-        args: &[Expr],
+        st: &Scene,
+        name: &str,
         named: &[Named],
-        body: &[Stmt],
+        fallback: &[Scene],
         sc: &mut Scope,
         out: &mut Siblings,
     ) -> R<()> {
         let inst = sc.inst.clone().ok_or_else(|| {
             fail("E0334", "`slot` is only valid inside a `def`").fix("move it into a def body")
         })?;
-        let name = args.first().and_then(ident_of).ok_or_else(|| {
-            fail("E0320", "`slot` needs a name").fix("write `slot head at:0,-30`")
-        })?;
-        let leaf = self.leaf_name(st, name, &sc.suffix);
+        let leaf = self.leaf_name(st.span, name, &sc.suffix);
         let path = format!("{}.{leaf}", sc.path);
         let (patch_named, off) = self.take_patches(&path);
         if off {
             self.mark_channels(&path);
+            if inst.fills.iter().any(|f| f.name == name) {
+                inst.used_fills.borrow_mut().push(name.to_string());
+            }
             return Ok(());
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;
@@ -2518,7 +2442,7 @@ impl<'a> Evaluator<'a> {
             }
             None => {
                 let mut inner = sc.child(&path, local_frame, world);
-                self.eval_block_nodes(body, &mut inner)
+                self.eval_block_nodes(fallback, &mut inner)
             }
         };
         let mut node = new_node(
@@ -2535,13 +2459,15 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    pub fn collect_entry(&mut self, stmts: &[Stmt], sc: &Scope) {
+    // ---------------------------------------------------------------- expressions
+
+    pub fn collect_entry(&mut self, scenes: &[Scene], sc: &Scope) {
         let mut scratch = sc.clone();
-        self.collect_surface(stmts, &mut scratch, "");
+        self.collect_surface(scenes, &mut scratch, "");
     }
 
-    fn collect_surface(&mut self, stmts: &[Stmt], sc: &mut Scope, owner: &str) {
-        for st in stmts {
+    fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, owner: &str) {
+        for st in scenes {
             if let Err(f) = self.collect_one(st, sc, owner) {
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, owner);
@@ -2549,9 +2475,9 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn collect_one(&mut self, st: &Stmt, sc: &mut Scope, owner: &str) -> R<()> {
+    fn collect_one(&mut self, st: &Scene, sc: &mut Scope, owner: &str) -> R<()> {
         match &st.kind {
-            StmtKind::Let { name, value } => {
+            SceneKind::Let { name, value } => {
                 self.seed_at(format!(
                     "{}\0{}{}\0{}",
                     sc.file(),
@@ -2569,7 +2495,7 @@ impl<'a> Evaluator<'a> {
                 sc.env.push((name.clone(), v));
                 Ok(())
             }
-            StmtKind::If {
+            SceneKind::If {
                 cond,
                 then,
                 otherwise,
@@ -2586,7 +2512,7 @@ impl<'a> Evaluator<'a> {
                 self.collect_surface(branch, sc, owner);
                 Ok(())
             }
-            StmtKind::Each { var, iter, body } => {
+            SceneKind::Each { var, iter, body } => {
                 self.seed_at(format!(
                     "{}\0{}{}\0{}",
                     sc.file(),
@@ -2603,11 +2529,7 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            StmtKind::Patch { path, named, off } => {
-                self.push_patch(path, named, *off, sc, owner, st.span)?;
-                Ok(())
-            }
-            StmtKind::Play { name, start } => {
+            SceneKind::Play { name, start } => {
                 self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
                 Ok(())
             }
@@ -2615,117 +2537,124 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn absorb<'s>(
+    fn absorb_item(
         &mut self,
-        stmts: &'s [Stmt],
+        item: &DrawItem,
+        sc: &mut Scope,
+        owner: &str,
+        def_name: &str,
+        fills: &mut Vec<Fill>,
+    ) -> R<()> {
+        match item {
+            DrawItem::SlotFill(fill) => {
+                fills.push(Fill {
+                    name: fill.name.clone(),
+                    body: fill.body.clone(),
+                    scope: sc.clone(),
+                    span: fill.span,
+                });
+                Ok(())
+            }
+            DrawItem::Patch(patch) => {
+                self.push_patch(&patch.path, &patch.named, patch.off, sc, owner, patch.span)?;
+                Ok(())
+            }
+            DrawItem::Fx(_) | DrawItem::Mask { .. } => Ok(()),
+            DrawItem::Scene(st) => self.absorb_scene(st, sc, owner, def_name, false),
+        }
+    }
+
+    fn absorb_scene(
+        &mut self,
+        st: &Scene,
         sc: &mut Scope,
         owner: &str,
         def_name: &str,
         nested: bool,
-        fills: &mut Vec<Fill>,
-        block_fx: &mut Vec<&'s Stmt>,
-        mask_block: &mut Option<&'s [Stmt]>,
-        node_args: &mut Args,
     ) -> R<()> {
-        for b in stmts {
-            match &b.kind {
-                StmtKind::If {
-                    cond,
-                    then,
-                    otherwise,
-                } => {
-                    self.seed_at(format!(
-                        "{}\0{}{}\0{}",
-                        sc.file(),
-                        sc.path,
-                        sc.suffix,
-                        b.span.line
-                    ));
-                    let c = self.expr(cond, sc)?;
-                    let branch = if c.truthy() { then } else { otherwise };
-                    self.absorb(
-                        branch, sc, owner, def_name, true, fills, block_fx, mask_block, node_args,
-                    )?;
+        match &st.kind {
+            SceneKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let c = self.expr(cond, sc)?;
+                let branch = if c.truthy() { then } else { otherwise };
+                for child in branch {
+                    self.absorb_scene(child, sc, owner, def_name, true)?;
                 }
-                StmtKind::Each { var, iter, body } => {
-                    self.seed_at(format!(
-                        "{}\0{}{}\0{}",
-                        sc.file(),
-                        sc.path,
-                        sc.suffix,
-                        b.span.line
-                    ));
-                    let items = each_items(self.expr(iter, sc)?)?;
-                    for (i, v) in items.into_iter().enumerate() {
-                        let mut inner = sc.clone();
-                        inner.env.push((var.clone(), v));
-                        inner.suffix = format!("{}#{i}", sc.suffix);
-                        self.absorb(
-                            body, &mut inner, owner, def_name, true, fills, block_fx, mask_block,
-                            node_args,
-                        )?;
+                Ok(())
+            }
+            SceneKind::Each { var, iter, body } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let items = each_items(self.expr(iter, sc)?)?;
+                for (i, v) in items.into_iter().enumerate() {
+                    let mut inner = sc.clone();
+                    inner.env.push((var.clone(), v));
+                    inner.suffix = format!("{}#{i}", sc.suffix);
+                    for child in body {
+                        self.absorb_scene(child, &mut inner, owner, def_name, true)?;
                     }
                 }
-                StmtKind::Play { name, start } => {
-                    self.schedule_play(name.as_deref(), start.as_ref(), sc, b.span, owner)
-                }
-                StmtKind::Patch { path, named, off } => {
-                    self.push_patch(path, named, *off, sc, owner, b.span)?
-                }
-                StmtKind::Let { name, value } => {
-                    self.seed_at(format!(
-                        "{}\0{}{}\0{}",
-                        sc.file(),
-                        sc.path,
-                        sc.suffix,
-                        b.span.line
-                    ));
-                    let v = self.expr(value, sc)?;
-                    sc.env.push((name.clone(), v));
-                }
-                StmtKind::SlotFill { .. } | StmtKind::Node { .. } | StmtKind::Check { .. }
-                    if nested =>
-                {
-                    self.report(
-                        fail("E0330", format!("only patches and `play` may sit inside `if` or `each` under `{def_name}`"))
-                            .fix("keep slot fills, fx and checks as direct lines under the instance"),
-                        sc.file(),
-                        b.span,
-                        owner,
-                    );
-                }
-                StmtKind::SlotFill { name, body } if name == "mask" => {
-                    *mask_block = Some(body.as_slice())
-                }
-                StmtKind::SlotFill { name, body } => fills.push(Fill {
-                    name: name.clone(),
-                    body: body.clone(),
+                Ok(())
+            }
+            SceneKind::Play { name, start } => {
+                self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
+                Ok(())
+            }
+            SceneKind::Let { name, value } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let v = self.expr(value, sc)?;
+                sc.env.push((name.clone(), v));
+                Ok(())
+            }
+            SceneKind::Check { .. } if !nested => {
+                sc.checks.borrow_mut().push(Pending {
+                    stmt: st.clone(),
                     scope: sc.clone(),
-                    span: b.span,
-                }),
-                StmtKind::Node { verb, .. } if verb == "fx" => block_fx.push(b),
-                StmtKind::Node { verb, args, .. } if verb == "mask" => {
-                    if let Some(e) = args.first() {
-                        node_args.named.push(("mask".into(), self.expr(e, sc)?));
-                    }
-                }
-                StmtKind::Check { .. } => sc.checks.borrow_mut().push(Pending {
-                    stmt: b.clone(),
-                    scope: sc.clone(),
-                }),
-                _ => {
-                    self.report(
-                        fail("E0330", format!("only slot fills, patches, fx and mask: may go under an instance of `{def_name}`"))
-                            .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
-                        sc.file(),
-                        b.span,
-                        owner,
-                    );
-                }
+                });
+                Ok(())
+            }
+            _ if nested => {
+                self.report(
+                    fail("E0330", format!("only patches and `play` may sit inside `if` or `each` under `{def_name}`"))
+                        .fix("keep slot fills, fx and checks as direct lines under the instance"),
+                    sc.file(),
+                    st.span,
+                    owner,
+                );
+                Ok(())
+            }
+            _ => {
+                self.report(
+                    fail("E0330", format!("only slot fills, patches, checks, fx and one mask may go under an instance of `{def_name}`"))
+                        .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
+                    sc.file(),
+                    st.span,
+                    owner,
+                );
+                Ok(())
             }
         }
-        Ok(())
     }
 
     fn push_patch(
@@ -2741,13 +2670,12 @@ impl<'a> Evaluator<'a> {
         for n in named {
             vals.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
-        let depth = owner.matches('.').count();
         self.patches.push(PatchRec {
             pattern: segs.to_vec(),
             named: vals,
             off,
             owner: owner.to_string(),
-            depth,
+            depth: owner.matches('.').count(),
             rel: segs.join("."),
             span,
             file: sc.file().to_string(),
@@ -2831,13 +2759,10 @@ impl<'a> Evaluator<'a> {
         };
         let saved = self.anim_clock.replace(AnimClock { local, dur });
         let file = sc.file().to_string();
-        for st in &anim.body {
-            let StmtKind::Patch { path, named, off } = &st.kind else {
-                continue;
-            };
-            if *off {
+        for patch in &anim.body {
+            if patch.off {
                 self.channels.push(Channel {
-                    pattern: path.clone(),
+                    pattern: patch.path.clone(),
                     owner: owner.to_string(),
                     key: String::new(),
                     absolute: true,
@@ -2851,14 +2776,14 @@ impl<'a> Evaluator<'a> {
                 });
                 continue;
             }
-            for n in named {
+            for n in &patch.named {
                 let (absolute, expr) = match absolute_channel(&n.key, &n.value) {
                     Some(inner) => (true, inner),
                     None => (!offset_channel(&n.key), &n.value),
                 };
                 match self.expr(expr, &dur_scope) {
                     Ok(value) => self.channels.push(Channel {
-                        pattern: path.clone(),
+                        pattern: patch.path.clone(),
                         owner: owner.to_string(),
                         key: n.key.clone(),
                         absolute,
@@ -2922,7 +2847,7 @@ impl<'a> Evaluator<'a> {
             local / dur
         };
         let at = match named.iter().find(|n| n.key == "at") {
-            None => key::even_at(values.len()),
+            None => crate::key::even_at(values.len()),
             Some(n) => {
                 let v = self.expr(&n.value, sc)?;
                 let items = v.items().ok_or_else(|| {
@@ -2943,7 +2868,7 @@ impl<'a> Evaluator<'a> {
             Some(n) => {
                 let v = self.expr(&n.value, sc)?;
                 let one = |name: &str| {
-                    key::ease_named(name).ok_or_else(|| {
+                    crate::key::ease_named(name).ok_or_else(|| {
                         fail("E0320", format!("unknown ease `{name}`"))
                             .fix("use linear, in, out, in_out or hold")
                     })
@@ -2973,7 +2898,7 @@ impl<'a> Evaluator<'a> {
                 }
             }
         };
-        key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
+        crate::key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
     }
 
     fn mark_channels(&self, path: &str) {
@@ -3040,8 +2965,6 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    // ---------------------------------------------------------------- expressions
-
     pub fn lookup_ident(&self, name: &str, sc: &Scope) -> Option<Value> {
         if let Some((_, v)) = sc.env.iter().rev().find(|(k, _)| k == name) {
             return Some(v.clone());
@@ -3101,7 +3024,7 @@ impl<'a> Evaluator<'a> {
             Expr::Num(n) => Value::Num(*n),
             Expr::Percent(p) => Value::Percent(*p),
             Expr::Angle(d) => Value::Num(*d),
-            Expr::Time(s) => Value::Num(*s),
+            Expr::Time(n) => Value::Num(*n),
             Expr::Size(w, h) => {
                 let (w, h) = (self.expr(w, sc)?, self.expr(h, sc)?);
                 match (w.coord(), h.coord()) {
@@ -3136,7 +3059,7 @@ impl<'a> Evaluator<'a> {
             Expr::Range(a, b) => {
                 let (a, b) = (self.expr(a, sc)?, self.expr(b, sc)?);
                 match (a.num(), b.num()) {
-                    (Some(a), Some(b)) => Value::Range(a, b),
+                    (Some(a), Some(b)) => Value::Range(Range::new(a, b)),
                     _ => return Err(fail("E0320", "a range needs numbers on both ends")),
                 }
             }
@@ -3185,12 +3108,13 @@ impl<'a> Evaluator<'a> {
             BinOp::Add => ar(Arith::Add)?,
             BinOp::Sub => ar(Arith::Sub)?,
             BinOp::Mul | BinOp::Div => match (&a, b.num()) {
-                (Value::Range(x, y), Some(k)) => {
-                    if op == BinOp::Mul {
-                        Value::Range(x * k, y * k)
+                (Value::Range(r), Some(k)) => {
+                    let arith_op = if op == BinOp::Mul {
+                        Arith::Mul
                     } else {
-                        Value::Range(x / k, y / k)
-                    }
+                        Arith::Div
+                    };
+                    Value::Range(r.scale(arith_op, k))
                 }
                 _ => ar(if op == BinOp::Mul {
                     Arith::Mul
@@ -3252,10 +3176,10 @@ impl<'a> Evaluator<'a> {
                 Value::Bool(ok)
             }
             BinOp::In => match (&a, &b) {
-                (Value::Num(x), Value::Range(lo, hi)) => {
-                    let ok = x >= lo && x <= hi;
+                (Value::Num(x), Value::Range(r)) => {
+                    let ok = r.contains(*x);
                     if !ok {
-                        self.note(format!("{} is outside {}..{}", num(*x), num(*lo), num(*hi)));
+                        self.note(r.miss_note(*x));
                     }
                     Value::Bool(ok)
                 }
@@ -3368,7 +3292,7 @@ impl<'a> Evaluator<'a> {
             }
             Value::Color(_) => {
                 return Err(fail("E0350", format!("a plain color has no step `.{seg}`; only ramps are indexed"))
-                    .fix("declare the palette entry as `name ramp <color> 5` to index it, or drop the index"));
+                    .fix("declare the palette entry as `ramp name <color> 5` to index it, or drop the index"));
             }
             other => {
                 return Err(fail(

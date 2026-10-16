@@ -2,16 +2,16 @@
 @target produce/sweet_strawberry.svg 1024x1024
 use face/parts { eye blush open_mouth sparkle }
 palette berry
-  red ramp #e2404e 5
-  gold ramp #f2c04e 5
-  leaf ramp #58ad4a 5
-  iris ramp #7a3a2a 5
-  blush #ff8aa6
-  plum #5a2a38
-  rim #b8c6f2
-  lip #7a2232
-  glint #fff6f0
-  twinkle #ffe39a
+  ramp red #e2404e 5
+  ramp gold #f2c04e 5
+  ramp leaf #58ad4a 5
+  ramp iris #7a3a2a 5
+  color blush #ff8aa6
+  color plum #5a2a38
+  color rim #b8c6f2
+  color lip #7a2232
+  color glint #fff6f0
+  color twinkle #ffe39a
 let red = berry.red
 let gold = berry.gold
 let leaf = berry.leaf

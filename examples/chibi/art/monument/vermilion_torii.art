@@ -2,18 +2,18 @@
 @target monument/vermilion_torii.svg 1024x1024
 use face/parts { sparkle }
 palette torii
-  verm ramp #d9543a 5
-  char ramp #3a3942 5
-  straw ramp #d8b25a 5
-  paper ramp #f1ede4 5
-  paper_cool #c3c9dc
-  maple ramp #e47a35 5
-  stone ramp #a89f93 5
-  moss ramp #7d8f4e 5
-  sheen #8d93ad
-  lacquer #e6ecf8
-  ink_cool #6f7fa8
-  spark #fff3cf
+  ramp verm #d9543a 5
+  ramp char #3a3942 5
+  ramp straw #d8b25a 5
+  ramp paper #f1ede4 5
+  color paper_cool #c3c9dc
+  ramp maple #e47a35 5
+  ramp stone #a89f93 5
+  ramp moss #7d8f4e 5
+  color sheen #8d93ad
+  color lacquer #e6ecf8
+  color ink_cool #6f7fa8
+  color spark #fff3cf
 let verm = torii.verm
 let char = torii.char
 let straw = torii.straw
@@ -67,9 +67,12 @@ def _groove x:512
   curve x-16,yc-hw x-9,yc-hw*.35 x+1,yc+hw*.35 x+12,yc+hw stroke:straw.0,[1.2 3.4 3.4 1.2] taper:.25 a:.8
   curve x-24,yc-hw*.75 x-17,yc-hw*.1 x-10,yc+hw*.4 stroke:straw.4,[2 4.5 1.5] a:.65 blur:1.2
   each i in 0..3
-    let fx = x+rand(-12 4)
-    let fy = yc+rand(-1 1)*hw*.6
-    curve fx-4,fy-3 fx+4,fy+3 stroke:straw.1,1 a:.4
+    let fiber_x = x+rand(-12 4)
+    let fiber_y = yc+rand(-1 1)*hw*.6
+    curve fiber_x-4,fiber_y-3 fiber_x+4,fiber_y+3 stroke:straw.1,1 a:.4
+finish _surface width:4 a:.45 strength:.04 scale:2.5
+  fx rim width dir:1,1 color:p.rim a:a
+  fx grain strength scale:scale
 def _tassel tx:467
   let u = (tx-512)/242
   let ty = 496-53*u*u
@@ -82,8 +85,7 @@ def _tassel tx:467
     ellipse 14,8 at:tx,ty+6 fill:straw.0 a:.6 blur:4
     rect 22x7 at:tx,ty+17.5 r:2 fill:verm
       curve -9,-2.5 8,-2.5 stroke:verm.4,1.4 a:.7
-    fx rim 4 dir:1,1 color:p.rim a:.4
-    fx grain .05 scale:1.8
+    fx _surface a:.4 strength:.05 scale:1.8
 def _fold i:0 flutter:0
   let dx = (if mod(i 2) > .5 then 18 else 0)+flutter*(i*i*4+i*6)
   let y0 = i*44-(if i < .5 then 30 else 0)
@@ -144,10 +146,8 @@ layer footings pivot:512,840
           each cx in [334 690]
             curve cx-60,348 cx-61,400 stroke:verm.line,2 a:.4
             curve cx+60,348 cx+61,400 stroke:verm.line,2 a:.4
-          fx rim 4 dir:1,1 color:p.rim a:.45
-          fx grain .04 scale:2.5
-        fx rim 4 dir:1,1 color:p.rim a:.45
-        fx grain .04 scale:2.5
+          fx _surface
+        fx _surface
       layer plaque pivot:512,266
         rect 88x76 at:512,306 r:10 fill:grad(40.8 char.3 char,.5 char.0) name:plate
           rect 70x58 r:6 fill:fade(straw 0) stroke:straw,4 name:frame
@@ -177,8 +177,7 @@ layer footings pivot:512,840
               copy @rope at:0,-18
             each x in [262 280.77 300.08 319.95 340.4 361.43 383.08 405.35 428.26 451.84 476.1 501.06 526.74 552.32 577.15 601.27 624.69 647.43 669.51 690.95 711.78 732 751.63]
               _groove x
-            fx rim 4 dir:1,1 color:p.rim a:.4
-            fx grain .05 scale:1.8
+            fx _surface a:.4 strength:.05 scale:1.8
           _tassel 467 name:tas_l z:behind
           _tassel 557 name:tas_r z:behind
         union fill:straw z:-1
@@ -200,8 +199,7 @@ layer footings pivot:512,840
           curve 112,116 200,160 330,184 470,190 stroke:sheen,[2 7 5 2] a:.8 blur:1.2
           curve 560,190 700,186 820,162 stroke:sheen,[1.5 3 1.5] a:.35 blur:1.5
           ellipse 24,4.5 at:196,160 rot:24 fill:lacquer a:.85 blur:.6
-          fx rim 5 dir:1,1 color:p.rim a:.55
-          fx grain .035 scale:2
+          fx _surface width:5 a:.55 strength:.035 scale:2
         curve 146,170 320,204 512,210 704,204 878,170 874,216 790,244 700,256 512,264 324,256 234,244 150,216 closed tension:.5 fill:grad(down verm.3 verm.3,.32 verm,.66 verm.1) name:shimaki
           subtract fill:verm.1 a:.9 blur:.8
             copy @shimaki
@@ -209,8 +207,7 @@ layer footings pivot:512,840
           copy @cap at:4,9 fill:verm.0 a:.6 blur:6
           ellipse 110,14 at:780,242 fill:verm.0 a:.35 blur:8
           curve 190,230 340,242 480,246 stroke:verm.4,[2 4 2] a:.5 blur:1.5
-          fx rim 5 dir:1,1 color:p.rim a:.55
-          fx grain .035 scale:2
+          fx _surface width:5 a:.55 strength:.035 scale:2
       union fill:verm z:-1
         copy @shimaki
         copy @cap

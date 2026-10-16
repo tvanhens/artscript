@@ -1,0 +1,8 @@
+{
+  "name": "artscript",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "user": "ubuntu",
+  "install": "cargo test --workspace --no-run"
+}
