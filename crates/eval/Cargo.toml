@@ -10,3 +10,6 @@ serde_json.workspace = true
 artscript-syntax.workspace = true
 artscript-ir.workspace = true
 toml = "0.8"
+
+[dev-dependencies]
+artscript-render.workspace = true

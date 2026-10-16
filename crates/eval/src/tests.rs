@@ -223,6 +223,197 @@ fn param_kind_mismatch_is_e0320() {
     assert!(d.fix.as_deref().unwrap_or_default().contains("number"), "{d}");
 }
 
+fn shape<'a>(s: &'a Scene, path: &str) -> &'a artscript_ir::Shape {
+    match &node(s, path).kind {
+        NodeKind::Shape(sh) => sh,
+        _ => panic!("{path} is not a shape"),
+    }
+}
+
+fn near(got: (f32, f32), expect: (f64, f64)) {
+    let (dx, dy) = (f64::from(got.0) - expect.0, f64::from(got.1) - expect.1);
+    assert!(dx.abs() < 1e-4 && dy.abs() < 1e-4, "{got:?} != {expect:?}");
+}
+
+#[test]
+fn each_expr_builds_curve_points_and_stroke_widths() {
+    let s = scene(
+        "@target t.png 80x80\n\
+         let cx = 0\n\
+         let cy = 0\n\
+         let r = 10\n\
+         curve [each k in 0..4 -> cx+r*cos(k*90),cy+r*sin(k*90)] tension:0 name:ring\n\
+         curve 0,0 50,0 100,0 stroke:#111,[each k in 0..3 -> 4+k*4] taper:0 name:ink\n\
+         curve 0,0 50,0 100,0 stroke:#111,[4 8 12] taper:0 name:lit\n",
+    );
+    let b = shape(&s, "ring").geometry.compute_tight_bounds();
+    assert!((f64::from(b.left) + 10.0).abs() < 1e-4, "left {}", b.left);
+    assert!((f64::from(b.right) - 10.0).abs() < 1e-4, "right {}", b.right);
+    assert!((f64::from(b.top) + 10.0).abs() < 1e-4, "top {}", b.top);
+    assert!((f64::from(b.bottom) - 10.0).abs() < 1e-4, "bottom {}", b.bottom);
+    let ink = shape(&s, "ink").geometry.to_svg();
+    let lit = shape(&s, "lit").geometry.to_svg();
+    assert_eq!(ink, lit, "a width list built with each differs from the same literal list");
+    assert!(shape(&s, "ink").geometry.contains(artscript_ir::Point::new(50.0, 3.5)));
+    assert!(!shape(&s, "ink").geometry.contains(artscript_ir::Point::new(50.0, 4.6)));
+}
+
+#[test]
+fn each_walks_a_list_of_points() {
+    let s = scene("@target t.png 80x80\nlet pts = [0,0 10,4 20,-3]\neach p in pts\n  circle 1 at:p\n");
+    assert_eq!(at(node(&s, "circle#0")), (0.0, 0.0));
+    assert_eq!(at(node(&s, "circle#1")), (10.0, 4.0));
+    assert_eq!(at(node(&s, "circle#2")), (20.0, -3.0));
+}
+
+#[test]
+fn each_expr_respects_e0306() {
+    let bad = run_with("@target t.png 10x10\nlet xs = [each k in 4 -> k]\ncircle 1\n", &[]);
+    let d = bad.diagnostics.iter().find(|d| d.code == "E0306").unwrap_or_else(|| panic!("{}", show(&bad.diagnostics)));
+    assert!(d.message.contains("number"), "{d}");
+    let huge = run_with("@target t.png 10x10\nlet xs = [each k in 0..100001 -> k]\ncircle 1\n", &[]);
+    assert!(huge.diagnostics.iter().any(|d| d.code == "E0306" && d.message.contains("100000")), "{}", show(&huge.diagnostics));
+    let mixed = run_with("@target t.png 10x10\ncurve [0,0 10,0] 20,0\n", &[]);
+    assert!(mixed.diagnostics.iter().any(|d| d.code == "E0320"), "{}", show(&mixed.diagnostics));
+}
+
+#[test]
+fn vectors_scale_add_subtract_and_negate() {
+    let s = scene(
+        "@target t.png 80x80\n\
+         let crown = 10,20\n\
+         let d = 4,-2\n\
+         circle 1 at:crown+d*.25 name:scaled\n\
+         circle 1 at:crown+d name:added\n\
+         circle 1 at:crown-d name:sub\n\
+         circle 1 at:-d name:neg\n\
+         circle 1 at:3*d name:left\n\
+         circle 1 at:d/2 name:div\n",
+    );
+    near(at(node(&s, "scaled")), (11.0, 19.5));
+    near(at(node(&s, "added")), (14.0, 18.0));
+    near(at(node(&s, "sub")), (6.0, 22.0));
+    near(at(node(&s, "neg")), (-4.0, 2.0));
+    near(at(node(&s, "left")), (12.0, -6.0));
+    near(at(node(&s, "div")), (2.0, -1.0));
+}
+
+#[test]
+fn vector_plus_color_is_e0320() {
+    let ev = run_with("@target t.png 20x20\nlet p = (#ff0000)+(1,0)\ncircle 1 at:p\n", &[]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0320").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert!(d.message.contains("color") && d.message.contains("vector"), "{d}");
+}
+
+#[test]
+fn atan2_is_degrees_and_mod_is_floored() {
+    let s = scene(
+        "@target t.png 400x40\n\
+         circle 1 at:atan2(1 1),mod(-1 3) name:q\n\
+         circle 1 at:atan2(0 -1),mod(-7 4) name:h\n\
+         circle 1 at:mod(7 4),mod(5.5 2) name:p\n",
+    );
+    near(at(node(&s, "q")), (45.0, 2.0));
+    near(at(node(&s, "h")), (180.0, 1.0));
+    near(at(node(&s, "p")), (3.0, 1.5));
+}
+
+#[test]
+fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
+    let s = scene(
+        "@target t.png 200x80\n\
+         rect 80x40 fill:grad(10,5 70,-15 #ff0000 #00ff00,.4 #0000ff) name:band\n\
+         rect 80x40 fill:grad(down #ff0000 #0000ff) name:down\n\
+         rect 80x40 fill:grad(17 #ff0000 #00ff00) name:angle\n",
+    );
+    let NodeKind::Shape(band) = &node(&s, "band").kind else { panic!("band") };
+    let Some(Paint::Linear { from, to, stops }) = &band.fill else { panic!("{:?}", band.fill) };
+    assert_eq!((from.x, from.y, to.x, to.y), (10.0, 5.0, 70.0, -15.0));
+    assert!(stops.iter().any(|st| (st.pos - 0.4).abs() < 1e-4), "stop at .4 missing: {stops:?}");
+    let NodeKind::Shape(down) = &node(&s, "down").kind else { panic!("down") };
+    let Some(Paint::Linear { from, to, .. }) = &down.fill else { panic!("{:?}", down.fill) };
+    assert!((f64::from(from.x)).abs() < 1e-4 && (f64::from(from.y) + 20.0).abs() < 1e-4, "{from:?}");
+    assert!((f64::from(to.x)).abs() < 1e-4 && (f64::from(to.y) - 20.0).abs() < 1e-4, "{to:?}");
+    let NodeKind::Shape(angle) = &node(&s, "angle").kind else { panic!("angle") };
+    let Some(Paint::Linear { from, .. }) = &angle.fill else { panic!("{:?}", angle.fill) };
+    assert_ne!((from.x, from.y), (17.0, 17.0));
+}
+
+#[test]
+fn round_cuts_corners_of_a_flat_curve_and_a_poly() {
+    let s = scene(
+        "@target t.png 80x80\n\
+         curve -10,-10 10,-10 10,10 -10,10 closed tension:0 fill:#fff name:sharp\n\
+         curve -10,-10 10,-10 10,10 -10,10 closed tension:0 round:4 fill:#fff name:soft\n\
+         poly 4 r:10 fill:#fff name:diamond\n\
+         poly 4 r:10 round:4 fill:#fff name:gem\n",
+    );
+    let has = |path: &str, x: f32, y: f32| shape(&s, path).geometry.contains(artscript_ir::Point::new(x, y));
+    assert!(has("sharp", -9.2, -9.2));
+    assert!(!has("soft", -9.2, -9.2));
+    assert!(has("soft", 0.0, 0.0));
+    assert!(has("diamond", 0.0, -9.2));
+    assert!(!has("gem", 0.0, -9.2));
+    assert!(has("gem", 0.0, 0.0));
+}
+
+#[test]
+fn jitter_is_amplitude_and_wavelength() {
+    let a = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,30\n");
+    let b = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,90\n");
+    assert_ne!(shape(&a, "c").geometry.to_svg(), shape(&b, "c").geometry.to_svg());
+    let bare = run_with("@target t.png 40x40\ncircle 20 jitter:2\n", &[]);
+    let d = bare.diagnostics.iter().find(|d| d.code == "E0320").unwrap_or_else(|| panic!("{}", show(&bare.diagnostics)));
+    assert_eq!(d.fix.as_deref(), Some("write `jitter:2,60`"));
+}
+
+#[test]
+fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
+    let unit = png("@target t.png 200x120\ngroup scale:50 at:100,60\n  curve -1,0 0,-.5 1,0 stroke:#000,[.05 .1 .05] taper:.3\n");
+    let pixels = png("@target t.png 200x120\ngroup at:100,60\n  curve -50,0 0,-25 50,0 stroke:#000,[2.5 5 2.5] taper:.3\n");
+    let fine = png("@target t.png 200x120 scale:1\ngroup at:100,60\n  curve -40,0 0,-20 40,0 stroke:#000,[4 8 4] taper:.3\n");
+    let doubled = png("@target t.png 100x60 scale:2\ngroup scale:.5 at:50,30\n  curve -40,0 0,-20 40,0 stroke:#000,[4 8 4] taper:.3\n");
+    assert_pixels_close(&unit, &pixels, 0.15);
+    assert_pixels_close(&fine, &doubled, 0.15);
+}
+
+fn png(src: &str) -> Vec<u8> {
+    let ev = run_with(src, &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    artscript_render::render_png(&ev.scene.unwrap(), ev_scale(src)).unwrap()
+}
+
+fn ev_scale(src: &str) -> f32 {
+    if src.contains("scale:2") { 2.0 } else { 1.0 }
+}
+
+fn rgba(png: &[u8]) -> (i32, i32, Vec<u8>) {
+    let image = skia_safe::Image::from_encoded(skia_safe::Data::new_copy(png)).expect("png");
+    let (w, h) = (image.width(), image.height());
+    let info = skia_safe::ImageInfo::new((w, h), skia_safe::ColorType::RGBA8888, skia_safe::AlphaType::Unpremul, None);
+    let row = w as usize * 4;
+    let mut buf = vec![0u8; row * h as usize];
+    assert!(image.read_pixels(&info, &mut buf, row, (0, 0), skia_safe::image::CachingHint::Disallow));
+    (w, h, buf)
+}
+
+fn assert_pixels_close(a: &[u8], b: &[u8], mean_limit: f64) {
+    let (aw, ah, ab) = rgba(a);
+    let (bw, bh, bb) = rgba(b);
+    assert_eq!((aw, ah), (bw, bh));
+    let mut sum = 0.0f64;
+    let mut ink = 0u32;
+    for (x, y) in ab.iter().zip(&bb) {
+        sum += f64::from(x.abs_diff(*y));
+        if *x > 0 || *y > 0 {
+            ink += 1;
+        }
+    }
+    let mean = sum / ab.len() as f64;
+    assert!(ink > 100, "both images are empty");
+    assert!(mean < mean_limit, "mean channel delta {mean} over {ink} ink bytes");
+}
+
 #[test]
 fn raw_color_lint_skips_palettes() {
     let p = Project::from_sources(

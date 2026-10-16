@@ -127,8 +127,10 @@ fn ease(x: f64) -> f64 {
 /// Filled outline of a variable-width stroke along `path`'s first contour, with round caps.
 /// `widths` has one width per control point in `knots` (chord fractions follow the knots);
 /// with no knots the widths are spread evenly along the length.
-pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64)) -> Path {
-    let Some(c) = sample(path, 0.75).into_iter().next() else {
+/// `step` is the sample spacing in the path's own units. Callers pass the spacing that
+/// lands on 0.75 output pixels after the node's transform and the target scale.
+pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), step: f64) -> Path {
+    let Some(c) = sample(path, step.max(1e-6)).into_iter().next() else {
         return Path::new();
     };
     let mut s = vec![0.0];
@@ -351,7 +353,7 @@ mod tests {
     #[test]
     fn tapered_stroke_is_full_width_in_the_middle() {
         let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false);
-        let outline = brush(&line, &[(0.0, 0.0), (100.0, 0.0)], &[8.0, 8.0], (0.3, 0.3));
+        let outline = brush(&line, &[(0.0, 0.0), (100.0, 0.0)], &[8.0, 8.0], (0.3, 0.3), 0.75);
         let probe = |y: f32| outline.contains(Point::new(50.0, y));
         assert!(probe(3.9) && probe(-3.9));
         assert!(!probe(4.2) && !probe(-4.2));

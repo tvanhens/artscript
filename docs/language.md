@@ -18,10 +18,10 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | vector / size | `14,0` (no spaces around the comma), `256x256` |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
-| list / range | `[a b c]`, `0..8` |
+| list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
 | reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas` |
 
-Expressions: `+ - * /` (elementwise on vectors), `== != < <= > >= ~=`, `and or not`, `in lo..hi`, `if c then a else b`. Write binary operators with spaces on both sides or neither: `w/2`, `a + b`. `-x` after a space starts a new argument. Functions: `min max abs clamp lerp sqrt floor round sin cos` (degrees), `polar(r deg)`, `rand(lo hi)`, `pick(list)`, and the color helpers below. `v.x`, `v.y` read a vector.
+Expressions: `+ - * /` (elementwise on vectors; a number scales a vector, as in `(dx,dy)*.28`, `2*v`, `v/2`; `-v` negates), `== != < <= > >= ~=`, `and or not`, `in lo..hi`, `if c then a else b`. Write binary operators with spaces on both sides or neither: `w/2`, `a + b`. `-x` after a space starts a new argument. Functions: `min max abs clamp lerp sqrt floor round sin cos atan2 mod` (degrees; `atan2(y x)`, floored `mod(a b)`), `polar(r deg)`, `rand(lo hi)`, `pick(list)`, and the color helpers below. `v.x`, `v.y` read a vector.
 
 ## Color
 
@@ -37,7 +37,7 @@ A single-color ramp darkens toward cool blue-violet and lightens toward warm yel
 
 - `shade(c k)` steps `k` along `c`'s ramp: `-1` shadow, `-2` deep, `+1` light, `+2` highlight.
 - `mix(a b t)` mixes in OKLab, `fade(c a)` sets alpha, `line(c)` is the lineart color for any color.
-- Gradients interpolate in OKLCH. `grad(down a b)` runs across the shape's bounds, with directions `down up left right` or an angle (0 = right, 90 = down). Use `radial(a b at:.3,.3 r:200)` (`at:` is a fraction of the bounds, `r:` is in units) or `conic(a b c)`. A stop can carry a position, as in `p.peach.3,.4`.
+- Gradients interpolate in OKLCH. `grad(down a b)` runs across the shape's bounds, with directions `down up left right` or an angle (0 = right, 90 = down). `grad(300,240 720,440 a b)` uses those two points as the start and end in the shape's local coordinates. Use `radial(a b at:.3,.3 r:200)` (`at:` is a fraction of the bounds, `r:` is in units) or `conic(a b c)`. A stop can carry a position, as in `p.peach.3,.4`.
 
 ## Shapes
 
@@ -48,7 +48,7 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 | rect | `rect 40x20 r:4` (or `r:4,4,0,0` per corner) |
 | circle, ellipse | `circle 12`, `ellipse 20,12` (radii) |
 | poly, star | `poly 6 r:20 round:3`, `star 5 r:20 inner:.5` |
-| curve | `curve 0,0 20,-15 40,0` smooth through the points, `closed` for a fill, `tension:.5` |
+| curve | `curve 0,0 20,-15 40,0`, or `curve pts` when `pts` is one list of points. `closed` fills, `tension:.5`. `round:r` on a closed curve at `tension:0` |
 | blob | `blob 30 seed:4 wobble:.2` organic closed shape |
 | path | `path "M0 0 c10-20 30-20 40 0z"` |
 | copy | `copy @body at:-20,-8` reuses a named node's outline |
@@ -64,7 +64,7 @@ Paint keys:
 - `stroke:<color>,<width>`. Strokes have round caps and joins. `stroke:3` alone uses `line(fill)`.
 - Tapered ink: `stroke:p.ink,[2 8 3] taper:.3` on an open curve gives one width per point along its length, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
 - `blur:6` softens a shape's edge.
-- `jitter:1.5` wobbles the outline like a hand-drawn edge.
+- `jitter:1.5,60` wobbles the outline like a hand-drawn edge. The pair is the amplitude and the wavelength.
 
 ## Structure
 
@@ -104,7 +104,7 @@ def eye size:10 iris:p.sky.3 look:0,0
 - Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
 - `slot name` exposes an insertion point, filled by the caller with a `name:` block. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
 - `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
-- `let w = if build == slim then 34 else 42`, `if`/`else`, and `each x in [..]` / `each i in 0..8` are bounded control flow.
+- `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants.
 
 ## Checks

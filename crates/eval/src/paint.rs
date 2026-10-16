@@ -10,8 +10,10 @@ use crate::value::Value;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum GradKind {
-    /// Direction in degrees, 0 = right, 90 = down.
+    /// Direction in degrees, 0 = right, 90 = down. Fitted to the shape's bounds.
     Linear(f64),
+    /// Start and end in the shape's local coordinates.
+    Segment { from: (f64, f64), to: (f64, f64) },
     /// `at` is a fraction of the bounds; `r` is in units, defaulting to the farthest corner.
     Radial { at: (f64, f64), r: Option<f64> },
     Conic { at: (f64, f64), start: f64 },
@@ -55,6 +57,11 @@ pub fn resolve_gradient(g: &GradSpec, b: Rect) -> Paint {
                 stops: stops(&g.stops),
             }
         }
+        GradKind::Segment { from, to } => Paint::Linear {
+            from: p(from.0, from.1),
+            to: p(to.0, to.1),
+            stops: stops(&g.stops),
+        },
         GradKind::Radial { at: f, r } => {
             let (x, y) = at(*f);
             let far = [(b.left, b.top), (b.right, b.top), (b.left, b.bottom), (b.right, b.bottom)]

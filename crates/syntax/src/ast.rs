@@ -191,8 +191,14 @@ pub enum Expr {
     Member(Box<Expr>, String),
     /// Tight comma tuple without spaces: `14,0`, `p.ink,1.5`, `.4,1`.
     Tuple(Vec<Expr>),
-    /// `[a, b]`.
+    /// `[a b]`.
     List(Vec<Expr>),
+    /// `[each k in 0..n -> expr]`. Evaluates to a list.
+    Each {
+        var: String,
+        iter: Box<Expr>,
+        body: Box<Expr>,
+    },
     /// `lo..hi`.
     Range(Box<Expr>, Box<Expr>),
     Unary(UnOp, Box<Expr>),

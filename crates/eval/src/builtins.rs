@@ -104,6 +104,14 @@ impl Evaluator<'_> {
             "round" => one(f64::round)?,
             "sin" => one(|v| v.to_radians().sin())?,
             "cos" => one(|v| v.to_radians().cos())?,
+            "atan2" => Value::Num(n(0)?.atan2(n(1)?).to_degrees()),
+            "mod" => {
+                let (a, b) = (n(0)?, n(1)?);
+                if b == 0.0 {
+                    return Err(fail("E0320", "`mod` divisor must not be 0").fix("write `mod(a b)` with b not 0"));
+                }
+                Value::Num(a.rem_euclid(b))
+            }
             "polar" => {
                 let (r, d) = (n(0)?, n(1)?.to_radians());
                 Value::Vec2(Coord::Num(r * d.cos()), Coord::Num(r * d.sin()))
@@ -154,15 +162,27 @@ impl Evaluator<'_> {
                 self.ramp(&a, hue)?
             }
             "grad" => {
-                let (deg, stops) = match a.first() {
-                    Some(Value::Ident(w)) => (
-                        direction_deg(w).ok_or_else(|| fail("E0320", format!("unknown direction `{w}`")).fix("use down, up, left, right or an angle"))?,
-                        &a[1..],
-                    ),
-                    Some(Value::Num(d)) => (*d, &a[1..]),
-                    _ => (90.0, &a[..]),
+                let point = |v: &Value| match v {
+                    Value::Vec2(Coord::Num(x), Coord::Num(y)) => Some((*x, *y)),
+                    _ => None,
                 };
-                gradient(GradKind::Linear(deg), self.stops(stops)?)
+                let (kind, stops) = match a.as_slice() {
+                    [start, end, rest @ ..] if let Some(from) = point(start) => {
+                        let to = point(end).ok_or_else(|| {
+                            fail("E0320", "`grad` with a point start needs a point end").fix("write `grad(300,240 720,440 c1 c2)`")
+                        })?;
+                        (GradKind::Segment { from, to }, rest)
+                    }
+                    [Value::Ident(w), rest @ ..] => (
+                        GradKind::Linear(direction_deg(w).ok_or_else(|| {
+                            fail("E0320", format!("unknown direction `{w}`")).fix("use down, up, left, right or an angle")
+                        })?),
+                        rest,
+                    ),
+                    [Value::Num(d), rest @ ..] => (GradKind::Linear(*d), rest),
+                    _ => (GradKind::Linear(90.0), a.as_slice()),
+                };
+                gradient(kind, self.stops(stops)?)
             }
             "radial" => {
                 let at = get("at").and_then(|v| v.vec2()).unwrap_or((0.5, 0.5));
@@ -199,7 +219,7 @@ impl Evaluator<'_> {
             }
             other => {
                 return Err(fail("E0302", format!("unknown function `{other}`"))
-                    .note("math: min max abs clamp lerp sqrt floor round sin cos polar rand pick")
+                    .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
                     .fix("check the spelling"));

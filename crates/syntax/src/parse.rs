@@ -531,7 +531,15 @@ impl<'a> Parser<'a> {
         } else {
             self.parse_tuple()
         };
-        self.expect_eol("the `if` condition must fit on one line");
+        if self.at_kw(Kw::Then) {
+            self.fail(
+                self.cur_span(),
+                "unexpected keyword `then`",
+                "statement `if` takes a block; remove `then`",
+            );
+        } else {
+            self.expect_eol("the `if` condition must fit on one line");
+        }
         let then = self.parse_block(indent, span.line);
         let otherwise = if self.next_is_kw(indent, Kw::Else) {
             self.enter(self.li + 1);
@@ -1172,6 +1180,9 @@ impl<'a> Parser<'a> {
 
     fn parse_list(&mut self) -> Expr {
         self.bump();
+        if self.at_kw(Kw::Each) {
+            return self.parse_each_expr();
+        }
         let mut items = Vec::new();
         if self.eat(&Tok::RBrack) {
             return Expr::List(items);
@@ -1202,6 +1213,58 @@ impl<'a> Parser<'a> {
             break;
         }
         Expr::List(items)
+    }
+
+    /// `[each name in <iter> -> <expr>]`. The iterator stops before `->`.
+    fn parse_each_expr(&mut self) -> Expr {
+        let span = self.cur_span();
+        self.bump();
+        let var = self.expect_name();
+        if !self.eat_kw(Kw::In) {
+            self.fail(
+                span,
+                "expected `in` after the loop name",
+                "write `[each name in <expr> -> <expr>]`",
+            );
+        }
+        let iter = if self.eol() || self.at(&Tok::Arrow) || self.at(&Tok::RBrack) {
+            self.fail(
+                span,
+                "expected the list or range after `in`",
+                "write `[each name in <expr> -> <expr>]`",
+            );
+            Expr::Ident(String::new())
+        } else {
+            self.parse_prec(PREC_MAP + 1)
+        };
+        if !self.eat(&Tok::Arrow) {
+            self.fail_here(
+                "expected `->`",
+                "write `[each name in <expr> -> <expr>]`",
+            );
+            return Expr::Each {
+                var,
+                iter: Box::new(iter),
+                body: Box::new(Expr::Ident(String::new())),
+            };
+        }
+        let body = if self.eol() || self.at(&Tok::RBrack) {
+            self.fail_here(
+                "expected an expression after `->`",
+                "write `[each name in <expr> -> <expr>]`",
+            );
+            Expr::Ident(String::new())
+        } else {
+            self.parse_tuple()
+        };
+        if !self.eat(&Tok::RBrack) {
+            self.fail_here("unclosed `[`", "close the list with `]`");
+        }
+        Expr::Each {
+            var,
+            iter: Box::new(iter),
+            body: Box::new(body),
+        }
     }
 
     fn parse_group(&mut self) -> Expr {
@@ -1491,5 +1554,6 @@ fn tok_eq(a: &Tok, b: &Tok) -> bool {
             | (Tok::Comma, Tok::Comma)
             | (Tok::Eq, Tok::Eq)
             | (Tok::Dot, Tok::Dot)
+            | (Tok::Arrow, Tok::Arrow)
     )
 }

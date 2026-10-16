@@ -133,10 +133,10 @@ layer mossy_rock pivot:512,820
       _speckle 70 x0:378 x1:646 y0:708 y1:772 tone:lantern.stone
       _moss 16 x0:376 x1:438 y0:728 y1:776
         form:
-          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3 fill:none name:form
+          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,60 fill:none name:form
       _moss 12 x0:600 x1:650 y0:746 y1:778
         form:
-          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3 fill:none name:form
+          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,60 fill:none name:form
       curve 440,712 440,768 stroke:stone_line,2.4 taper:.2 a:.5
       curve 586,712 586,768 stroke:stone_line,2.4 taper:.2 a:.5
       fx rim 5 dir:1,1 color:lantern.rim a:.5
@@ -169,7 +169,7 @@ layer mossy_rock pivot:512,820
       _speckle 80 x0:360 x1:664 y0:532 y1:588 tone:lantern.stone
       _moss 18 x0:356 x1:446 y0:532 y1:566
         form:
-          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3 fill:none name:form
+          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,60 fill:none name:form
       curve 430,548 430,584 stroke:stone_line,2.4 taper:.2 a:.5
       curve 594,548 594,584 stroke:stone_line,2.4 taper:.2 a:.5
       curve 362,548 512,552 662,548 stroke:stone_line,2.2 taper:.15 a:.45
@@ -253,10 +253,10 @@ layer mossy_rock pivot:512,820
           _speckle 160 x0:250 x1:790 y0:200 y1:360 tone:lantern.stone
           _moss 22 x0:330 x1:436 y0:232 y1:290
             form:
-              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3 fill:none name:form
+              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,60 fill:none name:form
           _moss 8 x0:470 x1:520 y0:206 y1:226
             form:
-              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2 fill:none name:form
+              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,60 fill:none name:form
           _spiral 252 cy:286 r0:13 turns:1.15 start:162 sign:1 n:26 w0:3.2 w1:1
           _spiral 250 cy:284 r0:10 turns:.5 start:162 sign:1 n:10 w0:1.8 w1:1.8 ink:lantern.stone.4 alpha:.6 soft:.6
           _spiral 774 cy:285 r0:14 turns:1.15 start:18 sign:-1 n:26 w0:3.2 w1:1
@@ -300,9 +300,9 @@ layer mossy_rock pivot:512,820
       fx rim 3 dir:1,1 color:lantern.rim a:.4
       fx grain .04 scale:1.8
       fx outline 3 color:lantern.moss.line
-    ellipse 18,11 at:282,858 jitter:1.5 fill:grad(31 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
-    ellipse 14,9 at:744,852 jitter:1.5 fill:grad(33 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
-    ellipse 9,6 at:310,868 jitter:1.5 fill:grad(34 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+    ellipse 18,11 at:282,858 jitter:1.5,60 fill:grad(31 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+    ellipse 14,9 at:744,852 jitter:1.5,60 fill:grad(33 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+    ellipse 9,6 at:310,868 jitter:1.5,60 fill:grad(34 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
     curve 350,790 344,772 336,760 stroke:lantern.moss.line,[7 6 4] taper:0,.8
     curve 350,790 344,772 336,760 stroke:lantern.moss,[4 3 1] taper:0,.8
     curve 676,800 682,782 690,770 stroke:lantern.moss.line,[7 6 4] taper:0,.8

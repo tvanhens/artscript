@@ -550,6 +550,33 @@ fn suffixes_slots_and_else_if() {
 }
 
 #[test]
+fn statement_if_then_says_to_remove_then() {
+    let errs = parse("if ready then\n  circle 1\n").unwrap_err();
+    let e = errs.iter().find(|e| e.code == "E0101").expect("E0101");
+    assert_eq!(e.fix.as_deref(), Some("statement `if` takes a block; remove `then`"));
+}
+
+#[test]
+fn each_expr_is_one_list_and_formats_tight() {
+    let src = "curve [each k in 0..70 -> cx+r*cos(k*.3),cy+r*sin(k*.3)]\n";
+    let file = must_parse(src);
+    match node(&file) {
+        StmtKind::Node { args, .. } => match &args[0] {
+            Expr::Each { var, iter, body } => {
+                assert_eq!(var, "k");
+                assert!(matches!(iter.as_ref(), Expr::Range(_, _)));
+                assert!(matches!(body.as_ref(), Expr::Tuple(_)));
+            }
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    let once = format_source(src).unwrap();
+    assert_eq!(once, src);
+    assert_eq!(format_source(&once).unwrap(), once);
+}
+
+#[test]
 fn syntax_errors_carry_a_fix() {
     let tab = parse("def arm\n\tcircle 1\n").unwrap_err();
     let tab_err = tab.iter().find(|e| e.code == "E0102").expect("tab");

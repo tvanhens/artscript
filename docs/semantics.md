@@ -50,6 +50,8 @@ The first tokens of a line decide its form:
 - Items are separated by whitespace only: `shade(c -2)`, `level(@a @b)`, `[plate leather]`, `use face/parts { eye blush }`.
 - A comma with whitespace on either side is error E0101, with the fix "remove the comma".
 - A tight comma builds a tuple exactly as it does on a statement line. So `radial(a b at:.3,.3)` is a call with a vector argument, `[5 4 3]` is a list of three numbers, and `[0,0 10,5]` is a list of two points.
+- `[each name in <iter> -> <expr>]` is one list, not a list of items. The iterator stops before `->`, and the body is one expression, so `x,y` is a point.
+- A statement `if` given `then` is E0101, with the fix "statement `if` takes a block; remove `then`".
 - Named args are allowed in calls. `oklch(.78 .07 55)` is an ordinary call.
 
 **Precedence**, lowest to highest:
@@ -121,6 +123,8 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - **Def parameter types** are inferred from their default. Passing a different kind is E0320, and the fix names the expected kind.
 - **Ramp as a color.** A ramp used where a color is expected is its base stop.
 - **Identifiers** resolve in this order: `let` and loop bindings, def params, the `target` constant and matrix variables, palettes and aliases, components, and finally bare enum words.
+- **Arithmetic.** `+` and `-` on two vectors add and subtract. `*` and `/` on two vectors are elementwise. A number on either side of `*` scales a vector, and `v/n` scales by `1/n`. Unary `-` negates a vector. A pairing that is none of those is E0320.
+- **`atan2(y x)`** returns degrees, the same unit as `sin`, `cos`, `polar` and `rot:`. **`mod(a b)`** is the floored remainder (`mod(-1 3)` is 2). A zero divisor is E0320.
 
 ## 6. Color
 
@@ -150,7 +154,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Densify each segment to 16 sub-stops interpolated in OKLCH, with linear alpha.
   - When one end has alpha 0 or chroma < .02, take hue (and, for alpha 0, the color too) from the other end.
   - Emit sRGB `Stop`s.
-  - `grad(dir ...)` maps `down` to bounds top-center through bottom-center, and so on. For an angle, the line passes through the bounds center and spans the bounds' projection on that direction.
+  - When the first two arguments of `grad` are points, they are the start and end in the shape's local coordinates. A bare number is an angle, not a point, so `grad(17 a b)` keeps the direction form. Otherwise `grad(dir ...)` maps `down` to bounds top-center through bottom-center, and so on. For an angle, the line passes through the bounds center and spans the bounds' projection on that direction. Stop positions are unchanged.
   - `radial` defaults `at:.5,.5`, and `r` defaults to the distance from the center to the farthest corner.
 - **Raw color lint.** Literal colors outside `palette` blocks trigger the `raw-color` lint (L0101, warning by default). `#fff`-class near-whites and `oklch(...)` literals inside def parameter defaults are not exempt.
 
@@ -165,20 +169,20 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - `stroke:w` alone uses `line(fill)` (or `line(#8a8a8a)`).
   - `cap:` and `join:` override, and `dash:4,2` dashes.
 - **Tapered ink.** A stroke whose width is a list or range, or a stroke with `taper:` set, becomes a filled outline (`Shape.fill = stroke paint`, no stroke). Use the `brush` algorithm from chibi `paths.py`:
-  1. Sample the curve every .75 units.
+  1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the target's highest `scale:`, so `@2x` stays as smooth as `scale:1`. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
   2. Interpolate the per-point widths by chord fraction.
   3. Taper each end with the floor `.12` and ease `sin(x*pi/2)^.8`.
   4. Add round caps.
   - A range `a..b` is two widths, and a single width with `taper:` is that width everywhere.
-- **Curve.** Use centripetal Catmull-Rom with tension (default .5), exactly as `_spline` in chibi `paths.py`. `closed` closes the curve.
+- **Curve.** Use centripetal Catmull-Rom with tension (default .5), exactly as `_spline` in chibi `paths.py`. `closed` closes the curve. Points are the positional arguments. When the only positional argument is a list, its items are the points (`curve pts`, `curve [each k in 0..n -> x,y]`). A list beside other points is E0320. There is no separate polygon-of-points verb: a closed curve is that polygon.
 - **Blob.**
   - Use `points:` (default 7) points on a circle of radius r.
   - Each radius is scaled by `1 + wobble * u` with `u` in -1..1 from the seed, and each angle is jittered by `±wobble * 0.5 * step`.
   - The result is joined with a closed curve.
-- **Poly and star.** The first vertex points up. `round:r` rounds corners with Skia's corner path effect, then resolves the result to a path.
+- **Poly and star.** The first vertex points up. `round:r` rounds corners with Skia's corner path effect, then resolves the result to a path. A closed `curve` at `tension:0` is straight sides, and `round:r` rounds those corners with the same effect. A smooth curve has no corners, so `round:` is read only at tension 0.
 - **Booleans.** Use PathOps across the operands' transformed geometries, in the boolean node's local coordinates.
 - **`copy @ref`.** Takes the referenced node's silhouette (the union of its shape geometries, transformed into current local coordinates).
-- **`jitter:a`.** Apply chibi's `wobble` with wavelength 60, seeded from the node path.
+- **`jitter:amp,wavelength`.** Apply chibi's `wobble`, seeded from the node path. The pair is the only spelling: a bare number would hide the wavelength, and a second key would split one setting. A bare number is E0320, and the fix writes the amplitude with wavelength 60, which is what older art meant. Wavelength must be positive.
 - **`blur:` on a shape** sets `Shape.blur`.
 
 ## 8. Effects (`fx`)
@@ -312,7 +316,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - E0211: an import cycle.
   - E0212: an imported name that the module does not export.
   - E0304: `palette x from y` where `y` does not exist. E0305: a malformed palette entry or `ramp`.
-  - E0306: `each` over something that is not a list or range, or more than 100000 iterations.
+  - E0306: `each` over something that is not a list or range, or more than 100000 iterations. `[each k in ... -> ...]` uses the same rule.
   - E0307: an unknown style.
   - E0334: `slot` outside a `def`.
   - E0350: an unknown reference or member. The notes list the names that exist.

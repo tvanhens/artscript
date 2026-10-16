@@ -27,6 +27,10 @@ fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
         }
         Expr::Member(a, _) | Expr::Unary(_, a) => walk_expr(a, f),
         Expr::Tuple(xs) | Expr::List(xs) => xs.iter().for_each(|x| walk_expr(x, f)),
+        Expr::Each { iter, body, .. } => {
+            walk_expr(iter, f);
+            walk_expr(body, f);
+        }
         Expr::Call { args, named, .. } => {
             args.iter().for_each(|x| walk_expr(x, f));
             named.iter().for_each(|n| walk_expr(&n.value, f));

@@ -213,6 +213,23 @@ fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
 }
 
+/// Parent units per local unit, along the more-stretched axis.
+fn axis_scale(m: &Matrix) -> f64 {
+    let sx = f64::from(m.scale_x()).hypot(f64::from(m.skew_y()));
+    let sy = f64::from(m.scale_y()).hypot(f64::from(m.skew_x()));
+    sx.max(sy)
+}
+
+fn each_items(it: Value) -> R<Vec<Value>> {
+    let items = it.items().ok_or_else(|| {
+        fail("E0306", format!("`each` needs a list or range, got {}", it.kind())).fix("write `each x in [a b]` or `each i in 0..8`")
+    })?;
+    if items.len() > 100_000 {
+        return Err(fail("E0306", "`each` is limited to 100000 iterations"));
+    }
+    Ok(items)
+}
+
 fn blend_of(w: &str) -> Option<Blend> {
     Some(match w {
         "normal" => Blend::Normal,
@@ -602,13 +619,7 @@ impl<'a> Evaluator<'a> {
             }
             StmtKind::Each { var, iter, body } => {
                 self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
-                let it = self.expr(iter, sc)?;
-                let items = it.items().ok_or_else(|| {
-                    fail("E0306", format!("`each` needs a list or range, got {}", it.kind())).fix("write `each x in [a b]` or `each i in 0..8`")
-                })?;
-                if items.len() > 100_000 {
-                    return Err(fail("E0306", "`each` is limited to 100000 iterations"));
-                }
+                let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
                     inner.env.push((var.clone(), v));
@@ -903,12 +914,25 @@ impl<'a> Evaluator<'a> {
                 _ => self.primitive(verb, &a, frame, flag("closed"))?,
             };
             let mut geometry = geometry;
-            if let Some(amount) = a.num("jitter").filter(|v| *v != 0.0) {
-                let extra = a.num("seed").unwrap_or(0.0) as u64;
-                let mut rng = Rng::new(seed::node_seed(sc.file(), &format!("{path}#jitter"), extra));
-                geometry = geom::wobble(&geometry, amount, &mut rng, 60.0);
+            if let Some(spec) = a.get("jitter") {
+                let (amount, wavelength) = match spec {
+                    Value::Num(amp) => {
+                        return Err(fail("E0320", "`jitter:` takes amplitude and wavelength").fix(format!("write `jitter:{},60`", num(*amp))));
+                    }
+                    other => other.vec2().ok_or_else(|| {
+                        fail("E0320", format!("`jitter:` takes amplitude,wavelength, got {}", other.kind())).fix("write `jitter:1.5,60`")
+                    })?,
+                };
+                if amount != 0.0 {
+                    if wavelength <= 0.0 {
+                        return Err(fail("E0320", "`jitter:` wavelength must be positive").fix("write `jitter:1.5,60`"));
+                    }
+                    let extra = a.num("seed").unwrap_or(0.0) as u64;
+                    let mut rng = Rng::new(seed::node_seed(sc.file(), &format!("{path}#jitter"), extra));
+                    geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
+                }
             }
-            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style)?;
+            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
                 record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at }));
@@ -1110,8 +1134,15 @@ impl<'a> Evaluator<'a> {
                 (p, None, true)
             }
             "curve" => {
-                let pts: Vec<P> = a
-                    .pos
+                let values: Vec<Value> = match a.pos.as_slice() {
+                    [Value::List(xs)] => xs.clone(),
+                    _ if a.pos.iter().any(|v| matches!(v, Value::List(_))) => {
+                        return Err(fail("E0320", "`curve` takes points, or one list of points")
+                            .fix("write `curve pts` or `curve [each k in 0..n -> x,y]`"));
+                    }
+                    _ => a.pos.clone(),
+                };
+                let pts: Vec<P> = values
                     .iter()
                     .map(|v| v.pair().map(|(x, y)| (x.pos(fx, fw), y.pos(fy, fh))))
                     .collect::<Option<_>>()
@@ -1121,7 +1152,14 @@ impl<'a> Evaluator<'a> {
                 }
                 let closed = closed_flag && pts.len() >= 3;
                 let tension = a.num("tension").unwrap_or(0.5);
-                (geom::spline(&pts, tension, closed), Some(pts), closed)
+                let path = if closed && tension == 0.0 && let Some(round) = a.num("round").filter(|v| *v > 0.0) {
+                    // A tension-0 spline is cubics. Skia's corner effect only rounds line joins,
+                    // so the straight sides are a polygon before the same effect `poly` uses.
+                    geom::round_corners(&geom::polygon(&pts), round)
+                } else {
+                    geom::spline(&pts, tension, closed)
+                };
+                (path, Some(pts), closed)
             }
             "path" => {
                 let d = first.and_then(|v| match v {
@@ -1143,7 +1181,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)]) -> R<Shape> {
+    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix) -> R<Shape> {
         let pick = |k: &str| a.get(k).cloned().or_else(|| style.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone()));
         let bounds = geom::bounds(&geometry);
         let fill_v = pick("fill");
@@ -1196,7 +1234,10 @@ impl<'a> Evaluator<'a> {
                 W::List(ws) => ws,
             };
             let knots = knots.filter(|k| k.len() == widths.len()).unwrap_or(&[]);
-            let outline = geom::brush(&geometry, knots, &widths, taper.unwrap_or((0.0, 0.0)));
+            // 0.75 output pixels. The local step divides by the accumulated transform
+            // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
+            let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+            let outline = geom::brush(&geometry, knots, &widths, taper.unwrap_or((0.0, 0.0)), 0.75 / px);
             let ob = geom::bounds(&outline);
             let paint = to_paint(&paint_v, ob).ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             return Ok(Shape { geometry: outline, fill: Some(paint), stroke: None, blur, children: vec![] });
@@ -1591,6 +1632,16 @@ impl<'a> Evaluator<'a> {
             }
             Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
             Expr::List(xs) => Value::List(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
+            Expr::Each { var, iter, body } => {
+                let items = each_items(self.expr(iter, sc)?)?;
+                let mut out = Vec::with_capacity(items.len());
+                for v in items {
+                    let mut inner = sc.clone();
+                    inner.env.push((var.clone(), v));
+                    out.push(self.expr(body, &inner)?);
+                }
+                Value::List(out)
+            }
             Expr::Range(a, b) => {
                 let (a, b) = (self.expr(a, sc)?, self.expr(b, sc)?);
                 match (a.num(), b.num()) {
