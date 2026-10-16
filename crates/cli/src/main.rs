@@ -15,7 +15,7 @@ const USAGE: &str = "usage: artscript <command>
 commands:
   build [--only GLOB] [--allow-warnings]   render every @target, write art-manifest.json
   check [--json]                           evaluate and run checks without rendering
-  fmt                                      rewrite every .art file in canonical form
+  fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
 
@@ -25,26 +25,26 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let code = match args.first().map(String::as_str) {
-        Some("build") => with_project(&cwd, |p| {
-            let mut opts = build::Options::default();
-            let mut it = args[1..].iter();
-            while let Some(a) = it.next() {
-                match a.as_str() {
-                    "--allow-warnings" => opts.allow_warnings = true,
-                    "--only" => opts.only = it.next().cloned(),
-                    s if s.starts_with("--only=") => opts.only = Some(s["--only=".len()..].to_string()),
-                    other => return usage_error(&format!("unknown build flag `{other}`")),
-                }
-            }
-            build::build(p, &opts)
-        }),
-        Some("check") => with_project(&cwd, |p| check(p, args.iter().any(|a| a == "--json"))),
-        Some("fmt") => with_project(&cwd, fmt),
-        Some("explain") => match args.get(1) {
-            Some(file) => with_project(&cwd, |p| explain(p, &cwd.join(file))),
-            None => usage_error("`explain` needs a file"),
+        Some("build") => match parse_build(&args[1..]) {
+            Ok(opts) => with_project(&cwd, |p| build::build(p, &opts)),
+            Err(msg) => usage_error(&msg),
         },
-        Some("init") => init(&cwd),
+        Some("check") => match flag_set(&args[1..], &["--json"]) {
+            Ok(json) => with_project(&cwd, |p| check(p, json)),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("fmt") => match parse_fmt(&args[1..]) {
+            Ok((check, files)) => with_project(&cwd, |p| fmt(p, &cwd, check, &files)),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("explain") => match parse_explain(&args[1..]) {
+            Ok(file) => with_project(&cwd, |p| explain(p, &cwd.join(file))),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("init") => match flag_set(&args[1..], &[]) {
+            Ok(_) => init(&cwd),
+            Err(msg) => usage_error(&msg),
+        },
         Some("--version" | "-V") => {
             println!("artscript {}", artscript_eval::VERSION);
             0
@@ -63,12 +63,74 @@ fn usage_error(msg: &str) -> u8 {
     1
 }
 
+/// Known flags only. Returns whether `flag` was present.
+fn flag_set(args: &[String], known: &[&str]) -> Result<bool, String> {
+    let mut seen = false;
+    for a in args {
+        if known.contains(&a.as_str()) {
+            seen = true;
+        } else if a.starts_with('-') {
+            return Err(format!("unknown flag `{a}`"));
+        } else {
+            return Err(format!("unexpected argument `{a}`"));
+        }
+    }
+    Ok(seen)
+}
+
+fn parse_build(args: &[String]) -> Result<build::Options, String> {
+    let mut opts = build::Options::default();
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--allow-warnings" => opts.allow_warnings = true,
+            "--only" => opts.only = it.next().cloned(),
+            s if s.starts_with("--only=") => opts.only = Some(s["--only=".len()..].to_string()),
+            other => return Err(format!("unknown build flag `{other}`")),
+        }
+    }
+    Ok(opts)
+}
+
+fn parse_explain(args: &[String]) -> Result<&str, String> {
+    let mut file = None;
+    for a in args {
+        if a.starts_with('-') {
+            return Err(format!("unknown flag `{a}`"));
+        }
+        if file.is_some() {
+            return Err(format!("unexpected argument `{a}`"));
+        }
+        file = Some(a.as_str());
+    }
+    file.ok_or_else(|| "`explain` needs a file".to_string())
+}
+
+fn parse_fmt(args: &[String]) -> Result<(bool, Vec<String>), String> {
+    let mut check = false;
+    let mut files = Vec::new();
+    for a in args {
+        if a == "--check" {
+            check = true;
+        } else if a.starts_with('-') {
+            return Err(format!("unknown flag `{a}`"));
+        } else {
+            files.push(a.clone());
+        }
+    }
+    Ok((check, files))
+}
+
 fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
     let Some(root) = find_root(cwd) else {
         eprintln!(
             "{}",
-            Diagnostic::error("E0200", Span::default(), "no artscript.toml in this directory or any parent")
-                .with_fix("run `artscript init` to create a project here")
+            Diagnostic::error(
+                "E0200",
+                Span::default(),
+                "no artscript.toml in this directory or any parent"
+            )
+            .with_fix("run `artscript init` to create a project here")
         );
         return 1;
     };
@@ -85,7 +147,9 @@ fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
 pub(crate) fn report(mut diags: Vec<Diagnostic>, allow_warnings: bool, json: bool) -> u8 {
     let mut seen = std::collections::HashSet::new();
     diags.retain(|d| seen.insert(d.to_string()));
-    diags.sort_by(|a, b| (&a.file, a.span.line, a.span.col).cmp(&(&b.file, b.span.line, b.span.col)));
+    diags.sort_by(|a, b| {
+        (&a.file, a.span.line, a.span.col).cmp(&(&b.file, b.span.line, b.span.col))
+    });
     if json {
         println!("{}", serde_json::json!({ "diagnostics": diags }));
     } else {
@@ -118,13 +182,35 @@ fn check(project: &Project, json: bool) -> u8 {
     report(diags, false, json)
 }
 
-fn fmt(project: &Project) -> u8 {
+fn fmt(project: &Project, cwd: &Path, check: bool, files: &[String]) -> u8 {
+    let selected = if files.is_empty() {
+        project.files.keys().cloned().collect::<Vec<_>>()
+    } else {
+        let mut out = Vec::new();
+        for arg in files {
+            match resolve_art(project, cwd, arg) {
+                Ok(rel) if !out.contains(&rel) => out.push(rel),
+                Ok(_) => {}
+                Err(msg) => return usage_error(&msg),
+            }
+        }
+        out
+    };
     let mut diags = Vec::new();
-    for (rel, src) in &project.files {
+    let mut dirty = Vec::new();
+    for rel in &selected {
+        let Some(src) = project.files.get(rel) else {
+            return usage_error(&format!("`{rel}` is not an .art file in this project"));
+        };
         match artscript_syntax::format_source(src) {
             Ok(out) if &out != src => {
-                if let Err(e) = fs::write(project.root.join(rel), out) {
-                    diags.push(Diagnostic::error("E0200", Span::default(), format!("cannot write: {e}")).in_file(rel));
+                if check {
+                    dirty.push(rel.clone());
+                } else if let Err(e) = fs::write(project.root.join(rel), &out) {
+                    diags.push(
+                        Diagnostic::error("E0200", Span::default(), format!("cannot write: {e}"))
+                            .in_file(rel),
+                    );
                 } else {
                     println!("formatted {rel}");
                 }
@@ -133,7 +219,28 @@ fn fmt(project: &Project) -> u8 {
             Err(errs) => diags.extend(errs.into_iter().map(|d| d.in_file(rel))),
         }
     }
-    report(diags, false, false)
+    if check {
+        for rel in &dirty {
+            println!("{rel}");
+        }
+    }
+    let code = report(diags, false, false);
+    if check && !dirty.is_empty() { 1 } else { code }
+}
+
+fn resolve_art(project: &Project, cwd: &Path, arg: &str) -> Result<String, String> {
+    let path = cwd.join(arg);
+    let canon = fs::canonicalize(&path).map_err(|e| format!("cannot read `{arg}`: {e}"))?;
+    if !canon.is_file() {
+        return Err(format!("`{arg}` is not a file"));
+    }
+    let root = fs::canonicalize(&project.root).unwrap_or_else(|_| project.root.clone());
+    let rel = rel_path(&root, &canon);
+    if project.files.contains_key(&rel) {
+        Ok(rel)
+    } else {
+        Err(format!("`{arg}` is not an .art file in this project"))
+    }
 }
 
 fn explain(project: &Project, file: &Path) -> u8 {
@@ -142,15 +249,23 @@ fn explain(project: &Project, file: &Path) -> u8 {
     let rel = rel_path(&root, &file);
     let plan = plan(project);
     let Some(job) = plan.jobs.iter().find(|j| j.source == rel) else {
-        let own: Vec<Diagnostic> = plan.diagnostics.into_iter().filter(|d| d.file == rel).collect();
+        let own: Vec<Diagnostic> = plan
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.file == rel)
+            .collect();
         if !own.is_empty() {
             return report(own, false, false);
         }
         eprintln!(
             "{}",
-            Diagnostic::error("E0200", Span::default(), format!("`{rel}` has no @target to explain"))
-                .with_note(format!("entry files: {}", plan.entries.join(", ")))
-                .with_fix("pass a file that declares `@target`")
+            Diagnostic::error(
+                "E0200",
+                Span::default(),
+                format!("`{rel}` has no @target to explain")
+            )
+            .with_note(format!("entry files: {}", plan.entries.join(", ")))
+            .with_fix("pass a file that declares `@target`")
         );
         return 1;
     };
@@ -177,19 +292,30 @@ profile = "auto"
 raw-color = "warn"
 "#;
 
-const INIT_PALETTE: &str = "palette house\n  sky ramp #7fb8e6 5\n  leaf ramp #6cbf6a 5\n  ink ramp #3b2a2a 5\n";
+const INIT_PALETTE: &str =
+    "palette house\n  sky ramp #7fb8e6 5\n  leaf ramp #6cbf6a 5\n  ink ramp #3b2a2a 5\n";
 
-const INIT_ART: &str = "@target hello.png 512x512 scale:1,2\n\ncircle 160 fill:p.sky stroke:p.ink.line,6\n";
+const INIT_ART: &str =
+    "@target hello.png 512x512 scale:1,2\n\ncircle 160 fill:p.sky stroke:p.ink.line,6\n";
 
 fn init(cwd: &Path) -> u8 {
     if cwd.join("artscript.toml").exists() {
         eprintln!(
             "{}",
-            Diagnostic::error("E0200", Span::default(), "artscript.toml already exists here").with_fix("run `artscript build` instead")
+            Diagnostic::error(
+                "E0200",
+                Span::default(),
+                "artscript.toml already exists here"
+            )
+            .with_fix("run `artscript build` instead")
         );
         return 1;
     }
-    let files = [("artscript.toml", INIT_MANIFEST), ("lib/palette/house.art", INIT_PALETTE), ("art/hello.art", INIT_ART)];
+    let files = [
+        ("artscript.toml", INIT_MANIFEST),
+        ("lib/palette/house.art", INIT_PALETTE),
+        ("art/hello.art", INIT_ART),
+    ];
     for (rel, body) in files {
         let path = cwd.join(rel);
         if path.exists() {
@@ -215,7 +341,9 @@ pub(crate) fn glob_match(pat: &str, text: &str) -> bool {
                 let rest = p[2..].strip_prefix(b"/").unwrap_or(&p[2..]);
                 (0..=t.len()).any(|i| go(rest, &t[i..]) || (i < t.len() && go(&p[2..], &t[i..])))
             }
-            Some(b'*') => (0..=t.len()).take_while(|&i| i == 0 || t[i - 1] != b'/').any(|i| go(&p[1..], &t[i..])),
+            Some(b'*') => (0..=t.len())
+                .take_while(|&i| i == 0 || t[i - 1] != b'/')
+                .any(|i| go(&p[1..], &t[i..])),
             Some(b'?') => !t.is_empty() && t[0] != b'/' && go(&p[1..], &t[1..]),
             Some(c) => t.first() == Some(c) && go(&p[1..], &t[1..]),
         }
@@ -233,14 +361,26 @@ mod tests {
         assert!(!glob_match("*.png", "produce/momo_peach.png"));
         assert!(glob_match("**/*.png", "produce/momo_peach.png"));
         assert!(glob_match("**", "a/b/c"));
-        assert!(glob_match("art/**/momo?peach.art", "art/produce/momo_peach.art"));
+        assert!(glob_match(
+            "art/**/momo?peach.art",
+            "art/produce/momo_peach.art"
+        ));
     }
 
     #[test]
     fn exit_codes() {
-        let e = |code: &str, sev: Severity| Diagnostic { severity: sev, ..Diagnostic::error(code, Span::default(), "x") };
+        let e = |code: &str, sev: Severity| Diagnostic {
+            severity: sev,
+            ..Diagnostic::error(code, Span::default(), "x")
+        };
         assert_eq!(exit_code(&[], false), 0);
-        assert_eq!(exit_code(&[e("E0301", Severity::Error), e("C0101", Severity::Error)], false), 1);
+        assert_eq!(
+            exit_code(
+                &[e("E0301", Severity::Error), e("C0101", Severity::Error)],
+                false
+            ),
+            1
+        );
         assert_eq!(exit_code(&[e("C0101", Severity::Error)], false), 2);
         assert_eq!(exit_code(&[e("L0101", Severity::Error)], false), 2);
         assert_eq!(exit_code(&[e("C0201", Severity::Warning)], false), 3);

@@ -76,8 +76,11 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - Indentation is two spaces per level, with a single space between items.
 - Positional args come before named args, in source order.
 - Numbers drop a leading zero and trailing zeros (`0.50` becomes `.5`, `1.0` becomes `1`).
+- The operators `+`, `-`, `*`, and `/` are written with no spaces. `cx-40,884` is a tuple of a subtraction and `884`. `cx - 40,884` and `(cx - 40),884` are both written `cx-40,884`.
+- Parentheses are printed when removing them would change the tree. `(a+b)*c` and `a+(b,c)` keep their parentheses.
 - Comments are preserved: keep each comment's text attached to the statement that follows it, or trailing on its line. The AST does not hold comments, so `fmt` re-reads them from the source by line.
-- `format(parse(format(x))) == format(x)`.
+- One blank line between statements is kept. Several blank lines in a row become one. Blank lines are not in the AST, so `fmt` re-reads them from the source.
+- `format(parse(format(x))) == format(x)`, and `parse(format(x))` is the same tree as `parse(x)`.
 
 ## 3. Coordinates and frames
 

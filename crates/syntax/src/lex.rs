@@ -197,6 +197,8 @@ pub(crate) struct Line {
 pub(crate) struct Lexed {
     pub lines: Vec<Line>,
     pub comments: Vec<Comment>,
+    /// 1-based line numbers of lines that are empty or only whitespace.
+    pub blanks: Vec<u32>,
     pub errors: Vec<Diagnostic>,
 }
 
@@ -211,6 +213,7 @@ struct Scanner<'a> {
     col: u32,
     lines: Vec<Line>,
     comments: Vec<Comment>,
+    blanks: Vec<u32>,
     errors: Vec<Diagnostic>,
 }
 
@@ -223,6 +226,7 @@ impl<'a> Scanner<'a> {
             col: 1,
             lines: Vec::new(),
             comments: Vec::new(),
+            blanks: Vec::new(),
             errors: Vec::new(),
         }
     }
@@ -234,6 +238,7 @@ impl<'a> Scanner<'a> {
         Lexed {
             lines: self.lines,
             comments: self.comments,
+            blanks: self.blanks,
             errors: self.errors,
         }
     }
@@ -274,6 +279,7 @@ impl<'a> Scanner<'a> {
             self.bump();
         }
         if self.peek() == Some('\n') {
+            self.blanks.push(self.line);
             self.bump();
             return;
         }
@@ -303,6 +309,7 @@ impl<'a> Scanner<'a> {
         match self.peek() {
             None => {}
             Some('\n') | Some('\r') => {
+                self.blanks.push(self.line);
                 if self.peek() == Some('\r') {
                     self.bump();
                 }

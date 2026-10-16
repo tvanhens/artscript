@@ -26,8 +26,6 @@ pub fn format(file: &ast::File) -> String {
 /// `format_source` applied twice is the same string.
 pub fn format_source(src: &str) -> Result<String, Vec<Diagnostic>> {
     let file = parse(src)?;
-    Ok(fmt::format_file_with_comments(
-        &file,
-        &fmt::comments_of(src),
-    ))
+    let (comments, blanks) = fmt::source_notes(src);
+    Ok(fmt::format_file_with_comments(&file, &comments, &blanks))
 }

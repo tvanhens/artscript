@@ -2,14 +2,20 @@ use crate::ast::{BinOp, CheckKind, Expr, File, Named, Stmt, StmtKind, UnOp};
 use crate::lex::{self, Comment};
 
 pub fn format_file(file: &File) -> String {
-    format_file_with_comments(file, &[])
+    format_file_with_comments(file, &[], &[])
 }
 
-pub(crate) fn format_file_with_comments(file: &File, comments: &[Comment]) -> String {
+pub(crate) fn format_file_with_comments(
+    file: &File,
+    comments: &[Comment],
+    blanks: &[u32],
+) -> String {
     let mut p = Printer {
         comments,
         ci: 0,
         out: String::new(),
+        blanks,
+        prev_line: 0,
     };
     for d in &file.directives {
         let mut parts = vec![format!("@{}", d.name)];
@@ -39,6 +45,8 @@ struct Printer<'a> {
     comments: &'a [Comment],
     ci: usize,
     out: String,
+    blanks: &'a [u32],
+    prev_line: u32,
 }
 
 impl<'a> Printer<'a> {
@@ -213,6 +221,7 @@ impl<'a> Printer<'a> {
             body => {
                 let anchor = body.first().map(|s| s.span.line).unwrap_or(line);
                 self.emit_leading(anchor, indent);
+                self.gap_before(anchor);
                 self.out.push_str(&" ".repeat(indent * 2));
                 self.out.push_str("else\n");
                 self.stmts(body, indent + 1);
@@ -245,10 +254,24 @@ impl<'a> Printer<'a> {
 
     fn emit(&mut self, source_line: u32, indent: usize, text: &str) {
         self.emit_leading(source_line, indent);
+        self.gap_before(source_line);
         self.out.push_str(&" ".repeat(indent * 2));
         self.out.push_str(text);
         self.emit_trailing(source_line);
         self.out.push('\n');
+    }
+
+    /// A run of blank lines between two source lines becomes one blank line.
+    fn gap_before(&mut self, line: u32) {
+        if self.prev_line > 0 && line > self.prev_line {
+            let prev = self.prev_line;
+            if self.blanks.iter().any(|&b| b > prev && b < line) && !self.out.ends_with("\n\n") {
+                self.out.push('\n');
+            }
+        }
+        if line > self.prev_line {
+            self.prev_line = line;
+        }
     }
 
     fn emit_leading(&mut self, before_line: u32, indent: usize) {
@@ -262,8 +285,9 @@ impl<'a> Printer<'a> {
                 continue;
             }
             let text = c.text.clone();
+            let line = c.line;
             self.ci += 1;
-            self.write_comment(indent, &text);
+            self.write_comment(indent, &text, line);
         }
     }
 
@@ -280,7 +304,8 @@ impl<'a> Printer<'a> {
         }
     }
 
-    fn write_comment(&mut self, indent: usize, text: &str) {
+    fn write_comment(&mut self, indent: usize, text: &str, line: u32) {
+        self.gap_before(line);
         self.out.push_str(&" ".repeat(indent * 2));
         self.push_hash(text);
         self.out.push('\n');
@@ -300,7 +325,8 @@ impl<'a> Printer<'a> {
             let c = &self.comments[self.ci];
             if !c.trailing {
                 let text = c.text.clone();
-                self.write_comment(0, &text);
+                let line = c.line;
+                self.write_comment(0, &text, line);
             }
             self.ci += 1;
         }
@@ -403,7 +429,7 @@ fn fmt_body(e: &Expr) -> String {
             let ls = fmt_at(l, prec, false);
             let rs = fmt_at(r, prec, true);
             let sym = op_sym(*op);
-            if matches!(op, BinOp::Mul | BinOp::Div) {
+            if matches!(op, BinOp::Add | BinOp::Sub | BinOp::Mul | BinOp::Div) {
                 format!("{ls}{sym}{rs}")
             } else {
                 format!("{ls} {sym} {rs}")
@@ -502,6 +528,7 @@ fn trim_float(s: &str) -> String {
     }
 }
 
-pub(crate) fn comments_of(src: &str) -> Vec<Comment> {
-    lex::lex(src).comments
+pub(crate) fn source_notes(src: &str) -> (Vec<Comment>, Vec<u32>) {
+    let lexed = lex::lex(src);
+    (lexed.comments, lexed.blanks)
 }

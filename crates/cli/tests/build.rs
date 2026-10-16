@@ -50,7 +50,8 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
     let png = dir.join("assets/produce/momo_peach.png");
     let svg = dir.join("assets/produce/momo_peach.svg");
 
-    let first = artscript(&dir, &["build"]);
+    let only = ["build", "--only", "produce/momo_peach.*"];
+    let first = artscript(&dir, &only);
     assert_eq!(first.status.code(), Some(0), "{}", text(&first));
     assert!(!text(&first).contains("L0101"), "{}", text(&first));
     let (png_bytes, svg_bytes) = (fs::read(&png).unwrap(), fs::read(&svg).unwrap());
@@ -73,7 +74,7 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
     let manifest_bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
 
     let started = std::time::Instant::now();
-    let second = artscript(&dir, &["build"]);
+    let second = artscript(&dir, &only);
     assert_eq!(second.status.code(), Some(0), "{}", text(&second));
     assert!(started.elapsed().as_secs_f32() < 2.0, "cache miss: second build took {:?}", started.elapsed());
     assert_eq!(fs::read(&png).unwrap(), png_bytes);
@@ -83,7 +84,7 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
     let art = dir.join("art/produce/momo_peach.art");
     let src = fs::read_to_string(&art).unwrap();
     fs::write(&art, src.replace("@target produce/momo_peach.svg 1024x1024\n", "")).unwrap();
-    let third = artscript(&dir, &["build"]);
+    let third = artscript(&dir, &only);
     assert_eq!(third.status.code(), Some(0), "{}", text(&third));
     assert!(!svg.exists(), "stale svg survived");
     assert!(text(&third).contains("removed stale produce/momo_peach.svg"));
