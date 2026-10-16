@@ -262,7 +262,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - the entry source
   - every transitively imported library source
   - the manifest
-  - the compiler version
+  - the hash of the `artscript` executable, so a renderer change re-renders every target
   - the target's matrix values
   
   When the key matches and the outputs on disk match their hashes, skip the target.

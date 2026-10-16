@@ -106,10 +106,21 @@ fn cache_key(project: &Project, job: &TargetJob) -> String {
     }
     buf.extend_from_slice(project.manifest_src.as_bytes());
     buf.push(0);
-    buf.extend_from_slice(artscript_eval::VERSION.as_bytes());
+    buf.extend_from_slice(renderer_id().as_bytes());
     buf.push(0);
     buf.extend_from_slice(job.key().as_bytes());
     hex(&buf)
+}
+
+/// The crate version stays put while the renderer changes, so outputs are keyed on the executable itself.
+fn renderer_id() -> &'static str {
+    static ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    ID.get_or_init(|| {
+        std::env::current_exe()
+            .and_then(fs::read)
+            .map(|bytes| hex(&bytes))
+            .unwrap_or_else(|_| artscript_eval::VERSION.to_string())
+    })
 }
 
 fn cache_path(root: &Path, job: &TargetJob) -> std::path::PathBuf {
