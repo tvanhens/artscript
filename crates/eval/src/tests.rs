@@ -378,6 +378,18 @@ fn stroke_range_is_e0320() {
         .map(|d| d.fix.clone().unwrap_or_default())
         .collect();
     assert_eq!(patch_fixes, vec!["write `stroke:paint,[2 6]`".to_string()], "{}", show(&patched.diagnostics));
+
+    let restyle = run_with(
+        "@target t.png 40x40\nstyle old stroke:#111,1..3\nstyle new stroke:#222,4..6\ndef ink\n  curve 0,0 30,0 name:line style:old\nink\n  .line style:new\n",
+        &[],
+    );
+    let restyle_fixes: Vec<_> = restyle
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(restyle_fixes, vec!["write `stroke:#111,[1 3]`".to_string()], "{}", show(&restyle.diagnostics));
 }
 
 #[test]

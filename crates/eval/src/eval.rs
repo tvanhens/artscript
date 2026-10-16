@@ -293,13 +293,13 @@ fn each_items(it: Value) -> R<Vec<Value>> {
     Ok(items)
 }
 
-fn stroke_expr(named: &[Named], a: &Args, sc: &Scope) -> Option<Expr> {
+fn stroke_expr(named: &[Named], style: Option<&str>, sc: &Scope) -> Option<Expr> {
     if let Some(n) = named.iter().rev().find(|n| n.key == "stroke") {
         return Some(n.value.clone());
     }
-    let sname = a.word("style")?;
+    let sname = style?;
     let styles = sc.module.styles.borrow();
-    styles.get(&sname).and_then(|s| s.named.iter().rev().find(|n| n.key == "stroke").map(|n| n.value.clone()))
+    styles.get(sname).and_then(|s| s.named.iter().rev().find(|n| n.key == "stroke").map(|n| n.value.clone()))
 }
 
 fn range_width(stroke: Option<&Expr>) -> Fail {
@@ -913,8 +913,9 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
-        if let Some(sname) = a.word("style") {
-            let mut s = self.style_named(&sname, sc)?;
+        let expanded_style = a.word("style");
+        if let Some(sname) = &expanded_style {
+            let mut s = self.style_named(sname, sc)?;
             s.append(&mut a.named);
             a.named = s;
         }
@@ -1030,8 +1031,9 @@ impl<'a> Evaluator<'a> {
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            // A patch is stored as a value, so a stroke it supplies has no source spelling left.
-            let stroke_src = if patch_stroke { None } else { stroke_expr(named, &a, sc) };
+            // A patch is stored as a value. A stroke it supplies has no spelling, and a style it
+            // renames is not the style that was expanded above.
+            let stroke_src = if patch_stroke { None } else { stroke_expr(named, expanded_style.as_deref(), sc) };
             let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world, stroke_src.as_ref())?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
