@@ -255,9 +255,10 @@ fn indent_tab(invalid: &'static str) -> Pattern {
 fn directive(invalid: &'static str) -> Pattern {
     Pattern::Region {
         begin: format!(
-            "{at}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))",
+            "{at}(@{ident}){after}(?!\\.(?:[A-Za-z_0-9*]))",
             at = at_directive(),
-            ident = IDENT
+            ident = IDENT,
+            after = NOT_IDENT_AFTER
         ),
         end: format!(
             "({path}*[/.{{]{path}*){chunk}|{stop}",
@@ -522,7 +523,7 @@ fn path_chunk_end() -> String {
         "(?:{dropped}|[ \\t])*{dropped}(?:[@\"A-Za-z0-9_./{{}}*+=!<>~:,()\\[\\]-]|{color})"
     );
     format!(
-        "(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?!(?<=[0-9])%)(?:{dropped})+{gap})"
+        "(?!{glued})(?!(?:{dropped})*{color})(?={gap}|(?!(?<=(?:^|[^A-Za-z_0-9_.])(?:[0-9]+(?:\\.[0-9]+)?|\\.[0-9]+))%)(?:{dropped})+{gap})"
     )
 }
 

@@ -168,3 +168,8 @@ use foo%
 .?.if
 . .head
 .?. head
+use asset1%
+use asset12%
+@target ./asset1%
+@target.eye
+@items.*.name

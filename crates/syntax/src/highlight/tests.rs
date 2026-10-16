@@ -923,6 +923,11 @@ fn boundary_source() -> String {
         ".?.if",
         ". .head",
         ".?. head",
+        "use asset1%",
+        "use asset12%",
+        "@target ./asset1%",
+        "@target.eye",
+        "@items.*.name",
     ] {
         lines.push(line.into());
     }
@@ -982,6 +987,11 @@ fn discarded_gap_ribbons() {
         (".?.if", "p!okk"),
         (". .head", "p oiiii"),
         (".?. head", "p!p pppp"),
+        ("use asset1%", "kkk aaaaaa!"),
+        ("use asset12%", "kkk aaaaaaa!"),
+        ("@target ./asset1%", "ddddddd aaaaaaaa!"),
+        ("@target.eye", "rrrrrrrrrrr"),
+        ("@items.*.name", "rrrrrrrrrrrrr"),
     ];
     for (src, expect) in cases {
         assert_eq!(ribbon(src, &classify(src)), expect, "{src}");
