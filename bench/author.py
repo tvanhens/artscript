@@ -40,12 +40,14 @@ def write_patch(task_id: str, edited: Path) -> None:
 
 
 def patched(task_dir: Path) -> dict[str, str]:
-    """Every source file the solution changes or adds, after `git apply`."""
+    """Every source file the solution changes or adds, after `git apply`. A patch may not delete one."""
     with tempfile.TemporaryDirectory() as tmp:
         for d in SOURCES:
             shutil.copytree(PROJECT / d, Path(tmp) / d)
         subprocess.run(["git", "apply", str(task_dir / "solution.patch")], cwd=tmp, check=True)
         after = sources(Path(tmp))
+        if deleted := sorted(sources(PROJECT) - after):
+            sys.exit(f"{task_dir.name}: solution.patch deletes {', '.join(deleted)}; transcripts have no delete step")
         return {
             rel: (Path(tmp) / rel).read_text()
             for rel in sorted(after)
