@@ -1,5 +1,6 @@
 //! Bound policy for `a..b`. This file is the only place that compares a range's ends.
 
+use std::cmp::Ordering;
 use std::fmt;
 
 use crate::value::{Arith, num};
@@ -27,7 +28,7 @@ impl Range {
         std::iter::from_fn(move || {
             let x = self.lo + n as f64;
             // An offset that does not move forward is infinity or a lost integer, so stop.
-            if n > 0 && !(x > prev) {
+            if n > 0 && x.partial_cmp(&prev) != Some(Ordering::Greater) {
                 return None;
             }
             if !self.contains(x) {
