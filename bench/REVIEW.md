@@ -20,7 +20,9 @@ catches this, and a number does not. Pixel checks such as the `changed` lines in
 1. **Render.** Run `scripts/review_crops.sh --before <base ref> <piece>...` for every piece the
    change touches, plus every piece that uses a changed library (`grep -l 'use face/parts'
    examples/chibi/art -r`). It builds each piece from clean copies with no cache, once at the base
-   ref and twice from the working tree, and writes the following to `/tmp/artscript-review`:
+   ref with artscript built from that ref and twice from the working tree with artscript built
+   from the working tree, so an engine change shows up even when no `.art` file moved. It writes
+   the following to `/tmp/artscript-review`:
    - `<piece>_light.png` and `<piece>_dark.png`: before on the left, after on the right, at full
      size on white and on near-black.
    - `<piece>_diff.png`: where the pixels moved, amplified 8x.
