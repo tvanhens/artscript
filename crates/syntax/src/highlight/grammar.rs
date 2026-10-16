@@ -9,6 +9,7 @@ const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
 const HEAD: &str = "^[ ]*([ \\t]*\\t[ \\t]*)?";
+const DIRECTIVE_HEAD: &str = "^(\\t+)?";
 
 const ESCAPE_SCOPE: &str = "constant.character.escape.art";
 
@@ -154,11 +155,6 @@ pub(crate) fn emit() -> Vec<Pattern> {
             captures: vec![],
         },
         Pattern::Match {
-            re: "^[ ]*\\t[ \\t]*(?=#|$)".into(),
-            name: Some(invalid),
-            captures: vec![],
-        },
-        Pattern::Match {
             re: "#.*$".into(),
             name: Some(scope(Class::Comment)),
             captures: vec![],
@@ -172,6 +168,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
     patterns.push(patch(invalid));
     patterns.push(slot(invalid));
     patterns.push(verb(invalid));
+    patterns.push(unmatched_indent_tab(invalid));
     patterns.push(Pattern::Match {
         re: format!("@{ident}(?:\\.(?:{ident}|[0-9]+|\\*))*", ident = IDENT),
         name: Some(scope(Class::Reference)),
@@ -245,9 +242,10 @@ fn directive(invalid: &'static str) -> Pattern {
     let path = path_class();
     Pattern::Match {
         re: format!(
-            "{head}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*)(?=$|[ \\t]))?",
-            head = HEAD,
-            ident = IDENT
+            "{head}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*){end})?",
+            head = DIRECTIVE_HEAD,
+            ident = IDENT,
+            end = path_chunk_end()
         ),
         name: None,
         captures: vec![
@@ -261,10 +259,11 @@ fn directive(invalid: &'static str) -> Pattern {
 fn use_path(invalid: &'static str) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}(use){after}(?:[ \\t]*({path}+)(?=$|[ \\t]))?",
+            "{head}(use){after}(?:[ \\t]*({path}+){end})?",
             head = HEAD,
             after = NOT_IDENT_AFTER,
-            path = path_class()
+            path = path_class(),
+            end = path_chunk_end()
         ),
         name: None,
         captures: vec![
@@ -288,12 +287,29 @@ fn keyword_head(kw_group: KwGroup, invalid: &'static str) -> Pattern {
     }
 }
 
+fn unmatched_indent_tab(invalid: &'static str) -> Pattern {
+    Pattern::Match {
+        re: "^[ ]*(\\t+)".into(),
+        name: None,
+        captures: vec![(1, invalid)],
+    }
+}
+
 fn patch(invalid: &'static str) -> Pattern {
     let patch = scope(Class::Patch);
     let name = format!("{not_kw}({ident})", not_kw = not_keyword(), ident = IDENT);
     let segment = format!("(\\.)([ \\t]*){name}");
+    let optional_non_keyword_name = format!(
+        "(?:{not_kw}({ident}))?",
+        not_kw = not_keyword(),
+        ident = IDENT
+    );
     Pattern::Region {
-        begin: format!("{head}{segment}", head = HEAD),
+        begin: format!(
+            "{head}(\\.)([ \\t]*){optional_non_keyword_name}",
+            head = HEAD,
+            optional_non_keyword_name = optional_non_keyword_name
+        ),
         end: format!("(?!\\.[ \\t]*{name})"),
         name: None,
         begin_captures: vec![(1, invalid), (2, patch), (4, patch)],
@@ -361,6 +377,14 @@ fn kw_alt(kw_group: KwGroup) -> String {
 
 fn path_class() -> String {
     format!("[{PATH_CHARS}]")
+}
+
+fn path_chunk_end() -> String {
+    format!(
+        "(?!#(?:{hex})(?=$|{delims}))(?=$|[ \\t]|#)",
+        hex = hex_body(),
+        delims = delim_class()
+    )
 }
 
 fn hex_body() -> String {

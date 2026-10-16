@@ -30,10 +30,6 @@
       "name": "constant.other.color.rgb-value.hex.art"
     },
     {
-      "match": "^[ ]*\\t[ \\t]*(?=#|$)",
-      "name": "invalid.illegal.art"
-    },
-    {
       "match": "#.*$",
       "name": "comment.line.number-sign.art"
     },
@@ -49,7 +45,7 @@
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?=$|[ \\t]))?"
+      "match": "^(\\t+)?(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
     },
     {
       "captures": {
@@ -63,7 +59,7 @@
           "name": "string.unquoted.path.art"
         }
       },
-      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?=$|[ \\t]))?"
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(use)(?![A-Za-z0-9_])(?:[ \\t]*([A-Za-z0-9_./{}*-]+)(?!#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]]))(?=$|[ \\t]|#))?"
     },
     {
       "captures": {
@@ -121,7 +117,7 @@
       "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(false|true|none)(?![A-Za-z0-9_])"
     },
     {
-      "begin": "^[ ]*([ \\t]*\\t[ \\t]*)?(\\.)([ \\t]*)(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*)",
+      "begin": "^[ ]*([ \\t]*\\t[ \\t]*)?(\\.)([ \\t]*)(?:(?!(?:palette|finish|shader|assert|expect|style|light|brush|false|from|rule|then|else|each|true|none|mask|slot|use|def|let|and|not|as|if|in|or|fx)(?![A-Za-z0-9_]))([A-Za-z_][A-Za-z0-9_]*))?",
       "beginCaptures": {
         "1": {
           "name": "invalid.illegal.art"
@@ -172,6 +168,14 @@
         }
       },
       "match": "^[ ]*([ \\t]*\\t[ \\t]*)?([A-Za-z_][A-Za-z0-9_]*)"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        }
+      },
+      "match": "^[ ]*(\\t+)"
     },
     {
       "match": "@[A-Za-z_][A-Za-z0-9_]*(?:\\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\\*))*",
