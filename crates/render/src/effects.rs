@@ -454,7 +454,7 @@ half4 main(half4 c) {
     if (c.a <= 0.0) {
         return c;
     }
-    float3 lab = oklab_of(linear_rgb(c.rgb));
+    float3 lab = oklab_of(linear_rgb(c.rgb / c.a));
     float L = clamp(lab.x + light, 0.0, 1.0);
     float C = max(length(lab.yz) * (1.0 + sat), 0.0);
     float H = degrees(atan(lab.z, lab.y)) + hue;
@@ -469,12 +469,12 @@ half4 main(half4 c) {
     }
     float hr = radians(H);
     float3 lin = linear_of_oklab(L, C * cos(hr), C * sin(hr));
-    return half4(
-        clamp(to_srgb(clamp(lin.r, 0.0, 1.0)), 0.0, 1.0),
-        clamp(to_srgb(clamp(lin.g, 0.0, 1.0)), 0.0, 1.0),
-        clamp(to_srgb(clamp(lin.b, 0.0, 1.0)), 0.0, 1.0),
-        c.a
-    );
+    float3 rgb = clamp(float3(
+        to_srgb(clamp(lin.r, 0.0, 1.0)),
+        to_srgb(clamp(lin.g, 0.0, 1.0)),
+        to_srgb(clamp(lin.b, 0.0, 1.0))
+    ), 0.0, 1.0);
+    return half4(rgb * c.a, c.a);
 }
 "#;
 

@@ -1,6 +1,6 @@
 mod common;
 
-use artscript_ir::{Field, NoiseKind, Paint, Path, Point, Profile};
+use artscript_ir::{Field, NodeKind, NoiseKind, Paint, Path, Point, Profile};
 use artscript_render::{render_png, render_svg, raster_only_features, RenderError};
 use common::{circle_at, color, effect, pixel, red, scene, solid};
 
@@ -176,6 +176,23 @@ fn grain_changes_only_opaque_pixels() {
     assert_eq!(pixel(&a, 2, 2), [0, 0, 0, 0]);
     assert_eq!(pixel(&b, 2, 2), [0, 0, 0, 0]);
     assert_eq!(pixel(&b, 40, 40)[3], 255);
+}
+
+#[test]
+fn adjust_keeps_soft_edges_dark() {
+    let mut leaf = solid("layer.leaf", circle_at(40.0, 40.0, 24.0), color(30, 70, 40, 255));
+    if let NodeKind::Shape(s) = &mut leaf.kind {
+        s.blur = 3.0;
+    }
+    leaf.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(10, 40, 25, 255) }));
+    let mut layer = solid("layer", circle_at(0.0, 0.0, 1.0), color(0, 0, 0, 0));
+    layer.kind = NodeKind::Group { isolate: true, children: vec![leaf] };
+    layer.effects.push(effect(EffectOp::Adjust { hue: 0.0, sat: 0.05, light: -0.06 }));
+    let mut canvas = scene(80.0, 80.0, vec![layer]);
+    canvas.background = Some(color(40, 20, 20, 255));
+    let png = render_png(&canvas, 1.0).unwrap();
+    let brightest = rgba(&png).iter().map(|p| p[0].max(p[1]).max(p[2])).max().unwrap();
+    assert!(brightest < 80, "an edge pixel brightened to {brightest}");
 }
 
 #[test]
