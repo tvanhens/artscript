@@ -13,7 +13,7 @@ The author-facing reference is `docs/language.md`. This file settles the details
   - Numbers look like `12`, `1.5`, `.5`. There is no exponent, and the sign is never part of the token.
   - The suffixes `%`, `deg` and `turn` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees.
 - **Sizes.** A number or percent, then `x`, then a number or percent with no spaces is one size token: `256x256`, `100%x60%`, `8x40`. `mirror x` stays an identifier because `x` is not glued to a number.
-- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Keywords are `use as from palette style def rule let shader light brush assert expect if then else each in and or not true false none`, plus the reserved list in `lib.rs`. A reserved word used as a name is E0105.
+- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none`, plus the reserved list in `lib.rs`. A reserved word used as a name is E0105.
 - **References.** `@` followed by an identifier, then `.segment` repeats where a segment is an identifier, digits or `*`.
 - **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by an identifier is a patch.
 - **Strings.** `"..."` supports the escapes `\" \\ \n`. `"""..."""` is raw and may span lines. Its common leading indentation is stripped.
@@ -27,7 +27,8 @@ The first tokens of a line decide its form:
 |---|---|
 | `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes |
 | `use` | `use <raw path> [as x] [{ a b }]` |
-| `palette`, `style`, `def`, `rule`, `let`, `shader`, `light`, `brush` | declarations. In `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs` |
+| `palette`, `style`, `finish`, `def`, `rule`, `let`, `shader`, `light`, `brush` | declarations. In `finish`, `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs`. A `style` takes no block, and one is E0101 whose fix names `finish`. A `finish` needs a block, and every line in it must be an `fx` line, or it is E0101 |
+| `fx` | `fx <name> items`, with no block. The name is a built-in effect or a finish |
 | `assert`, `expect` | `expr named* "message"?` |
 | `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed |
 | `.ident` | patch. Path segments, named args, and an optional trailing `off` |
@@ -207,6 +208,14 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `grain` is a 3-octave Perlin overlay, in the style of chibi `pen.grain`. Octave weights are 1/2, 1/4, and 1/8. `scale` is the finest cell size in canvas units (default 1.5). The seed comes from the node path. Overlay opacity is `min(1, 2 * strength)`, so strength .05 swings a mid gray by 5% at the peaks. Chibi divides the octave sum by that crop's peak. The shader divides by 0.58, the peak of this noise on a flat shape.
 - `outline` traces the node's shape geometry and draws it behind the content. Earlier `blur`, `shadow`, and `glow` do not change the traced path. The areas are the filled geometry of the subtree. A shape's children are omitted, because they composite source-atop and do not change its alpha. A stroke contributes that stroke's filled path. Each area is filled and stroked at `2 * width` with round cap and join, in the outline color.
 - `as:` sets `Effect.name`. `of:` takes `self`, a name, or `@node`.
+- **Finishes.** `finish name params` declares a named list of `fx` lines. It is not a value. It lives in the module's finish table beside `styles`, and `let`, def parameters and `m.name` cannot reach it.
+  - Declaring checks every line. A Phase 2 effect is E0391. A line naming anything but a built-in effect, including another finish, is E0338. `of:` or `as:` is E0336. Bad lines are reported and dropped, and the finish is still declared. A finish named after a built-in effect is E0337.
+  - `fx name args` with a finish name puts that finish's lines into the node's effects at that position, in order. Lines before and after it keep their order. The node's children never receive them, and `Scope` carries no effects.
+  - Arguments must be named. A positional argument or an unknown name is E0321, and the note lists the parameters. Arguments are evaluated at the `fx` line. They are bound like def parameters: a value whose type differs from its default's is E0320, and a missing one takes the default. The body is evaluated in a scope of the declaring module with those parameters bound, so `p.rim` means that module's `p`.
+  - `grain` seeds from the file where the `fx` line is written and the path of the node it lands on, exactly as if the line were written there. Moving a stack into a finish leaves the output unchanged.
+  - Errors inside a finish are reported at the `fx` line, with a note naming the finish and its declaration.
+  - In a def, effects from the def body come before the effects from the call's block.
+  - `finish:name` as a node key is E0339, and the fix is "write `fx name` under the node". `style:name` naming a finish is E0307, with the same fix.
 
 ## 9. Components, slots and overrides
 
@@ -261,7 +270,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `use` of an entry file is E0201.
 - Two declarations that produce the same output path, after matrix expansion, are E0202. The note names the first declaration.
 - `@target` under a manifest lib root is E0203.
-- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `def`, `rule`, and `let`.
+- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `finish`, `def`, `rule`, and `let`.
 - The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`.
 - `bg:` defaults to the manifest `[defaults] bg`, which defaults to `none` (transparent).
 - `art-manifest.json` sits in `out`. It holds `{ "version": 1, "outputs": [ { "path", "source", "line", "target", "matrix", "scale", "hash", "status": "pass|warn|fail", "checks": [..] } ] }`, sorted by path.
@@ -292,9 +301,12 @@ These pin down points the sections above leave open. Earlier sections still gove
 
 - **Imports.**
   - A plain `use x` binds every export of `x` by name. `use x { a b }` binds only those names. `use x as m` binds only `m`.
+  - A name starting with `_` is not an export. Both forms skip it, and `use x { _name }` is E0212.
   - `m.name` on a module alias falls back to the module's palette entries, so `p.rim` works through the default palette alias.
   - A `use` that names a project-relative entry file (`use art/b`) is E0201, the same as one that resolves through a lib root.
   - Top-level `let`s of a module are visible inside its `def`s.
+  - Finishes are imported the same way as styles. `use x` and `use x { surface }` bind them by name. `use x as m` does not, and there is no `fx m.surface` form.
+  - A style and a finish may share a name. Both of those forms bind both.
 - **Node identity.**
   - The sibling suffix counter is keyed by the base name plus any `#i` suffix. So the copies of one `each` are `circle#0`, `circle#1`, and a second loop's copies are `circle2#0`, `circle2#1`.
   - Only nodes with `name:`, named layers and groups, and instances are registered for `@refs`. A bare `circle` is not addressable.
@@ -329,6 +341,10 @@ These pin down points the sections above leave open. Earlier sections still gove
   - E0307: an unknown style.
   - E0322: a percent measured against an empty frame. Inside a def, the message names the def.
   - E0334: `slot` outside a `def`.
+  - E0336: `of:` or `as:` on a line inside a finish.
+  - E0337: a finish named after a built-in effect.
+  - E0338: a finish line that is not a built-in effect, such as a nested finish.
+  - E0339: `finish:` used as a node key.
   - E0350: an unknown reference or member. The notes list the names that exist.
   - E0351: measuring a reference that has no geometry.
   - E0400: a render or write failure.

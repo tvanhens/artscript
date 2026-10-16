@@ -49,6 +49,17 @@ pub struct Stmt {
     pub span: Span,
 }
 
+/// `fx rim 4 dir:1,1 a:.45`. It lowers onto the effects of the node it is nested under, and of no
+/// other node.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FxLine {
+    /// A built-in effect name, or the name of a finish.
+    pub op: String,
+    pub args: Vec<Expr>,
+    pub named: Vec<Named>,
+    pub span: Span,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CheckKind {
     Assert,
@@ -69,10 +80,17 @@ pub enum StmtKind {
         from: Option<String>,
         body: Vec<Stmt>,
     },
-    /// `style ink stroke:p.ink,2 join:round`.
+    /// `style ink stroke:p.ink,2 join:round`. Keys only; paint keys reach descendants.
     Style {
         name: String,
         named: Vec<Named>,
+    },
+    /// `finish lacquer width:5` + a block of `fx` lines, kept in order. An `fx lacquer` line under
+    /// a node puts those lines on that node at that position.
+    Finish {
+        name: String,
+        params: Vec<Named>,
+        body: Vec<FxLine>,
     },
     /// `def eye size:10 iris:p.sky.3` + body.
     Def {
@@ -131,6 +149,8 @@ pub enum StmtKind {
         named: Vec<Named>,
         body: Vec<Stmt>,
     },
+    /// An `fx` line under a node, an instance, or a finish.
+    Fx(FxLine),
     /// `head:` followed by a block.
     SlotFill {
         name: String,

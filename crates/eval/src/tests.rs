@@ -1,6 +1,6 @@
 //! Evaluator behaviour tests over in-memory projects.
 
-use artscript_ir::{Node, NodeKind, Paint, Scene};
+use artscript_ir::{EffectOp, Node, NodeKind, Paint, Scene};
 use artscript_syntax::Diagnostic;
 
 use crate::{Evaluation, Project, evaluate, plan};
@@ -449,6 +449,166 @@ fn assert_pixels_close(a: &[u8], b: &[u8], mean_limit: f64) {
     let mean = sum / ab.len() as f64;
     assert!(ink > 100, "both images are empty");
     assert!(mean < mean_limit, "mean channel delta {mean} over {ink} ink bytes");
+}
+
+fn fx_ops(n: &Node) -> Vec<String> {
+    n.effects.iter().map(|e| format!("{:?}", e.op).split([' ', '{']).next().unwrap_or_default().to_string()).collect()
+}
+
+fn fx_debug(s: &Scene, path: &str) -> String {
+    format!("{:?}", node(s, path).effects)
+}
+
+fn grain_seed(n: &Node) -> u32 {
+    n.effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Grain { seed, .. } => Some(seed),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("{} has no grain", n.path))
+}
+
+fn diag<'a>(ev: &'a Evaluation, code: &str) -> &'a Diagnostic {
+    ev.diagnostics.iter().find(|d| d.code == code).unwrap_or_else(|| panic!("no {code} in\n{}", show(&ev.diagnostics)))
+}
+
+const SURFACE: &str = "finish surface width:5 a:.55\n  fx rim width dir:1,1 a:a\n  fx grain .035 scale:2\n";
+
+#[test]
+fn finish_splices_its_lines_at_the_fx_line_between_local_lines() {
+    let s = scene(&format!("@target t.png 100x100\n{SURFACE}circle 10 name:c\n  fx shadow 0,4\n  fx surface width:6\n  fx outline 3\n"));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Rim", "Grain", "Outline"]);
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx shadow 0,4\n  fx rim 6 dir:1,1 a:.55\n  fx grain .035 scale:2\n  fx outline 3\n",
+    );
+    assert_eq!(fx_debug(&s, "c"), fx_debug(&written, "c"));
+}
+
+#[test]
+fn finish_reaches_only_the_node_its_fx_line_is_under() {
+    let s = scene(&format!("@target t.png 100x100\n{SURFACE}layer l\n  circle 10 name:c\n    circle 3 name:dot\n    fx surface\n"));
+    assert_eq!(fx_ops(node(&s, "l.c")), ["Rim", "Grain"]);
+    assert!(node(&s, "l").effects.is_empty());
+    assert!(node(&s, "l.c.dot").effects.is_empty());
+}
+
+#[test]
+fn shared_finish_seeds_grain_per_node_like_written_lines() {
+    let shared = scene(&format!("@target t.png 100x100\n{SURFACE}circle 10 name:cap\n  fx surface\ncircle 10 name:shimaki\n  fx surface\n"));
+    let written = scene(
+        "@target t.png 100x100\n\
+         circle 10 name:cap\n  fx rim 5 dir:1,1 a:.55\n  fx grain .035 scale:2\n\
+         circle 10 name:shimaki\n  fx rim 5 dir:1,1 a:.55\n  fx grain .035 scale:2\n",
+    );
+    assert_ne!(grain_seed(node(&shared, "cap")), grain_seed(node(&shared, "shimaki")));
+    for path in ["cap", "shimaki"] {
+        assert_eq!(fx_debug(&shared, path), fx_debug(&written, path));
+    }
+}
+
+#[test]
+fn library_finish_resolves_names_in_the_library_and_seeds_from_the_use_site() {
+    let lib = ("lib/finish/surface.art", "let shine = #ff0000\nfinish surface width:4\n  fx rim width color:shine\n  fx grain .04 scale:2.5\n");
+    let ev = run_with("@target t.png 100x100\nuse finish/surface { surface }\nlet shine = #0000ff\nlet w = 7\ncircle 10 name:cap\n  fx surface width:w\n", &[lib]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let used = ev.scene.unwrap();
+    let written = scene("@target t.png 100x100\ncircle 10 name:cap\n  fx rim 7 color:#ff0000\n  fx grain .04 scale:2.5\n");
+    assert_eq!(fx_debug(&used, "cap"), fx_debug(&written, "cap"));
+}
+
+#[test]
+fn def_body_finish_comes_before_call_block_fx() {
+    let lib = ("lib/leaf.art", "finish _edge tone:#00aa00\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\ndef leaf tone:#00ff00\n  circle 10 fill:tone\n  fx _edge tone:tone\n");
+    let written = ("lib/leaf.art", "def leaf tone:#00ff00\n  circle 10 fill:tone\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\n");
+    let src = "@target t.png 100x100\nuse leaf\nleaf tone:#008800\n  fx adjust light:-.06\n";
+    let ev = run_with(src, &[lib]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "leaf")), ["Rim", "Grain", "Outline", "Adjust"]);
+    let w = run_with(src, &[written]);
+    assert!(w.diagnostics.is_empty(), "{}", show(&w.diagnostics));
+    assert_eq!(fx_debug(&s, "leaf"), fx_debug(&w.scene.unwrap(), "leaf"));
+}
+
+#[test]
+fn finish_as_a_node_key_is_e0339_pointing_at_an_fx_line() {
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10 finish:surface\n"), &[]);
+    let d = diag(&ev, "E0339");
+    assert_eq!(d.span.line, 5);
+    assert_eq!(d.fix.as_deref(), Some("write `fx surface` under the node"));
+
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10 style:surface\n"), &[]);
+    assert_eq!(diag(&ev, "E0307").fix.as_deref(), Some("write `fx surface` under the node"));
+}
+
+#[test]
+fn finish_body_is_plain_built_in_effects() {
+    let ev = run_with("@target t.png 100x100\nfinish a\n  fx blur 2 as:soft\n  fx merge soft self of:self\ncircle 4\n", &[]);
+    let lines: Vec<(&str, u32)> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
+    assert_eq!(lines, [("E0336", 3), ("E0336", 4)], "{}", show(&ev.diagnostics));
+
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}finish outer\n  fx rim 2\n  fx surface\ncircle 4\n"), &[]);
+    let d = diag(&ev, "E0338");
+    assert_eq!(d.span.line, 7);
+    assert!(d.notes.iter().any(|n| n == "`surface` is a finish, and finishes do not nest"), "{d}");
+
+    let ev = run_with("@target t.png 100x100\nfinish rim\n  fx grain .1\ncircle 4\n", &[]);
+    assert_eq!(diag(&ev, "E0337").span.line, 2);
+
+    let ev = run_with("@target t.png 100x100\nuse bad\ncircle 4\n", &[("lib/bad.art", "finish f\n  fx rim 3\n  circle 4\n")]);
+    let d = diag(&ev, "E0101");
+    assert_eq!((d.file.as_str(), d.span.line, d.message.as_str()), ("lib/bad.art", 3, "a finish holds only `fx` lines"));
+}
+
+#[test]
+fn a_private_name_is_not_an_export() {
+    let lib = (
+        "lib/finish/surface.art",
+        "finish _surface width:4\n  fx rim width\nfinish surface width:4\n  fx rim width\nstyle _ink fill:#112233\nstyle ink fill:#112233\n",
+    );
+    let explicit = run_with("@target t.png 100x100\nuse finish/surface { _surface }\ncircle 10\n  fx _surface\n", &[lib]);
+    assert_eq!(diag(&explicit, "E0212").message, "`finish/surface` does not export `_surface`");
+
+    let style = run_with("@target t.png 100x100\nuse finish/surface { _ink }\ncircle 10 style:_ink\n", &[lib]);
+    assert_eq!(diag(&style, "E0212").message, "`finish/surface` does not export `_ink`");
+
+    let wild = run_with("@target t.png 100x100\nuse finish/surface\ncircle 10 name:cap\n  fx _surface\n", &[lib]);
+    assert_eq!(diag(&wild, "E0391").message, "unknown effect `_surface`");
+
+    let public = run_with("@target t.png 100x100\nuse finish/surface { surface ink }\ncircle 10 name:cap style:ink\n  fx surface\n", &[lib]);
+    assert!(public.diagnostics.is_empty(), "{}", show(&public.diagnostics));
+    let s = public.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else { panic!("fill") };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
+fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
+    let lib = (
+        "lib/finish/surface.art",
+        "style surface fill:#112233\nfinish surface width:4\n  fx rim width\n",
+    );
+    let ev = run_with(
+        "@target t.png 100x100\nuse finish/surface { surface }\ncircle 10 name:cap style:surface\n  fx surface\n",
+        &[lib],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else { panic!("fill") };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
+fn finish_parameters_are_named_and_typed_by_their_defaults() {
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface 6\n"), &[]);
+    assert!(diag(&ev, "E0321").notes.iter().any(|n| n == "parameters: width, a"));
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface depth:6\n"), &[]);
+    assert_eq!(diag(&ev, "E0321").message, "finish `surface` has no parameter `depth`");
+    let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface width:#ff0000\n"), &[]);
+    assert_eq!(diag(&ev, "E0320").span.line, 6);
 }
 
 #[test]

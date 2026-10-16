@@ -666,3 +666,71 @@ fn numbers_drop_leading_and_trailing_zeros() {
     assert_eq!(format(&must_parse("let n = .25turn\n")), "let n = 90deg\n");
     assert_eq!(format(&must_parse("rect 100%x60%\n")), "rect 100%x60%\n");
 }
+
+#[test]
+fn style_with_a_block_is_an_error_pointing_at_finish() {
+    let errs = parse("style lacquer stroke:#000,2\n  fx rim 5\n").unwrap_err();
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert_eq!(errs[0].code, "E0101");
+    assert_eq!(errs[0].span.line, 2);
+    assert_eq!(errs[0].message, "a style takes named keys only, not a block");
+    assert_eq!(
+        errs[0].fix.as_deref(),
+        Some("declare `finish <name>` with this block and write `fx <name>` under the node")
+    );
+}
+
+#[test]
+fn finish_holds_fx_lines_and_round_trips() {
+    let src = "finish surface width:4 a:.45 # shared\n  fx rim width dir:1,1 color:p.rim a:a\n\n  fx grain .04 scale:2.5\n\ncurve 0,0 9,9 name:cap\n  fx surface width:5\n";
+    let file = must_parse(src);
+    match node(&file) {
+        StmtKind::Finish { name, params, body } => {
+            assert_eq!(name, "surface");
+            let keys: Vec<&str> = params.iter().map(|p| p.key.as_str()).collect();
+            assert_eq!(keys, ["width", "a"]);
+            let ops: Vec<&str> = body.iter().map(|l| l.op.as_str()).collect();
+            assert_eq!(ops, ["rim", "grain"]);
+            assert_eq!(body[0].args, vec![ident("width")]);
+            assert_eq!(body[1].span, Span { line: 4, col: 3 });
+        }
+        other => panic!("{other:?}"),
+    }
+    match &file.stmts[1].kind {
+        StmtKind::Node { body, .. } => match &body[0].kind {
+            StmtKind::Fx(line) => {
+                assert_eq!(line.op, "surface");
+                assert!(line.args.is_empty());
+                assert_eq!(line.named[0].key, "width");
+            }
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    let once = format_source(src).unwrap();
+    assert_eq!(once, src);
+    round_trip_ast(&file);
+    round_trip_source(src);
+}
+
+#[test]
+fn finish_body_takes_only_fx_lines() {
+    let errs = parse("finish f\n  fx rim 3\n  circle 4\n  finish g\n    fx grain .1\n").unwrap_err();
+    let lines: Vec<(u32, &str)> = errs
+        .iter()
+        .map(|e| (e.span.line, e.message.as_str()))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            (3, "a finish holds only `fx` lines"),
+            (4, "a finish holds only `fx` lines")
+        ]
+    );
+    assert!(errs.iter().all(|e| e.code == "E0101" && e.fix.is_some()));
+
+    let named = parse("finish f 3\n  fx rim 3\n").unwrap_err();
+    assert_eq!(named[0].message, "finish parameters are named arguments");
+    let empty = parse("finish f\n").unwrap_err();
+    assert_eq!(empty[0].message, "finish `f` needs an indented block of `fx` lines");
+}
