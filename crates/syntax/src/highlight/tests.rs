@@ -2,8 +2,12 @@ use std::fs;
 use std::ops::Range;
 use std::path::PathBuf;
 
-use crate::ast::{Expr, File, Named, Span, Stmt, StmtKind};
-use crate::lex::{self, Kw, Tok};
+use crate::ast::{
+    Decl, DeclKind, DefItem, Draw, DrawItem, Expr, File, Item, Mask, Named, Patch, Scene,
+    SceneKind, SlotFill, Span, SwatchKind,
+};
+use crate::lex::{self, Tok};
+use crate::words::{self, Word};
 
 use super::grammar::{self, emit};
 use super::{Class, PATH_CHARS, Run, classify, is_path_char, ribbon};
@@ -191,23 +195,24 @@ fn byte_range_fixtures() {
 
 #[test]
 fn keyword_rows_and_reserved_words() {
-    for kw in Kw::ALL {
-        let src = format!("{}\n", kw.as_str());
+    for (word, text, _) in words::rows()
+        .iter()
+        .filter(|row| row.2 == words::Class::Keyword)
+    {
+        let src = format!("{text}\n");
         let lexed = lex::lex(&src);
         let tok = &lexed.lines[0].tokens[0];
         assert!(
-            matches!(&tok.kind, Tok::Kw(found) if found == kw),
-            "{}",
-            kw.as_str()
+            matches!(&tok.kind, Tok::Kw(found) if found == word),
+            "{text}"
         );
         assert_eq!(tok.start, 0);
-        assert_eq!(tok.end, kw.as_str().len());
-        assert_painted(&src, &[(kw.as_str(), Class::Keyword)]);
+        assert_eq!(tok.end, text.len());
+        assert_painted(&src, &[(text, Class::Keyword)]);
     }
-    assert_eq!(Kw::ALL.len(), 24);
 
-    for word in crate::RESERVED {
-        if Kw::ALL.iter().any(|kw| kw.as_str() == *word) {
+    for (_, word, class) in words::rows() {
+        if *class == words::Class::Keyword {
             continue;
         }
         let src = format!("{word}\n");
@@ -266,7 +271,8 @@ fn span_set_equals_lex(src: &str) {
                 .lines
                 .iter()
                 .any(|line| line.tokens.iter().any(|tok| tok.start <= i && i < tok.end));
-        if matches!(byte, b' ' | b'\n' | b'\r') && !in_lex {
+        let bare_tab = byte == b'\t' && !super::indent_tab(src.as_bytes(), i);
+        if (matches!(byte, b' ' | b'\n' | b'\r') || bare_tab) && !in_lex {
             assert_eq!(hits, 0, "whitespace painted at {i}\n{}", dump(src, &runs));
         } else {
             assert_eq!(
@@ -374,7 +380,10 @@ fn span_set_equals_lex(src: &str) {
 fn path_chunk_contains(line: &crate::lex::Line, index: usize) -> bool {
     let tokens = &line.tokens;
     let head = (line.indent == 0 && lex::is_directive_ref(tokens))
-        || matches!(tokens.first().map(|tok| &tok.kind), Some(Tok::Kw(Kw::Use)));
+        || matches!(
+            tokens.first().map(|tok| &tok.kind),
+            Some(Tok::Kw(Word::Use))
+        );
     if !head || index == 0 || tokens.len() < 2 {
         return false;
     }
@@ -439,8 +448,11 @@ fn agree(path: &PathBuf, src: &str, file: &File) {
             walk_expr(src, &starts, arg, &mut accounted);
         }
     }
-    for stmt in &file.stmts {
-        walk_stmt(src, &starts, stmt, &mut accounted, &mut sksl_lines);
+    for item in &file.items {
+        match item {
+            Item::Decl(decl) => walk_decl(src, &starts, decl, &mut accounted, &mut sksl_lines),
+            Item::Scene(scene) => walk_scene(src, &starts, scene, &mut accounted),
+        }
     }
     for (byte, class) in &accounted {
         let run = runs.iter().find(|run| run.range.start == *byte);
@@ -482,83 +494,160 @@ fn agree(path: &PathBuf, src: &str, file: &File) {
     assert_eq!(extra_sksl, sksl_lines, "{}", path.display());
 }
 
-fn walk_stmt(
+fn walk_decl(
     src: &str,
     starts: &[usize],
-    stmt: &Stmt,
+    decl: &Decl,
     accounted: &mut Vec<(usize, Class)>,
     sksl_lines: &mut usize,
 ) {
-    match &stmt.kind {
-        StmtKind::Node {
-            args, named, body, ..
-        } => {
-            push_span(src, starts, stmt.span, Class::Verb, accounted);
-            for arg in args {
-                walk_expr(src, starts, arg, accounted);
-            }
-            walk_named(src, starts, named, accounted);
-            for child in body {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
-            }
-        }
-        StmtKind::SlotFill { body, .. } => {
-            push_span(src, starts, stmt.span, Class::Slot, accounted);
-            for child in body {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
-            }
-        }
-        StmtKind::Patch { named, .. } => {
-            push_span(src, starts, stmt.span, Class::Patch, accounted);
-            walk_named(src, starts, named, accounted);
-        }
-        StmtKind::Palette { body, .. } => {
-            for child in body {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
+    match &decl.kind {
+        DeclKind::Use { .. } => {}
+        DeclKind::Palette { body, .. } => {
+            for swatch in body {
+                push_span(src, starts, swatch.span, Class::Verb, accounted);
+                match &swatch.kind {
+                    SwatchKind::Color(expr) => walk_expr(src, starts, expr, accounted),
+                    SwatchKind::Ramp { pos, hue } => {
+                        for expr in pos.exprs() {
+                            walk_expr(src, starts, expr, accounted);
+                        }
+                        if let Some(hue) = hue {
+                            walk_expr(src, starts, hue, accounted);
+                        }
+                    }
+                }
             }
         }
-        StmtKind::Style { named, .. }
-        | StmtKind::Light { named, .. }
-        | StmtKind::Brush { named, .. } => {
+        DeclKind::Style { named, .. }
+        | DeclKind::Light { named, .. }
+        | DeclKind::Brush { named, .. } => {
             walk_named(src, starts, named, accounted);
         }
-        StmtKind::Def { params, body, .. } | StmtKind::Rule { params, body, .. } => {
+        DeclKind::Finish { params, body, .. } => {
             walk_named(src, starts, params, accounted);
-            for child in body {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
+            for fx in body {
+                walk_named(src, starts, &fx.named, accounted);
+                for arg in &fx.args {
+                    walk_expr(src, starts, arg, accounted);
+                }
             }
         }
-        StmtKind::Let { value, .. } => walk_expr(src, starts, value, accounted),
-        StmtKind::Shader { params, sksl, .. } => {
+        DeclKind::Def { params, body, .. } => {
+            walk_named(src, starts, params, accounted);
+            for item in body {
+                match item {
+                    DefItem::Scene(scene) => walk_scene(src, starts, scene, accounted),
+                    DefItem::Fx(fx) => {
+                        walk_named(src, starts, &fx.named, accounted);
+                        for arg in &fx.args {
+                            walk_expr(src, starts, arg, accounted);
+                        }
+                    }
+                }
+            }
+        }
+        DeclKind::Rule { params, body, .. } => {
+            walk_named(src, starts, params, accounted);
+            for scene in body {
+                walk_scene(src, starts, scene, accounted);
+            }
+        }
+        DeclKind::Shader { params, sksl, .. } => {
             walk_named(src, starts, params, accounted);
             // The parser eats an indented `sksl` line. That line is not its own statement.
             if sksl.is_some() {
                 *sksl_lines += 1;
             }
         }
-        StmtKind::Check { expr, named, .. } => {
-            walk_expr(src, starts, expr, accounted);
-            walk_named(src, starts, named, accounted);
-        }
-        StmtKind::If {
+    }
+}
+
+fn walk_scene(src: &str, starts: &[usize], scene: &Scene, accounted: &mut Vec<(usize, Class)>) {
+    match &scene.kind {
+        SceneKind::Let { value, .. } => walk_expr(src, starts, value, accounted),
+        SceneKind::If {
             cond,
             then,
             otherwise,
-            ..
         } => {
             walk_expr(src, starts, cond, accounted);
             for child in then.iter().chain(otherwise) {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
+                walk_scene(src, starts, child, accounted);
             }
         }
-        StmtKind::Each { iter, body, .. } => {
+        SceneKind::Each { iter, body, .. } => {
             walk_expr(src, starts, iter, accounted);
             for child in body {
-                walk_stmt(src, starts, child, accounted, sksl_lines);
+                walk_scene(src, starts, child, accounted);
             }
         }
-        StmtKind::Use { .. } => {}
+        SceneKind::Check { expr, named, .. } => {
+            walk_expr(src, starts, expr, accounted);
+            walk_named(src, starts, named, accounted);
+        }
+        SceneKind::Slot {
+            named, fallback, ..
+        } => {
+            walk_named(src, starts, named, accounted);
+            for child in fallback {
+                walk_scene(src, starts, child, accounted);
+            }
+        }
+        SceneKind::Draw(draw) => walk_draw(src, starts, scene.span, draw, accounted),
     }
+}
+
+fn walk_draw(
+    src: &str,
+    starts: &[usize],
+    span: Span,
+    draw: &Draw,
+    accounted: &mut Vec<(usize, Class)>,
+) {
+    push_span(src, starts, span, Class::Verb, accounted);
+    for arg in &draw.args {
+        walk_expr(src, starts, arg, accounted);
+    }
+    walk_named(src, starts, &draw.named, accounted);
+    for item in draw.body.items() {
+        match item {
+            DrawItem::Scene(scene) => walk_scene(src, starts, scene, accounted),
+            DrawItem::Fx(fx) => {
+                walk_named(src, starts, &fx.named, accounted);
+                for arg in &fx.args {
+                    walk_expr(src, starts, arg, accounted);
+                }
+            }
+            DrawItem::Mask { mask, .. } => match mask {
+                Mask::Value(expr) => walk_expr(src, starts, expr, accounted),
+                Mask::Block(body) => {
+                    for scene in body {
+                        walk_scene(src, starts, scene, accounted);
+                    }
+                }
+            },
+            DrawItem::SlotFill(fill) => walk_slot_fill(src, starts, fill, accounted),
+            DrawItem::Patch(patch) => walk_patch(src, starts, patch, accounted),
+        }
+    }
+}
+
+fn walk_slot_fill(
+    src: &str,
+    starts: &[usize],
+    fill: &SlotFill,
+    accounted: &mut Vec<(usize, Class)>,
+) {
+    push_span(src, starts, fill.span, Class::Slot, accounted);
+    for scene in &fill.body {
+        walk_scene(src, starts, scene, accounted);
+    }
+}
+
+fn walk_patch(src: &str, starts: &[usize], patch: &Patch, accounted: &mut Vec<(usize, Class)>) {
+    push_span(src, starts, patch.span, Class::Patch, accounted);
+    walk_named(src, starts, &patch.named, accounted);
 }
 
 fn walk_named(src: &str, starts: &[usize], named: &[Named], accounted: &mut Vec<(usize, Class)>) {

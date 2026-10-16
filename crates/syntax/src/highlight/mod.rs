@@ -1,6 +1,7 @@
 use std::ops::Range;
 
-use crate::lex::{self, Kw, Line, Tok, Token};
+use crate::lex::{self, Line, Tok, Token};
+use crate::words::Word;
 
 mod grammar;
 
@@ -132,7 +133,7 @@ fn head_role(src: &str, line: &Line) -> HeadRole {
             path: directive_path(src, tokens, 1),
         };
     }
-    if matches!(first.kind, Tok::Kw(Kw::Use)) {
+    if matches!(first.kind, Tok::Kw(Word::Use)) {
         return HeadRole::Use {
             path: glued_path(src, tokens, 1),
         };
@@ -258,12 +259,16 @@ fn fill_invalid_gaps(src: &str, runs: &mut Vec<Run>) {
     let bytes = src.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if covered[i] || is_gap(bytes[i]) {
+        if covered[i] || is_gap(bytes[i]) || (bytes[i] == b'\t' && !indent_tab(bytes, i)) {
             i += 1;
             continue;
         }
         let start = i;
-        while i < bytes.len() && !covered[i] && !is_gap(bytes[i]) {
+        while i < bytes.len()
+            && !covered[i]
+            && !is_gap(bytes[i])
+            && !(bytes[i] == b'\t' && !indent_tab(bytes, i))
+        {
             i += 1;
         }
         runs.push(Run {
@@ -275,6 +280,20 @@ fn fill_invalid_gaps(src: &str, runs: &mut Vec<Run>) {
 
 fn is_gap(byte: u8) -> bool {
     matches!(byte, b' ' | b'\n' | b'\r')
+}
+
+pub(crate) fn indent_tab(bytes: &[u8], index: usize) -> bool {
+    if bytes.get(index) != Some(&b'\t') {
+        return false;
+    }
+    let mut i = index;
+    while i > 0 && bytes[i - 1] != b'\n' && bytes[i - 1] != b'\r' {
+        i -= 1;
+        if bytes[i] != b' ' && bytes[i] != b'\t' {
+            return false;
+        }
+    }
+    true
 }
 
 pub(crate) fn ribbon(src: &str, runs: &[Run]) -> String {

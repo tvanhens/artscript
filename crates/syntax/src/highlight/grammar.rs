@@ -1,7 +1,8 @@
 use serde_json::{Map, Value};
 
 use super::{Class, PATH_CHARS};
-use crate::lex::{ANGLE_SUFFIXES, HEX_DELIMS, HEX_LENS, Kw, STRING_ESCAPES};
+use crate::lex::{ANGLE_SUFFIXES, HEX_DELIMS, HEX_LENS, STRING_ESCAPES};
+use crate::words::{self, Word};
 
 const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
 /// A digit may sit in front of a word. `5degx` is a number and then a name.
@@ -20,23 +21,45 @@ pub(crate) enum KwGroup {
     Constant,
 }
 
-pub(crate) fn group(kw: Kw) -> KwGroup {
-    match kw {
-        Kw::Use | Kw::As | Kw::From => KwGroup::Import,
-        Kw::Palette
-        | Kw::Style
-        | Kw::Def
-        | Kw::Rule
-        | Kw::Let
-        | Kw::Shader
-        | Kw::Light
-        | Kw::Brush => KwGroup::Declaration,
-        Kw::Assert | Kw::Expect | Kw::If | Kw::Then | Kw::Else | Kw::Each | Kw::In => {
-            KwGroup::Control
-        }
-        Kw::And | Kw::Or | Kw::Not => KwGroup::Logical,
-        Kw::True | Kw::False | Kw::None => KwGroup::Constant,
-    }
+pub(crate) fn group(word: Word) -> Option<KwGroup> {
+    Some(match word {
+        Word::Use | Word::As | Word::From => KwGroup::Import,
+        Word::Palette
+        | Word::Style
+        | Word::Finish
+        | Word::Def
+        | Word::Rule
+        | Word::Let
+        | Word::Shader
+        | Word::Light
+        | Word::Brush => KwGroup::Declaration,
+        Word::Assert
+        | Word::Expect
+        | Word::If
+        | Word::Then
+        | Word::Else
+        | Word::Each
+        | Word::In
+        | Word::Fx
+        | Word::Mask
+        | Word::Slot => KwGroup::Control,
+        Word::And | Word::Or | Word::Not => KwGroup::Logical,
+        Word::True | Word::False | Word::None => KwGroup::Constant,
+        Word::Ramp
+        | Word::Color
+        | Word::Sksl
+        | Word::Field
+        | Word::Warp
+        | Word::Backdrop
+        | Word::Profile
+        | Word::Pose
+        | Word::Joint
+        | Word::Ease
+        | Word::T
+        | Word::Frames
+        | Word::Anim
+        | Word::Key => return None,
+    })
 }
 
 impl KwGroup {
@@ -140,7 +163,7 @@ pub(crate) fn emit() -> Vec<Pattern> {
             name: Some(scope(Class::Comment)),
             captures: vec![],
         },
-        directive(),
+        directive(invalid),
         use_path(invalid),
     ];
     for kw_group in KwGroup::all() {
@@ -218,22 +241,27 @@ pub(crate) fn emit() -> Vec<Pattern> {
     patterns
 }
 
-fn directive() -> Pattern {
+fn directive(invalid: &'static str) -> Pattern {
     let path = path_class();
     Pattern::Match {
         re: format!(
-            "^(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*)(?=$|[ \\t#]))?",
+            "{head}(@{ident})(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]*({path}*[/.{{]{path}*)(?=$|[ \\t]))?",
+            head = HEAD,
             ident = IDENT
         ),
         name: None,
-        captures: vec![(1, scope(Class::Directive)), (2, scope(Class::Path))],
+        captures: vec![
+            (1, invalid),
+            (2, scope(Class::Directive)),
+            (3, scope(Class::Path)),
+        ],
     }
 }
 
 fn use_path(invalid: &'static str) -> Pattern {
     Pattern::Match {
         re: format!(
-            "{head}(use){after}(?:[ \\t]*({path}+)(?=$|[ \\t#]))?",
+            "{head}(use){after}(?:[ \\t]*({path}+)(?=$|[ \\t]))?",
             head = HEAD,
             after = NOT_IDENT_AFTER,
             path = path_class()
@@ -262,10 +290,11 @@ fn keyword_head(kw_group: KwGroup, invalid: &'static str) -> Pattern {
 
 fn patch(invalid: &'static str) -> Pattern {
     let patch = scope(Class::Patch);
-    let segment = format!("(\\.)([ \\t]*)({ident})", ident = IDENT);
+    let name = format!("{not_kw}({ident})", not_kw = not_keyword(), ident = IDENT);
+    let segment = format!("(\\.)([ \\t]*){name}");
     Pattern::Region {
         begin: format!("{head}{segment}", head = HEAD),
-        end: "(?!\\.)".into(),
+        end: format!("(?!\\.[ \\t]*{name})"),
         name: None,
         begin_captures: vec![(1, invalid), (2, patch), (4, patch)],
         inner: vec![Pattern::Match {
@@ -274,6 +303,24 @@ fn patch(invalid: &'static str) -> Pattern {
             captures: vec![(1, patch), (3, patch)],
         }],
     }
+}
+
+fn not_keyword() -> String {
+    format!(
+        "(?!(?:{alts}){after})",
+        alts = keyword_alts(),
+        after = NOT_IDENT_AFTER
+    )
+}
+
+fn keyword_alts() -> String {
+    let mut words: Vec<&str> = words::rows()
+        .iter()
+        .filter(|row| row.2 == words::Class::Keyword)
+        .map(|row| row.1)
+        .collect();
+    words.sort_by_key(|word| std::cmp::Reverse(word.len()));
+    words.join("|")
 }
 
 fn slot(invalid: &'static str) -> Pattern {
@@ -303,11 +350,10 @@ fn verb(invalid: &'static str) -> Pattern {
 }
 
 fn kw_alt(kw_group: KwGroup) -> String {
-    let mut words: Vec<&str> = Kw::ALL
+    let mut words: Vec<&str> = words::rows()
         .iter()
-        .copied()
-        .filter(|kw| group(*kw) == kw_group)
-        .map(Kw::as_str)
+        .filter(|row| group(row.0) == Some(kw_group))
+        .map(|row| row.1)
         .collect();
     words.sort_by_key(|word| std::cmp::Reverse(word.len()));
     words.join("|")
@@ -411,9 +457,12 @@ pub(crate) fn scopes_json() -> String {
         }
         map.insert(scope(*class).into(), json_str(&class.letter().to_string()));
     }
-    for kw in Kw::ALL {
+    for (word, _, _) in words::rows() {
+        let Some(group) = group(*word) else {
+            continue;
+        };
         map.insert(
-            group(*kw).scope().into(),
+            group.scope().into(),
             json_str(&Class::Keyword.letter().to_string()),
         );
     }

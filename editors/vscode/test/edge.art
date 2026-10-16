@@ -8,6 +8,8 @@ palette p from base
 circle 10 at:(1).5,.5 r:12deg s:5degx t:.25turn w:100%x60% q:50%
 blob:3 in:2 from:x profile:vector
 pose 1
+head:
+  circle 1
 mask: # a slot with a trailing comment
 mask: #fffff
 mask: #fff
@@ -15,8 +17,13 @@ mask: #fff
 .head. eye fill:red
 use foo/bar!baz
 use/foo/bar
+use foo#fff
 @target out/file!bad
 @target/out.png
+@target out/file#fff
+	@target out.png
+.head.if
+circle	1
 	# tabbed comment
 	tabbed 1
 fill:"esc \" \\ \n \q" bad:"unclosed

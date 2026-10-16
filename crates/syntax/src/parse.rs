@@ -217,7 +217,10 @@ impl<'a> Parser<'a> {
             return if self.ti + 2 >= tokens.len() {
                 Head::SlotFill(word)
             } else {
-                Head::GluedColon { name: word, rest: self.line_rest(self.ti + 2) }
+                Head::GluedColon {
+                    name: word,
+                    rest: self.line_rest(self.ti + 2),
+                }
             };
         }
         match tok.kind {
@@ -309,9 +312,7 @@ impl<'a> Parser<'a> {
             Head::GluedColon { name, rest } => {
                 self.reject_line_and_block(
                     format!("`{name}:` must end the line"),
-                    format!(
-                        "write `{name} {rest}`, or end the line with `{name}:` to fill a slot"
-                    ),
+                    format!("write `{name} {rest}`, or end the line with `{name}:` to fill a slot"),
                 );
                 None
             }
@@ -1001,9 +1002,9 @@ impl<'a> Parser<'a> {
                 return None;
             }
             (Some(v), false) => Mask::Value(v),
-            (None, true) => Mask::Block(
-                self.block(indent, span.line, |p| p.scene_line("in a mask block")),
-            ),
+            (None, true) => {
+                Mask::Block(self.block(indent, span.line, |p| p.scene_line("in a mask block")))
+            }
             (None, false) => {
                 self.fail(
                     span,

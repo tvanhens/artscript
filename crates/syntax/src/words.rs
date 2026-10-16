@@ -121,6 +121,10 @@ impl Word {
     }
 }
 
+pub(crate) fn rows() -> &'static [(Word, &'static str, Class)] {
+    WORDS
+}
+
 pub(crate) fn keyword(text: &str) -> Option<Word> {
     Word::lookup(text).filter(|w| w.class() == Class::Keyword)
 }
