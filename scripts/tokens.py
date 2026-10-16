@@ -29,8 +29,30 @@ def imports(art: Path) -> list[Path]:
     return libs
 
 
+def cryptic_names(art: Path) -> list[str]:
+    """Palettes, palette entries and top-level lets named in one or two letters. They shrink the
+    count without making the art cheaper to write, so a file that has them is not scored."""
+    names = []
+    in_palette = False
+    for line in art.read_text().splitlines():
+        if m := re.match(r"^palette (\w+)", line):
+            names.append(m.group(1))
+            in_palette = True
+            continue
+        if in_palette and (m := re.match(r"^  (\w+) ", line)):
+            names.append(m.group(1))
+            continue
+        in_palette = False
+        if m := re.match(r"^let (\w+) =", line):
+            names.append(m.group(1))
+    return [n for n in names if len(n) <= 2]
+
+
 rows = []
+cryptic = {}
 for art in sorted((PROJECT / "art").rglob("*.art")):
+    if bad := cryptic_names(art):
+        cryptic[art.relative_to(PROJECT / "art")] = bad
     rel = art.relative_to(PROJECT / "art").with_suffix(".py")
     py = CHIBI / "art" / rel
     if not py.exists():
@@ -50,3 +72,7 @@ tot_py = sum(r[3] for r in rows)
 print(f"{'total':32} {tot_own:6} {'':6} {tot_py:7} {tot_py / tot_own:6.2f}x")
 print("ratio = python tokens / artscript entry-file tokens (o200k_base). Shared libraries are")
 print("listed separately because, like the chibi toolkit, they are written once per project.")
+if cryptic:
+    for art, bad in cryptic.items():
+        print(f"cryptic names in {art}: {' '.join(bad)}", file=sys.stderr)
+    sys.exit("rename them descriptively (scripts/rename_idents.py); the counts above are not valid")

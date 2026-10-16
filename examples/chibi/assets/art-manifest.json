@@ -2,7 +2,7 @@
   "outputs": [
     {
       "checks": [],
-      "hash": "9fc747c8096ca066",
+      "hash": "a12e78a016b4afc5",
       "line": 1,
       "matrix": {},
       "path": "character/moss_monk.png",
@@ -13,7 +13,7 @@
     },
     {
       "checks": [],
-      "hash": "cccbc94ec1b1e605",
+      "hash": "30bd745d8ec389c1",
       "line": 2,
       "matrix": {},
       "path": "character/moss_monk.svg",
@@ -24,7 +24,7 @@
     },
     {
       "checks": [],
-      "hash": "443eb6dcf7bfae77",
+      "hash": "328de5b3b758654d",
       "line": 3,
       "matrix": {},
       "path": "character/moss_monk_blink.png",
@@ -35,7 +35,7 @@
     },
     {
       "checks": [],
-      "hash": "47b11cd18b2bfc81",
+      "hash": "b30aaaf971f840f1",
       "line": 4,
       "matrix": {},
       "path": "character/moss_monk_yawn.png",
@@ -46,7 +46,7 @@
     },
     {
       "checks": [],
-      "hash": "b6473be76b6eae93",
+      "hash": "8ffc5d08a363f17f",
       "line": 1,
       "matrix": {},
       "path": "monument/stone_lantern.png",
@@ -57,7 +57,7 @@
     },
     {
       "checks": [],
-      "hash": "cd1a8c5d6e9a4102",
+      "hash": "08365b4af0ea5696",
       "line": 2,
       "matrix": {},
       "path": "monument/stone_lantern.svg",
@@ -68,7 +68,7 @@
     },
     {
       "checks": [],
-      "hash": "5b479ae986f4b7c7",
+      "hash": "7a7b093bed3373f7",
       "line": 1,
       "matrix": {},
       "path": "monument/vermilion_torii.png",
@@ -79,7 +79,7 @@
     },
     {
       "checks": [],
-      "hash": "35c3c8f9b1719689",
+      "hash": "f0857b18a2b7f046",
       "line": 2,
       "matrix": {},
       "path": "monument/vermilion_torii.svg",
@@ -112,7 +112,7 @@
     },
     {
       "checks": [],
-      "hash": "d4393dc9e7c1d306",
+      "hash": "cb30ee1d48aa84d5",
       "line": 1,
       "matrix": {},
       "path": "produce/sweet_strawberry.png",
@@ -123,7 +123,7 @@
     },
     {
       "checks": [],
-      "hash": "caa3313763a3bb62",
+      "hash": "f2b7f3d8f73b4d5f",
       "line": 2,
       "matrix": {},
       "path": "produce/sweet_strawberry.svg",
@@ -134,7 +134,7 @@
     },
     {
       "checks": [],
-      "hash": "0ce00510b9a215b2",
+      "hash": "8e0a80d3201179e7",
       "line": 1,
       "matrix": {},
       "path": "prop/matcha_teacup.png",
@@ -145,7 +145,7 @@
     },
     {
       "checks": [],
-      "hash": "62a5ac5ce29f7dfe",
+      "hash": "b3446458675c4367",
       "line": 2,
       "matrix": {},
       "path": "prop/matcha_teacup.svg",

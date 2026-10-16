@@ -27,9 +27,8 @@ let lacquer = torii.lacquer
 let ink_cool = torii.ink_cool
 let spark = torii.spark
 let gate = mix(verm.line char.line .25)
-# Rounded pillar in local x, so both posts share one profile.
 def _pillar cx:334
-  path "M54.1 196.9Q54.1 193.2 51.4 190.6Q48.8 188 45.1 188L-45.1 188Q-48.8 188 -51.4 190.6Q-54.1 193.2 -54.1 196.9L-61.9 798.9Q-61.9 802.6 -59.3 805.3Q-56.7 808 -53 808L52.9 808Q56.6 808 59.2 805.4Q61.9 802.7 61.9 799L54.1 196.9Z" at:cx,0 fill:grad(right verm verm.3,.2 verm,.42 verm.1,.7 verm.0) name:shaft
+  curve -54,188 54,188 62,808 -62,808 closed tension:0 round:9 at:cx,0 fill:grad(right verm verm.3,.2 verm,.42 verm.1,.7 verm.0) name:shaft
     curve 20,180 80,180 80,820 27,820 closed tension:0 fill:verm.1 a:.85 blur:1
     ellipse 12,300 at:46,520 fill:verm.0 a:.45 blur:9
     curve -28,300 -30,520 -33,740 stroke:verm.4,[3 9 4] a:.55 blur:2.5
@@ -85,69 +84,64 @@ def _tassel tx:467
       curve -9,-2.5 8,-2.5 stroke:verm.4,1.4 a:.7
     fx rim 4 dir:1,1 color:p.rim a:.4
     fx grain .05 scale:1.8
+def _fold i:0 flutter:0
+  let dx = (if mod(i 2) > .5 then 18 else 0)+flutter*(i*i*4+i*6)
+  let y0 = i*44-(if i < .5 then 30 else 0)
+  let y1 = (i+1)*44+2
+  let sk = 3+flutter*6
+  curve -25+dx,y0 5+dx,y0 5+dx+sk,y1 -25+dx+sk,y1 closed tension:0 round:2.5 fill:if mod(i 2) > .5 then grad(right mix(paper cool .6) mix(cool paper.0 .3)) else grad(right paper.3 paper,.6 mix(paper cool .35))
+    ellipse 6,30 at:-10+dx+sk/2+13,(y0+y1)/2 fill:cool a:.6 blur:3
+    curve -10+dx+sk/2-13,y0+2 -10+dx+sk/2+13,y0+3 stroke:mix(cool paper.line .4),1.6 a:.55
 def _shide flutter:0
-  if flutter > 0
-    path "M-24.8 -27.5L-18.6 43.7Q-18.5 44.7 -17.8 45.3Q-17.1 46 -16.1 46L-0.6 46Q-0.6 46.1 -0.6 46.2Q-0.6 46.4 -0.6 46.5Q-0.6 46.6 -0.6 46.7Q-0.6 46.8 -0.6 46.9L5.3 87.9L-5.3 88Q-6.4 88 -7.1 88.7Q-7.8 89.5 -7.8 90.5Q-7.8 90.6 -7.8 90.7Q-7.8 90.8 -7.8 90.9L-1.9 131.9Q-1.8 132.8 -1.1 133.4Q-0.4 134 0.6 134L25.5 134Q25.6 134 25.7 134Q25.8 134 25.8 134Q25.8 134.1 25.8 134.2Q25.8 134.4 25.8 134.5Q25.8 134.6 25.8 134.7Q25.8 134.8 25.8 134.9L31.7 175.9Q31.8 176.8 32.5 177.4Q33.2 178 34.2 178L59.1 178Q60.2 178 60.9 177.3Q61.6 176.5 61.6 175.5Q61.6 175.4 61.6 175.3Q61.6 175.2 61.6 175.1L55.7 134.1Q55.6 133.2 54.9 132.6Q54.2 132 53.2 132L28.3 132Q28.2 132 28.1 132Q28 132 28 132Q28 131.9 28 131.8Q28 131.6 28 131.5Q28 131.4 28 131.3Q28 131.2 28 131.1L22.1 90.1L32.7 90Q33.8 90 34.5 89.3Q35.2 88.5 35.2 87.5Q35.2 87.4 35.2 87.3Q35.2 87.2 35.2 87.1L29.3 46.1Q29.2 45.2 28.5 44.6Q27.8 44 26.8 44L11.3 44Q11.3 43.9 11.4 43.8Q11.4 43.6 11.4 43.5L5.2 -27.7Q5.1 -28.7 4.4 -29.3Q3.7 -30 2.7 -30L-22.3 -30Q-23.3 -30 -24 -29.3Q-24.8 -28.5 -24.8 -27.5Z" fill:paper name:sheet
-      rect 30x76 at:-6.7,8 r:2.5 skew:4.96,0 fill:grad(right paper.3 paper,.6 mix(paper cool .35))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-36 13,-35 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:17.3,67 r:2.5 skew:8.16,0 fill:grad(right mix(paper cool .6) mix(cool paper.0 .3))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:10.1,111 r:2.5 skew:8.16,0 fill:grad(right paper.3 paper,.6 mix(paper cool .35))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:43.7,155 r:2.5 skew:8.16,0 fill:grad(right mix(paper cool .6) mix(cool paper.0 .3))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      ellipse 26,14 at:2,2 fill:mix(cool paper.line .5) a:.7 blur:6
-      fx rim 3 dir:1,1 color:p.rim a:.6
-      fx grain .03 scale:1.6
-      fx outline 3 color:mix(paper.line ink_cool .5)
-  else
-    path "M-24.9 -27.5L-22.1 43.6Q-22.1 44.6 -21.3 45.3Q-20.6 46 -19.6 46L-6.8 46Q-6.8 46.1 -6.8 46.2Q-6.8 46.4 -6.8 46.5L-4.2 87.7Q-4.1 87.7 -4.1 87.8Q-4.1 87.9 -4.1 88L-22.3 88Q-23.4 88 -24.1 88.7Q-24.8 89.5 -24.8 90.5L-22.2 131.7Q-22.1 132.6 -21.4 133.3Q-20.6 134 -19.7 134L-6.8 134Q-6.8 134.1 -6.8 134.2Q-6.8 134.4 -6.8 134.5L-4.2 175.7Q-4.1 176.6 -3.4 177.3Q-2.6 178 -1.7 178L23.3 178Q24.4 178 25.1 177.3Q25.8 176.5 25.8 175.5L23.2 134.3Q23.1 133.4 22.4 132.7Q21.6 132 20.7 132L7.8 132Q7.8 131.9 7.8 131.8Q7.8 131.6 7.8 131.5L5.2 90.3Q5.1 90.3 5.1 90.2Q5.1 90.1 5.1 90L23.3 90Q24.4 90 25.1 89.3Q25.8 88.5 25.8 87.5L23.2 46.3Q23.1 45.4 22.4 44.7Q21.6 44 20.7 44L7.8 44Q7.9 43.9 7.9 43.8Q7.9 43.6 7.9 43.5L5.1 -27.6Q5.1 -28.6 4.3 -29.3Q3.6 -30 2.6 -30L-22.4 -30Q-23.4 -30 -24.2 -29.3Q-24.9 -28.5 -24.9 -27.5Z" fill:paper name:sheet
-      rect 30x76 at:-8.5,8 r:2.5 skew:2.26,0 fill:grad(right paper.3 paper,.6 mix(paper cool .35))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-36 13,-35 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:9.5,67 r:2.5 skew:3.73,0 fill:grad(right mix(paper cool .6) mix(cool paper.0 .3))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:-8.5,111 r:2.5 skew:3.73,0 fill:grad(right paper.3 paper,.6 mix(paper cool .35))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      rect 30x46 at:9.5,155 r:2.5 skew:3.73,0 fill:grad(right mix(paper cool .6) mix(cool paper.0 .3))
-        ellipse 6,30 at:13,0 fill:cool a:.6 blur:3
-        curve -13,-21 13,-20 stroke:mix(cool paper.line .4),1.6 a:.55
-      ellipse 26,14 at:2,2 fill:mix(cool paper.line .5) a:.7 blur:6
-      fx rim 3 dir:1,1 color:p.rim a:.6
-      fx grain .03 scale:1.6
-      fx outline 3 color:mix(paper.line ink_cool .5)
+  union fill:paper name:sil z:-1
+    each i in 0..4
+      _fold i flutter:flutter
+    fx outline 3 color:mix(paper.line ink_cool .5)
+  inside @sil
+    each i in 0..4
+      _fold i flutter:flutter
+    ellipse 26,14 at:2,2 fill:mix(cool paper.line .5) a:.7 blur:6
+  fx rim 3 dir:1,1 color:p.rim a:.6
+  fx grain .03 scale:1.6
+def _leaf cx:150 cy:566 r:44 rot:-18 tint:0
+  let tone = if tint < .01 then maple else mix(maple verm tint)
+  let o = cx,cy
+  let A = [-106 -96 -90 -84 -74 -64 -54 -44 -38 -32 -22 -12 -1 9 15 21 31 90 149 159 165 171 181 191 202 212 218 224 234 244]
+  let R = [.58 .82 1 .82 .58 .38 .5104 .7216 .88 .7216 .5104 .38 .348 .492 .6 .492 .348 .3 .348 .492 .6 .492 .348 .38 .5104 .7216 .88 .7216 .5104 .38]
+  let L = [-90,1 -38,.88 15,.6 165,.6 218,.88]
+  curve o o+polar(r*.75 90+rot) o+polar(r*.95 90+rot+17.19) stroke:shade(tone -1),[2.4 2 1.2] taper:0,.7
+  curve [each n in 0..30 -> o+polar(r*R.{n} A.{n}+rot)] closed tension:.25 fill:grad(45 shade(tone 1) tone shade(tone -1)) name:blade
+    ellipse r*.5,r*.4 at:o+(r*.35,r*.35) fill:shade(tone -2) a:.4 blur:r*.25
+    each k in 0..5
+      curve o o+polar(r*L.{k}.y*.82 L.{k}.x+rot) stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
+    ellipse r*.28,r*.14 at:o-(r*.3,r*.35) fill:shade(tone 2) a:.6 blur:2
+    fx outline 3 color:line(tone)
+def _peb px:806 py:850 r:7
+  curve px-r,py px-r*.4,py-r*.8 px+r*.6,py-r*.7 px+r,py+r*.2 px,py+r*.5 closed tension:.5 fill:grad(45 stone.3 stone.1) stroke:fade(stone.line .8),1.6
 layer ground_shadow
   ellipse 400,32 at:512,852 fill:p.shadow a:.34 blur:16
-  ellipse 96,13 at:340,848 fill:p.shadow a:.32 blur:6
-  ellipse 96,13 at:696,848 fill:p.shadow a:.32 blur:6
-# Feet tuck into the stones. The pillar stays a child so the footing carries the gate.
+  each cx in [340 696]
+    ellipse 96,13 at:cx,848 fill:p.shadow a:.32 blur:6
 layer footings pivot:512,840
   layer pillars pivot:512,800 z:behind
     _pillar 334
     _pillar 690
     layer nuki pivot:512,373
       group name:beam
-        path "M540.1 231.9Q540.1 229.4 538.3 227.7Q536.6 226 534.1 226L489.9 226Q487.4 226 485.7 227.7Q483.9 229.4 483.9 231.9L481.1 349.9Q481.1 352.3 482.8 354.1Q484.5 355.9 487 356Q487 356 487.1 356L536.9 356Q539.3 356 541.1 354.2Q542.9 352.5 542.9 350L540.1 231.9Z" fill:grad(right verm.3 verm,.5 verm.1) name:strut
+        curve 484,226 540,226 543,356 481,356 closed tension:0 round:6 fill:grad(right verm.3 verm,.5 verm.1) name:strut
           ellipse 46,18 at:512,268 fill:verm.0 a:.7 blur:7
-        path "M187.1 352Q187.1 352.3 187.2 352.5Q187.2 352.8 187.2 353.1L193.1 397.1Q193.5 400 195.7 402Q198 404 201 404L823 404Q826 404 828.3 402Q830.5 400 830.9 397.1L836.8 353.1Q837 351.5 836.6 349.9Q836.2 348.4 835.2 347.1Q834.3 345.9 832.9 345.1Q831.5 344.3 829.9 344.1Q829.7 344 829.4 344Q829.1 344 828.9 344L195.1 344Q191.8 344 189.5 346.3Q187.1 348.7 187.1 352Z" fill:grad(down verm.3 verm,.45 verm.1) name:beam
+        curve 186,344 838,344 830,404 194,404 closed tension:0 round:8 fill:grad(down verm.3 verm,.45 verm.1) name:beam
           subtract fill:verm.1 a:.9 blur:.8
             copy @beam
             copy @beam at:0,-15
           ellipse 130,9 at:720,396 fill:verm.0 a:.4 blur:6
           ellipse 46,9 at:512,346 fill:verm.0 a:.55 blur:5
           curve 212,352 420,351 620,352 stroke:verm.4,[2 5 2] a:.7 blur:1
-          rect 13x64 at:190.5,374 r:3 fill:verm.1 a:.55
-          rect 13x64 at:832.5,374 r:3 fill:verm.1 a:.55
-          curve 274,348 273,400 stroke:verm.line,2 a:.4
-          curve 394,348 395,400 stroke:verm.line,2 a:.4
-          curve 630,348 629,400 stroke:verm.line,2 a:.4
-          curve 750,348 751,400 stroke:verm.line,2 a:.4
+          each ex in [184 826]
+            rect 13x64 at:ex+6.5,374 r:3 fill:verm.1 a:.55
+          each cx in [334 690]
+            curve cx-60,348 cx-61,400 stroke:verm.line,2 a:.4
+            curve cx+60,348 cx+61,400 stroke:verm.line,2 a:.4
           fx rim 4 dir:1,1 color:p.rim a:.45
           fx grain .04 scale:2.5
         fx rim 4 dir:1,1 color:p.rim a:.45
@@ -159,10 +153,9 @@ layer footings pivot:512,840
           curve -8,-16 -10,0 -7,16 stroke:straw.3,[3 4.5 2.5] taper:.2,.5
           curve 10,-18 8,-6 stroke:straw.3,[3 2] taper:.1,.6
           curve 6,4 12,12 9,20 stroke:straw.3,[2.5 4 2] taper:.2,.6
-          circle 2.6 at:-36,-30 fill:straw.4
-          circle 2.6 at:36,-30 fill:straw.4
-          circle 2.6 at:-36,30 fill:straw.4
-          circle 2.6 at:36,30 fill:straw.4
+          each s in [-1 1]
+            each q in [-1 1]
+              circle 2.6 at:36*s,30*q fill:straw.4
           fx inner 3,4 blur:3 color:char.0
           fx outline 4 color:char.line
       layer shimenawa pivot:512,440
@@ -186,13 +179,11 @@ layer footings pivot:512,840
             fx grain .05 scale:1.8
           _tassel 467 name:tas_l
           _tassel 557 name:tas_r
-        # Combined rope-and-tassel outline, behind the straw and in front of the shide.
         union fill:straw z:-1
           copy @rope
           copy @tas_l.fringe
           copy @tas_r.fringe
           fx outline 4.5 color:straw.line
-      # Combined nuki-and-strut outline, behind the lacquer and in front of the posts.
       union fill:verm z:-1
         copy @strut
         copy @beam
@@ -227,59 +218,31 @@ layer footings pivot:512,840
         sparkle 10 at:900,272 color:spark glow:.25
   _stone 334 name:stone_l
   _stone 690 name:stone_r
-  curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4 fill:stone.0 a:.45 blur:3 at:3,4
+  curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4 fill:none name:src_l
+  copy @src_l at:3,4 fill:stone.0 a:.45 blur:3
   intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_l
-    curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4
+    copy @src_l
     copy @stone_l.rock
   inside @tuft_l
     each i in 0..14
       circle rand(1 1.8) at:rand(240 298),rand(764 816) fill:moss.4 a:.6
   copy @tuft_l fill:fade(moss 0) stroke:moss.line,1.2 a:.35 blur:.6
-  curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4 fill:stone.0 a:.45 blur:3 at:3,4
+  curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4 fill:none name:src_r
+  copy @src_r at:3,4 fill:stone.0 a:.45 blur:3
   intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_r
-    curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4
+    copy @src_r
     copy @stone_r.rock
   inside @tuft_r
     each i in 0..14
       circle rand(1 1.8) at:rand(750 786),rand(770 806) fill:moss.4 a:.6
   copy @tuft_r fill:fade(moss 0) stroke:moss.line,1.2 a:.35 blur:.6
-  curve 799,850 803.2,844.4 810.2,845.1 813,851.4 806,853.5 closed tension:.5 fill:grad(45 stone.3 stone.1) stroke:fade(stone.line .8),1.6
-  curve 815.5,854 818.2,850.4 822.7,850.9 824.5,854.9 820,856.2 closed tension:.5 fill:grad(45 stone.3 stone.1) stroke:fade(stone.line .8),1.6
-  curve 566.5,852 569.8,847.6 575.3,848.1 577.5,853.1 572,854.8 closed tension:.5 fill:grad(45 stone.3 stone.1) stroke:fade(stone.line .8),1.6
+  _peb 806 850
+  _peb 820 854 r:4.5
+  _peb 572 852 r:5.5
 layer leaf_a pivot:150,566
-  let tone = maple
-  curve 150,566 160.2,597.4 150.6,607.8 stroke:shade(tone -1),[2.4 2 1.2] taper:0,.7
-  curve 135.7,544.8 135.3,533 136.4,524.2 142.5,530.7 149.1,540.5 152.3,549.4 156.9,544.6 164.9,538 171.7,533.9 170.4,541.7 167.2,551.6 164.5,557.6 164.5,561 171.4,562.6 176.4,564.6 171.6,567.1 164.9,569.4 154.1,578.6 140,577.6 133.2,579.6 127.9,580.4 130.7,575.8 135.4,570.5 133.4,568 127.6,564.4 119.2,558.3 113.6,552.8 121.5,552.1 131.8,552.8 138.4,554 closed tension:.25 fill:grad(45 shade(tone 1) tone shade(tone -1)) name:blade
-    ellipse 22,17.6 at:165.4,581.4 fill:shade(tone -2) a:.4 blur:11
-    curve 150,566 138.9,531.7 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 150,566 167.8,539.7 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 150,566 171.6,564.9 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 150,566 131.8,577.8 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 150,566 120.2,555.1 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    ellipse 12.3,6.2 at:136.8,550.6 fill:shade(tone 2) a:.6 blur:2
-    fx outline 3 color:line(tone)
+  _leaf 150 566
 layer leaf_b pivot:870,474
-  let tone = mix(maple verm .35)
-  curve 870,474 857.3,497.8 845.7,498.1 stroke:shade(tone -1),[2.4 2 1.2] taper:0,.7
-  curve 874.3,453.6 881.1,446.6 886.9,442.2 886.5,449.5 884.5,459 881.1,466 886.5,465.9 895,466.8 901.2,468.5 895.9,472.2 888.3,475.9 883.2,477.8 881.2,479.7 884.1,484.7 885.8,488.7 881.6,487.4 876.5,484.7 864.9,483.5 857.5,474.7 852.4,471.8 849,469.1 853.3,468.2 859,467.9 859.4,465.4 858.2,459.9 857,451.5 857.1,445.1 862,449.3 867.4,455.8 870.5,460.3 closed tension:.25 fill:grad(45 shade(tone 1) tone shade(tone -1)) name:blade
-    ellipse 18,14.4 at:882.6,486.6 fill:shade(tone -2) a:.4 blur:9
-    curve 870,474 883.9,447.9 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 870,474 895.6,469.5 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 870,474 883,486.1 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 870,474 852.7,470 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 870,474 859.4,450.3 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    ellipse 10.1,5 at:859.2,461.4 fill:shade(tone 2) a:.6 blur:2
-    fx outline 3 color:line(tone)
+  _leaf 870 474 r:36 rot:28 tint:.35
 layer leaf_c pivot:836,690
-  let tone = mix(maple verm .15)
-  curve 836,690 815.8,699.9 807.8,694.4 stroke:shade(tone -1),[2.4 2 1.2] taper:0,.7
-  curve 848.9,678.4 856.9,677 863,676.8 859.1,681.6 853.1,687 847.4,690 851.1,692.7 856.3,697.4 859.7,701.6 854.4,701.5 847.4,700.2 843,699 840.7,699.3 840.3,704.1 839.4,707.7 837.3,704.7 835.1,700.4 827.9,693.9 827.2,684.3 825.2,679.9 824.2,676.4 827.5,677.9 831.6,680.5 833,679 834.9,674.7 838.3,668.5 841.5,664.2 842.7,669.4 843.2,676.5 843,681 closed tension:.25 fill:grad(45 shade(tone 1) tone shade(tone -1)) name:blade
-    ellipse 15,12 at:846.5,700.5 fill:shade(tone -2) a:.4 blur:7.5
-    curve 836,690 858.1,679.2 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 836,690 855.5,699.5 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 836,690 838.8,704.5 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 836,690 826.3,678.9 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    curve 836,690 840.5,668.8 stroke:shade(tone -2),[1.8 .8] taper:0,.8 a:.6
-    ellipse 8.4,4.2 at:827,679.5 fill:shade(tone 2) a:.6 blur:2
-    fx outline 3 color:line(tone)
+  _leaf 836 690 r:30 rot:64 tint:.15
 assert inside(@cap canvas margin:24)

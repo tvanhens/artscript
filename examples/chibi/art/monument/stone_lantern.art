@@ -22,32 +22,10 @@ let stone_cel = mix(lantern.stone.1 lantern.teal.1 .35)
 let stone_line = mix(lantern.stone.line lantern.teal.line .4)
 let rock_cel = mix(lantern.rock.1 lantern.teal.1 .35)
 let rock_line = mix(lantern.rock.line lantern.teal.line .4)
-let moss_cast = mix(lantern.stone.0 lantern.teal.0 .3)
-let eave_deep = mix(lantern.stone.0 lantern.teal.0 .4)
-let window_deep = mix(lantern.amber.0 lantern.teal.0 .55)
-let window_jamb = mix(lantern.amber.0 lantern.teal.0 .6)
-let flame_root = mix(lantern.amber.0 lantern.teal .4)
-let kiso_moss = mix(lantern.stone.0 lantern.moss.0 .4)
-def _speckle n:20 x0:0 x1:10 y0:0 y1:10 tone:lantern.stone
-  each i in 0..n
-    if rand(0 1) < .6
-      circle rand(1 2.6) at:rand(x0 x1),rand(y0 y1) fill:shade(tone -2) a:.35
-    else
-      circle rand(1 2.6) at:rand(x0 x1),rand(y0 y1) fill:shade(tone 1) a:.45
-def _moss dots:20 x0:0 x1:10 y0:0 y1:10
+def _moss
   slot form
-  copy @form at:2,5 fill:moss_cast a:.35 blur:3
-  copy @form fill:lantern.moss name:pad
-    copy @pad fill:grad(40 lantern.moss.3 lantern.moss,.5 lantern.moss.1)
-    each i in 0..dots
-      let x = rand(x0 x1)
-      let y = rand(y0 y1)
-      let mid = (y0+y1)/2
-      let cut = x1-(x1-x0)*.3
-      if y < mid and x < cut
-        circle rand(1.2 2.6) at:x,y fill:lantern.moss.4 a:.6
-      else
-        circle rand(1.2 2.6) at:x,y fill:lantern.moss.0 a:.4
+  copy @form at:2,5 fill:mix(lantern.stone.0 lantern.teal.0 .3) a:.35 blur:3
+  copy @form fill:grad(40 lantern.moss.3 lantern.moss,.5 lantern.moss.1)
   copy @form fill:none stroke:fade(lantern.moss.line .55),1.6
 def _petals y0:692 y1:714 up:1
   each x in [432 472 512 552 592]
@@ -55,158 +33,131 @@ def _petals y0:692 y1:714 up:1
       curve x-14,y1 x-10,y0+6 x,y0 x+10,y0+6 x+14,y1 stroke:stone_line,2 taper:.2 a:.55
     else
       curve x-14,y0 x-10,y1-6 x,y1 x+10,y1-6 x+14,y0 stroke:stone_line,2 taper:.2 a:.55
-def _spiral cx:252 cy:286 r0:13 turns:1.15 start:162 sign:1 n:26 w0:3.2 w1:1 ink:stone_line alpha:.8 soft:0
+def _spiral cx:252 cy:286 r0:13 turns:1.15 start:162 sign:1 n:26 w0:3.2 w1:1 ink:stone_line a:.8 soft:0
   each i in 0..n-1
-    let denom = n-1
-    let t0 = i/denom
-    let t1 = (i+1)/denom
-    let a0 = start+sign*t0*turns*360
-    let a1 = start+sign*t1*turns*360
-    let ra = r0*(1-.82*t0)
-    let rb = r0*(1-.82*t1)
-    let w = w0+(w1-w0)*t0
-    curve (cx,cy)+polar(ra a0) (cx,cy)+polar(rb a1) stroke:ink,w a:alpha blur:soft
+    let v = i/(n-1)
+    let u = (i+1)/(n-1)
+    curve (cx,cy)+polar(r0*(1-.82*v) start+sign*v*turns*360) (cx,cy)+polar(r0*(1-.82*u) start+sign*u*turns*360) stroke:ink,w0+(w1-w0)*v a:a blur:soft
+def _tongue h:64 w:17 lean:0 by:486 fill:lantern.amber a:1 bl:0
+  curve 512,by+2 512+w,by-h*.22 512+w*.62+lean*.5,by-h*.6 512+lean,by-h 512-w*.6+lean*.5,by-h*.6 512-w,by-h*.22 closed fill:fill a:a blur:bl
 def _flame h:64 w:17 lean:3
-  let cx = 512
-  let by = 486
-  curve cx,by+2 cx+w,by-h*.22 cx+w*.62+lean*.5,by-h*.6 cx+lean,by-h cx-w*.6+lean*.5,by-h*.6 cx-w,by-h*.22 closed tension:.5 fill:lantern.amber a:.6 blur:6 name:outer
+  _tongue h w lean a:.6 bl:6 name:outer
   copy @outer fill:grad(down lantern.amber.3 lantern.amber,.6 lantern.amber.1)
-  let ih = h*.62
-  let iw = w*.55
-  let il = lean*.6
-  let ib = by-4
-  curve cx,ib+2 cx+iw,ib-ih*.22 cx+iw*.62+il*.5,ib-ih*.6 cx+il,ib-ih cx-iw*.6+il*.5,ib-ih*.6 cx-iw,ib-ih*.22 closed tension:.5 fill:lantern.amber.4 a:.95 name:inner
+  _tongue h*.62 w*.55 lean*.6 by:482 fill:lantern.amber.4 a:.95
     fx adjust hue:8
-  let ch = h*.3
-  let cw = w*.28
-  let cl = lean*.3
-  let cb = by-6
-  curve cx,cb+2 cx+cw,cb-ch*.22 cx+cw*.62+cl*.5,cb-ch*.6 cx+cl,cb-ch cx-cw*.6+cl*.5,cb-ch*.6 cx-cw,cb-ch*.22 closed tension:.5 fill:lantern.core a:.95
-  ellipse w*.5,3 at:cx,by-2 fill:flame_root a:.6 blur:1
-def _firefly cx:236 cy:420 r:5
-  circle r*7 at:cx,cy fill:radial(fade(lantern.firefly .8) fade(lantern.firefly .35),.3 fade(lantern.firefly 0) r:r*7) name:glow
+  _tongue h*.3 w*.28 lean*.3 by:480 fill:lantern.core a:.95
+  ellipse w*.5,3 at:512,484 fill:mix(lantern.amber.0 lantern.teal .4) a:.6 blur:1
+def _fly cx:236 cy:420 r:5
+  let g = lantern.firefly
+  circle r*7 at:cx,cy fill:radial(fade(g .8) fade(g .35),.3 fade(g 0) r:r*7)
     fx adjust sat:.3 light:-.04
   ellipse r*1.2,r*.75 at:cx+r*1.3,cy-r rot:-30 fill:lantern.teal.0
   ellipse r*1.1,r*.6 at:cx+r*1.6,cy-r*2 rot:-60 fill:fade(lantern.teal.4 .7) stroke:fade(lantern.teal.line .7),1.2
-  circle r*1.15 at:cx,cy fill:lantern.firefly name:lamp
+  circle r*1.15 at:cx,cy fill:g
     fx adjust sat:.3 light:-.04
   circle r*.6 at:cx-r*.2,cy-r*.2 fill:lantern.hot
+def _blade x:350 lean:-1 y:790
+  let p = [x,y x+lean*6,y-18 x+lean*14,y-30]
+  curve p stroke:lantern.moss.line,[7 6 4] taper:0,.8
+  curve p stroke:lantern.moss,[4 3 1] taper:0,.8
+def _pebble x:282 y:858 w:18 h:11 ang:31
+  ellipse w,h at:x,y jitter:1.5,60 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
 layer ground_shadow
   ellipse 300,34 at:512,860 fill:lantern.night a:.4 blur:16
   ellipse 220,18 at:520,856 fill:lantern.night a:.25 blur:8
 layer mossy_rock pivot:512,820
-  curve 296,828 318,784 370,756 440,744 520,740 600,744 668,760 716,790 734,828 704,852 620,866 512,870 404,866 326,854 closed tension:.5 fill:grad(17 lantern.rock.3 lantern.rock,.5 lantern.rock.1) name:rock
+  curve 296,828 318,784 370,756 440,744 520,740 600,744 668,760 716,790 734,828 704,852 620,866 512,870 404,866 326,854 closed fill:grad(17 lantern.rock.3 lantern.rock,.5 lantern.rock.1) name:rock
     path "M600 760 L740 790 L740 880 L520 880 L600 840 L630 800 Z" fill:rock_cel a:.85 blur:1.4
     ellipse 60,24 at:680,840 fill:lantern.rock.0 a:.4 blur:12
     ellipse 230,14 at:512,866 fill:lantern.rock.0 a:.5 blur:8
     curve 352,846 400,856 452,858 stroke:lantern.rock.4,3 taper:.35 a:.5 blur:1
     curve 612,836 640,852 stroke:lantern.rock.line,2.2 taper:.35 a:.5
-    _speckle 140 x0:300 x1:730 y0:748 y1:866 tone:lantern.rock
-    _moss 80 x0:306 x1:712 y0:738 y1:826
+    _moss
       form:
-        curve 303,812 319,792 335,774 358,764 378,748 402,750 425,743 450,742 474,742 499,742 524,739 549,736 573,742 598,743 622,749 647,751 668,760 690,773 713,783 706,803 681,801 658,807 635,809 611,803 586,805 562,811 538,803 513,804 489,809 464,807 439,807 414,802 390,810 367,818 344,807 324,818 closed tension:.5 fill:none name:form
-    fx rim 5 dir:1,1 color:lantern.rim a:.5
-    fx grain .045 scale:2.2
+        curve 303,812 335,774 378,748 425,743 474,742 524,739 573,742 622,749 668,760 713,783 681,801 635,809 586,805 538,803 489,809 439,807 390,810 344,807 324,818 closed name:form
+    fx rim 5 color:lantern.rim a:.5
     fx outline 6 color:rock_line
   assert inside(@rock canvas margin:24)
   layer pedestal pivot:512,770
-    union fill:lantern.stone name:ped_shell z:behind
-      curve 452,598 572,598 566,646 578,700 446,700 458,646 closed tension:.4
-      curve 392,708 632,708 648,722 646,772 378,772 376,722 closed tension:.35
-      curve 448,688 512,686 576,688 604,698 626,712 512,716 398,712 420,698 closed tension:.4
-      curve 392,580 512,582 632,580 620,598 602,614 512,617 422,614 404,598 closed tension:.4
-      curve 372,532 652,532 668,546 664,578 642,588 382,588 360,578 356,546 closed tension:.35
-      fx outline 6 color:stone_line
     curve 452,598 572,598 566,646 578,700 446,700 458,646 closed tension:.4 fill:grad(0 lantern.stone.3 lantern.stone,.35 lantern.stone.1,.72 stone_cel) name:post
-      path "M544 590 L590 590 L590 710 L548 710 Z" fill:stone_cel a:.6 blur:2
+      rect 46x120 at:567,650 fill:stone_cel a:.6 blur:2
       ellipse 80,16 at:512,610 fill:lantern.stone.0 a:.65 blur:8
       ellipse 10,30 at:474,656 fill:lantern.stone.4 a:.35 blur:8
-      _speckle 28 x0:448 x1:576 y0:600 y1:698 tone:lantern.stone
-      fx rim 5 dir:1,1 color:lantern.rim a:.5
-      fx grain .045 scale:2
+      fx rim 5 color:lantern.rim a:.5
     curve 392,708 632,708 648,722 646,772 378,772 376,722 closed tension:.35 fill:grad(13 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:kiso
-      path "M360 700 L440 700 L440 790 L360 790 Z" fill:lantern.stone.3 a:.55
-      path "M586 700 L660 700 L660 790 L586 790 Z" fill:stone_cel a:.9 blur:1
-      ellipse 14,32 at:580,740 fill:lantern.stone.0 a:.3 blur:8
+      rect 80x90 at:400,745 fill:lantern.stone.3 a:.55
+      rect 74x90 at:623,745 fill:stone_cel a:.9 blur:1
       ellipse 140,12 at:512,712 fill:lantern.stone.0 a:.5 blur:6
-      ellipse 150,10 at:512,770 fill:kiso_moss a:.5 blur:6
-      _speckle 70 x0:378 x1:646 y0:708 y1:772 tone:lantern.stone
-      _moss 16 x0:376 x1:438 y0:728 y1:776
+      ellipse 150,10 at:512,770 fill:mix(lantern.stone.0 lantern.moss.0 .4) a:.5 blur:6
+      _moss
         form:
-          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,60 fill:none name:form
-      _moss 12 x0:600 x1:650 y0:746 y1:778
+          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,60 name:form
+      _moss
         form:
-          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,60 fill:none name:form
-      curve 440,712 440,768 stroke:stone_line,2.4 taper:.2 a:.5
-      curve 586,712 586,768 stroke:stone_line,2.4 taper:.2 a:.5
-      fx rim 5 dir:1,1 color:lantern.rim a:.5
-      fx grain .045 scale:2
+          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,60 name:form
+      each x in [440 586]
+        curve x,712 x,768 stroke:stone_line,2.4 taper:.2 a:.5
+      fx rim 5 color:lantern.rim a:.5
     curve 448,688 512,686 576,688 604,698 626,712 512,716 398,712 420,698 closed tension:.4 fill:grad(7 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:kiso_lotus
-      path "M390 680 L450 680 L450 730 L390 730 Z" fill:lantern.stone.3 a:.55
-      path "M574 680 L640 680 L640 730 L574 730 Z" fill:stone_cel a:.9 blur:1
-      ellipse 12,13 at:568,701 fill:lantern.stone.0 a:.3 blur:8
+      rect 60x50 at:420,705 fill:lantern.stone.3 a:.55
+      rect 66x50 at:607,705 fill:stone_cel a:.9 blur:1
       ellipse 70,8 at:512,690 fill:lantern.stone.0 a:.6 blur:5
-      _petals 692 y1:714 up:1
+      _petals 692 714 1
       curve 398,712 512,715 626,712 stroke:stone_line,2.4 taper:.1 a:.6
-      fx rim 4 dir:1,1 color:lantern.rim a:.45
-      fx grain .04 scale:1.8
+      fx rim 4 color:lantern.rim a:.45
     curve 392,580 512,582 632,580 620,598 602,614 512,617 422,614 404,598 closed tension:.4 fill:grad(9 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:chudai_lotus
-      path "M380 572 L440 572 L440 624 L380 624 Z" fill:lantern.stone.3 a:.55
-      path "M584 572 L650 572 L650 624 L584 624 Z" fill:stone_cel a:.9 blur:1
-      ellipse 12,18 at:578,598 fill:lantern.stone.0 a:.3 blur:8
+      rect 60x52 at:410,598 fill:lantern.stone.3 a:.55
+      rect 66x52 at:617,598 fill:stone_cel a:.9 blur:1
       ellipse 130,10 at:512,584 fill:lantern.stone.0 a:.6 blur:6
-      _petals 584 y1:610 up:0
-      fx rim 4 dir:1,1 color:lantern.rim a:.45
-      fx grain .04 scale:1.8
+      _petals 584 610 0
+      fx rim 4 color:lantern.rim a:.45
     curve 372,532 652,532 668,546 664,578 642,588 382,588 360,578 356,546 closed tension:.35 fill:grad(10 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:chudai
-      path "M340 524 L430 524 L430 596 L340 596 Z" fill:lantern.stone.3 a:.55
-      path "M594 524 L680 524 L680 596 L594 596 Z" fill:stone_cel a:.9 blur:1
-      ellipse 14,28 at:588,560 fill:lantern.stone.0 a:.3 blur:8
+      rect 90x72 at:385,560 fill:lantern.stone.3 a:.55
+      rect 86x72 at:637,560 fill:stone_cel a:.9 blur:1
       curve 374,534 650,534 664,544 512,548 360,544 closed tension:.3 fill:lantern.stone.4 a:.55 blur:1.5
       ellipse 110,8 at:512,542 fill:lantern.stone.0 a:.45 blur:5
       ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.35 blur:10
-      ellipse 50,9 at:512,556 fill:lantern.amber.4 a:.3 blur:6
-      _speckle 80 x0:360 x1:664 y0:532 y1:588 tone:lantern.stone
-      _moss 18 x0:356 x1:446 y0:532 y1:566
+      _moss
         form:
-          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,60 fill:none name:form
-      curve 430,548 430,584 stroke:stone_line,2.4 taper:.2 a:.5
-      curve 594,548 594,584 stroke:stone_line,2.4 taper:.2 a:.5
+          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,60 name:form
+      each x in [430 594]
+        curve x,548 x,584 stroke:stone_line,2.4 taper:.2 a:.5
       curve 362,548 512,552 662,548 stroke:stone_line,2.2 taper:.15 a:.45
-      fx rim 5 dir:1,1 color:lantern.rim a:.5
-      fx grain .045 scale:2
+      fx rim 5 color:lantern.rim a:.5
+    union fill:lantern.stone z:behind
+      copy @post
+      copy @kiso
+      copy @kiso_lotus
+      copy @chudai_lotus
+      copy @chudai
+      fx outline 6 color:stone_line
     layer face pivot:512,646
       curve 479,644 488,650 497,644 stroke:lantern.face,3.6 taper:.4 name:eye_l
       curve 527,644 536,650 545,644 stroke:lantern.face,3.6 taper:.4 name:eye_r
-      blush 20 h:10 lines:0 at:476,662 color:lantern.blush
-      blush 20 h:10 lines:0 at:548,662 color:lantern.blush
+      each x in [476 548]
+        blush 20 h:10 lines:0 at:x,662 color:lantern.blush
       smile 10 at:512,662 color:lantern.face
       assert level(@eye_l @eye_r) tol:.5
     layer eyes_open pivot:512,646 a:0
-      ellipse 5,6.5 at:488,646 fill:lantern.face
-      circle 1.7 at:486.4,643.6 fill:lantern.glint
-      ellipse 5,6.5 at:536,646 fill:lantern.face
-      circle 1.7 at:534.4,643.6 fill:lantern.glint
+      each x in [488 536]
+        ellipse 5,6.5 at:x,646 fill:lantern.face
+        circle 1.7 at:x-1.6,643.6 fill:lantern.glint
     layer firebox pivot:512,544
-      curve 400,322 624,322 636,336 638,530 626,546 398,546 386,530 388,336 closed tension:.35 fill:grad(41 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:box
-        path "M370 310 L436 310 L436 560 L370 560 Z" fill:lantern.stone.3 a:.55
-        path "M588 310 L660 310 L660 560 L588 560 Z" fill:stone_cel a:.9 blur:1
-        ellipse 14,108 at:582,438 fill:lantern.stone.0 a:.3 blur:8
-        path "M380 300 L650 300 L650 392 L380 392 Z" fill:grad(down fade(lantern.stone.0 .85) fade(lantern.stone.0 .85),.43 fade(lantern.stone.0 0))
+      curve 400,322 624,322 636,336 638,530 626,546 398,546 386,530 388,336 closed tension:.35 fill:grad(41 lantern.stone.3 lantern.stone,.55 lantern.stone.1)
+        rect 66x250 at:403,435 fill:lantern.stone.3 a:.55
+        rect 72x250 at:624,435 fill:stone_cel a:.9 blur:1
+        rect 270x92 at:515,346 fill:grad(down fade(lantern.stone.0 .85) fade(lantern.stone.0 .85),.43 fade(lantern.stone.0 0))
         ellipse 84,80 at:512,456 fill:lantern.amber.3 blend:soft_light a:.45 blur:16
-        ellipse 64,12 at:512,518 fill:lantern.amber.3 a:.3 blur:8
         ellipse 14,80 at:410,430 fill:lantern.stone.4 a:.4 blur:10
-        path "M588 300 L660 300 L660 560 L588 560 Z" fill:stone_cel a:.35 blur:1
-        ellipse 50,40 at:600,520 fill:lantern.stone.0 a:.3 blur:14
-        _speckle 70 x0:390 x1:634 y0:326 y1:542 tone:lantern.stone
+        rect 72x260 at:624,430 fill:stone_cel a:.35 blur:1
         curve 388,526 512,529 636,526 stroke:stone_line,2.2 taper:.15 a:.5
         curve 390,529 512,532 634,529 stroke:lantern.stone.4,1.6 taper:.35 a:.4 blur:.6
-        curve 460,508 459,432 474,400 512,386 550,400 565,432 564,508 512,511 closed tension:.45 fill:radial(lantern.amber lantern.amber.1,.45 window_deep at:.5,.72 r:84) stroke:stone_line,3.2 name:window
-          path "M440 360 L600 360 L600 410 L440 410 Z" fill:window_jamb a:.7 blur:6
-          path "M450 390 L467 390 L467 514 L450 514 Z" fill:lantern.amber.3 a:.6 blur:2
+        curve 460,508 474,400 550,400 564,508 512,511 closed tension:.45 fill:radial(lantern.amber lantern.amber.1,.45 mix(lantern.amber.0 lantern.teal.0 .55) at:.5,.72 r:84) stroke:stone_line,3.2 name:window
+          rect 160x50 at:520,385 fill:mix(lantern.amber.0 lantern.teal.0 .6) a:.7 blur:6
+          rect 17x124 at:458.5,452 fill:lantern.amber.3 a:.6 blur:2
           curve 497,486 527,486 530,512 494,512 closed tension:.25 fill:grad(0 lantern.cream.4 lantern.cream.3,.5 lantern.cream.1) name:candle
             ellipse 15,4 at:512,487 fill:lantern.amber.4 a:.8
-          curve 497,486 527,486 530,512 494,512 closed fill:none stroke:fade(lantern.cream.line .6),1.6
+          copy @candle fill:none stroke:fade(lantern.cream.line .6),1.6
           curve 512,488 512,480 stroke:lantern.wick,2.2 taper:0
         curve 464,508 512,511 560,508 stroke:lantern.amber.3,2.6 taper:.35 a:.75 blur:.8
         subtract name:moon fill:lantern.amber.3
@@ -217,100 +168,86 @@ layer mossy_rock pivot:512,820
         circle 9 at:611,444 fill:lantern.amber.3 name:sun
         copy @sun fill:lantern.amber.4 a:.6 blur:2
         copy @sun fill:none stroke:stone_line,1.8 a:.8
-        curve 436,340 436,524 stroke:stone_line,2.4 taper:.2 a:.5
-        curve 588,340 588,524 stroke:stone_line,2.4 taper:.2 a:.5
-        fx rim 4 dir:1,1 color:lantern.rim a:.45
-        fx grain .045 scale:2
+        each x in [436 588]
+          curve x,340 x,524 stroke:stone_line,2.4 taper:.2 a:.5
+        fx rim 4 color:lantern.rim a:.45
         fx outline 5.5 color:stone_line
       layer glow pivot:512,452
         circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .42) fade(lantern.amber .16),.45 fade(lantern.amber 0) r:160)
         inside @window
           copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
       layer flame pivot:512,486
-        _flame 64 w:17 lean:3
+        _flame 64 17 3
       layer flame_low pivot:512,486 a:0
-        _flame 46 w:16 lean:-7
+        _flame 46 16 -7
       layer roof pivot:512,350
         union name:hat_src fill:none
-          curve 512,202 556,207 600,226 652,254 712,280 766,292 774,310 752,322 684,342 620,358 512,362 404,358 340,342 272,322 252,310 258,292 312,280 372,254 424,226 468,207 closed tension:.5
-          curve 256,314 236,302 232,280 246,264 268,266 278,284 272,302 closed tension:.5
-          curve 768,316 790,304 796,280 782,262 758,264 748,282 754,302 closed tension:.5
+          curve 512,202 556,207 600,226 652,254 712,280 766,292 774,310 752,322 684,342 620,358 512,362 404,358 340,342 272,322 252,310 258,292 312,280 372,254 424,226 468,207 closed
+          curve 256,314 236,302 232,280 246,264 268,266 278,284 272,302 closed
+          curve 768,316 790,304 796,280 782,262 758,264 748,282 754,302 closed
           ellipse 13,10 at:404,352
           ellipse 13,10 at:620,352
+        let L = [510,214 470,258 430,308 404,346]
+        let R = [514,214 556,258 596,308 620,346]
         copy @hat_src fill:grad(20 lantern.stone.3 lantern.stone,.5 lantern.stone.1) name:hat
           path "M200 180 L512 180 L512 214 L404 346 L404 420 L200 420 Z" fill:lantern.stone.3 a:.6
           path "M512 180 L820 180 L820 420 L620 420 L620 346 L512 214 Z" fill:stone_cel a:.9 blur:1
-          ellipse 40,50 at:640,300 fill:lantern.stone.0 a:.3 blur:14
           ellipse 60,26 at:400,240 fill:lantern.stone.4 a:.5 blur:12
-          path "M246 306 L330 324 L404 342 L512 345 L620 342 L694 324 L778 306 L820 420 L200 420 Z" fill:grad(0 lantern.stone lantern.stone.1,.4 eave_deep) name:eave
+          path "M246 306 L330 324 L404 342 L512 345 L620 342 L694 324 L778 306 L820 420 L200 420 Z" fill:grad(0 lantern.stone lantern.stone.1,.4 mix(lantern.stone.0 lantern.teal.0 .4))
             ellipse 80,10 at:512,362 fill:lantern.amber a:.25 blur:8
           curve 246,306 330,324 404,342 512,345 620,342 694,324 778,306 stroke:stone_line,2.2 taper:.08 a:.6
           curve 258,308 330,325 404,343 stroke:lantern.stone.4,2.6 taper:.2 a:.7 blur:.8
-          curve 510,214 470,258 430,308 404,346 stroke:lantern.stone.4,[3 5 6 5] taper:.2 a:.8 blur:.8
-          curve 514,215 474,259 434,309 408,347 stroke:stone_line,2.4 taper:.2 a:.55
-          curve 511,214 553,258 593,308 617,346 stroke:lantern.stone.3,[2 4 4 3] taper:.2 a:.6 blur:.8
-          curve 517,215 559,259 599,309 623,347 stroke:stone_line,2.4 taper:.2 a:.6
-          _speckle 160 x0:250 x1:790 y0:200 y1:360 tone:lantern.stone
-          _moss 22 x0:330 x1:436 y0:232 y1:290
+          curve L stroke:lantern.stone.4,[3 5 6 5] taper:.2 a:.8 blur:.8
+          curve [each p in L -> p+(4,1)] stroke:stone_line,2.4 taper:.2 a:.55
+          curve [each p in R -> p+(-3,0)] stroke:lantern.stone.3,[2 4 4 3] taper:.2 a:.6 blur:.8
+          curve [each p in R -> p+(3,1)] stroke:stone_line,2.4 taper:.2 a:.6
+          _moss
             form:
-              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,60 fill:none name:form
-          _moss 8 x0:470 x1:520 y0:206 y1:226
+              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,60 name:form
+          _moss
             form:
-              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,60 fill:none name:form
-          _spiral 252 cy:286 r0:13 turns:1.15 start:162 sign:1 n:26 w0:3.2 w1:1
-          _spiral 250 cy:284 r0:10 turns:.5 start:162 sign:1 n:10 w0:1.8 w1:1.8 ink:lantern.stone.4 alpha:.6 soft:.6
-          _spiral 774 cy:285 r0:14 turns:1.15 start:18 sign:-1 n:26 w0:3.2 w1:1
-          _spiral 772 cy:283 r0:11 turns:.5 start:18 sign:-1 n:10 w0:1.8 w1:1.8 ink:lantern.stone.4 alpha:.6 soft:.6
-          _spiral 404 cy:352 r0:7 turns:.9 start:180 sign:1 n:14 w0:2 w1:2 alpha:.7
-          _spiral 620 cy:352 r0:7 turns:.9 start:180 sign:-1 n:14 w0:2 w1:2 alpha:.7
-          fx rim 5 dir:1,1 color:lantern.rim a:.55
-          fx grain .05 scale:2.2
+              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,60 name:form
+          each q in [252,286,13,162,1 774,285,14,18,-1]
+            _spiral q.0 q.1 q.2 1.15 q.3 q.4
+            _spiral q.0-2 q.1-2 q.2-3 .5 q.3 q.4 10 1.8 1.8 lantern.stone.4 .6 .6
+          each s in [404,1 620,-1]
+            _spiral s.x 352 7 .9 180 s.y 14 2 2 stone_line .7
+          fx rim 5 color:lantern.rim a:.55
           fx outline 6.5 color:stone_line
         assert inside(@hat canvas margin:16)
         layer finial pivot:512,212
           union name:cap_src fill:none
             curve 478,214 482,202 512,196 542,202 546,214 512,222 closed tension:.45
             curve 498,192 526,192 530,202 494,202 closed tension:.3
-            curve 512,126 522,146 540,168 538,188 512,200 486,188 484,168 502,146 closed tension:.5
+            curve 512,126 522,146 540,168 538,188 512,200 486,188 484,168 502,146 closed
           copy @cap_src fill:grad(55 lantern.stone.4 lantern.stone.3,.4 lantern.stone,.7 lantern.stone.1) name:cap
-            path "M520 110 L560 110 L560 230 L520 230 Z" fill:stone_cel a:.8 blur:2.5
+            rect 40x120 at:540,170 fill:stone_cel a:.8 blur:2.5
             ellipse 22,5 at:512,196 fill:lantern.stone.0 a:.6 blur:3
             ellipse 5,12 at:500,160 rot:20 fill:lantern.stone.4 a:.8 blur:1.5
-            curve 486,214 494,202 502,214 stroke:stone_line,1.6 taper:.2 a:.5
-            curve 504,214 512,202 520,214 stroke:stone_line,1.6 taper:.2 a:.5
-            curve 522,214 530,202 538,214 stroke:stone_line,1.6 taper:.2 a:.5
-            _speckle 8 x0:484 x1:546 y0:130 y1:220 tone:lantern.stone
-            fx rim 4 dir:1,1 color:lantern.rim a:.55
-            fx grain .04 scale:1.8
+            each x in [494 512 530]
+              curve x-8,214 x,202 x+8,214 stroke:stone_line,1.6 taper:.2 a:.5
+            fx rim 4 color:lantern.rim a:.55
             fx outline 5 color:stone_line
           assert inside(@cap canvas margin:16)
   layer moss_tufts pivot:512,790
     union name:tuft_src fill:none
-      curve 356,784 361,764 374,749 393,748 413,748 430,739 447,749 460,763 466,780 453,793 434,795 414,798 395,795 375,790 closed tension:.5 name:c1
-      curve 498,790 502,782 509,775 518,773 526,768 535,772 543,777 547,785 551,794 544,797 534,798 525,799 516,795 507,792 closed tension:.5 name:c2
-      curve 584,788 590,772 600,759 613,749 629,754 645,749 659,753 671,765 675,782 664,789 648,795 632,797 616,792 600,793 closed tension:.5 name:c3
+      curve 356,784 374,749 413,748 447,749 466,780 434,795 395,795 375,790 closed name:c1
+      curve 498,790 509,775 526,768 543,777 551,794 534,798 516,795 507,792 closed name:c2
+      curve 584,788 600,759 629,754 659,753 675,782 648,795 616,792 600,793 closed name:c3
     copy @tuft_src fill:grad(11 lantern.moss.3 lantern.moss,.5 lantern.moss.1) name:tuft
-      ellipse @c1.w*.45,9 at:@c1.cx+@c1.w*.18,@c1.bottom-6 fill:lantern.moss.0 a:.5 blur:5
-      ellipse @c1.w*.25,6 at:@c1.cx-@c1.w*.15,@c1.top+10 fill:lantern.moss.4 a:.6 blur:3
-      ellipse @c2.w*.45,9 at:@c2.cx+@c2.w*.18,@c2.bottom-6 fill:lantern.moss.0 a:.5 blur:5
-      ellipse @c2.w*.25,6 at:@c2.cx-@c2.w*.15,@c2.top+10 fill:lantern.moss.4 a:.6 blur:3
-      ellipse @c3.w*.45,9 at:@c3.cx+@c3.w*.18,@c3.bottom-6 fill:lantern.moss.0 a:.5 blur:5
-      ellipse @c3.w*.25,6 at:@c3.cx-@c3.w*.15,@c3.top+10 fill:lantern.moss.4 a:.6 blur:3
-      _speckle 70 x0:350 x1:690 y0:742 y1:800 tone:lantern.moss
-      fx rim 3 dir:1,1 color:lantern.rim a:.4
-      fx grain .04 scale:1.8
+      each c in [@c1 @c2 @c3]
+        ellipse c.w*.45,9 at:c.cx+c.w*.18,c.bottom-6 fill:lantern.moss.0 a:.5 blur:5
+        ellipse c.w*.25,6 at:c.cx-c.w*.15,c.top+10 fill:lantern.moss.4 a:.6 blur:3
+      fx rim 3 color:lantern.rim a:.4
       fx outline 3 color:lantern.moss.line
-    ellipse 18,11 at:282,858 jitter:1.5,60 fill:grad(31 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
-    ellipse 14,9 at:744,852 jitter:1.5,60 fill:grad(33 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
-    ellipse 9,6 at:310,868 jitter:1.5,60 fill:grad(34 lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
-    curve 350,790 344,772 336,760 stroke:lantern.moss.line,[7 6 4] taper:0,.8
-    curve 350,790 344,772 336,760 stroke:lantern.moss,[4 3 1] taper:0,.8
-    curve 676,800 682,782 690,770 stroke:lantern.moss.line,[7 6 4] taper:0,.8
-    curve 676,800 682,782 690,770 stroke:lantern.moss,[4 3 1] taper:0,.8
-    curve 700,800 708.4,782 719.6,770 stroke:lantern.moss.line,[7 6 4] taper:0,.8
-    curve 700,800 708.4,782 719.6,770 stroke:lantern.moss,[4 3 1] taper:0,.8
+    _pebble 282 858 18 11 31
+    _pebble 744 852 14 9 33
+    _pebble 310 868 9 6 34
+    _blade 350 -1 790
+    _blade 676 1 800
+    _blade 700 1.4 800
 layer firefly_a
-  _firefly 236 cy:420 r:5
+  _fly 236 420 5
 layer firefly_b
-  _firefly 784 cy:488 r:4
+  _fly 784 488 4
   sparkle 9 at:812,452 color:lantern.spark glow:.25

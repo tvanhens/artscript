@@ -19,200 +19,185 @@ palette monk
   iris #9a6a3a
   star #fff3cf
   stubble #9aa6c4
-let moss_line = mix(monk.moss.0 monk.moss.1 .15)
-let ochre_line = mix(monk.ochre.line monk.ochre.0 .4)
-# Dark lower-right lip on an ochre cloth piece; nest it under `form`.
+let moss = monk.moss
+let leaf = monk.leaf
+let ochre = monk.ochre
+let skin = monk.skin
+let cedar = monk.cedar
+let stone = monk.stone
+let rim = monk.rim
+let glint = monk.glint
+let iris = monk.iris
+let moss_line = mix(moss.0 moss.1 .15)
+let ochre_line = mix(ochre.line ochre.0 .4)
 def _fabric form:@self
-  subtract fill:monk.ochre.0 a:.6 blur:1.5
+  subtract fill:ochre.0 a:.6 blur:1.5
     copy form
     copy form at:-6,-6
-# Sandal and toes, centered on x=0; place with `at:<x>,0`.
 def _foot
-  curve -40,884 -32,874 32,874 42,884 32,896 -32,896 closed fill:grad(15deg monk.cedar.3 monk.cedar.0) name:sole
-    ellipse 40,6 at:0,882 fill:monk.cedar.0 a:.4 blur:3
-  curve -36,878 -32,830 0,818 32,830 38,878 0,886 closed fill:grad(43deg monk.skin.3 monk.skin,.45 monk.skin.1) name:toe
-    cel @toe tone:monk.skin shift:-12,-8
-    ellipse 200,16 at:0,852 fill:monk.skin.0 a:.45 blur:7
-    ellipse 11,6 at:-14,868 fill:monk.skin.4 a:.7 blur:3
-    curve 8,874 10,882 stroke:monk.skin.0,[1.6 .8] taper:.35 a:.5
-    curve 20,874 22,882 stroke:monk.skin.0,[1.6 .8] taper:.35 a:.5
-def _stitches p0:0,0 p1:0,0
-  each i in 0..4
-    curve p0+(p1-p0)*((i+.2)/4) p0+(p1-p0)*((i+.65)/4) stroke:monk.ochre.3,2.2
-# Left arm at side:1; side:-1 mirrors the shapes about x=512 but keeps the upper-left light.
+  curve -40,884 -32,874 32,874 42,884 32,896 -32,896 closed fill:grad(15 cedar.3 cedar.0)
+    ellipse 40,6 at:0,882 fill:cedar.0 a:.4 blur:3
+  curve -36,878 -32,830 0,818 32,830 38,878 0,886 closed fill:grad(43 skin.3 skin,.45 skin.1) name:toe
+    cel @toe tone:skin shift:-12,-8
+    ellipse 200,16 at:0,852 fill:skin.0 a:.45 blur:7
 def _arm side:1
-  group at:512,0 name:mass
-    curve -42*side,700 -50*side,672 -38*side,640 -18*side,616 -2*side,610 side,644 -side,684 -16*side,704 closed fill:grad(61deg monk.skin.3 monk.skin,.45 monk.skin.1) name:hand
-      cel @hand tone:monk.skin shift:-10,-10
-      ellipse 8,16 at:-14*side,638 fill:monk.skin.4 a:.5 blur:4
-      curve -24*side,664 -14*side,674 -6*side,676 stroke:monk.skin.0,[1 2 1] taper:.35 a:.5
-      curve -3*side,618 -side,650 -2*side,690 stroke:monk.skin.0,[1 2.5 1] taper:.35 a:.45
-    curve -68*side,588 -114*side,598 -146*side,634 -162*side,684 -154*side,720 -120*side,734 -76*side,728 -42*side,712 -26*side,690 -32*side,654 -46*side,620 closed fill:grad(47deg monk.moss.3 monk.moss,.45 monk.moss.1) name:sleeve
-      cel @sleeve tone:monk.moss shift:-24,-22 core:.6
-      ellipse 34,16 at:-112*side,630 rot:-40*side fill:monk.moss.4 a:.45 blur:10
+  group at:512,0 scale:side,1 name:mass
+    curve -42,700 -50,672 -38,640 -18,616 -2,610 1,644 -1,684 -16,704 closed fill:grad(90-29*side skin.3 skin,.45 skin.1) name:hand
+      cel @hand tone:skin shift:-10*side,-10
+    curve -68,588 -114,598 -146,634 -162,684 -154,720 -120,734 -76,728 -42,712 -26,690 -32,654 -46,620 closed fill:grad(90-43*side moss.3 moss,.45 moss.1) name:sleeve
+      cel @sleeve tone:moss shift:-24*side,-22 core:.6
+      ellipse 34,16 at:-112,630 rot:-40 fill:moss.4 a:.45 blur:10
   inside @mass
-    group at:512,0
-      ellipse 12,26 at:-36*side,690 fill:monk.moss.0 a:.7 blur:5
-      curve -42*side,712 -26*side,690 -32*side,654 stroke:monk.ochre,10
-      curve -40*side,712 -24*side,690 -30*side,654 stroke:monk.ochre.1,3 a:.7
-      group at:-2,-1
-        curve -42*side,712 -26*side,690 -32*side,654 stroke:monk.ochre.4,2 taper:.2 a:.6
-      curve -132*side,640 -142*side,680 -132*side,716 stroke:if side == 1 then monk.moss.4 else monk.moss.0,[1.5 3.5 1.5] taper:.35 a:.55
-      curve -110*side,724 -82*side,730 -58*side,718 stroke:monk.moss.0,[1.5 3 1.5] taper:.35 a:.5
+    group at:512,0 scale:side,1
+      ellipse 12,26 at:-36,690 fill:moss.0 a:.7 blur:5
+      let cuff = [-42,712 -26,690 -32,654]
+      curve cuff stroke:ochre,10
+      curve cuff at:2,0 stroke:ochre.1,3 a:.7
+      curve cuff at:-2*side,-1 stroke:ochre.4,2 a:.6
+      curve -132,640 -142,680 -132,716 stroke:if side == 1 then moss.4 else moss.0,[1.5 3.5 1.5] taper:.35 a:.55
+      curve -110,724 -82,730 -58,718 stroke:moss.0,[1.5 3 1.5] taper:.35 a:.5
 def _bead r:8.5
-  circle r fill:radial(monk.cedar.3 monk.cedar,.55 monk.cedar.0 at:.325,.3 r:r*1.5)
-    circle r*.3 at:-r*.35,-r*.38 fill:monk.cedar.4 a:.85 blur:.6
-  circle r*.12 at:-r*.38,-r*.42 fill:monk.glint a:.85
+  circle r fill:radial(cedar.3 cedar,.55 cedar.0 at:.325,.3 r:r*1.5)
+    circle r*.3 at:-r*.35,-r*.38 fill:cedar.4 a:.85 blur:.6
+  circle r*.12 at:-r*.38,-r*.42 fill:glint a:.85
+def _bow pts:[] ang:50 ten:.5
+  curve pts closed tension:ten fill:grad(ang ochre.3 ochre,.55 ochre.1) stroke:fade(ochre_line .85),1.8 name:z
+    _fabric form:@z
+def _ear s:1
+  group at:512,0 scale:s,1
+    curve -194,400 -230,396 -242,430 -228,466 -196,470 closed fill:grad(90-39*s skin.3 skin,.45 skin.1) name:ear
+      cel @ear tone:skin shift:-10*s,-8
 layer ground_shadow
   ellipse 250,28 at:512,896 fill:monk.shadow a:.36 blur:14
   ellipse 160,14 at:512,894 fill:monk.shadow a:.25 blur:7
   ellipse 46,9 at:754,890 fill:monk.shadow a:.3 blur:5
 layer pebble
-  curve 712,884 724,858 754,848 784,856 798,878 780,892 740,894 closed fill:grad(28deg monk.stone.3 monk.stone,.45 monk.stone.1) name:stone
-    cel @stone tone:monk.stone shift:-12,-10
-    ellipse 14,6 at:736,862 fill:monk.stone.4 a:.7 blur:3
-  curve 730,858 740,842 756,836 774,840 784,854 760,858 closed fill:grad(22deg monk.leaf.3 monk.leaf.1) name:tuft
+  curve 712,884 724,858 754,848 784,856 798,878 780,892 740,894 closed fill:grad(28 stone.3 stone,.45 stone.1) name:stone
+    cel @stone tone:stone shift:-12,-10
+    ellipse 14,6 at:736,862 fill:stone.4 a:.7 blur:3
+  curve 730,858 740,842 756,836 774,840 784,854 760,858 closed fill:grad(22 leaf.3 leaf.1) name:tuft
     each i in 0..14
-      circle rand(1.4 2.6) at:rand(734 780),rand(840 856) fill:monk.leaf.4 a:.6
+      circle rand(1.4 2.6) at:rand(734 780),rand(840 856) fill:leaf.4 a:.6
   fx grain .05 scale:1.8
-  fx outline 3.5 color:monk.stone.line
+  fx outline 3.5 color:stone.line
 layer leg_l
   _foot at:452,0
-  fx rim 3 dir:1,1 color:monk.rim a:.4
-  fx outline 4 color:monk.skin.line
+  fx rim 3 dir:1,1 color:rim a:.4
+  fx outline 4 color:skin.line
 layer leg_r
   _foot at:572,0
-  fx rim 3 dir:1,1 color:monk.rim a:.4
-  fx outline 4 color:monk.skin.line
+  fx rim 3 dir:1,1 color:rim a:.4
+  fx outline 4 color:skin.line
 layer body
-  curve 448,560 576,560 628,584 660,636 680,730 702,812 712,842 690,860 636,864 576,856 512,868 448,856 388,864 334,860 312,842 322,812 344,730 364,636 396,584 closed fill:grad(40deg monk.moss.3 monk.moss,.45 monk.moss.1) name:robe
-    cel @robe tone:monk.moss shift:-40,-20
-    curve 452,566 512,640 574,566 588,576 512,668 438,576 closed tension:.3 fill:grad(32deg monk.ochre.3 monk.ochre.1) stroke:fade(ochre_line .7),2 name:lapel
-      curve 470,566 512,618 556,566 closed tension:.2 fill:monk.skin.1
-    ellipse 90,30 at:512,586 fill:monk.moss.0 a:.55 blur:12
-    curve 436,800 426,830 428,852 stroke:monk.moss.0,[3.5 3 1.5] taper:.4 a:.55
-    curve 600,800 610,828 606,852 stroke:monk.moss.0,[3.5 3 1.5] taper:.4 a:.55
-    curve 512,800 514,830 513,858 stroke:monk.moss.0,[3.5 3 1.5] taper:.4 a:.55
-    curve 366,650 356,700 352,730 stroke:monk.moss.4,[1.5 4 2] taper:.35 a:.5 blur:1.5
-    curve 656,650 668,700 672,730 stroke:monk.moss.0,[1.5 4 2] taper:.35 a:.5
-    curve 330,736 512,748 694,736 698,778 512,792 326,778 closed tension:.35 fill:grad(11deg monk.ochre.3 monk.ochre,.5 monk.ochre.1) stroke:fade(ochre_line .85),2.5 name:sash
-      subtract fill:monk.ochre.0 a:.6 blur:2
+  curve 448,560 576,560 628,584 660,636 680,730 702,812 712,842 690,860 636,864 576,856 512,868 448,856 388,864 334,860 312,842 322,812 344,730 364,636 396,584 closed fill:grad(40 moss.3 moss,.45 moss.1) name:robe
+    cel @robe tone:moss shift:-40,-20
+    curve 452,566 512,640 574,566 588,576 512,668 438,576 closed tension:.3 fill:grad(32 ochre.3 ochre.1) stroke:fade(ochre_line .7),2
+      curve 470,566 512,618 556,566 closed tension:.2 fill:skin.1
+    ellipse 90,30 at:512,586 fill:moss.0 a:.55 blur:12
+    each p in [436,800,426,830,428,852 600,800,610,828,606,852 512,800,514,830,513,858]
+      curve p.0,p.1 p.2,p.3 p.4,p.5 stroke:moss.0,[3.5 3 1.5] taper:.4 a:.55
+    curve 366,650 356,700 352,730 stroke:moss.4,[1.5 4 2] taper:.35 a:.5 blur:1.5
+    curve 656,650 668,700 672,730 stroke:moss.0,[1.5 4 2] taper:.35 a:.5
+    curve 330,736 512,748 694,736 698,778 512,792 326,778 closed tension:.35 fill:grad(11 ochre.3 ochre,.5 ochre.1) stroke:fade(ochre_line .85),2.5 name:sash
+      subtract fill:ochre.0 a:.6 blur:2
         copy @sash
         copy @sash at:0,-12
-      curve 340,746 512,758 680,746 stroke:monk.ochre.4,3 a:.6 blur:1
-      curve 330,762 512,774 690,762 stroke:monk.ochre.1,1.6 a:.5
-    copy @sash at:0,8 fill:monk.moss.0 a:.6 blur:5 z:behind
-    ellipse 40,22 at:612,760 fill:monk.ochre.0 a:.5 blur:8
-    curve 378,806 416,800 422,836 386,842 closed tension:.25 fill:mix(monk.moss monk.ochre.3 .25) stroke:fade(monk.moss.0 .6),1.5 name:patch
-      copy @patch fill:grad(44deg monk.moss.3 monk.moss.1) a:.6
-    _stitches p0:380,810 p1:414,804
-    _stitches p0:418,808 p1:420,832
-    _stitches p0:416,838 p1:388,840
-    _stitches p0:384,836 p1:381,812
-    ellipse 200,18 at:512,866 fill:monk.moss.0 a:.5 blur:8
-  fx rim 5 dir:1,1 color:monk.rim a:.45
+      curve 340,746 512,758 680,746 stroke:ochre.4,3 a:.6 blur:1
+      curve 330,762 512,774 690,762 stroke:ochre.1,1.6 a:.5
+    copy @sash at:0,8 fill:moss.0 a:.6 blur:5 z:behind
+    ellipse 40,22 at:612,760 fill:ochre.0 a:.5 blur:8
+    curve 378,806 416,800 422,836 386,842 closed tension:.25 fill:mix(moss ochre.3 .25) stroke:fade(moss.0 .6),1.5 name:patch
+      copy @patch fill:grad(44 moss.3 moss.1) a:.6
+    ellipse 200,18 at:512,866 fill:moss.0 a:.5 blur:8
+  fx rim 5 dir:1,1 color:rim a:.45
   fx grain .045 scale:2.2
   fx outline 5 color:moss_line
 layer sash_bow
-  curve 616,764 632,762 648,794 662,822 646,818 638,828 624,796 closed tension:.35 fill:grad(55deg monk.ochre.3 monk.ochre,.55 monk.ochre.1) stroke:fade(ochre_line .85),1.8 name:tail_b
-    _fabric form:@tail_b
-  curve 600,764 616,766 624,804 630,836 616,826 604,834 596,800 closed tension:.35 fill:grad(65deg monk.ochre.3 monk.ochre,.55 monk.ochre.1) stroke:fade(ochre_line .85),1.8 name:tail_a
-    _fabric form:@tail_a
+  _bow [616,764 632,762 648,794 662,822 646,818 638,828 624,796] ang:55 ten:.35 name:tail_b
+  _bow [600,764 616,766 624,804 630,836 616,826 604,834 596,800] ang:65 ten:.35 name:tail_a
   group name:tails
-    copy @tail_a a:0
-    copy @tail_b a:0
+    copy @tail_a.z a:0
+    copy @tail_b.z a:0
   inside @tails
-    ellipse 26,10 at:614,772 fill:monk.ochre.0 a:.55 blur:5
-    curve 606,786 612,818 stroke:monk.ochre.4,[1 2.5] taper:.35 a:.5 blur:1
-  curve 606,756 586,738 570,744 568,762 584,772 604,766 closed fill:grad(43deg monk.ochre.3 monk.ochre,.55 monk.ochre.1) stroke:fade(ochre_line .85),1.8 name:loop_l
-    _fabric form:@loop_l
-  curve 616,756 640,736 656,742 658,762 642,772 616,768 closed fill:grad(41deg monk.ochre.3 monk.ochre,.55 monk.ochre.1) stroke:fade(ochre_line .85),1.8 name:loop_r
-    _fabric form:@loop_r
-  curve 600,758 584,750 576,756 stroke:monk.ochre.0,[1 2 1] taper:.35 a:.6
-  curve 622,758 640,748 650,752 stroke:monk.ochre.0,[1 2 1] taper:.35 a:.6
-  curve 600,750 614,744 624,756 618,772 602,770 closed fill:grad(49deg monk.ochre.3 monk.ochre,.55 monk.ochre.1) stroke:fade(ochre_line .85),1.8 name:knot
-    _fabric form:@knot
-  ellipse 5,3 at:606,752 fill:monk.ochre.4 a:.8 blur:1
-  fx rim 3 dir:1,1 color:monk.rim a:.4
+    ellipse 26,10 at:614,772 fill:ochre.0 a:.55 blur:5
+    curve 606,786 612,818 stroke:ochre.4,[1 2.5] a:.5 blur:1
+  _bow [606,756 586,738 570,744 568,762 584,772 604,766] ang:43
+  _bow [616,756 640,736 656,742 658,762 642,772 616,768] ang:41
+  _bow [600,750 614,744 624,756 618,772 602,770] ang:49
+  ellipse 5,3 at:606,752 fill:ochre.4 a:.8 blur:1
+  fx rim 3 dir:1,1 color:rim a:.4
   fx outline 3.5 color:ochre_line
 layer head
-  curve 318,400 282,396 270,430 284,466 316,470 closed fill:grad(51deg monk.skin.3 monk.skin,.45 monk.skin.1) name:ear_l
-    cel @ear_l tone:monk.skin shift:-10,-8
-    curve 290,412 296,432 290,456 stroke:monk.skin.0,4 taper:.35 a:.6
-  curve 706,400 742,396 754,430 740,466 708,470 closed fill:grad(51deg monk.skin.3 monk.skin,.45 monk.skin.1) name:ear_r
-    cel @ear_r tone:monk.skin shift:-10,-8
-    curve 734,412 728,432 734,456 stroke:monk.skin.0,4 taper:.35 a:.6
-  curve 512,212 630,224 708,292 738,394 722,492 654,562 512,592 372,564 304,492 286,394 314,292 392,224 closed tension:.52 fill:grad(42deg monk.skin.3 monk.skin,.45 monk.skin.1) name:skull
-    cel @skull tone:monk.skin shift:-34,-26 core:.1
-    curve 320,300 400,214 512,196 628,212 704,296 640,316 512,300 380,316 closed fill:mix(monk.skin.1 monk.stubble .45) a:.28 blur:26
-    ellipse 150,26 at:512,596 fill:monk.skin.0 a:.4 blur:10
-    ellipse 14,40 at:300,432 fill:monk.skin.0 a:.5 blur:8
-    ellipse 14,40 at:724,432 fill:monk.skin.0 a:.6 blur:8
-    ellipse 26,10 at:526,222 fill:monk.skin.0 a:.5 blur:6
-    ellipse 60,40 at:388,470 fill:monk.skin.3 a:.5 blur:18
-    ellipse 170,50 at:500,520 fill:monk.skin.3 a:.35 blur:24
-    ellipse 66,30 at:410,270 rot:-32 fill:monk.skin.4 a:.8 blur:12
-    ellipse 26,9 at:398,262 rot:-34 fill:monk.glint a:.9 blur:1.5
-    circle 5 at:442,236 fill:monk.glint a:.85 blur:1
-    ellipse 60,20 at:600,560 fill:monk.moss.3 a:.25 blur:12
-  fx rim 5 dir:1,1 color:monk.rim a:.45
+  _ear s:1
+  _ear s:-1
+  curve 512,212 630,224 708,292 738,394 722,492 654,562 512,592 372,564 304,492 286,394 314,292 392,224 closed tension:.52 fill:grad(42 skin.3 skin,.45 skin.1) name:skull
+    cel @skull tone:skin shift:-34,-26 core:.1
+    curve 320,300 400,214 512,196 628,212 704,296 640,316 512,300 380,316 closed fill:mix(skin.1 monk.stubble .45) a:.28 blur:26
+    ellipse 150,26 at:512,596 fill:skin.0 a:.4 blur:10
+    ellipse 14,40 at:300,432 fill:skin.0 a:.5 blur:8
+    ellipse 14,40 at:724,432 fill:skin.0 a:.6 blur:8
+    ellipse 26,10 at:526,222 fill:skin.0 a:.5 blur:6
+    ellipse 60,40 at:388,470 fill:skin.3 a:.5 blur:18
+    ellipse 170,50 at:500,520 fill:skin.3 a:.35 blur:24
+    ellipse 66,30 at:410,270 rot:-32 fill:skin.4 a:.8 blur:12
+    ellipse 26,9 at:398,262 rot:-34 fill:glint a:.9 blur:1.5
+    circle 5 at:442,236 fill:glint a:.85 blur:1
+    ellipse 60,20 at:600,560 fill:moss.3 a:.25 blur:12
+  fx rim 5 dir:1,1 color:rim a:.45
   fx grain .03 scale:2
-  fx outline 6 color:monk.skin.line
+  fx outline 6 color:skin.line
 layer cheeks
-  blush 70 h:32 at:362,498 color:monk.blush lines:3
-  blush 70 h:32 at:662,498 color:monk.blush lines:3
+  each s in [-1 1]
+    blush 70 h:32 at:512+150*s,498 color:monk.blush lines:3
 layer eyes
-  curve 392,362 420,348 452,354 stroke:fade(monk.skin.line .7),[2 5 2] taper:.35
-  curve 572,354 604,348 632,362 stroke:fade(monk.skin.line .7),[2 5 2] taper:.35
-  if target == blink
-    eye 104 h:112 iris:monk.iris side:-1 lid:1 at:424,440
-    eye 104 h:112 iris:monk.iris side:1 lid:1 at:600,440
-  else
-    eye 104 h:112 iris:monk.iris side:-1 look:0,.4 lid:.6 at:424,440 name:eye_l
-    eye 104 h:112 iris:monk.iris side:1 look:0,.4 lid:.6 at:600,440 name:eye_r
-    assert level(@eye_l @eye_r) tol:.5
+  each s in [-1 1]
+    curve 512+120*s,362 512+92*s,348 512+60*s,354 stroke:fade(skin.line .7),[2 5 2] taper:.35
+    eye 104 h:112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else .6 at:512+88*s,440
 layer mouth
   if target == yawn
     o_mouth 36 at:512,508 color:monk.mouth
   else
     smile 54 at:512,504 color:monk.mouth
 layer leaf
-  curve 522,226 521,204 520,178 534,150 556,136 stroke:monk.leaf.1,[11 10 9 8 7] taper:0,.3 name:stem
-    curve 520,226 519,204 518,178 532,150 554,136 stroke:monk.leaf.3,[4 4 4 3 2] taper:.3 a:.8
+  let stem = [522,226 521,204 520,178 534,150 556,136]
+  curve stem stroke:leaf.1,[11 10 9 8 7] taper:0,.3
+  group at:-2,0
+    curve stem stroke:leaf.3,[4 4 4 3 2] taper:.3 a:.8
   group at:556,138 scale:1.25
-    curve -4,2 18,-30 58,-50 120,-56 104,-26 74,2 34,16 closed fill:grad(31deg monk.leaf.3 monk.leaf,.5 monk.leaf.1) name:blade
-      curve -4,4 64,-22 120,-56 104,-24 74,4 34,18 closed fill:mix(monk.leaf.1 monk.leaf.0 .3) a:.85 blur:1
-      curve 0,2 44,-20 84,-38 116,-54 stroke:monk.leaf.0,[3.2 2.8 1.9 1] taper:0,.5 a:.8
+    curve -4,2 18,-30 58,-50 120,-56 104,-26 74,2 34,16 closed fill:grad(31 leaf.3 leaf,.5 leaf.1)
+      curve -4,4 64,-22 120,-56 104,-24 74,4 34,18 closed fill:mix(leaf.1 leaf.0 .3) a:.85 blur:1
+      curve 0,2 44,-20 84,-38 116,-54 stroke:leaf.0,[3.2 2.8 1.9 1] taper:0,.5 a:.8
       each v in [28,-12 56,-26 84,-38]
-        curve v v+(6,-18) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
-        curve v v+(14,12) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
-      ellipse 22,6.4 at:40,-30 rot:-24 fill:monk.leaf.4 a:.8 blur:2.4
-    curve 66,-10 74,-16 82,-8 78,2 68,2 closed fill:mix(monk.leaf.3 monk.rim .5) a:.85 name:drop
-      ellipse 5.6,4 at:78,0 fill:monk.leaf.0 a:.6 blur:1.6
-    circle 2.2 at:70,-10 fill:monk.glint
-  fx rim 3 dir:1,1 color:monk.rim a:.4
-  fx outline 4.5 color:monk.leaf.line
+        curve v v+(6,-18) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
+        curve v v+(14,12) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
+      ellipse 22,6.4 at:40,-30 rot:-24 fill:leaf.4 a:.8 blur:2.4
+    curve 66,-10 74,-16 82,-8 78,2 68,2 closed fill:mix(leaf.3 rim .5) a:.85
+      ellipse 5.6,4 at:78,0 fill:leaf.0 a:.6 blur:1.6
+    circle 2.2 at:70,-10 fill:glint
+  fx rim 3 dir:1,1 color:rim a:.4
+  fx outline 4.5 color:leaf.line
 layer arm_l
   _arm side:1
-  fx rim 4 dir:1,1 color:monk.rim a:.45
+  fx rim 4 dir:1,1 color:rim a:.45
   fx grain .04 scale:2.2
   fx outline 4.5 color:moss_line
 layer arm_r
   _arm side:-1
-  fx rim 4 dir:1,1 color:monk.rim a:.45
+  fx rim 4 dir:1,1 color:rim a:.45
   fx grain .04 scale:2.2
   fx outline 4.5 color:moss_line
 layer beads
-  curve 490,702 480,730 476,764 490,794 512,804 534,794 548,764 544,730 534,702 stroke:monk.cedar.0,2.5
-  curve 512,814 528,840 532,864 512,870 492,864 496,840 closed tension:.45 fill:grad(56deg monk.ochre.3 monk.ochre.1) name:tassel
+  curve 490,702 480,730 476,764 490,794 512,804 534,794 548,764 544,730 534,702 stroke:cedar.0,2.5
+  curve 512,814 528,840 532,864 512,870 492,864 496,840 closed tension:.45 fill:grad(56 ochre.3 ochre.1)
     group at:512,0
       each dx in [-10 -3 4 11]
-        curve dx*.4,824 dx,868 stroke:monk.ochre.0,1.6 taper:.2 a:.6
-  curve 497,826 527,826 stroke:monk.cedar,5
-  each q in [487.9,707.6 481.3,725.3 476.8,744.8 476,763.8 482.2,782.7 494,797.3 530,797.3 541.8,782.7 548,763.8 547.2,744.8 542.7,725.3 536.1,707.6]
-    _bead at:q
+        curve dx*.4,824 dx,868 stroke:ochre.0,1.6 a:.6
+  curve 497,826 527,826 stroke:cedar,5
+  each p in [24.1,707.6 30.7,725.3 35.2,744.8 36,763.8 29.8,782.7 18,797.3]
+    each s in [-1 1]
+      _bead at:512+s*p.x,p.y
   _bead 13 at:512,810
-  fx outline 3 color:monk.cedar.line
+  fx outline 3 color:cedar.line
 layer sparkles
   sparkle 22 at:742,196 color:monk.star
   sparkle 13 at:318,222 color:monk.star

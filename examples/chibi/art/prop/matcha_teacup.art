@@ -18,8 +18,12 @@ palette tea
   drip_hi #f4fff6
   rim #b4cbe6
   mist #ffffff
-# Boolean nodes consume every child as an operand, so each painted form is a copy of a
-# fill-none union. Shading nests under that copy and the outline traces only the shell.
+def _eye side:1 lid:0 look:.1,.12
+  eye 86 h:100 iris:tea.iris side:side lid:lid look:look
+def _wisp pts:[0,0] w:[1] n:5
+  curve [each p in pts -> p+(7,5)] stroke:tea.haze,w taper:.35 a:.55 blur:3
+  curve pts stroke:tea.steam,w taper:.35 a:.88 blur:1.2
+  curve [each i in 1..n-1 -> pts.{i}+(-2,-1)] stroke:tea.mist,[each i in 1..n-1 -> w.{i}*.35] taper:.35 a:.7 blur:1
 layer ground_shadow
   ellipse 330,40 at:512,868 fill:fade(tea.shadow .38) blur:16
   ellipse 250,22 at:512,864 fill:fade(tea.shadow .22) blur:8
@@ -37,34 +41,10 @@ layer saucer pivot:512,800
     curve 380,818 512,834 640,820 stroke:tea.clay.3,3 a:.8 blur:1
     curve 300,790 360,754 470,740 stroke:tea.clay.4,5 a:.7 blur:1.5
     curve 224,806 300,838 430,852 stroke:tea.clay.4,3 a:.6 blur:1
-    circle 2.23 at:415.1,751.6 fill:tea.clay.0 a:.5
-    circle 1.6 at:319.5,765.8 fill:tea.clay.0 a:.5
-    circle 1.32 at:606.4,831.8 fill:tea.clay.0 a:.5
-    circle 1.84 at:397.5,753.4 fill:tea.clay.0 a:.5
-    circle 1.39 at:244,818.6 fill:tea.clay.0 a:.5
-    circle 1.2 at:620.5,759.6 fill:tea.clay.0 a:.5
-    circle 1.95 at:581.8,753.2 fill:tea.clay.0 a:.5
-    circle 2.21 at:549.2,762.1 fill:tea.clay.0 a:.5
-    circle 2.03 at:227.8,797.4 fill:tea.clay.0 a:.5
-    circle 1.33 at:718.2,796.8 fill:tea.clay.0 a:.5
-    circle 1.25 at:359.2,833.3 fill:tea.clay.0 a:.5
-    circle 1.97 at:574,761.9 fill:tea.clay.0 a:.5
-    circle 1.9 at:625.4,832.2 fill:tea.clay.0 a:.5
-    circle 2.16 at:746.9,806.4 fill:tea.clay.0 a:.5
-    circle 1.52 at:324.5,821.7 fill:tea.clay.0 a:.5
-    circle 1.45 at:430.5,752 fill:tea.clay.0 a:.5
-    circle 1.4 at:789.3,802.1 fill:tea.clay.0 a:.5
-    circle 2.08 at:726.2,833.2 fill:tea.clay.0 a:.5
-    circle 2.39 at:461.3,759 fill:tea.clay.0 a:.5
-    circle 1.66 at:511.5,841.6 fill:tea.clay.0 a:.5
-    circle 1.91 at:427.2,840.6 fill:tea.clay.0 a:.5
-    circle 1.44 at:270.9,821.8 fill:tea.clay.0 a:.5
-    circle 2.06 at:740.3,801.8 fill:tea.clay.0 a:.5
-    circle 1.35 at:359.7,813.1 fill:tea.clay.0 a:.5
-    circle 1.26 at:351.4,806.4 fill:tea.clay.0 a:.5
-    circle 1.58 at:427.6,835.1 fill:tea.clay.0 a:.5
+    each k in 0..26
+      let p = polar(sqrt(rand(.3 .95 seed:k)) rand(0 360))
+      circle rand(1.2 2.4) at:512+296*p.x,800+54*p.y fill:tea.clay.0 a:.5
     fx rim 4 dir:1,1 color:tea.rim a:.45
-    fx grain .04 scale:2.5
     fx outline 4.5 color:tea.clay.line
   layer leaf pivot:262,832
     curve 282,826 318,806 362,810 376,822 340,840 300,840 closed fill:tea.matcha name:leaf_blade
@@ -74,7 +54,7 @@ layer saucer pivot:512,800
     fx outline 3 color:tea.matcha.line
   layer cup_body pivot:512,800
     layer handle pivot:716,600
-      curve 712,548 792,548 812,616 764,684 694,700 stroke:tea.cream,[30 34 34 32 28] taper:0 name:loop
+      curve 712,548 792,548 812,616 764,684 694,700 stroke:tea.cream,[30 34 34 32 28] taper:0
         curve 719,557 799,557 819,625 771,693 701,709 stroke:mix(tea.cream.1 tea.cream.0 .5),[20 24 24 22 18] taper:0 blur:3
         ellipse 16,20 at:716,552 fill:tea.cream.0 a:.6 blur:6
         ellipse 16,20 at:700,698 fill:tea.cream.0 a:.6 blur:6
@@ -92,11 +72,12 @@ layer saucer pivot:512,800
       ellipse 50,120 at:690,680 fill:tea.cream.0 a:.45 blur:22
       ellipse 60,40 at:700,760 fill:tea.clay.3 a:.35 blur:14
       ellipse 190,30 at:512,812 fill:tea.cream.0 a:.6 blur:10
-      intersect fill:tea.cream.0 a:.45 blur:4 at:3,7 name:drip_shade
-        curve 280,470 512,440 744,470 738,528 700,546 676,590 656,552 590,562 540,548 512,600 486,552 420,560 372,552 350,584 330,546 286,530 closed tension:.45
+      let drip = [280,470 512,440 744,470 738,528 700,546 676,590 656,552 590,562 540,548 512,600 486,552 420,560 372,552 350,584 330,546 286,530]
+      intersect fill:tea.cream.0 a:.45 blur:4 at:3,7
+        curve drip closed tension:.45
         copy @cup_form
       intersect fill:grad(17deg tea.jade.3 tea.jade,.45 tea.jade.1,.8 tea.jade.0) name:drip
-        curve 280,470 512,440 744,470 738,528 700,546 676,590 656,552 590,562 540,548 512,600 486,552 420,560 372,552 350,584 330,546 286,530 closed tension:.45
+        curve drip closed tension:.45
         copy @cup_form
       inside @drip
         ellipse 70,20 at:392,512 fill:tea.jade.4 a:.7 blur:8
@@ -108,54 +89,33 @@ layer saucer pivot:512,800
       ellipse 194,40 at:512,480 fill:none stroke:tea.cream.line,2.5 a:.8
       curve 334,498 420,524 520,530 stroke:tea.cream.4,4 a:.9 blur:1
       fx rim 5 dir:1,1 color:tea.rim a:.5
-      fx grain .035 scale:2
       fx outline 6 color:tea.cream.line
     layer foam pivot:512,486
       intersect fill:none name:foam_top
         ellipse 190,36 at:512,490
         ellipse 194,40 at:512,480
-      copy @foam_top fill:grad(9deg tea.matcha.4 tea.matcha.3,.35 tea.matcha,.75 tea.matcha.1) name:foam_shell
-        curve 663.5,482.7 671.8,489.9 671.2,497.3 662.2,504.2 645.5,510.5 622.2,515.8 593.8,519.7 562,522.2 528.8,523 495.9,522.3 465.3,520.1 438.6,516.6 417.1,512 402,506.6 393.7,500.7 392.6,494.8 398.5,489 410.8,483.8 428.6,479.3 450.8,475.9 475.8,473.7 502.3,472.8 528.6,473.1 553.3,474.6 575.1,477.2 592.8,480.7 605.7,484.8 613.1,489.3 615,494 611.4,498.5 602.7,502.6 589.8,506.1 573.5,508.8 554.8,510.6 535.1,511.5 515.3,511.4 496.8,510.4 480.4,508.6 467,506.1 457.2,503.2 451.4,499.9 449.6,496.6 451.8,493.4 457.5,490.5 466.3,488 477.4,486.1 490,484.8 503.2,484.2 516.3,484.3 528.5,484.9 539.1,486.1 547.6,487.7 553.7,489.5 557.1,491.5 557.9,493.5 556.4,495.4 552.7,497.1 547.4,498.4 541,499.4 534,500 527,500.2 520.4,500.1 514.7,499.6 510.2,498.9 507.1,498.1 505.4,497.2 505.1,496.3 506,495.6 507.8,495 510.2,494.6 stroke:tea.matcha.1,[9 8.9 8.8 8.7 8.6 8.5 8.4 8.3 8.2 8.1 8 7.9 7.8 7.7 7.6 7.5 7.4 7.3 7.2 7.1 7 6.9 6.8 6.7 6.6 6.5 6.4 6.3 6.2 6.1 6 5.9 5.8 5.7 5.6 5.5 5.4 5.3 5.2 5.1 5 4.9 4.8 4.7 4.6 4.5 4.4 4.3 4.2 4.1 4 3.9 3.8 3.7 3.6 3.5 3.4 3.3 3.2 3.1 3 2.9 2.8 2.7 2.6 2.5 2.4 2.3 2.2 2.1] taper:.1,.2 a:.6 blur:1
-        curve 661.5,479.7 669.8,486.9 669.2,494.3 660.2,501.2 643.5,507.5 620.2,512.8 591.8,516.7 560,519.2 526.8,520 493.9,519.3 463.3,517.1 436.6,513.6 415.1,509 400,503.6 391.7,497.7 390.6,491.8 396.5,486 408.8,480.8 426.6,476.3 448.8,472.9 473.8,470.7 500.3,469.8 526.6,470.1 551.3,471.6 573.1,474.2 590.8,477.7 603.7,481.8 611.1,486.3 613,491 609.4,495.5 600.7,499.6 587.8,503.1 571.5,505.8 552.8,507.6 533.1,508.5 513.3,508.4 494.8,507.4 478.4,505.6 465,503.1 455.2,500.2 449.4,496.9 447.6,493.6 449.8,490.4 455.5,487.5 464.3,485 475.4,483.1 488,481.8 501.2,481.2 514.3,481.3 526.5,481.9 537.1,483.1 545.6,484.7 551.7,486.5 555.1,488.5 555.9,490.5 554.4,492.4 550.7,494.1 545.4,495.4 539,496.4 532,497 525,497.2 518.4,497.1 512.7,496.6 508.2,495.9 505.1,495.1 503.4,494.2 503.1,493.3 504,492.6 505.8,492 508.2,491.6 stroke:tea.matcha.4,[7.6 7.51 7.43 7.34 7.26 7.17 7.09 7 6.91 6.83 6.74 6.66 6.57 6.49 6.4 6.31 6.23 6.14 6.06 5.97 5.89 5.8 5.71 5.63 5.54 5.46 5.37 5.29 5.2 5.11 5.03 4.94 4.86 4.77 4.69 4.6 4.51 4.43 4.34 4.26 4.17 4.09 4 3.91 3.83 3.74 3.66 3.57 3.49 3.4 3.31 3.23 3.14 3.06 2.97 2.89 2.8 2.71 2.63 2.54 2.46 2.37 2.29 2.2 2.11 2.03 1.94 1.86 1.77 1.69] taper:.1,.2 a:.9
-        circle 2.74 at:404.8,486 fill:tea.matcha.4 a:.55
-        circle 2.02 at:392.8,474.9 fill:tea.matcha.4 a:.55
-        circle 2.45 at:395,491.4 fill:tea.matcha.4 a:.55
-        circle 2.94 at:581,483.3 fill:tea.matcha.4 a:.55
-        circle 1.52 at:449.3,472.4 fill:tea.matcha.4 a:.55
-        circle 1.99 at:408.5,490.5 fill:tea.matcha.4 a:.55
-        circle 1.7 at:500.1,492.4 fill:tea.matcha.4 a:.55
-        circle 2.1 at:535.3,485.7 fill:tea.matcha.4 a:.55
-        circle 3.4 at:405.2,472.7 fill:tea.matcha.4 a:.55
-        circle 3.11 at:507.3,479.1 fill:tea.matcha.4 a:.55
-        circle 3.13 at:539.9,474.7 fill:tea.matcha.4 a:.55
-        circle 1.74 at:386.3,497.3 fill:tea.matcha.4 a:.55
-        circle 3.15 at:386,489.6 fill:tea.matcha.4 a:.55
-        circle 1.97 at:552.6,499.9 fill:tea.matcha.4 a:.55
-        circle 2.05 at:533.2,470.9 fill:tea.matcha.4 a:.55
-        circle 3.42 at:627.3,489.1 fill:tea.matcha.4 a:.55
-        circle 3.42 at:454.7,482.1 fill:tea.matcha.4 a:.55
-        circle 2.56 at:548.5,501.1 fill:tea.matcha.4 a:.55
+      copy @foam_top fill:grad(9deg tea.matcha.4 tea.matcha.3,.35 tea.matcha,.75 tea.matcha.1)
+        let spiral = [each k in 0..70 -> polar(158-150*k/69 k*936/69-22.918)*(1,.2)+(516,492)]
+        curve [each p in spiral -> p+(2,3)] stroke:tea.matcha.1,[each k in 0..70 -> 9-k/10] taper:.1,.2 a:.6 blur:1
+        curve spiral stroke:tea.matcha.4,[each k in 0..70 -> 7.6-6*k/70] taper:.1,.2 a:.9
+        each k in 0..18
+          circle rand(1.5 3.5 seed:k) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55
         ellipse 40,7 at:430,476 fill:tea.foam_hi a:.7 blur:3
         fx inner 0,9 blur:5 color:tea.matcha.0
-        fx grain .06 scale:1.5
       layer steam_l pivot:462,466
-        curve 469,467 441,403 477,335 447,267 463,211 stroke:tea.haze,[6 22 26 18 4] taper:.35 a:.55 blur:3
-        curve 462,462 434,398 470,330 440,262 456,206 stroke:tea.steam,[6 22 26 18 4] taper:.35 a:.88 blur:1.2
-        curve 432,397 468,329 438,261 stroke:tea.mist,[7.7 9.1 6.3] taper:.35 a:.7 blur:1
+        _wisp [462,462 434,398 470,330 440,262 456,206] w:[6 22 26 18 4]
       layer steam_r pivot:570,466
-        curve 577,469 605,413 573,355 597,297 stroke:tea.haze,[6 18 18 4] taper:.35 a:.55 blur:3
-        curve 570,464 598,408 566,350 590,292 stroke:tea.steam,[6 18 18 4] taper:.35 a:.88 blur:1.2
-        curve 596,407 564,349 stroke:tea.mist,[6.3 6.3] taper:.35 a:.7 blur:1
+        _wisp [570,464 598,408 566,350 590,292] w:[6 18 18 4] n:4
     layer cheeks
-      blush 74 h:34 at:368,710 color:tea.blush lines:3
-      blush 74 h:34 at:656,710 color:tea.blush lines:3
+      each x in [368 656]
+        blush 74 h:34 at:x,710 color:tea.blush lines:3
     layer eyes pivot:512,648
-      eye 86 h:100 iris:tea.iris side:-1 look:.1,.12 at:420,648 name:eye_l
-      eye 86 h:100 iris:tea.iris side:1 look:.1,.12 at:604,648 name:eye_r
+      _eye side:-1 at:420,648 name:eye_l
+      _eye side:1 at:604,648 name:eye_r
       assert level(@eye_l @eye_r) tol:.5
     layer eyes_closed pivot:512,648 a:0
-      eye 86 h:100 iris:tea.iris side:-1 lid:1 at:420,648
-      eye 86 h:100 iris:tea.iris side:1 lid:1 at:604,648
+      _eye side:-1 lid:1 at:420,648
+      _eye side:1 lid:1 at:604,648
     layer mouth
       open_mouth 38 at:512,698 color:tea.ink
     layer sparkle
