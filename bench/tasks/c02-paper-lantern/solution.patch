@@ -5,19 +5,19 @@
 +use face/parts { eye blush open_mouth sparkle }
 +use shade/cel { cel }
 +palette chochin
-+  red ramp #d8392f 5
-+  cream ramp #f4e4c4 5
-+  lacquer ramp #3a2b30 5
-+  gold ramp #e2a83e 5
-+  glow #ffc463
-+  core #fff2cc
-+  blush #f6968c
-+  iris #b8662a
-+  ink #6e2a32
-+  rim #b9c9ec
-+  shadow #4a3036
-+  blossom ramp #f6b8c4 5
-+  twinkle #fff1c4
++  ramp red #d8392f 5
++  ramp cream #f4e4c4 5
++  ramp lacquer #3a2b30 5
++  ramp gold #e2a83e 5
++  color glow #ffc463
++  color core #fff2cc
++  color blush #f6968c
++  color iris #b8662a
++  color ink #6e2a32
++  color rim #b9c9ec
++  color shadow #4a3036
++  ramp blossom #f6b8c4 5
++  color twinkle #fff1c4
 +let cel_shift = -36,-30
 +def _eye side:1 lid:0
 +  eye 78x92 iris:chochin.iris side:side lid:lid look:.1,.14

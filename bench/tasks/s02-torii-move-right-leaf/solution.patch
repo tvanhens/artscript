@@ -1,6 +1,6 @@
 --- a/art/monument/vermilion_torii.art
 +++ b/art/monument/vermilion_torii.art
-@@ -246,8 +246,8 @@
+@@ -243,8 +243,8 @@
    _peb 572 852 r:5.5
  layer leaf_a pivot:150,566
    _leaf 150 566

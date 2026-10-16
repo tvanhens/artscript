@@ -7,17 +7,17 @@
 +use shade/cel { cel }
 +
 +palette ume
-+  green ramp #a8c64a 5
-+  gold ramp #f4d35e 5
-+  flush ramp #f25a66 5
-+  leaf ramp #5aa84c 5
-+  twig ramp #7a5034 5
-+  petal ramp #f7b6c6 5
-+  iris ramp #6e4a2c 5
-+  blush #f59a8c
-+  edge #5e5220
-+  lip #7a3a30
-+  twinkle #ffe08a
++  ramp green #a8c64a 5
++  ramp gold #f4d35e 5
++  ramp flush #f25a66 5
++  ramp leaf #5aa84c 5
++  ramp twig #7a5034 5
++  ramp petal #f7b6c6 5
++  ramp iris #6e4a2c 5
++  color blush #f59a8c
++  color edge #5e5220
++  color lip #7a3a30
++  color twinkle #ffe08a
 +
 +let green = ume.green
 +let gold = ume.gold

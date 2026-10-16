@@ -1,6 +1,6 @@
 --- a/art/monument/vermilion_torii.art
 +++ b/art/monument/vermilion_torii.art
-@@ -214,7 +214,7 @@
+@@ -211,7 +211,7 @@
        union fill:verm z:-1
          copy @shimaki
          copy @cap

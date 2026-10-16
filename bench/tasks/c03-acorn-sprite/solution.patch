@@ -5,17 +5,17 @@
 +use face/parts { eye blush smile sparkle }
 +use shade/cel { cel }
 +palette acorn
-+  nut ramp #c4844a 5
-+  cap ramp #8f7048 5
-+  stalk ramp #7c5434 5
-+  leaf ramp #86b04a 5
-+  shadow #3f3026
-+  rim #b8c8e8
-+  blush #f2967e
-+  mouth #7a3428
-+  glint #fff6e6
-+  iris #5f8a3a
-+  star #fff3cf
++  ramp nut #c4844a 5
++  ramp cap #8f7048 5
++  ramp stalk #7c5434 5
++  ramp leaf #86b04a 5
++  color shadow #3f3026
++  color rim #b8c8e8
++  color blush #f2967e
++  color mouth #7a3428
++  color glint #fff6e6
++  color iris #5f8a3a
++  color star #fff3cf
 +let nut = acorn.nut
 +let cap = acorn.cap
 +let stalk = acorn.stalk

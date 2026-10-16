@@ -4,8 +4,8 @@
  use face/parts { eye blush smile o_mouth sparkle }
  use shade/cel { cel }
  palette monk
--  moss ramp #7f9a52 5
-+  moss ramp #939444 5
-   leaf ramp #8cbc4c 5
-   ochre ramp #d6a23c 5
-   skin ramp #f4c8a2 5
+-  ramp moss #7f9a52 5
++  ramp moss #939444 5
+   ramp leaf #8cbc4c 5
+   ramp ochre #d6a23c 5
+   ramp skin #f4c8a2 5
