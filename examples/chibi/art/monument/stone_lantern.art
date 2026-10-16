@@ -67,11 +67,13 @@ def _fly cx:236 cy:420 r:5
     fx adjust sat:.3 light:-.04
   circle r*.6 at:cx-r*.2,cy-r*.2 fill:lantern.hot
 def _blade x:350 lean:-1 y:790
-  let p = [x,y x+lean*6,y-18 x+lean*14,y-30]
-  curve p stroke:lantern.moss.line,[7 6 4] taper:0,.8
-  curve p stroke:lantern.moss,[4 3 1] taper:0,.8
+  let p = [x,y x+lean*6,y-19 x+lean*14,y-31]
+  curve p stroke:lantern.moss.line,[9 7.5 5] taper:0,.5
+  curve p stroke:lantern.moss,[5 4.2 2.6] taper:0,.55
 def _pebble x:282 y:858 w:18 h:11 ang:31
   ellipse w,h at:x,y jitter:1.5,14 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+    fx grain .04 scale:1.8
+    fx outline 2 color:lantern.moss.line
 layer ground_shadow
   ellipse 300,34 at:512,860 fill:lantern.night a:.4 blur:16
   ellipse 220,18 at:520,856 fill:lantern.night a:.25 blur:8
