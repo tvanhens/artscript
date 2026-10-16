@@ -928,6 +928,8 @@ fn boundary_source() -> String {
         "@target ./asset1%",
         "@target.eye",
         "@items.*.name",
+        "use asset.50%",
+        "@target out.50%",
     ] {
         lines.push(line.into());
     }
@@ -990,6 +992,9 @@ fn discarded_gap_ribbons() {
         ("use asset1%", "kkk aaaaaa!"),
         ("use asset12%", "kkk aaaaaaa!"),
         ("@target ./asset1%", "ddddddd aaaaaaaa!"),
+        ("use asset.50%", "kkk iiiiionnn"),
+        ("@target out.50%", "ddddddd iiionnn"),
+        ("use asset.50", "kkk aaaaaaaa"),
         ("@target.eye", "rrrrrrrrrrr"),
         ("@items.*.name", "rrrrrrrrrrrrr"),
     ];

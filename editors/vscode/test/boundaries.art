@@ -173,3 +173,5 @@ use asset12%
 @target ./asset1%
 @target.eye
 @items.*.name
+use asset.50%
+@target out.50%
