@@ -22,10 +22,20 @@ let stone_cel = mix(lantern.stone.1 lantern.teal.1 .35)
 let stone_line = mix(lantern.stone.line lantern.teal.line .4)
 let rock_cel = mix(lantern.rock.1 lantern.teal.1 .35)
 let rock_line = mix(lantern.rock.line lantern.teal.line .4)
+def _speckle count:40 dark:lantern.stone.0 pale:lantern.stone.3 left:0 top:0 right:1 bottom:1
+  each i in 0..count
+    let deep = rand(0 1) < .6
+    circle rand(1 2.6) at:rand(left right),rand(top bottom) fill:if deep then dark else pale a:if deep then .35 else .45
 def _moss
   slot form
   copy @form at:2,5 fill:mix(lantern.stone.0 lantern.teal.0 .3) a:.35 blur:3
-  copy @form fill:grad(40 lantern.moss.3 lantern.moss,.5 lantern.moss.1)
+  copy @form fill:grad(@form.left,@form.top @form.right,@form.bottom lantern.moss.3 lantern.moss,.5 lantern.moss.1) name:patch
+    let dots = floor(@patch.w*@patch.h/90)
+    each i in 0..dots
+      let x = rand(@patch.left @patch.right)
+      let y = rand(@patch.top @patch.bottom)
+      let lit = y < (@patch.top+@patch.bottom)/2 and x < @patch.right-@patch.w*.3
+      circle rand(1.2 2.6) at:x,y fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .6 else .4
   copy @form fill:none stroke:fade(lantern.moss.line .55),1.6
 def _petals y0:692 y1:714 up:1
   each x in [432 472 512 552 592]
@@ -61,7 +71,7 @@ def _blade x:350 lean:-1 y:790
   curve p stroke:lantern.moss.line,[7 6 4] taper:0,.8
   curve p stroke:lantern.moss,[4 3 1] taper:0,.8
 def _pebble x:282 y:858 w:18 h:11 ang:31
-  ellipse w,h at:x,y jitter:1.5,60 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+  ellipse w,h at:x,y jitter:1.5,14 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
 layer ground_shadow
   ellipse 300,34 at:512,860 fill:lantern.night a:.4 blur:16
   ellipse 220,18 at:520,856 fill:lantern.night a:.25 blur:8
@@ -72,10 +82,12 @@ layer mossy_rock pivot:512,820
     ellipse 230,14 at:512,866 fill:lantern.rock.0 a:.5 blur:8
     curve 352,846 400,856 452,858 stroke:lantern.rock.4,3 taper:.35 a:.5 blur:1
     curve 612,836 640,852 stroke:lantern.rock.line,2.2 taper:.35 a:.5
+    _speckle 140 lantern.rock.0 lantern.rock.3 @rock.left @rock.top @rock.right @rock.bottom
     _moss
       form:
-        curve 303,812 335,774 378,748 425,743 474,742 524,739 573,742 622,749 668,760 713,783 681,801 635,809 586,805 538,803 489,809 439,807 390,810 344,807 324,818 closed name:form
+        curve 306,812 330,776 380,752 450,742 520,738 600,742 664,756 712,786 708,806 676,800 650,816 612,804 560,812 512,800 460,812 414,800 372,818 340,806 318,826 closed tension:.55 jitter:5,18 name:form
     fx rim 5 color:lantern.rim a:.5
+    fx grain .045 scale:2.2
     fx outline 6 color:rock_line
   assert inside(@rock canvas margin:24)
   layer pedestal pivot:512,770
@@ -83,21 +95,25 @@ layer mossy_rock pivot:512,820
       rect 46x120 at:567,650 fill:stone_cel a:.6 blur:2
       ellipse 80,16 at:512,610 fill:lantern.stone.0 a:.65 blur:8
       ellipse 10,30 at:474,656 fill:lantern.stone.4 a:.35 blur:8
+      _speckle 40 lantern.stone.0 lantern.stone.3 @post.left @post.top @post.right @post.bottom
       fx rim 5 color:lantern.rim a:.5
+      fx grain .045 scale:2
     curve 392,708 632,708 648,722 646,772 378,772 376,722 closed tension:.35 fill:grad(13 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:kiso
       rect 80x90 at:400,745 fill:lantern.stone.3 a:.55
       rect 74x90 at:623,745 fill:stone_cel a:.9 blur:1
       ellipse 140,12 at:512,712 fill:lantern.stone.0 a:.5 blur:6
       ellipse 150,10 at:512,770 fill:mix(lantern.stone.0 lantern.moss.0 .4) a:.5 blur:6
+      _speckle 70 lantern.stone.0 lantern.stone.3 @kiso.left @kiso.top @kiso.right @kiso.bottom
       _moss
         form:
-          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,60 name:form
+          curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,18 name:form
       _moss
         form:
-          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,60 name:form
+          curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,18 name:form
       each x in [440 586]
         curve x,712 x,768 stroke:stone_line,2.4 taper:.2 a:.5
       fx rim 5 color:lantern.rim a:.5
+      fx grain .045 scale:2
     curve 448,688 512,686 576,688 604,698 626,712 512,716 398,712 420,698 closed tension:.4 fill:grad(7 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:kiso_lotus
       rect 60x50 at:420,705 fill:lantern.stone.3 a:.55
       rect 66x50 at:607,705 fill:stone_cel a:.9 blur:1
@@ -105,25 +121,29 @@ layer mossy_rock pivot:512,820
       _petals 692 714 1
       curve 398,712 512,715 626,712 stroke:stone_line,2.4 taper:.1 a:.6
       fx rim 4 color:lantern.rim a:.45
+      fx grain .045 scale:2
     curve 392,580 512,582 632,580 620,598 602,614 512,617 422,614 404,598 closed tension:.4 fill:grad(9 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:chudai_lotus
       rect 60x52 at:410,598 fill:lantern.stone.3 a:.55
       rect 66x52 at:617,598 fill:stone_cel a:.9 blur:1
       ellipse 130,10 at:512,584 fill:lantern.stone.0 a:.6 blur:6
       _petals 584 610 0
       fx rim 4 color:lantern.rim a:.45
+      fx grain .045 scale:2
     curve 372,532 652,532 668,546 664,578 642,588 382,588 360,578 356,546 closed tension:.35 fill:grad(10 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:chudai
       rect 90x72 at:385,560 fill:lantern.stone.3 a:.55
       rect 86x72 at:637,560 fill:stone_cel a:.9 blur:1
       curve 374,534 650,534 664,544 512,548 360,544 closed tension:.3 fill:lantern.stone.4 a:.55 blur:1.5
       ellipse 110,8 at:512,542 fill:lantern.stone.0 a:.45 blur:5
       ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.35 blur:10
+      _speckle 80 lantern.stone.0 lantern.stone.3 @chudai.left @chudai.top @chudai.right @chudai.bottom
       _moss
         form:
-          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,60 name:form
+          curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,18 name:form
       each x in [430 594]
         curve x,548 x,584 stroke:stone_line,2.4 taper:.2 a:.5
       curve 362,548 512,552 662,548 stroke:stone_line,2.2 taper:.15 a:.45
       fx rim 5 color:lantern.rim a:.5
+      fx grain .045 scale:2
     union fill:lantern.stone z:behind
       copy @post
       copy @kiso
@@ -143,7 +163,7 @@ layer mossy_rock pivot:512,820
         ellipse 5,6.5 at:x,646 fill:lantern.face
         circle 1.7 at:x-1.6,643.6 fill:lantern.glint
     layer firebox pivot:512,544
-      curve 400,322 624,322 636,336 638,530 626,546 398,546 386,530 388,336 closed tension:.35 fill:grad(41 lantern.stone.3 lantern.stone,.55 lantern.stone.1)
+      curve 400,322 624,322 636,336 638,530 626,546 398,546 386,530 388,336 closed tension:.35 fill:grad(41 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:box
         rect 66x250 at:403,435 fill:lantern.stone.3 a:.55
         rect 72x250 at:624,435 fill:stone_cel a:.9 blur:1
         rect 270x92 at:515,346 fill:grad(down fade(lantern.stone.0 .85) fade(lantern.stone.0 .85),.43 fade(lantern.stone.0 0))
@@ -152,13 +172,15 @@ layer mossy_rock pivot:512,820
         rect 72x260 at:624,430 fill:stone_cel a:.35 blur:1
         curve 388,526 512,529 636,526 stroke:stone_line,2.2 taper:.15 a:.5
         curve 390,529 512,532 634,529 stroke:lantern.stone.4,1.6 taper:.35 a:.4 blur:.6
-        curve 460,508 474,400 550,400 564,508 512,511 closed tension:.45 fill:radial(lantern.amber lantern.amber.1,.45 mix(lantern.amber.0 lantern.teal.0 .55) at:.5,.72 r:84) stroke:stone_line,3.2 name:window
+        _speckle 70 lantern.stone.0 lantern.stone.3 @box.left @box.top @box.right @box.bottom
+        curve 460,508 459,432 474,400 512,386 550,400 565,432 564,508 512,511 closed tension:.45 fill:radial(lantern.amber lantern.amber.1,.45 mix(lantern.amber.0 lantern.teal.0 .55) at:.5,.72 r:84) name:window
           rect 160x50 at:520,385 fill:mix(lantern.amber.0 lantern.teal.0 .6) a:.7 blur:6
           rect 17x124 at:458.5,452 fill:lantern.amber.3 a:.6 blur:2
           curve 497,486 527,486 530,512 494,512 closed tension:.25 fill:grad(0 lantern.cream.4 lantern.cream.3,.5 lantern.cream.1) name:candle
             ellipse 15,4 at:512,487 fill:lantern.amber.4 a:.8
           copy @candle fill:none stroke:fade(lantern.cream.line .6),1.6
           curve 512,488 512,480 stroke:lantern.wick,2.2 taper:0
+        copy @window fill:none stroke:stone_line,3.2
         curve 464,508 512,511 560,508 stroke:lantern.amber.3,2.6 taper:.35 a:.75 blur:.8
         subtract name:moon fill:lantern.amber.3
           circle 12 at:413,444
@@ -171,6 +193,7 @@ layer mossy_rock pivot:512,820
         each x in [436 588]
           curve x,340 x,524 stroke:stone_line,2.4 taper:.2 a:.5
         fx rim 4 color:lantern.rim a:.45
+        fx grain .045 scale:2
         fx outline 5.5 color:stone_line
       layer glow pivot:512,452
         circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .42) fade(lantern.amber .16),.45 fade(lantern.amber 0) r:160)
@@ -201,18 +224,20 @@ layer mossy_rock pivot:512,820
           curve [each p in L -> p+(4,1)] stroke:stone_line,2.4 taper:.2 a:.55
           curve [each p in R -> p+(-3,0)] stroke:lantern.stone.3,[2 4 4 3] taper:.2 a:.6 blur:.8
           curve [each p in R -> p+(3,1)] stroke:stone_line,2.4 taper:.2 a:.6
+          _speckle 160 lantern.stone.0 lantern.stone.3 @hat.left @hat.top @hat.right @hat.bottom
           _moss
             form:
-              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,60 name:form
+              curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,18 name:form
           _moss
             form:
-              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,60 name:form
+              curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,18 name:form
           each q in [252,286,13,162,1 774,285,14,18,-1]
             _spiral q.0 q.1 q.2 1.15 q.3 q.4
             _spiral q.0-2 q.1-2 q.2-3 .5 q.3 q.4 10 1.8 1.8 lantern.stone.4 .6 .6
           each s in [404,1 620,-1]
             _spiral s.x 352 7 .9 180 s.y 14 2 2 stone_line .7
           fx rim 5 color:lantern.rim a:.55
+          fx grain .05 scale:2.2
           fx outline 6.5 color:stone_line
         assert inside(@hat canvas margin:16)
         layer finial pivot:512,212
@@ -226,19 +251,25 @@ layer mossy_rock pivot:512,820
             ellipse 5,12 at:500,160 rot:20 fill:lantern.stone.4 a:.8 blur:1.5
             each x in [494 512 530]
               curve x-8,214 x,202 x+8,214 stroke:stone_line,1.6 taper:.2 a:.5
+            _speckle 20 lantern.stone.0 lantern.stone.3 @cap.left @cap.top @cap.right @cap.bottom
             fx rim 4 color:lantern.rim a:.55
+            fx grain .04 scale:1.8
             fx outline 5 color:stone_line
           assert inside(@cap canvas margin:16)
   layer moss_tufts pivot:512,790
     union name:tuft_src fill:none
-      curve 356,784 374,749 413,748 447,749 466,780 434,795 395,795 375,790 closed name:c1
-      curve 498,790 509,775 526,768 543,777 551,794 534,798 516,795 507,792 closed name:c2
-      curve 584,788 600,759 629,754 659,753 675,782 648,795 616,792 600,793 closed name:c3
+      curve 356,784 362,760 384,744 410,748 432,740 456,756 470,780 452,794 400,798 closed tension:.55 jitter:3.5,13 name:c1
+      curve 498,790 506,774 526,768 546,778 550,794 524,800 closed tension:.55 jitter:3.5,13 name:c2
+      curve 584,788 590,766 612,752 636,756 654,746 672,764 676,788 630,796 closed tension:.55 jitter:3.5,13 name:c3
     copy @tuft_src fill:grad(11 lantern.moss.3 lantern.moss,.5 lantern.moss.1) name:tuft
       each c in [@c1 @c2 @c3]
         ellipse c.w*.45,9 at:c.cx+c.w*.18,c.bottom-6 fill:lantern.moss.0 a:.5 blur:5
         ellipse c.w*.25,6 at:c.cx-c.w*.15,c.top+10 fill:lantern.moss.4 a:.6 blur:3
+      each i in 0..90
+        let lit = rand(0 1) < .6
+        circle rand(1 2.2) at:rand(350 690),rand(742 800) fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .5 else .35
       fx rim 3 color:lantern.rim a:.4
+      fx grain .04 scale:1.8
       fx outline 3 color:lantern.moss.line
     _pebble 282 858 18 11 31
     _pebble 744 852 14 9 33

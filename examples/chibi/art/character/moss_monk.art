@@ -40,10 +40,14 @@ def _foot
   curve -36,878 -32,830 0,818 32,830 38,878 0,886 closed fill:grad(43 skin.3 skin,.45 skin.1) name:toe
     cel @toe tone:skin shift:-12,-8
     ellipse 200,16 at:0,852 fill:skin.0 a:.45 blur:7
+    each split in [8 20]
+      curve split,874 split+2,882 stroke:skin.0,[1.6 .8] taper:.35 a:.5
 def _arm side:1
   group at:512,0 scale:side,1 name:mass
     curve -42,700 -50,672 -38,640 -18,616 -2,610 1,644 -1,684 -16,704 closed fill:grad(90-29*side skin.3 skin,.45 skin.1) name:hand
       cel @hand tone:skin shift:-10*side,-10
+      curve -24,664 -14,674 -6,676 stroke:skin.0,[1 2 1] taper:.35 a:.5
+      curve -3,618 -1,650 -2,690 stroke:skin.0,[1 2.5 1] taper:.35 a:.45
     curve -68,588 -114,598 -146,634 -162,684 -154,720 -120,734 -76,728 -42,712 -26,690 -32,654 -46,620 closed fill:grad(90-43*side moss.3 moss,.45 moss.1) name:sleeve
       cel @sleeve tone:moss shift:-24*side,-22 core:.6
       ellipse 34,16 at:-112,630 rot:-40 fill:moss.4 a:.45 blur:10
@@ -108,6 +112,16 @@ layer body
     ellipse 40,22 at:612,760 fill:ochre.0 a:.5 blur:8
     curve 378,806 416,800 422,836 386,842 closed tension:.25 fill:mix(moss ochre.3 .25) stroke:fade(moss.0 .6),1.5 name:patch
       copy @patch fill:grad(44 moss.3 moss.1) a:.6
+    let seams = [380,810 414,804 418,808 420,832 416,838 388,840 384,836 381,812]
+    each seam in 0..4
+      let index_a = seam*2
+      let index_b = index_a+1
+      let seam_a = seams.{index_a}
+      let seam_b = seams.{index_b}
+      each dash in 0..4
+        let start = (dash+.2)/4
+        let end = (dash+.65)/4
+        curve seam_a+(seam_b-seam_a)*start seam_a+(seam_b-seam_a)*end tension:0 stroke:ochre.3,2.2 taper:0
     ellipse 200,18 at:512,866 fill:moss.0 a:.5 blur:8
   fx rim 5 dir:1,1 color:rim a:.45
   fx grain .045 scale:2.2
@@ -123,6 +137,8 @@ layer sash_bow
     curve 606,786 612,818 stroke:ochre.4,[1 2.5] a:.5 blur:1
   _bow [606,756 586,738 570,744 568,762 584,772 604,766] ang:43
   _bow [616,756 640,736 656,742 658,762 642,772 616,768] ang:41
+  curve 600,758 584,750 576,756 stroke:ochre.0,[1 2 1] taper:.35 a:.6
+  curve 622,758 640,748 650,752 stroke:ochre.0,[1 2 1] taper:.35 a:.6
   _bow [600,750 614,744 624,756 618,772 602,770] ang:49
   ellipse 5,3 at:606,752 fill:ochre.4 a:.8 blur:1
   fx rim 3 dir:1,1 color:rim a:.4
