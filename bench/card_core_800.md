@@ -6,8 +6,8 @@ One statement per line: `verb positional… key:value…`, children indented two
 
 ```
 palette plum
-  skin ramp #9b3b6a 5   # .0 deep .1 shadow .2 base .3 light .4 highlight
-  ink  #3d2632
+  ramp skin #9b3b6a 5   # .0 deep .1 shadow .2 base .3 light .4 highlight
+  color ink #3d2632
 ```
 
 `plum.skin.3` is a step, `plum.skin` the base, `plum.skin.line` its lineart. The house palette is `p` (`p.glint`, `p.rim`). Helpers: `shade(c -1)`, `mix(a b .3)`, `fade(c .5)`, `grad(down a b,.4 c)`, `radial(a b at:.3,.3)`.

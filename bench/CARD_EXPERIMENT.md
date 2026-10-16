@@ -8,7 +8,7 @@ turns and worse art. This protocol measures that. It has not been run yet.
 
 | setup | prompt holds | help |
 |---|---|---|
-| `full` | `docs/language.md` (3081 tokens) | none |
+| `full` | `docs/language.md` (3468 tokens) | none |
 | `core1500` | a core of about 1500 tokens | `artscript help <topic>` |
 | `core800` | `bench/card_core_800.md` (796 tokens) | `artscript help <topic>` |
 
