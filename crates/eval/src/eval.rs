@@ -2987,6 +2987,16 @@ impl<'a> Evaluator<'a> {
     ) -> R<()> {
         let mut vals = Vec::new();
         for n in named {
+            if n.key == "name" {
+                self.report(
+                    fail("E0320", "`name:` is the node's identity")
+                        .fix("set `name:` on the draw; a patch cannot rename it"),
+                    sc.file(),
+                    n.span,
+                    owner,
+                );
+                continue;
+            }
             vals.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
         self.patches.push(PatchRec {
@@ -3100,6 +3110,17 @@ impl<'a> Evaluator<'a> {
                 continue;
             }
             for n in &patch.named {
+                if n.key == "name" {
+                    self.report(
+                        fail("E0320", "`name:` is the node's identity")
+                            .note(format!("in anim `{name}`"))
+                            .fix("set `name:` on the draw; an anim cannot rename it"),
+                        &anim.module,
+                        n.span,
+                        owner,
+                    );
+                    continue;
+                }
                 let (absolute, expr) = match absolute_channel(&n.key, &n.value) {
                     Some(inner) => (true, inner),
                     None => (!offset_channel(&n.key), &n.value),

@@ -1802,6 +1802,36 @@ fn off_canvas_on_a_later_frame_is_kept() {
 }
 
 #[test]
+fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
+    let files = [(
+        "art/t.art".to_string(),
+        "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim slide dur:1s\n  .c at:key(22 80 ease:linear),0\ncircle 2 name:c\nplay slide\n".to_string(),
+    )]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let offs: Vec<_> = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0102")
+        .collect();
+    assert_eq!(offs.len(), 1, "{}", show(&sampled.diagnostics));
+    assert!(
+        offs[0].message.contains("entirely outside"),
+        "{}",
+        offs[0].message
+    );
+    assert!(
+        offs[0].notes.iter().any(|n| n.contains("first at")),
+        "{:?}",
+        offs[0].notes
+    );
+}
+
+#[test]
 fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
     let fast = project(&[(
         "art/t.art",
@@ -2147,6 +2177,71 @@ fn an_imported_anim_style_resolves_in_its_module() {
         "{}",
         show(&missing.diagnostics)
     );
+}
+
+#[test]
+fn a_gif_raster_over_the_budget_is_e0206_from_sample() {
+    let huge = project(&[(
+        "art/t.art",
+        "@target t.gif 4096x4096 bg:#ffffff dur:1s fps:5\ncircle 1\n",
+    )]);
+    let huge_plan = plan(&huge);
+    assert!(
+        huge_plan.diagnostics.is_empty(),
+        "{:?}",
+        huge_plan.diagnostics
+    );
+    let huge_sample = crate::sample(&huge, &huge_plan.jobs[0]);
+    assert!(
+        huge_sample.diagnostics.iter().any(|d| {
+            d.code == "E0206" && d.message.contains("a gif raster is larger than 256MiB")
+        }),
+        "{}",
+        show(&huge_sample.diagnostics)
+    );
+    let small = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\ncircle 1\n",
+    )]);
+    let small_plan = plan(&small);
+    let small_sample = crate::sample(&small, &small_plan.jobs[0]);
+    assert!(
+        small_sample
+            .diagnostics
+            .iter()
+            .all(|d| !d.message.contains("raster")),
+        "{}",
+        show(&small_sample.diagnostics)
+    );
+}
+
+#[test]
+fn an_anim_cannot_rename_a_node() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .c name:d\n  .c a:.5\ncircle 4 name:c\nplay idle\n",
+        &[],
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0320")
+        .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert!(d.message.contains("name"), "{d}");
+    assert_eq!(d.file, "art/t.art");
+    let scene = ev.scene.as_ref().unwrap();
+    assert_eq!(paths(scene), ["c"]);
+    assert!((node(scene, "c").opacity - 0.5).abs() < 1e-4);
+    let patched = run_with(
+        "@target t.png 40x40\nuse d\nd\n  .eye name:other\n",
+        &[("lib/d.art", "def d\n  circle 4 name:eye\n")],
+    );
+    let p = patched
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0320")
+        .unwrap_or_else(|| panic!("{}", show(&patched.diagnostics)));
+    assert!(p.message.contains("name"), "{p}");
+    assert_eq!(paths(patched.scene.as_ref().unwrap()), ["d", "d.eye"]);
 }
 
 #[test]

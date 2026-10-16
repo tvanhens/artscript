@@ -32,6 +32,7 @@ pub enum RenderError {
 }
 
 /// RGBA bytes of every GIF frame. Encoding also holds a second copy for the palette.
+/// `sample` uses this same cap, and parallel encodes reserve against it and wait.
 pub const RASTER_BUDGET: u64 = 256 * 1024 * 1024;
 
 /// Renders the scene at `scale` (1 = one pixel per canvas unit) and encodes it as PNG.

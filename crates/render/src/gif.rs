@@ -1,10 +1,40 @@
 use std::io::Cursor;
+use std::sync::{Condvar, Mutex};
 
 use artscript_ir::Scene;
 use gif::{Encoder, Frame, Repeat};
 
 use crate::draw;
 use crate::{RASTER_BUDGET, RenderError};
+
+static GIF_HELD: Mutex<u64> = Mutex::new(0);
+static GIF_SLOT: Condvar = Condvar::new();
+
+/// `held` is RGBA bytes already reserved by other encodes. A lone raster may use the whole cap.
+fn raster_slot_open(held: u64, bytes: u64) -> bool {
+    held == 0 || held.saturating_add(bytes) <= RASTER_BUDGET
+}
+
+struct GifSlot {
+    bytes: u64,
+}
+
+impl Drop for GifSlot {
+    fn drop(&mut self) {
+        let mut held = GIF_HELD.lock().unwrap_or_else(|e| e.into_inner());
+        *held = held.saturating_sub(self.bytes);
+        GIF_SLOT.notify_all();
+    }
+}
+
+fn reserve_raster(bytes: u64) -> GifSlot {
+    let mut held = GIF_HELD.lock().unwrap_or_else(|e| e.into_inner());
+    while !raster_slot_open(*held, bytes) {
+        held = GIF_SLOT.wait(held).unwrap_or_else(|e| e.into_inner());
+    }
+    *held = held.saturating_add(bytes);
+    GifSlot { bytes }
+}
 
 pub fn encode(
     scenes: &[&Scene],
@@ -44,6 +74,7 @@ pub fn encode(
     if bytes > RASTER_BUDGET {
         return Err(RenderError::GifTooLarge);
     }
+    let _slot = reserve_raster(bytes);
     let rendered: Result<Vec<(u32, u32, Vec<u8>)>, RenderError> = scenes
         .iter()
         .map(|scene| {
@@ -119,6 +150,15 @@ mod tests {
         let frames = vec![&scene; 5];
         let err = encode(&frames, 1.0, &[4; 5], false).unwrap_err();
         assert!(matches!(err, RenderError::GifTooLarge));
+    }
+
+    #[test]
+    fn parallel_targets_share_one_raster_cap() {
+        let cap = RASTER_BUDGET;
+        assert!(raster_slot_open(0, cap));
+        assert!(!raster_slot_open(cap, 1));
+        assert!(raster_slot_open(cap / 2, cap / 2));
+        assert!(!raster_slot_open(cap / 2, cap / 2 + 1));
     }
 
     #[test]

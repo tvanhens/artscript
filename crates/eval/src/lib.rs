@@ -37,6 +37,9 @@ use crate::eval::{Evaluator, PlayMark};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// RGBA bytes of one GIF, `width × height × frames × 4`. The encoder's raster cap is the same number.
+pub const GIF_RASTER_BUDGET: u64 = 256 * 1024 * 1024;
+
 pub struct Evaluation {
     /// `None` when the entry file could not be evaluated at all.
     pub scene: Option<Scene>,
@@ -170,8 +173,9 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     }
     let mut diagnostics = aggregate_frames(&per_frame);
     if !diagnostics.iter().any(|d| d.code.starts_with('E'))
-        && let Some(d) =
-            gif_timing_error(job, frames.len(), dur).or_else(|| gif_background_error(job, &frames))
+        && let Some(d) = gif_timing_error(job, frames.len(), dur)
+            .or_else(|| gif_background_error(job, &frames))
+            .or_else(|| gif_raster_error(job, &frames))
     {
         diagnostics.push(d);
     }
@@ -228,6 +232,43 @@ fn gif_background_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic>
     )
 }
 
+fn gif_raster_bytes(width: f32, height: f32, scale: f32, frames: usize) -> u64 {
+    let w = (width * scale).ceil().max(1.0);
+    let h = (height * scale).ceil().max(1.0);
+    if !w.is_finite() || !h.is_finite() {
+        return u64::MAX;
+    }
+    (w as u64)
+        .saturating_mul(h as u64)
+        .saturating_mul(4)
+        .saturating_mul(frames as u64)
+}
+
+/// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
+fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
+    let scene = &frames.first()?.scene;
+    let over = job
+        .outputs
+        .iter()
+        .filter(|o| o.format == Format::Gif)
+        .any(|o| {
+            gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_RASTER_BUDGET
+        });
+    if !over {
+        return None;
+    }
+    let mib = GIF_RASTER_BUDGET / (1024 * 1024);
+    Some(
+        Diagnostic::error(
+            "E0206",
+            job.span,
+            format!("a gif raster is larger than {mib}MiB"),
+        )
+        .in_file(&job.source)
+        .with_fix("lower `fps`, shorten `dur`, or shrink the canvas"),
+    )
+}
+
 fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut groups: Vec<Agg> = Vec::new();
@@ -236,12 +277,17 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
             if d.code.starts_with('L') && d.code != "L0102" {
                 continue;
             }
+            let message = if d.code == "L0102" {
+                String::new()
+            } else {
+                d.message.clone()
+            };
             let key = (
                 d.file.clone(),
                 d.span.line,
                 d.span.col,
                 d.code.clone(),
-                d.message.clone(),
+                message,
                 d.node.clone(),
                 d.notes
                     .iter()

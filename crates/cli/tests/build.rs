@@ -349,6 +349,39 @@ fn check_reports_a_gif_build_would_refuse() {
 }
 
 #[test]
+fn the_sample_raster_cap_matches_the_encoder() {
+    assert_eq!(
+        artscript_eval::GIF_RASTER_BUDGET,
+        artscript_render::RASTER_BUDGET
+    );
+}
+
+#[test]
+fn check_reports_a_gif_raster_over_the_budget() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifraster-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifraster\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target huge.gif 4096x4096 bg:#ffffff dur:1s fps:5\ncircle 1\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("a gif raster is larger than 256MiB"),
+        "{}",
+        text(&out)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn check_reports_a_gif_without_an_opaque_background() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-gifbg-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
