@@ -4,7 +4,7 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 
 ## Files
 
-- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `def`, `rule`, `let`.
+- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`.
 - `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a b]` fans out a matrix interpolated as `{k}` in the path.
 - `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The manifest's default palette is always available as `p`.
@@ -85,6 +85,19 @@ curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body
 - `inside @torso` draws its block clipped to another node's silhouette, and `outside @x` does the inverse.
 - Masks are `mask:@body`, `mask:simplex(30) > .5`, or a `mask:` block, with `feather:6` for a soft edge.
 - `fx` lines apply to the node they're nested under, in order. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a line around the shape geometry behind the node, default `line(fill)`, unchanged by an earlier blur, shadow, or glow), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
+- `finish` names an ordered stack of `fx` lines that several nodes share:
+
+```
+finish surface width:4 a:.45 strength:.04 scale:2.5
+  fx rim width dir:1,1 color:p.rim a:a
+  fx grain strength scale:scale
+
+curve … name:cap
+  fx surface width:5 a:.55
+  fx outline 7
+```
+
+`fx surface` puts the finish's lines into that node's effects at that line, so the outline above still comes last. Only that node gets them, never its children. Parameters are named and typed by their defaults, and the arguments are evaluated where `fx surface` is written. Other names in the body resolve in the file that declares the finish. Grain still seeds from the node it lands on, so a finish draws the same as writing its lines out. A finish is imported like a style (`use fx/surface { surface }`). Its body holds only built-in effects, with no `of:`, no `as:`, and no other finish. `finish:surface` as a node key is an error; write `fx surface` under the node.
 
 ## Fields
 
@@ -106,7 +119,7 @@ def eye size:10 iris:p.sky.3 look:0,0
 - `slot name` exposes an insertion point, filled by the caller with a `name:` block. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
 - `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `[each k in 0..n -> expr]` builds the list.
-- `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants.
+- `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants. A style takes keys only, never a block. A style holds keys that children inherit, while a finish holds effects that one node gets.
 
 ## Checks
 
