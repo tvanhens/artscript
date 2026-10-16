@@ -213,6 +213,66 @@ fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
 }
 
+/// A percent of an empty frame would resolve to 0 and hide a missing box.
+fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
+    let Coord::Pct(p) = coord else {
+        return Ok(());
+    };
+    if !frame.is_empty() {
+        return Ok(());
+    }
+    let pct = Value::Percent(p).show();
+    Err(match sc.inst.as_ref() {
+        Some(inst) => fail("E0322", format!("`{}` has no size, so {pct} has nothing to measure", inst.def_name))
+            .fix(format!("declare the box with `size:`, as in `def {} size:72x32`", inst.def_name)),
+        None => fail("E0322", format!("{pct} has nothing to measure")).fix("use a number, or measure against a frame that has a size"),
+    })
+}
+
+fn size_box(w: f64, h: f64) -> Rect {
+    Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
+}
+
+/// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
+fn resolve_size(v: &Value, pair_default: bool, frame: Rect, sc: &Scope, def_name: &str) -> R<(Value, Rect)> {
+    let positive = |n: f64| n.is_finite() && n > 0.0;
+    let reject = |got: &str| fail("E0320", format!("`size` of `{def_name}` must be positive, got {got}")).fix("write `size:40` or `size:72x32`");
+    let square = |side: f64| {
+        let value = if pair_default { Value::Size(Coord::Num(side), Coord::Num(side)) } else { Value::Num(side) };
+        (value, size_box(side, side))
+    };
+    let (fw, fh) = (frame.width() as f64, frame.height() as f64);
+    match v {
+        Value::Num(n) => {
+            if !positive(*n) {
+                return Err(reject(&v.show()));
+            }
+            Ok(square(*n))
+        }
+        Value::Percent(p) => {
+            check_percent(Coord::Pct(*p), frame, sc)?;
+            let side = p * fw.min(fh);
+            if !positive(side) {
+                return Err(reject(&v.show()));
+            }
+            Ok(square(side))
+        }
+        other => {
+            let Some((x, y)) = other.pair() else {
+                return Err(fail("E0320", format!("`size` of `{def_name}` expects a number or a size, got {}", v.kind()))
+                    .fix("write `size:40` or `size:72x32`"));
+            };
+            check_percent(x, frame, sc)?;
+            check_percent(y, frame, sc)?;
+            let (w, h) = (x.len(fw), y.len(fh));
+            if !positive(w) || !positive(h) {
+                return Err(reject(&v.show()));
+            }
+            Ok((Value::Size(Coord::Num(w), Coord::Num(h)), size_box(w, h)))
+        }
+    }
+}
+
 /// Parent units per local unit, along the more-stretched axis.
 fn axis_scale(m: &Matrix) -> f64 {
     let sx = f64::from(m.scale_x()).hypot(f64::from(m.skew_y()));
@@ -668,17 +728,23 @@ impl<'a> Evaluator<'a> {
         style.named.iter().map(|n| Ok((n.key.clone(), self.expr(&n.value, &msc)?))).collect()
     }
 
-    fn transform(&mut self, a: &Args, default_at: (f64, f64), frame: Rect, with_rot: bool) -> R<(Matrix, (f64, f64))> {
+    fn transform(&mut self, a: &Args, default_at: (f64, f64), frame: Rect, sc: &Scope, with_rot: bool) -> R<(Matrix, (f64, f64))> {
         let (fx, fy, fw, fh) = (frame.left as f64, frame.top as f64, frame.width() as f64, frame.height() as f64);
         let at = match a.get("at") {
             Some(v) => {
                 let (x, y) = v.pair().ok_or_else(|| fail("E0320", format!("`at:` expects a vector like 4,2, got {}", v.kind())))?;
+                check_percent(x, frame, sc)?;
+                check_percent(y, frame, sc)?;
                 (x.pos(fx, fw), y.pos(fy, fh))
             }
             None => default_at,
         };
         let pivot = match a.get("pivot").and_then(Value::pair) {
-            Some((x, y)) => (x.len(fw), y.len(fh)),
+            Some((x, y)) => {
+                check_percent(x, frame, sc)?;
+                check_percent(y, frame, sc)?;
+                (x.len(fw), y.len(fh))
+            }
             None => (0.0, 0.0),
         };
         let rot = if with_rot { a.num("rot").unwrap_or(0.0) } else { 0.0 };
@@ -857,7 +923,7 @@ impl<'a> Evaluator<'a> {
         let group_like = matches!(verb, "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid");
         let frame = sc.frame;
         let default_at = if centered { (frame.center_x() as f64, frame.center_y() as f64) } else { (0.0, 0.0) };
-        let (m, at) = self.transform(&a, default_at, frame, verb != "repeat")?;
+        let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
         let world = sc.world * m;
         let mut node;
         let mut record = None;
@@ -911,7 +977,7 @@ impl<'a> Evaluator<'a> {
                     };
                     (r.silhouette().make_transform(&inverse(&sc.world)), None, true)
                 }
-                _ => self.primitive(verb, &a, frame, flag("closed"))?,
+                _ => self.primitive(verb, &a, frame, sc, flag("closed"))?,
             };
             let mut geometry = geometry;
             if let Some(spec) = a.get("jitter") {
@@ -1094,13 +1160,15 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn primitive(&mut self, verb: &str, a: &Args, frame: Rect, closed_flag: bool) -> R<(Path, Option<Vec<P>>, bool)> {
+    fn primitive(&mut self, verb: &str, a: &Args, frame: Rect, sc: &Scope, closed_flag: bool) -> R<(Path, Option<Vec<P>>, bool)> {
         let (fx, fy, fw, fh) = (frame.left as f64, frame.top as f64, frame.width() as f64, frame.height() as f64);
         let first = a.pos.first();
         let need = |what: &str, example: &str| fail("E0320", format!("`{verb}` needs {what}")).fix(format!("write `{example}`"));
         Ok(match verb {
             "rect" => {
                 let (w, h) = first.and_then(Value::pair).ok_or_else(|| need("a size", "rect 40x20"))?;
+                check_percent(w, frame, sc)?;
+                check_percent(h, frame, sc)?;
                 let radii = match a.get("r") {
                     Some(Value::Num(r)) => [*r; 4],
                     Some(v) => match v.items() {
@@ -1116,11 +1184,14 @@ impl<'a> Evaluator<'a> {
             }
             "circle" => {
                 let r = first.and_then(Value::coord).ok_or_else(|| need("a radius", "circle 12"))?;
+                check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
                 (geom::ellipse(r, r), None, true)
             }
             "ellipse" => {
                 let (rx, ry) = first.and_then(Value::pair).ok_or_else(|| need("two radii", "ellipse 20,12"))?;
+                check_percent(rx, frame, sc)?;
+                check_percent(ry, frame, sc)?;
                 (geom::ellipse(rx.len(fw), ry.len(fh)), None, true)
             }
             "poly" | "star" => {
@@ -1142,11 +1213,13 @@ impl<'a> Evaluator<'a> {
                     }
                     _ => a.pos.clone(),
                 };
-                let pts: Vec<P> = values
-                    .iter()
-                    .map(|v| v.pair().map(|(x, y)| (x.pos(fx, fw), y.pos(fy, fh))))
-                    .collect::<Option<_>>()
-                    .ok_or_else(|| need("points like 0,0 20,-15", "curve 0,0 20,-15 40,0"))?;
+                let mut pts = Vec::with_capacity(values.len());
+                for v in &values {
+                    let (x, y) = v.pair().ok_or_else(|| need("points like 0,0 20,-15", "curve 0,0 20,-15 40,0"))?;
+                    check_percent(x, frame, sc)?;
+                    check_percent(y, frame, sc)?;
+                    pts.push((x.pos(fx, fw), y.pos(fy, fh)));
+                }
                 if pts.len() < 2 {
                     return Err(need("at least two points", "curve 0,0 20,-15 40,0"));
                 }
@@ -1171,7 +1244,9 @@ impl<'a> Evaluator<'a> {
                 (p, None, true)
             }
             "blob" => {
-                let r = first.and_then(Value::coord).ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?.len(fw.min(fh));
+                let r = first.and_then(Value::coord).ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?;
+                check_percent(r, frame, sc)?;
+                let r = r.len(fw.min(fh));
                 let extra = a.num("seed").unwrap_or(0.0) as u64;
                 let mut rng = Rng::new(seed::node_seed(&self.seed_base, "blob", extra));
                 let points = a.num("points").unwrap_or(7.0) as usize;
@@ -1383,12 +1458,16 @@ impl<'a> Evaluator<'a> {
                     .fix("use one of the listed parameters"));
             }
         }
+        let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
+        let caller_local = inverse(&m).map_rect(sc.frame).0;
+        let mut box_frame = Rect::new_empty();
         let def_scope = self.module_scope(&module);
         let mut env: Vec<(String, Value)> = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
             let default = self.expr(&p.value, &dsc);
+            let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
                     if let Ok(d) = &default
@@ -1400,6 +1479,13 @@ impl<'a> Evaluator<'a> {
                     v.clone()
                 }
                 None => default.map_err(|f| f.note(format!("in the default of `{}` ({}:{})", p.key, comp.module, comp.span.line)))?,
+            };
+            let value = if p.key == "size" {
+                let (value, rect) = resolve_size(&value, pair_default, caller_local, sc, &comp.name)?;
+                box_frame = rect;
+                value
+            } else {
+                value
             };
             env.push((p.key.clone(), value));
         }
@@ -1417,7 +1503,6 @@ impl<'a> Evaluator<'a> {
                 }
             }
         }
-        let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, true)?;
         let world = sc.world * m;
         let table = new_table();
         let mut fills = Vec::new();
@@ -1481,7 +1566,7 @@ impl<'a> Evaluator<'a> {
             module,
             path: path.clone(),
             suffix: String::new(),
-            frame: Rect::new_empty(),
+            frame: box_frame,
             world,
             style: sc.style.clone(),
             register: table,
@@ -1495,7 +1580,7 @@ impl<'a> Evaluator<'a> {
         let children = self.eval_block_nodes(&body_rest, &mut body_scope);
         let mut node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: false, children });
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
-        let fx_scope = body_scope.child(&path, Rect::new_empty(), world);
+        let fx_scope = body_scope.child(&path, body_scope.frame, world);
         for (fst, scope) in body_fx.iter().map(|s| (*s, &fx_scope)).chain(block_fx.iter().map(|s| (*s, &*sc))) {
             match self.effect(fst, scope, f, &path) {
                 Ok(e) => node.effects.push(e),
@@ -1556,12 +1641,15 @@ impl<'a> Evaluator<'a> {
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;
         a.named.extend(patch_named);
-        let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, true)?;
+        let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
         let world = sc.world * m;
+        let mapped = inverse(&m).map_rect(sc.frame).0;
+        // Centered on the slot origin, because content with no `at:` defaults to the frame center.
+        let local_frame = size_box(mapped.width() as f64, mapped.height() as f64);
         let children = match inst.fills.iter().find(|f| f.name == name) {
             Some(fill) => {
                 inst.used_fills.borrow_mut().push(name.to_string());
-                let mut fsc = fill.scope.child(&path, Rect::new_empty(), world);
+                let mut fsc = fill.scope.child(&path, local_frame, world);
                 let mut lookup = vec![inst.table.clone()];
                 lookup.extend(fill.scope.lookup.iter().cloned());
                 fsc.lookup = Rc::new(lookup);
@@ -1569,7 +1657,7 @@ impl<'a> Evaluator<'a> {
                 self.eval_block_nodes(&fill.body, &mut fsc)
             }
             None => {
-                let mut inner = sc.child(&path, Rect::new_empty(), world);
+                let mut inner = sc.child(&path, local_frame, world);
                 self.eval_block_nodes(body, &mut inner)
             }
         };

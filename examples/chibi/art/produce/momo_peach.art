@@ -141,8 +141,8 @@ layer body
   assert inside(@skin canvas margin:24)
 
 layer face
-  blush 72 at:362,674 color:peach.coral.3
-  blush 72 at:586,674 color:peach.coral.3
+  blush 72x32 at:362,674 color:peach.coral.3
+  blush 72x32 at:586,674 color:peach.coral.3
   happy_eye 68 at:398,630 color:peach.face name:eye_l
   happy_eye 68 at:550,630 color:peach.face name:eye_r
   cat_mouth 46 at:474,668 color:peach.face
@@ -154,6 +154,6 @@ layer leaf_front
   ellipse 3.5,2.2 at:683,244 fill:p.glint a:.95
 
 layer sparkles
-  sparkle 26 at:262,360
-  sparkle 14 at:810,330
-  sparkle 10 at:822,770
+  sparkle 52 at:262,360
+  sparkle 28 at:810,330
+  sparkle 20 at:822,770

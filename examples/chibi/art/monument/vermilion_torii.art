@@ -216,8 +216,8 @@ layer footings pivot:512,840
         copy @cap
         fx outline 7 color:gate
       layer sparkles
-        sparkle 14 at:210,84 color:spark
-        sparkle 10 at:900,272 color:spark glow:.25
+        sparkle 28 at:210,84 color:spark
+        sparkle 20 at:900,272 color:spark glow:.25
   _stone 334 name:stone_l
   _stone 690 name:stone_r
   curve 238,800 250,778 270,766 294,762 300,772 282,780 268,794 254,812 240,818 closed tension:.4 fill:none jitter:2.5,14 name:src_l

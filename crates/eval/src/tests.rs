@@ -463,3 +463,125 @@ fn raw_color_lint_skips_palettes() {
     let lints: Vec<(&str, u32)> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
     assert_eq!(lints, [("L0101", 5)]);
 }
+
+fn assert_box(s: &Scene, path: &str, w: f64, h: f64) {
+    let b = shape(s, path).geometry.compute_tight_bounds();
+    let (bw, bh) = (f64::from(b.width()), f64::from(b.height()));
+    assert!((bw - w).abs() < 1e-3 && (bh - h).abs() < 1e-3, "{path} is {bw}x{bh}, expected {w}x{h}");
+}
+
+fn lib_scene(src: &str, lib: &str) -> Scene {
+    let ev = run_with(src, &[("lib/d.art", lib)]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    ev.scene.unwrap()
+}
+
+#[test]
+fn def_size_box_measures_percents_from_its_own_center() {
+    let lib = "def d size:40x20\n  rect 100%x100% name:r\n  circle 50% name:c\n  circle 2 at:0%,0% name:mark\n";
+    let s = lib_scene("@target t.png 200x100\nuse d\nd\n", lib);
+    assert_box(&s, "d.r", 40.0, 20.0);
+    assert_box(&s, "d.c", 20.0, 20.0);
+    near(at(node(&s, "d.mark")), (-20.0, -10.0));
+}
+
+#[test]
+fn caller_percent_size_resolves_against_the_caller_frame() {
+    let lib = "def d size:40x20\n  rect size name:r\n  circle size.w*.1 name:c\n";
+    let pair = lib_scene("@target t.png 200x100\nuse d\nd 50%x50%\n", lib);
+    assert_box(&pair, "d.r", 100.0, 50.0);
+    assert_box(&pair, "d.c", 20.0, 20.0);
+    let bare = lib_scene("@target t.png 200x100\nuse d\nd 50%\n", "def d size:40x20\n  rect size name:r\n");
+    assert_box(&bare, "d.r", 50.0, 50.0);
+    let scaled = lib_scene("@target t.png 200x100\nuse d\nd 100%x100% scale:2\n", "def d size:10x10\n  rect 100%x100% name:r\n");
+    assert_box(&scaled, "d.r", 100.0, 50.0);
+    let square = lib_scene("@target t.png 80x40\nuse d\nd 30\n", "def d size:72x32\n  rect size.w,size.h name:r\n");
+    assert_box(&square, "d.r", 30.0, 30.0);
+}
+
+#[test]
+fn a_square_size_rejects_a_pair() {
+    let ev = run_with("@target t.png 80x40\nuse d\nd 30x16\n", &[("lib/d.art", "def d size:10\n  circle size*.5\n")]);
+    assert!(ev.diagnostics.iter().any(|d| d.code == "E0320"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn child_without_at_stays_at_the_instance_origin() {
+    let s = lib_scene("@target t.png 200x100\nuse d\nd at:30,16\n", "def d size:80x40\n  circle 5 name:c\n");
+    near(at(node(&s, "d")), (30.0, 16.0));
+    near(at(node(&s, "d.c")), (0.0, 0.0));
+    let placed = lib_scene("@target t.png 200x100\nuse d\nd at:100%,100%\n", "def d size:40x20\n  circle 4 name:c\n");
+    near(at(node(&placed, "d")), (200.0, 100.0));
+    near(at(node(&placed, "d.c")), (0.0, 0.0));
+}
+
+#[test]
+fn percent_in_a_def_without_size_is_e0322() {
+    let ev = run_with("@target t.png 80x40\nuse d\nblush\n", &[("lib/d.art", "def blush\n  circle 50%\n")]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0322").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.message, "`blush` has no size, so 50% has nothing to measure");
+    assert_eq!(d.fix.as_deref(), Some("declare the box with `size:`, as in `def blush size:72x32`"));
+
+    let outside = run_with("@target t.png 80x40\nlayer x\ninside @x\n  circle 50%\n", &[]);
+    let d = outside.diagnostics.iter().find(|d| d.code == "E0322").unwrap_or_else(|| panic!("{}", show(&outside.diagnostics)));
+    assert_eq!(d.message, "50% has nothing to measure");
+}
+
+#[test]
+fn slot_fill_percents_use_the_host_box() {
+    let lib = "def host size:40x20\n  slot hole\n";
+    let s = lib_scene("@target t.png 200x100\nuse d\nhost\n  hole:\n    rect 100%x100% name:r\n    circle 2 at:0%,0% name:mark\n", lib);
+    assert_box(&s, "host.hole.r", 40.0, 20.0);
+    near(at(node(&s, "host.hole.mark")), (-20.0, -10.0));
+    let shifted = lib_scene(
+        "@target t.png 200x100\nuse d\nhost\n",
+        "def host size:40x20\n  slot hole at:10,0\n    circle 2 at:0%,0% name:mark\n",
+    );
+    near(at(node(&shifted, "host.hole.mark")), (-20.0, -10.0));
+}
+
+#[test]
+fn unplaced_slot_content_stays_at_the_slot() {
+    let lib = "def host size:40x20\n  slot hole at:10,0\n    circle 2 name:own\n";
+    let own = lib_scene("@target t.png 200x100\nuse d\nhost\n", lib);
+    near(at(node(&own, "host.hole.own")), (0.0, 0.0));
+    let filled = lib_scene("@target t.png 200x100\nuse d\nhost\n  hole:\n    circle 2 name:fill\n", lib);
+    near(at(node(&filled, "host.hole.fill")), (0.0, 0.0));
+}
+
+#[test]
+fn size_is_not_unused_when_only_percents_use_the_box() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
+    let files = [
+        ("art/t.art".to_string(), "@target t.png 80x40\nuse d\nblush\n".to_string()),
+        ("lib/d.art".to_string(), "def blush size:40x20 extra:1\n  circle 50%\n".to_string()),
+    ]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    let unused: Vec<&str> = ev.diagnostics.iter().filter(|d| d.code == "L0103").map(|d| d.message.as_str()).collect();
+    assert!(unused.iter().any(|m| m.contains("`extra`")), "{unused:?}");
+    assert!(unused.iter().all(|m| !m.contains("`size`")), "{unused:?}");
+}
+
+#[test]
+fn absolute_size_still_boxes_a_child_of_a_sizeless_def() {
+    let s = lib_scene(
+        "@target t.png 80x40\nuse d\nouter\n",
+        "def outer\n  inner 20\ndef inner size:10\n  rect 100%x100% name:r\n",
+    );
+    assert_box(&s, "outer.inner.r", 20.0, 20.0);
+    let ev = run_with("@target t.png 80x40\nuse d\nouter\n", &[("lib/d.art", "def outer\n  inner 50%\ndef inner size:10\n  circle 4\n")]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0322").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.message, "`outer` has no size, so 50% has nothing to measure");
+}
+
+#[test]
+fn non_positive_size_is_e0320() {
+    let ev = run_with("@target t.png 40x40\nuse d\nd 0\n", &[("lib/d.art", "def d size:40\n  circle size\n")]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0320").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert!(d.message.contains("must be positive"), "{d}");
+    assert_eq!(d.fix.as_deref(), Some("write `size:40` or `size:72x32`"));
+}

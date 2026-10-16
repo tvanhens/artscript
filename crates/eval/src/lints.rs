@@ -187,7 +187,7 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
             StmtKind::Def { name, params, body } => {
                 let mut inner = HashSet::new();
                 idents(body, &mut inner);
-                for p in params.iter().filter(|p| p.key != "needs") {
+                for p in params.iter().filter(|p| p.key != "needs" && p.key != "size") {
                     if !inner.contains(&p.key) {
                         push(p.span, format!("parameter `{}` of `{name}` is never used", p.key), "use it in the body or remove it");
                     }

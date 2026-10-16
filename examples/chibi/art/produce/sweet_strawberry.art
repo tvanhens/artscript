@@ -54,7 +54,7 @@ def _dew x:418 y:772 r:15
   curve d closed tension:.6 fill:none stroke:fade(red.line .4),1.4
   ellipse r*.22,r*.4 at:x-r*.35,y-r*.2 rot:20 fill:glint a:.95
 def _eye x:436 side:-1 lid:.18 w:72 h:86
-  eye w h:h iris:berry.iris side:side look:-.3,.35 lid:lid at:x,592
+  eye w,h iris:berry.iris side:side look:-.3,.35 lid:lid at:x,592
 layer ground_shadow
   ellipse 250,34 at:512,878 fill:berry.plum a:.36 blur:16
   ellipse 150,18 at:500,872 fill:berry.plum a:.25 blur:8
@@ -83,8 +83,8 @@ layer body pivot:506,846
   assert inside(@skin canvas margin:24)
   layer cheeks
     each x in [378 646]
-      blush 86 h:40 at:x,648 color:berry.blush lines:3
-      blush 56 h:24 at:x,648 color:berry.blush lines:0
+      blush 86x40 at:x,648 color:berry.blush lines:3
+      blush 56x24 at:x,648 color:berry.blush lines:0
   layer eyes pivot:512,592
     _eye name:eye_l
     _eye 588 side:1 name:eye_r
@@ -109,6 +109,6 @@ layer body pivot:506,846
         curve [each q in [stem.0 stem.1 stem.2 stem.3 stem.4] -> q-(4,2)] stroke:leaf.4,[5 5 4 3 2] taper:.35 a:.75 blur:1
       fx outline 4 color:leaf.line
   layer sparkle
-    sparkle 26 at:232,300 color:berry.twinkle
-    sparkle 15 at:812,520 color:berry.twinkle
-    sparkle 11 at:780,250 color:berry.twinkle
+    sparkle 52 at:232,300 color:berry.twinkle
+    sparkle 30 at:812,520 color:berry.twinkle
+    sparkle 22 at:780,250 color:berry.twinkle

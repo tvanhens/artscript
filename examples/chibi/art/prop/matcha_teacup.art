@@ -19,7 +19,7 @@ palette tea
   rim #b4cbe6
   mist #ffffff
 def _eye side:1 lid:0 look:.1,.12
-  eye 86 h:100 iris:tea.iris side:side lid:lid look:look
+  eye 86x100 iris:tea.iris side:side lid:lid look:look
 def _wisp pts:[0,0] w:[1] n:5
   curve [each p in pts -> p+(7,5)] stroke:tea.haze,w taper:.35 a:.55 blur:3
   curve pts stroke:tea.steam,w taper:.35 a:.88 blur:1.2
@@ -111,7 +111,7 @@ layer saucer pivot:512,800
         _wisp [570,464 598,408 566,350 590,292] w:[6 18 18 4] n:4
     layer cheeks
       each x in [368 656]
-        blush 74 h:34 at:x,710 color:tea.blush lines:3
+        blush 74x34 at:x,710 color:tea.blush lines:3
     layer eyes pivot:512,648
       _eye side:-1 at:420,648 name:eye_l
       _eye side:1 at:604,648 name:eye_r
@@ -122,7 +122,7 @@ layer saucer pivot:512,800
     layer mouth
       open_mouth 38 at:512,698 color:tea.ink
     layer sparkle
-      sparkle 28 at:300,440 color:tea.twinkle
-      sparkle 15 at:748,418 color:tea.twinkle
+      sparkle 56 at:300,440 color:tea.twinkle
+      sparkle 30 at:748,418 color:tea.twinkle
 assert inside(@saucer_shell canvas margin:24)
 assert inside(@cup_shell canvas margin:24)
