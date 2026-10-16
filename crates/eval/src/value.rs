@@ -7,6 +7,7 @@ use artscript_ir::Field;
 
 use crate::color::{Ramp, Rgba};
 use crate::paint::GradSpec;
+use crate::range::Range;
 use crate::scope::{Component, Module, Palette, RefVal, RuleDef};
 
 /// One coordinate: canvas units or a percent of the current frame.
@@ -64,7 +65,7 @@ pub enum Value {
     FieldMask(Rc<Field>, f64),
     /// `field -> ramp`, a field mapped through colors.
     FieldPaint(Rc<Field>, Vec<Rgba>),
-    Range(f64, f64),
+    Range(Range),
     List(Vec<Value>),
     Str(String),
     Ident(String),
@@ -198,11 +199,7 @@ impl Value {
     pub fn items(&self) -> Option<Vec<Value>> {
         match self {
             Value::List(xs) | Value::Tuple(xs) => Some(xs.clone()),
-            Value::Range(a, b) => {
-                let (a, b) = (*a, *b);
-                let n = (b - a).ceil().max(0.0) as usize;
-                Some((0..n).map(|i| Value::Num(a + i as f64)).collect())
-            }
+            Value::Range(r) => Some(r.steps().map(Value::Num).collect()),
             _ => None,
         }
     }
@@ -249,7 +246,7 @@ impl Value {
             Value::Palette(p) => format!("palette {}", p.name),
             Value::Gradient(_) => "gradient".into(),
             Value::Field(_) | Value::FieldMask(..) | Value::FieldPaint(..) => "field".into(),
-            Value::Range(a, b) => format!("{}..{}", num(*a), num(*b)),
+            Value::Range(r) => r.to_string(),
             Value::Str(s) => format!("{s:?}"),
             Value::Ident(s) => s.clone(),
             Value::Component(c) => c.name.clone(),
@@ -376,6 +373,8 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::None, Value::None) => true,
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
+        (Value::Range(x), Value::Range(y)) => x == y,
+        (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {
             (Some(x), Some(y)) => x == y,
             _ => match (a.items(), b.items()) {

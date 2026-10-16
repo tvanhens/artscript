@@ -304,6 +304,50 @@ fn each_walks_a_list_of_points() {
 }
 
 #[test]
+fn range_end_is_excluded_for_in_and_each() {
+    let s = scene(
+        "@target t.png 40x40\nexpect 0 in 0..3\nexpect 2.999 in 0..3\nexpect 5..1 == 3..3\nexpect max(0..5) == 4\nexpect [each k in 1.2..2.2 -> k] == [1.2]\nexpect [each k in .5..3.2 -> k] == [.5 1.5 2.5]\nexpect (2..4) * 2 == 4..8\neach i in 5..5\n  circle 1 name:skip\neach i in 0..3\n  circle 1 at:i*10,0 name:n\n",
+    );
+    assert!(!paths(&s).iter().any(|p| p.contains("skip")), "{:?}", paths(&s));
+    assert_eq!(at(node(&s, "n#0")), (0.0, 0.0));
+    assert_eq!(at(node(&s, "n#1")), (10.0, 0.0));
+    assert_eq!(at(node(&s, "n#2")), (20.0, 0.0));
+
+    let outside = |expr: &str| {
+        let ev = run_with(&format!("@target t.png 10x10\nexpect {expr}\ncircle 1\n"), &[]);
+        let d = ev.diagnostics.iter().find(|d| d.code == "C0201").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+        d.notes.clone()
+    };
+    assert_eq!(outside("3 in 0..3"), ["3 is outside 0..3 (the end is excluded)"]);
+    assert_eq!(outside("5 in 5..5"), ["5 is outside 5..5 (the end is excluded)"]);
+    assert_eq!(outside("2 in 6..2"), ["2 is outside 6..2 (the end is excluded)"]);
+
+    let unequal = run_with(
+        "@target t.png 10x10\nexpect .5..3.2 == .5..3\nexpect 0..3 == [0 1 2]\ncircle 1\n",
+        &[],
+    );
+    let misses: Vec<_> = unequal.diagnostics.iter().filter(|d| d.code == "C0201").collect();
+    assert_eq!(misses.len(), 2, "{}", show(&unequal.diagnostics));
+    assert!(unequal.diagnostics.iter().all(|d| d.code == "C0201"), "{}", show(&unequal.diagnostics));
+}
+
+#[test]
+fn stroke_range_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\ncurve 0,0 50,0 100,0 stroke:#111,2..6\ncurve 0,0 50,0 100,0 stroke:2..6\n",
+        &[],
+    );
+    let fixes: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .map(|d| d.fix.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(fixes.len(), 2, "{}", show(&ev.diagnostics));
+    assert!(fixes.iter().all(|f| f.contains("[2 6]")), "{fixes:?}");
+}
+
+#[test]
 fn each_expr_respects_e0306() {
     let bad = run_with("@target t.png 10x10\nlet xs = [each k in 4 -> k]\ncircle 1\n", &[]);
     let d = bad.diagnostics.iter().find(|d| d.code == "E0306").unwrap_or_else(|| panic!("{}", show(&bad.diagnostics)));

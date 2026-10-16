@@ -22,6 +22,7 @@ use crate::scope::{
 };
 use crate::seed::{self, Rng};
 use crate::targets::{MatrixValue, TargetJob, is_entry};
+use crate::range::Range;
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
 
 /// An evaluation failure, turned into a [`Diagnostic`] at the statement that caused it.
@@ -281,6 +282,13 @@ fn axis_scale(m: &Matrix) -> f64 {
 }
 
 fn each_items(it: Value) -> R<Vec<Value>> {
+    if let Value::Range(r) = &it {
+        let prefix: Vec<Value> = r.steps().take(100_001).map(Value::Num).collect();
+        if prefix.len() > 100_000 {
+            return Err(fail("E0306", "`each` is limited to 100000 iterations"));
+        }
+        return Ok(prefix);
+    }
     let items = it.items().ok_or_else(|| {
         fail("E0306", format!("`each` needs a list or range, got {}", it.kind())).fix("write `each x in [a b]` or `each i in 0..8`")
     })?;
@@ -288,6 +296,17 @@ fn each_items(it: Value) -> R<Vec<Value>> {
         return Err(fail("E0306", "`each` is limited to 100000 iterations"));
     }
     Ok(items)
+}
+
+fn range_width(r: &Range, color: Option<&Value>) -> Fail {
+    let shown = r.to_string();
+    let (a, b) = shown.split_once("..").unwrap_or(("?", "?"));
+    let samples = format!("[{a} {b}]");
+    let rewrite = match color {
+        Some(c) => format!("stroke:{},{samples}", c.show()),
+        None => format!("stroke:{samples}"),
+    };
+    fail("E0320", "a range is not a stroke width").fix(format!("write `{rewrite}`"))
 }
 
 fn blend_of(w: &str) -> Option<Blend> {
@@ -1298,14 +1317,14 @@ impl<'a> Evaluator<'a> {
             None if !closed && fill.is_none() => (Value::Color(Col::plain(color::line(Rgba::GRAY))), Some(W::Const(2.0))),
             None | Some(Value::None) => (Value::None, None),
             Some(Value::Num(w)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::Const(w))),
-            Some(Value::Range(x, y)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(vec![x, y]))),
+            Some(Value::Range(r)) => return Err(range_width(&r, None)),
             Some(Value::List(ws)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(ws.iter().filter_map(Value::num).collect()))),
             Some(Value::Tuple(xs)) if xs.len() == 2 => {
                 let w = match &xs[1] {
                     Value::Num(w) => W::Const(*w),
-                    Value::Range(x, y) => W::List(vec![*x, *y]),
+                    Value::Range(r) => return Err(range_width(r, Some(&xs[0]))),
                     Value::List(ws) => W::List(ws.iter().filter_map(Value::num).collect()),
-                    other => return Err(fail("E0320", format!("stroke width must be a number, list or range, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
+                    other => return Err(fail("E0320", format!("stroke width must be a number or list, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
                 };
                 (xs[0].clone(), Some(w))
             }
@@ -1694,7 +1713,7 @@ impl<'a> Evaluator<'a> {
             Expr::Range(a, b) => {
                 let (a, b) = (self.expr(a, sc)?, self.expr(b, sc)?);
                 match (a.num(), b.num()) {
-                    (Some(a), Some(b)) => Value::Range(a, b),
+                    (Some(a), Some(b)) => Value::Range(Range::new(a, b)),
                     _ => return Err(fail("E0320", "a range needs numbers on both ends")),
                 }
             }
@@ -1731,8 +1750,9 @@ impl<'a> Evaluator<'a> {
             BinOp::Add => ar(Arith::Add)?,
             BinOp::Sub => ar(Arith::Sub)?,
             BinOp::Mul | BinOp::Div => match (&a, b.num()) {
-                (Value::Range(x, y), Some(k)) => {
-                    if op == BinOp::Mul { Value::Range(x * k, y * k) } else { Value::Range(x / k, y / k) }
+                (Value::Range(r), Some(k)) => {
+                    let arith_op = if op == BinOp::Mul { Arith::Mul } else { Arith::Div };
+                    Value::Range(r.scale(arith_op, k))
                 }
                 _ => ar(if op == BinOp::Mul { Arith::Mul } else { Arith::Div })?,
             },
@@ -1769,10 +1789,10 @@ impl<'a> Evaluator<'a> {
                 Value::Bool(ok)
             }
             BinOp::In => match (&a, &b) {
-                (Value::Num(x), Value::Range(lo, hi)) => {
-                    let ok = x >= lo && x <= hi;
+                (Value::Num(x), Value::Range(r)) => {
+                    let ok = r.contains(*x);
                     if !ok {
-                        self.note(format!("{} is outside {}..{}", num(*x), num(*lo), num(*hi)));
+                        self.note(r.miss_note(*x));
                     }
                     Value::Bool(ok)
                 }
