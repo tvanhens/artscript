@@ -204,7 +204,14 @@ fn verify(task: &Task, before: &dyn Fn(&str) -> (usize, Vec<u8>)) -> Vec<String>
     if !applied.status.success() {
         return vec![format!("solution.patch does not apply: {}", text(&applied))];
     }
-    append_asserts(&dir, &task.accept);
+    let placed = append_asserts(&dir, &task.accept);
+    for a in &task.accept {
+        if let Accept::Assert { file, expr } = a {
+            if !placed.iter().any(|(f, _, e)| f == file && e == expr) {
+                problems.push(format!("assert {expr}: {file} does not exist after the patch"));
+            }
+        }
+    }
     let check = artscript(&dir, &["check"]);
     if check.status.code() != Some(0) {
         problems.push(format!("artscript check exits {:?}: {}", check.status.code(), text(&check)));
