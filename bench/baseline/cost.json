@@ -61,10 +61,10 @@
         },
         "s02-torii-move-right-leaf": {
           "kind": "structural",
-          "tokens_read": 5017,
+          "tokens_read": 4965,
           "tokens_written": 52,
           "image_tokens": 1399,
-          "total_tokens": 6468,
+          "total_tokens": 6416,
           "round_trips": 2
         },
         "s03-strawberry-add-dew-drop": {
@@ -93,10 +93,10 @@
         },
         "v02-torii-thicken-roof-outline": {
           "kind": "value",
-          "tokens_read": 5017,
+          "tokens_read": 4965,
           "tokens_written": 18,
           "image_tokens": 1399,
-          "total_tokens": 6434,
+          "total_tokens": 6382,
           "round_trips": 2
         },
         "v03-monk-warmer-robe": {
@@ -166,10 +166,10 @@
       },
       "total": {
         "tasks": 20,
-        "tokens_read": 88732,
+        "tokens_read": 88628,
         "tokens_written": 9930,
         "image_tokens": 34975,
-        "total_tokens": 133637,
+        "total_tokens": 133533,
         "round_trips": 45
       }
     }

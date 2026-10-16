@@ -13,8 +13,8 @@
       "palette_prefix_tokens": 418
     },
     "art/monument/vermilion_torii.art": {
-      "tokens": 5017,
-      "lines": 253,
+      "tokens": 4965,
+      "lines": 250,
       "palette_prefix_tokens": 33
     },
     "art/produce/momo_peach.art": {
@@ -48,7 +48,7 @@
       "palette_prefix_tokens": 0
     }
   },
-  "total_tokens": 26232,
+  "total_tokens": 26180,
   "lexemes": {
     "comments": {
       "tokens": 357,
@@ -60,39 +60,39 @@
     },
     "colors": {
       "tokens": 486,
-      "share": 0.0185
+      "share": 0.0186
     },
     "keys": {
-      "tokens": 3979,
-      "share": 0.1517
+      "tokens": 3975,
+      "share": 0.1518
     },
     "palette_refs": {
-      "tokens": 1245,
-      "share": 0.0475
+      "tokens": 1235,
+      "share": 0.0472
     },
     "identifiers": {
-      "tokens": 4992,
-      "share": 0.1903
+      "tokens": 4996,
+      "share": 0.1908
     },
     "numbers": {
-      "tokens": 7391,
-      "share": 0.2818
+      "tokens": 7367,
+      "share": 0.2814
     },
     "operators": {
-      "tokens": 3892,
-      "share": 0.1484
+      "tokens": 3887,
+      "share": 0.1485
     },
     "indentation": {
-      "tokens": 1072,
-      "share": 0.0409
+      "tokens": 1068,
+      "share": 0.0408
     },
     "newlines": {
-      "tokens": 1054,
-      "share": 0.0402
+      "tokens": 1051,
+      "share": 0.0401
     },
     "whitespace": {
-      "tokens": 1603,
-      "share": 0.0611
+      "tokens": 1597,
+      "share": 0.061
     }
   },
   "roles": {
@@ -102,11 +102,11 @@
     },
     "palette": {
       "tokens": 1092,
-      "share": 0.0416
+      "share": 0.0417
     },
     "fx": {
-      "tokens": 1412,
-      "share": 0.0538
+      "tokens": 1342,
+      "share": 0.0513
     },
     "cel_shading": {
       "tokens": 564,
@@ -114,27 +114,27 @@
     },
     "soft_light_shadow": {
       "tokens": 3952,
-      "share": 0.1507
+      "share": 0.151
     },
     "accent_strokes": {
       "tokens": 4593,
-      "share": 0.1751
+      "share": 0.1754
     },
     "form_outlines": {
       "tokens": 6833,
-      "share": 0.2605
+      "share": 0.261
     },
     "logic_math": {
       "tokens": 3910,
-      "share": 0.1491
+      "share": 0.1494
     },
     "structure": {
-      "tokens": 3514,
-      "share": 0.134
+      "tokens": 3532,
+      "share": 0.1349
     }
   },
   "palette_prefix_tokens": 728,
-  "house_prefix_tokens": 38,
-  "card_tokens": 2809,
+  "house_prefix_tokens": 33,
+  "card_tokens": 3081,
   "cryptic_names": {}
 }
