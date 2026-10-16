@@ -2,7 +2,7 @@
   "outputs": [
     {
       "checks": [],
-      "hash": "a12e78a016b4afc5",
+      "hash": "17ac3da3a3a57bee",
       "line": 1,
       "matrix": {},
       "path": "character/moss_monk.png",
@@ -13,7 +13,7 @@
     },
     {
       "checks": [],
-      "hash": "30bd745d8ec389c1",
+      "hash": "4b3311f6937e34f1",
       "line": 2,
       "matrix": {},
       "path": "character/moss_monk.svg",
@@ -35,7 +35,7 @@
     },
     {
       "checks": [],
-      "hash": "b30aaaf971f840f1",
+      "hash": "741fc1857a3a9448",
       "line": 4,
       "matrix": {},
       "path": "character/moss_monk_yawn.png",
@@ -112,7 +112,7 @@
     },
     {
       "checks": [],
-      "hash": "cb30ee1d48aa84d5",
+      "hash": "cc5c355280c83a14",
       "line": 1,
       "matrix": {},
       "path": "produce/sweet_strawberry.png",
@@ -123,7 +123,7 @@
     },
     {
       "checks": [],
-      "hash": "f2b7f3d8f73b4d5f",
+      "hash": "c9c16e77e0047047",
       "line": 2,
       "matrix": {},
       "path": "produce/sweet_strawberry.svg",
@@ -134,7 +134,7 @@
     },
     {
       "checks": [],
-      "hash": "8e0a80d3201179e7",
+      "hash": "342d822f43c3bad3",
       "line": 1,
       "matrix": {},
       "path": "prop/matcha_teacup.png",
@@ -145,7 +145,7 @@
     },
     {
       "checks": [],
-      "hash": "b3446458675c4367",
+      "hash": "8c57b1b42cda1ccb",
       "line": 2,
       "matrix": {},
       "path": "prop/matcha_teacup.svg",

@@ -2,6 +2,7 @@
 palette house
   ink #3d2632
   glint #fff4e6
+  eye_glint #fffdf8
   rim #b9c9ec
   shadow #4a3036
   sclera #f6f2f4
