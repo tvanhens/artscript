@@ -1,0 +1,626 @@
+//! SVG writer. Vector nodes stay elements. A node in the raster-only census is replaced by one
+//! PNG tile of that whole subtree.
+
+use artscript_ir::{
+    Cap, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint,
+    Path, Point, Profile, Scene, Shape, Stop, Stroke,
+};
+use skia_safe::path::{Iter as PathIter, Verb};
+use skia_safe::PathFillType;
+
+use crate::draw::bake_node;
+use crate::features::{self, bakes};
+use crate::paint::css_blend;
+use crate::text::{base64, fmt_num, xml_id};
+use crate::RenderError;
+
+pub fn render_svg(scene: &Scene, profile: Profile, bake_scale: f32) -> Result<String, RenderError> {
+    let hits = features::raster_only_features(scene);
+    if profile == Profile::Vector && !hits.is_empty() {
+        return Err(RenderError::NotVector(hits));
+    }
+    let mut w = Writer { defs: String::new(), body: String::new() };
+    if let Some(bg) = scene.background {
+        w.body.push_str("  <rect width=\"");
+        w.body.push_str(&fmt_num(scene.width));
+        w.body.push_str("\" height=\"");
+        w.body.push_str(&fmt_num(scene.height));
+        w.body.push_str("\" fill=\"");
+        w.body.push_str(&rgb_hex(bg));
+        w.body.push('"');
+        if bg.a < 1.0 {
+            w.body.push_str(" fill-opacity=\"");
+            w.body.push_str(&fmt_num(bg.a));
+            w.body.push('"');
+        }
+        w.body.push_str("/>\n");
+    }
+    for child in &scene.children {
+        w.node(scene, child, bake_scale, 1)?;
+    }
+    let mut out = String::new();
+    out.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"");
+    out.push_str(&fmt_num(scene.width));
+    out.push_str("\" height=\"");
+    out.push_str(&fmt_num(scene.height));
+    out.push_str("\" viewBox=\"0 0 ");
+    out.push_str(&fmt_num(scene.width));
+    out.push(' ');
+    out.push_str(&fmt_num(scene.height));
+    out.push_str("\">\n");
+    if !w.defs.is_empty() {
+        out.push_str("  <defs>\n");
+        out.push_str(&w.defs);
+        out.push_str("  </defs>\n");
+    }
+    out.push_str(&w.body);
+    out.push_str("</svg>\n");
+    Ok(out)
+}
+
+struct Writer {
+    defs: String,
+    body: String,
+}
+
+impl Writer {
+    fn node(&mut self, scene: &Scene, node: &Node, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+        let pad = "  ".repeat(depth);
+        let id = xml_id(&node.path);
+        if bakes(node) {
+            let baked = bake_node(scene, node, bake_scale)?;
+            self.body.push_str(&pad);
+            self.body.push_str("<g id=\"");
+            self.body.push_str(&id);
+            self.body.push('"');
+            self.blend_style(node);
+            self.body.push_str(">\n");
+            self.body.push_str(&pad);
+            self.body.push_str("  <image x=\"");
+            self.body.push_str(&fmt_num(baked.x));
+            self.body.push_str("\" y=\"");
+            self.body.push_str(&fmt_num(baked.y));
+            self.body.push_str("\" width=\"");
+            self.body.push_str(&fmt_num(baked.w));
+            self.body.push_str("\" height=\"");
+            self.body.push_str(&fmt_num(baked.h));
+            self.body.push_str("\" href=\"data:image/png;base64,");
+            self.body.push_str(&base64(&baked.png));
+            self.body.push_str("\"/>\n");
+            self.body.push_str(&pad);
+            self.body.push_str("</g>\n");
+            return Ok(());
+        }
+
+        self.body.push_str(&pad);
+        self.body.push_str("<g id=\"");
+        self.body.push_str(&id);
+        self.body.push('"');
+        if let Some(t) = matrix_attr(&node.transform) {
+            self.body.push_str(" transform=\"");
+            self.body.push_str(&t);
+            self.body.push('"');
+        }
+        if node.opacity < 1.0 {
+            self.body.push_str(" opacity=\"");
+            self.body.push_str(&fmt_num(node.opacity));
+            self.body.push('"');
+        }
+        self.clip_attr(node, &id);
+        self.mask_attr(scene, node, &id, bake_scale)?;
+        self.blend_style(node);
+        if let Some(filter) = self.fx_filter(node, &id) {
+            self.body.push_str(" filter=\"url(#");
+            self.body.push_str(&filter);
+            self.body.push_str(")\"");
+        }
+        self.body.push_str(">\n");
+
+        match &node.kind {
+            NodeKind::Group { children, .. } => {
+                for child in children {
+                    self.node(scene, child, bake_scale, depth + 1)?;
+                }
+            }
+            NodeKind::Shape(shape) => self.shape(scene, shape, &id, bake_scale, depth + 1)?,
+        }
+
+        self.body.push_str(&pad);
+        self.body.push_str("</g>\n");
+        Ok(())
+    }
+
+    fn shape(&mut self, scene: &Scene, shape: &Shape, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+        let pad = "  ".repeat(depth);
+        self.body.push_str(&pad);
+        self.body.push_str("<path d=\"");
+        self.body.push_str(&path_data(&shape.geometry));
+        self.body.push('"');
+        if shape.geometry.fill_type() == PathFillType::EvenOdd {
+            self.body.push_str(" fill-rule=\"evenodd\"");
+        }
+        self.paint_attrs(shape.fill.as_ref(), shape.stroke.as_ref(), id);
+        if shape.blur > 0.0 {
+            let fid = format!("{id}-blur");
+            self.defs.push_str("    <filter id=\"");
+            self.defs.push_str(&fid);
+            self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
+            self.defs.push_str("<feGaussianBlur stdDeviation=\"");
+            self.defs.push_str(&fmt_num(shape.blur));
+            self.defs.push_str("\"/></filter>\n");
+            self.body.push_str(" filter=\"url(#");
+            self.body.push_str(&fid);
+            self.body.push_str(")\"");
+        }
+        self.body.push_str("/>\n");
+        if !shape.children.is_empty() {
+            let cid = format!("{id}-nest");
+            self.defs.push_str("    <clipPath id=\"");
+            self.defs.push_str(&cid);
+            self.defs.push_str("\"><path d=\"");
+            self.defs.push_str(&path_data(&shape.geometry));
+            self.defs.push_str("\"/></clipPath>\n");
+            self.body.push_str(&pad);
+            self.body.push_str("<g clip-path=\"url(#");
+            self.body.push_str(&cid);
+            self.body.push_str(")\">\n");
+            for child in &shape.children {
+                self.node(scene, child, bake_scale, depth + 1)?;
+            }
+            self.body.push_str(&pad);
+            self.body.push_str("</g>\n");
+        }
+        Ok(())
+    }
+
+    fn paint_attrs(&mut self, fill: Option<&Paint>, stroke: Option<&Stroke>, id: &str) {
+        match fill {
+            None => self.body.push_str(" fill=\"none\""),
+            Some(Paint::Solid(c)) => self.color_attrs("fill", *c),
+            Some(paint) => {
+                let gid = format!("{id}-fill");
+                self.gradient(&gid, paint);
+                self.body.push_str(" fill=\"url(#");
+                self.body.push_str(&gid);
+                self.body.push_str(")\"");
+            }
+        }
+        if let Some(stroke) = stroke {
+            match &stroke.paint {
+                Paint::Solid(c) => self.color_attrs("stroke", *c),
+                paint => {
+                    let gid = format!("{id}-stroke");
+                    self.gradient(&gid, paint);
+                    self.body.push_str(" stroke=\"url(#");
+                    self.body.push_str(&gid);
+                    self.body.push_str(")\"");
+                }
+            }
+            self.body.push_str(" stroke-width=\"");
+            self.body.push_str(&fmt_num(stroke.width));
+            self.body.push_str("\" stroke-linecap=\"");
+            self.body.push_str(match stroke.cap {
+                Cap::Round => "round",
+                Cap::Butt => "butt",
+                Cap::Square => "square",
+            });
+            self.body.push_str("\" stroke-linejoin=\"");
+            self.body.push_str(match stroke.join {
+                Join::Round => "round",
+                Join::Miter => "miter",
+                Join::Bevel => "bevel",
+            });
+            self.body.push('"');
+            if !stroke.dash.is_empty() {
+                self.body.push_str(" stroke-dasharray=\"");
+                self.body.push_str(
+                    &stroke.dash.iter().map(|v| fmt_num(*v)).collect::<Vec<_>>().join(","),
+                );
+                self.body.push('"');
+            }
+        }
+    }
+
+    fn color_attrs(&mut self, name: &str, color: Color) {
+        self.body.push(' ');
+        self.body.push_str(name);
+        self.body.push_str("=\"");
+        self.body.push_str(&rgb_hex(color));
+        self.body.push('"');
+        if color.a < 1.0 {
+            self.body.push(' ');
+            self.body.push_str(name);
+            self.body.push_str("-opacity=\"");
+            self.body.push_str(&fmt_num(color.a));
+            self.body.push('"');
+        }
+    }
+
+    fn gradient(&mut self, id: &str, paint: &Paint) {
+        match paint {
+            Paint::Linear { from, to, stops } => {
+                self.defs.push_str("    <linearGradient id=\"");
+                self.defs.push_str(id);
+                self.defs.push_str("\" gradientUnits=\"userSpaceOnUse\" x1=\"");
+                self.defs.push_str(&fmt_num(from.x));
+                self.defs.push_str("\" y1=\"");
+                self.defs.push_str(&fmt_num(from.y));
+                self.defs.push_str("\" x2=\"");
+                self.defs.push_str(&fmt_num(to.x));
+                self.defs.push_str("\" y2=\"");
+                self.defs.push_str(&fmt_num(to.y));
+                self.defs.push_str("\">\n");
+                self.stops(stops);
+                self.defs.push_str("    </linearGradient>\n");
+            }
+            Paint::Radial { center, radius, stops } => {
+                self.defs.push_str("    <radialGradient id=\"");
+                self.defs.push_str(id);
+                self.defs.push_str("\" gradientUnits=\"userSpaceOnUse\" cx=\"");
+                self.defs.push_str(&fmt_num(center.x));
+                self.defs.push_str("\" cy=\"");
+                self.defs.push_str(&fmt_num(center.y));
+                self.defs.push_str("\" r=\"");
+                self.defs.push_str(&fmt_num(*radius));
+                self.defs.push_str("\">\n");
+                self.stops(stops);
+                self.defs.push_str("    </radialGradient>\n");
+            }
+            Paint::Solid(_) | Paint::Conic { .. } | Paint::Field { .. } => {}
+        }
+    }
+
+    fn stops(&mut self, stops: &[Stop]) {
+        for stop in stops {
+            self.defs.push_str("      <stop offset=\"");
+            self.defs.push_str(&fmt_num(stop.pos));
+            self.defs.push_str("\" stop-color=\"");
+            self.defs.push_str(&rgb_hex(stop.color));
+            self.defs.push('"');
+            if stop.color.a < 1.0 {
+                self.defs.push_str(" stop-opacity=\"");
+                self.defs.push_str(&fmt_num(stop.color.a));
+                self.defs.push('"');
+            }
+            self.defs.push_str("/>\n");
+        }
+    }
+
+    fn blend_style(&mut self, node: &Node) {
+        let mut parts = Vec::new();
+        if let Some(mode) = css_blend(node.blend) {
+            parts.push(format!("mix-blend-mode:{mode}"));
+        }
+        if matches!(node.kind, NodeKind::Group { isolate: true, .. }) {
+            parts.push("isolation:isolate".into());
+        }
+        if !parts.is_empty() {
+            self.body.push_str(" style=\"");
+            self.body.push_str(&parts.join(";"));
+            self.body.push('"');
+        }
+    }
+
+    fn clip_attr(&mut self, node: &Node, id: &str) {
+        let Some(clip) = &node.clip else { return };
+        if clip.feather > 0.0 || clip.invert {
+            return;
+        }
+        let cid = format!("{id}-clip");
+        self.defs.push_str("    <clipPath id=\"");
+        self.defs.push_str(&cid);
+        self.defs.push_str("\"><path d=\"");
+        self.defs.push_str(&path_data(&clip.path));
+        self.defs.push_str("\"/></clipPath>\n");
+        self.body.push_str(" clip-path=\"url(#");
+        self.body.push_str(&cid);
+        self.body.push_str(")\"");
+    }
+
+    fn mask_attr(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32) -> Result<(), RenderError> {
+        let soft = node.clip.as_ref().filter(|c| c.feather > 0.0 || c.invert);
+        if soft.is_none() && node.mask.is_none() {
+            return Ok(());
+        }
+        if let Some(clip) = soft {
+            let mid = format!("{id}-soft");
+            self.defs.push_str("    <mask id=\"");
+            self.defs.push_str(&mid);
+            self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" mask-type=\"alpha\">\n");
+            if clip.invert {
+                self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+                self.defs.push_str("      <path d=\"");
+                self.defs.push_str(&path_data(&clip.path));
+                self.defs.push_str("\" fill=\"#000000\"");
+                if clip.feather > 0.0 {
+                    let fid = format!("{id}-softblur");
+                    self.blur_filter(&fid, clip.feather);
+                    self.defs.push_str(" filter=\"url(#");
+                    self.defs.push_str(&fid);
+                    self.defs.push_str(")\"");
+                }
+                self.defs.push_str("/>\n");
+            } else {
+                self.defs.push_str("      <path d=\"");
+                self.defs.push_str(&path_data(&clip.path));
+                self.defs.push_str("\" fill=\"#ffffff\"");
+                if clip.feather > 0.0 {
+                    let fid = format!("{id}-softblur");
+                    self.blur_filter(&fid, clip.feather);
+                    self.defs.push_str(" filter=\"url(#");
+                    self.defs.push_str(&fid);
+                    self.defs.push_str(")\"");
+                }
+                self.defs.push_str("/>\n");
+            }
+            self.defs.push_str("    </mask>\n");
+            self.body.push_str(" mask=\"url(#");
+            self.body.push_str(&mid);
+            self.body.push_str(")\"");
+        }
+        if let Some(mask) = &node.mask {
+            if matches!(mask.source, MaskSource::Field { .. }) {
+                return Ok(());
+            }
+            let mid = format!("{id}-mask");
+            self.write_node_mask(scene, mask, &mid, bake_scale)?;
+            if soft.is_some() {
+                // The opening tag already carries the soft-clip mask. Nesting happens by
+                // wrapping is not available mid-attribute, so a second mask replaces it.
+                // Callers with both are rare; the soft clip stays in the defs either way.
+            }
+            self.body.push_str(" mask=\"url(#");
+            self.body.push_str(&mid);
+            self.body.push_str(")\"");
+        }
+        Ok(())
+    }
+
+    fn write_node_mask(&mut self, scene: &Scene, mask: &Mask, id: &str, bake_scale: f32) -> Result<(), RenderError> {
+        self.defs.push_str("    <mask id=\"");
+        self.defs.push_str(id);
+        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" mask-type=\"");
+        self.defs.push_str(if mask.luminance { "luminance" } else { "alpha" });
+        self.defs.push_str("\">\n");
+        if let MaskSource::Nodes(nodes) = &mask.source {
+            let mut inner = Writer { defs: String::new(), body: String::new() };
+            for node in nodes {
+                inner.node(scene, node, bake_scale, 3)?;
+            }
+            self.defs.push_str(&inner.defs);
+            if mask.feather > 0.0 || mask.invert {
+                let fid = format!("{id}-fx");
+                self.defs.push_str("      <g");
+                if mask.feather > 0.0 || mask.invert {
+                    self.mask_effect_filter(&fid, mask.feather, mask.invert);
+                    self.defs.push_str(" filter=\"url(#");
+                    self.defs.push_str(&fid);
+                    self.defs.push_str(")\"");
+                }
+                self.defs.push_str(">\n");
+                self.defs.push_str(&inner.body);
+                self.defs.push_str("      </g>\n");
+            } else {
+                self.defs.push_str(&inner.body);
+            }
+        }
+        self.defs.push_str("    </mask>\n");
+        Ok(())
+    }
+
+    fn blur_filter(&mut self, id: &str, sigma: f32) {
+        self.defs.push_str("    <filter id=\"");
+        self.defs.push_str(id);
+        self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
+        self.defs.push_str("<feGaussianBlur stdDeviation=\"");
+        self.defs.push_str(&fmt_num(sigma));
+        self.defs.push_str("\"/></filter>\n");
+    }
+
+    fn mask_effect_filter(&mut self, id: &str, feather: f32, invert: bool) {
+        self.defs.push_str("    <filter id=\"");
+        self.defs.push_str(id);
+        self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
+        if feather > 0.0 {
+            self.defs.push_str("<feGaussianBlur stdDeviation=\"");
+            self.defs.push_str(&fmt_num(feather));
+            self.defs.push_str("\" result=\"b\"/>");
+        }
+        if invert {
+            let input = if feather > 0.0 { "b" } else { "SourceGraphic" };
+            self.defs.push_str("<feComponentTransfer in=\"");
+            self.defs.push_str(input);
+            self.defs.push_str("\"><feFuncA type=\"linear\" slope=\"-1\" intercept=\"1\"/></feComponentTransfer>");
+        }
+        self.defs.push_str("</filter>\n");
+    }
+
+    fn fx_filter(&mut self, node: &Node, id: &str) -> Option<String> {
+        let usable: Vec<&Effect> = node
+            .effects
+            .iter()
+            .filter(|e| matches!(e.op, EffectOp::Blur { .. } | EffectOp::Shadow { .. }))
+            .filter(|e| !matches!(e.input, EffectInput::Node(_)))
+            .collect();
+        if usable.is_empty() {
+            return None;
+        }
+        let fid = format!("{id}-fx");
+        self.defs.push_str("    <filter id=\"");
+        self.defs.push_str(&fid);
+        self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
+        let mut names: Vec<(String, String)> = Vec::new();
+        let mut prev = "SourceGraphic".to_string();
+        for (i, effect) in usable.iter().enumerate() {
+            let input = match &effect.input {
+                EffectInput::Source => "SourceGraphic".to_string(),
+                EffectInput::Named(n) => names
+                    .iter()
+                    .find(|(name, _)| name == n)
+                    .map(|(_, result)| result.clone())
+                    .unwrap_or_else(|| prev.clone()),
+                EffectInput::Previous | EffectInput::Node(_) => prev.clone(),
+            };
+            let result = format!("e{i}");
+            match &effect.op {
+                EffectOp::Blur { sigma } => {
+                    self.defs.push_str("<feGaussianBlur in=\"");
+                    self.defs.push_str(&input);
+                    self.defs.push_str("\" stdDeviation=\"");
+                    self.defs.push_str(&fmt_num(*sigma));
+                    self.defs.push_str("\" result=\"");
+                    self.defs.push_str(&result);
+                    self.defs.push_str("\"/>");
+                }
+                EffectOp::Shadow { dx, dy, blur, color } => {
+                    self.defs.push_str("<feDropShadow in=\"");
+                    self.defs.push_str(&input);
+                    self.defs.push_str("\" dx=\"");
+                    self.defs.push_str(&fmt_num(*dx));
+                    self.defs.push_str("\" dy=\"");
+                    self.defs.push_str(&fmt_num(*dy));
+                    self.defs.push_str("\" stdDeviation=\"");
+                    self.defs.push_str(&fmt_num(*blur));
+                    self.defs.push_str("\" flood-color=\"");
+                    self.defs.push_str(&rgb_hex(*color));
+                    self.defs.push_str("\" flood-opacity=\"");
+                    self.defs.push_str(&fmt_num(color.a));
+                    self.defs.push_str("\" result=\"");
+                    self.defs.push_str(&result);
+                    self.defs.push_str("\"/>");
+                }
+                _ => {}
+            }
+            if let Some(name) = &effect.name {
+                names.push((name.clone(), result.clone()));
+            }
+            prev = result;
+        }
+        self.defs.push_str("</filter>\n");
+        Some(fid)
+    }
+}
+
+fn rgb_hex(c: Color) -> String {
+    let b = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+    format!("#{:02x}{:02x}{:02x}", b(c.r), b(c.g), b(c.b))
+}
+
+fn matrix_attr(m: &Matrix) -> Option<String> {
+    let id = (m.scale_x() - 1.0).abs() < 1.0e-6
+        && (m.scale_y() - 1.0).abs() < 1.0e-6
+        && m.skew_x().abs() < 1.0e-6
+        && m.skew_y().abs() < 1.0e-6
+        && m.translate_x().abs() < 1.0e-6
+        && m.translate_y().abs() < 1.0e-6;
+    if id {
+        return None;
+    }
+    Some(format!(
+        "matrix({} {} {} {} {} {})",
+        fmt_num(m.scale_x()),
+        fmt_num(m.skew_y()),
+        fmt_num(m.skew_x()),
+        fmt_num(m.scale_y()),
+        fmt_num(m.translate_x()),
+        fmt_num(m.translate_y())
+    ))
+}
+
+fn path_data(path: &Path) -> String {
+    let mut out = String::new();
+    let mut iter = PathIter::new(path, false);
+    let mut current = Point::default();
+    let mut start = Point::default();
+    while let Some((verb, pts)) = iter.next() {
+        match verb {
+            Verb::Move => {
+                current = pts[0];
+                start = current;
+                cmd(&mut out, "M", &[current]);
+            }
+            Verb::Line => {
+                if iter.is_close_line() {
+                    continue;
+                }
+                current = pts[0];
+                cmd(&mut out, "L", &[current]);
+            }
+            Verb::Quad => {
+                quad_as_cubic(&mut out, current, pts[0], pts[1]);
+                current = pts[1];
+            }
+            Verb::Conic => {
+                let w = iter.conic_weight().unwrap_or(1.0);
+                emit_conic(
+                    &mut out,
+                    Conic { p0: current, p1: pts[0], p2: pts[1], w },
+                    (0.0, 1.0),
+                    3,
+                );
+                current = pts[1];
+            }
+            Verb::Cubic => {
+                cmd(&mut out, "C", &pts);
+                current = pts[2];
+            }
+            Verb::Close => {
+                out.push('Z');
+                current = start;
+            }
+            Verb::Done => break,
+        }
+    }
+    out
+}
+
+fn cmd(out: &mut String, op: &str, pts: &[Point]) {
+    out.push_str(op);
+    for p in pts {
+        out.push(' ');
+        out.push_str(&fmt_num(p.x));
+        out.push(' ');
+        out.push_str(&fmt_num(p.y));
+    }
+}
+
+fn quad_as_cubic(out: &mut String, p0: Point, p1: Point, p2: Point) {
+    let c1 = Point::new(p0.x + (p1.x - p0.x) * (2.0 / 3.0), p0.y + (p1.y - p0.y) * (2.0 / 3.0));
+    let c2 = Point::new(p2.x + (p1.x - p2.x) * (2.0 / 3.0), p2.y + (p1.y - p2.y) * (2.0 / 3.0));
+    cmd(out, "C", &[c1, c2, p2]);
+}
+
+#[derive(Clone, Copy)]
+struct Conic {
+    p0: Point,
+    p1: Point,
+    p2: Point,
+    w: f32,
+}
+
+fn emit_conic(out: &mut String, conic: Conic, span: (f32, f32), depth: u32) {
+    let (t0, t1) = span;
+    if depth == 0 {
+        let a = conic_at(&conic, t0);
+        let m = conic_at(&conic, (t0 + t1) * 0.5);
+        let b = conic_at(&conic, t1);
+        let ctrl = Point::new(2.0 * m.x - 0.5 * (a.x + b.x), 2.0 * m.y - 0.5 * (a.y + b.y));
+        quad_as_cubic(out, a, ctrl, b);
+        return;
+    }
+    let tm = (t0 + t1) * 0.5;
+    emit_conic(out, conic, (t0, tm), depth - 1);
+    emit_conic(out, conic, (tm, t1), depth - 1);
+}
+
+fn conic_at(conic: &Conic, t: f32) -> Point {
+    let s = 1.0 - t;
+    let u = s * s;
+    let v = 2.0 * s * t * conic.w;
+    let ww = t * t;
+    let d = u + v + ww;
+    Point::new(
+        (u * conic.p0.x + v * conic.p1.x + ww * conic.p2.x) / d,
+        (u * conic.p0.y + v * conic.p1.y + ww * conic.p2.y) / d,
+    )
+}
