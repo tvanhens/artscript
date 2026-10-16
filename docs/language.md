@@ -143,7 +143,7 @@ play idle start:0s
 
 - `key` samples the current time. Values are spaced evenly unless `at:` lists fractions from 0 to 1. The default curve is smooth. `ease:` is `linear`, `in`, `out`, `in_out`, or `hold`, one name or one per segment. `loop` wraps. Outside an anim, `dur:` is required.
 - Numbers, angles, vectors, and sizes interpolate. Colors interpolate in OKLab. Words, components, and booleans step. Anything else is an error.
-- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins.
+- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. A percent rest `at` is measured against the node's frame before a numeric offset is added. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set. A `style:` word from the anim is resolved in the anim's module. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins. A `let` inside `if` or `each` under an instance stays in that branch. A direct `let` under the instance is visible to later plays there.
 - An unnamed sibling's suffix is the statement's occurrence among siblings with the same base name, counting both arms of an `if` and the body of an `each`.
 
 ## Checks

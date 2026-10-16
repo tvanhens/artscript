@@ -241,12 +241,42 @@ struct Channel {
     ord: u32,
 }
 
+/// A percent rest and a numeric offset are different units. Resolve only the percent
+/// axes the offset measures in canvas units, and leave a percent offset on a percent rest.
+fn ground_percent_rest(rest: &Value, offset: &Value, frame: Rect, sc: &Scope) -> R<Value> {
+    let (Some((rx, ry)), Some((ox, oy))) = (rest.pair(), offset.pair()) else {
+        return Ok(rest.clone());
+    };
+    let (fx, fy, fw, fh) = (
+        frame.left as f64,
+        frame.top as f64,
+        frame.width() as f64,
+        frame.height() as f64,
+    );
+    let axis = |rest: Coord, offset: Coord, min: f64, size: f64| -> R<Coord> {
+        if matches!((rest, offset), (Coord::Pct(_), Coord::Num(_))) {
+            check_percent(rest, frame, sc)?;
+            Ok(Coord::Num(rest.pos(min, size)))
+        } else {
+            Ok(rest)
+        }
+    };
+    let x = axis(rx, ox, fx, fw)?;
+    let y = axis(ry, oy, fy, fh)?;
+    Ok(match rest {
+        Value::Size(..) => Value::Size(x, y),
+        _ => Value::Vec2(x, y),
+    })
+}
+
 fn blend_arg(
     a: &mut Args,
     key: &str,
     absolute: bool,
     value: &Value,
     default_at: (f64, f64),
+    frame: Rect,
+    sc: &Scope,
 ) -> R<()> {
     if absolute || !offset_channel(key) {
         a.named.push((key.to_string(), value.clone()));
@@ -268,6 +298,7 @@ fn blend_arg(
                 Coord::Num(default_at.0),
                 Coord::Num(default_at.1),
             ));
+            let base = ground_percent_rest(&base, value, frame, sc)?;
             let sum = arith(Arith::Add, &base, value).map_err(|m| fail("E0320", m))?;
             a.named.push(("at".into(), sum));
         }
@@ -1195,29 +1226,23 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn style_named(&mut self, name: &str, sc: &Scope) -> R<Vec<(String, Value)>> {
-        let style = sc
-            .module
-            .styles
-            .borrow()
-            .get(name)
-            .cloned()
-            .ok_or_else(|| {
-                let names: Vec<String> = sc.module.styles.borrow().keys().cloned().collect();
-                let f = fail("E0307", format!("no style `{name}`"))
-                    .note(format!("styles: {}", names.join(", ")));
-                if sc.module.finishes.borrow().contains_key(name) {
-                    f.note(format!("`{name}` is a finish"))
-                        .fix(format!("write `fx {name}` under the node"))
-                } else {
-                    f.fix("declare `style name key:value` or import it")
-                }
-            })?;
+    fn style_named(&mut self, name: &str, home: &Rc<Module>) -> R<Vec<(String, Value)>> {
+        let style = home.styles.borrow().get(name).cloned().ok_or_else(|| {
+            let names: Vec<String> = home.styles.borrow().keys().cloned().collect();
+            let f = fail("E0307", format!("no style `{name}`"))
+                .note(format!("styles: {}", names.join(", ")));
+            if home.finishes.borrow().contains_key(name) {
+                f.note(format!("`{name}` is a finish"))
+                    .fix(format!("write `fx {name}` under the node"))
+            } else {
+                f.fix("declare `style name key:value` or import it")
+            }
+        })?;
         let module = self
             .modules
             .get(&style.module)
             .cloned()
-            .unwrap_or(sc.module.clone());
+            .unwrap_or_else(|| home.clone());
         let msc = self.module_scope(&module);
         style
             .named
@@ -1227,15 +1252,35 @@ impl<'a> Evaluator<'a> {
     }
 
     /// The last `style:` word, after patches and motion, becomes paint keys. Earlier keys stay
-    /// behind those paint keys so an explicit fill still wins.
-    fn expand_style(&mut self, a: &mut Args, sc: &Scope) -> R<()> {
+    /// behind those paint keys so an explicit fill still wins. A word written by an anim is
+    /// resolved in that anim's module.
+    fn expand_style(&mut self, a: &mut Args, sc: &Scope, path: &str) -> R<()> {
         let Some(sname) = a.word("style") else {
             return Ok(());
         };
-        let mut styled = self.style_named(&sname, sc)?;
+        let home = self
+            .style_home(path, &sname)
+            .unwrap_or_else(|| sc.module.clone());
+        let mut styled = self.style_named(&sname, &home)?;
         styled.append(&mut a.named);
         a.named = styled;
         Ok(())
+    }
+
+    fn style_home(&self, path: &str, word: &str) -> Option<Rc<Module>> {
+        let file = self
+            .channels
+            .iter()
+            .rev()
+            .find(|c| {
+                c.live
+                    && c.key == "style"
+                    && c.value.word() == Some(word)
+                    && path_match(path, &c.owner, &c.pattern)
+            })?
+            .patch_file
+            .clone();
+        self.modules.get(&file).cloned()
     }
 
     fn transform(
@@ -1459,10 +1504,10 @@ impl<'a> Evaluator<'a> {
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
         a.named.extend(patch_named);
         if comp.is_some() {
-            if self.hide_motion(&path, &mut a, (0.0, 0.0)) {
+            if self.hide_motion(&path, &mut a, (0.0, 0.0), sc.frame, sc) {
                 return Ok(());
             }
-            self.expand_style(&mut a, sc)?;
+            self.expand_style(&mut a, sc, &path)?;
         }
         let origin = format!("{}:{}", sc.file(), st.span.line);
         let name = registered.then(|| {
@@ -1515,10 +1560,10 @@ impl<'a> Evaluator<'a> {
         } else {
             (0.0, 0.0)
         };
-        if self.hide_motion(&path, &mut a, default_at) {
+        if self.hide_motion(&path, &mut a, default_at, frame, sc) {
             return Ok(());
         }
-        self.expand_style(&mut a, sc)?;
+        self.expand_style(&mut a, sc, &path)?;
         let expanded_style = a.word("style");
         let child_style = match &expanded_style {
             Some(_) => {
@@ -2536,7 +2581,7 @@ impl<'a> Evaluator<'a> {
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;
         a.named.extend(patch_named);
-        if self.hide_motion(&path, &mut a, (0.0, 0.0)) {
+        if self.hide_motion(&path, &mut a, (0.0, 0.0), sc.frame, sc) {
             return Ok(());
         }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
@@ -2759,9 +2804,10 @@ impl<'a> Evaluator<'a> {
                 let Ok(c) = self.quiet_expr(cond, sc) else {
                     return;
                 };
+                let mut inner = sc.clone();
                 let branch = if c.truthy() { then } else { otherwise };
                 for child in branch {
-                    self.reserve_call_scene(child, sc);
+                    self.reserve_call_scene(child, &mut inner);
                 }
             }
             SceneKind::Each { var, iter, body } => {
@@ -2858,9 +2904,10 @@ impl<'a> Evaluator<'a> {
                     st.span.line
                 ));
                 let c = self.expr(cond, sc)?;
+                let mut inner = sc.clone();
                 let branch = if c.truthy() { then } else { otherwise };
                 for child in branch {
-                    self.absorb_scene(child, sc, owner, def_name, true)?;
+                    self.absorb_scene(child, &mut inner, owner, def_name, true)?;
                 }
                 Ok(())
             }
@@ -3201,7 +3248,14 @@ impl<'a> Evaluator<'a> {
             .unwrap_or(self.time)
     }
 
-    fn hide_motion(&mut self, path: &str, a: &mut Args, default_at: (f64, f64)) -> bool {
+    fn hide_motion(
+        &mut self,
+        path: &str,
+        a: &mut Args,
+        default_at: (f64, f64),
+        frame: Rect,
+        sc: &Scope,
+    ) -> bool {
         let mut hide = false;
         for i in 0..self.channels.len() {
             if !path_match(path, &self.channels[i].owner, &self.channels[i].pattern) {
@@ -3221,7 +3275,7 @@ impl<'a> Evaluator<'a> {
             let span = self.channels[i].patch_span;
             let file = self.channels[i].patch_file.clone();
             let anim = self.channels[i].anim.clone();
-            if let Err(f) = blend_arg(a, &key, absolute, &value, default_at) {
+            if let Err(f) = blend_arg(a, &key, absolute, &value, default_at, frame, sc) {
                 self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
             }
         }

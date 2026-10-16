@@ -2086,6 +2086,70 @@ fn a_boolean_is_not_a_time() {
 }
 
 #[test]
+fn a_percent_rest_accepts_a_numeric_offset() {
+    let held = scene(
+        "@target t.png 40x40\nanim nudge dur:1s\n  .c at:key(0,0 10,0)\ncircle 4 at:50%,50% name:c\nplay nudge\n",
+    );
+    near(at(node(&held, "c")), (20.0, 20.0));
+    let moved = scene(
+        "@target t.png 40x40\nanim nudge dur:1s\n  .c at:10,0\ncircle 4 at:50%,50% name:c\nplay nudge\n",
+    );
+    near(at(node(&moved, "c")), (30.0, 20.0));
+    let percents = scene(
+        "@target t.png 40x40\nanim nudge dur:1s\n  .c at:10%,0%\ncircle 4 at:10%,10% name:c\nplay nudge\n",
+    );
+    near(at(node(&percents, "c")), (8.0, 4.0));
+}
+
+#[test]
+fn a_let_inside_if_under_an_instance_stays_in_the_branch() {
+    let leaked = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  if true\n    let delay = 0\n  play idle start:delay\n",
+        &[],
+    );
+    let d = leaked
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0320")
+        .unwrap_or_else(|| panic!("{}", show(&leaked.diagnostics)));
+    assert!(d.message.contains("a word"), "{d}");
+    let eye = node(leaked.scene.as_ref().unwrap(), "hero.eye");
+    assert!((eye.opacity - 1.0).abs() < 1e-4, "{}", eye.opacity);
+    let direct = scene(
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  let delay = 0\n  play idle start:delay\n",
+    );
+    assert!((node(&direct, "hero.eye").opacity - 0.5).abs() < 1e-4);
+    let inside = scene(
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  if true\n    let delay = 0\n    play idle start:delay\n",
+    );
+    assert!((node(&inside, "hero.eye").opacity - 0.5).abs() < 1e-4);
+}
+
+#[test]
+fn an_imported_anim_style_resolves_in_its_module() {
+    let lib = "style blue fill:#0000ff\nanim idle dur:1s\n  .c style:blue\n";
+    let s = scene_with(
+        "@target t.png 40x40\nstyle blue fill:#ff0000\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", lib)],
+    );
+    assert_eq!(fill_hex(node(&s, "c")), "#0000ff");
+    let kept = scene_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 fill:#00ff00 name:c\nplay idle\n",
+        &[("lib/motion.art", lib)],
+    );
+    assert_eq!(fill_hex(node(&kept, "c")), "#00ff00");
+    let missing = run_with(
+        "@target t.png 40x40\nstyle blue fill:#ff0000\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:1s\n  .c style:blue\n")],
+    );
+    assert!(
+        missing.diagnostics.iter().any(|d| d.code == "E0307"),
+        "{}",
+        show(&missing.diagnostics)
+    );
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();
