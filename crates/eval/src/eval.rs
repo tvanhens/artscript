@@ -550,9 +550,13 @@ impl<'a> Evaluator<'a> {
         for item in items {
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
                 module.globals.borrow_mut().insert(item.clone(), v.clone());
-            } else if let Some(s) = styles.get(item) {
+            } else if !item.starts_with('_')
+                && let Some(s) = styles.get(item)
+            {
                 module.styles.borrow_mut().insert(item.clone(), s.clone());
-            } else if let Some(f) = finishes.get(item) {
+            } else if !item.starts_with('_')
+                && let Some(f) = finishes.get(item)
+            {
                 module.finishes.borrow_mut().insert(item.clone(), f.clone());
             } else {
                 let names: Vec<String> = exports.iter().map(|(k, _)| k.clone()).collect();

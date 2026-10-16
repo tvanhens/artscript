@@ -301,6 +301,7 @@ These pin down points the sections above leave open. Earlier sections still gove
 
 - **Imports.**
   - A plain `use x` binds every export of `x` by name. `use x { a b }` binds only those names. `use x as m` binds only `m`.
+  - A name starting with `_` is not an export. Both forms skip it, and `use x { _name }` is E0212.
   - `m.name` on a module alias falls back to the module's palette entries, so `p.rim` works through the default palette alias.
   - A `use` that names a project-relative entry file (`use art/b`) is E0201, the same as one that resolves through a lib root.
   - Top-level `let`s of a module are visible inside its `def`s.

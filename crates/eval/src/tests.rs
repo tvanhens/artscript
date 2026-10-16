@@ -562,6 +562,29 @@ fn finish_body_is_plain_built_in_effects() {
 }
 
 #[test]
+fn a_private_name_is_not_an_export() {
+    let lib = (
+        "lib/finish/surface.art",
+        "finish _surface width:4\n  fx rim width\nfinish surface width:4\n  fx rim width\nstyle _ink fill:#112233\nstyle ink fill:#112233\n",
+    );
+    let explicit = run_with("@target t.png 100x100\nuse finish/surface { _surface }\ncircle 10\n  fx _surface\n", &[lib]);
+    assert_eq!(diag(&explicit, "E0212").message, "`finish/surface` does not export `_surface`");
+
+    let style = run_with("@target t.png 100x100\nuse finish/surface { _ink }\ncircle 10 style:_ink\n", &[lib]);
+    assert_eq!(diag(&style, "E0212").message, "`finish/surface` does not export `_ink`");
+
+    let wild = run_with("@target t.png 100x100\nuse finish/surface\ncircle 10 name:cap\n  fx _surface\n", &[lib]);
+    assert_eq!(diag(&wild, "E0391").message, "unknown effect `_surface`");
+
+    let public = run_with("@target t.png 100x100\nuse finish/surface { surface ink }\ncircle 10 name:cap style:ink\n  fx surface\n", &[lib]);
+    assert!(public.diagnostics.is_empty(), "{}", show(&public.diagnostics));
+    let s = public.scene.unwrap();
+    assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
+    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else { panic!("fill") };
+    assert_eq!(color.hex(), "#112233");
+}
+
+#[test]
 fn finish_parameters_are_named_and_typed_by_their_defaults() {
     let ev = run_with(&format!("@target t.png 100x100\n{SURFACE}circle 10\n  fx surface 6\n"), &[]);
     assert!(diag(&ev, "E0321").notes.iter().any(|n| n == "parameters: width, a"));
