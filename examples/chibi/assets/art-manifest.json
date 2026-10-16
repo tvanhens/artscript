@@ -2,7 +2,7 @@
   "outputs": [
     {
       "checks": [],
-      "hash": "17ac3da3a3a57bee",
+      "hash": "2fae821d540a3b15",
       "line": 1,
       "matrix": {},
       "path": "character/moss_monk.png",
@@ -13,7 +13,7 @@
     },
     {
       "checks": [],
-      "hash": "4b3311f6937e34f1",
+      "hash": "07fb051a0cff8da3",
       "line": 2,
       "matrix": {},
       "path": "character/moss_monk.svg",
@@ -24,7 +24,7 @@
     },
     {
       "checks": [],
-      "hash": "328de5b3b758654d",
+      "hash": "ff92dcfeee10a31e",
       "line": 3,
       "matrix": {},
       "path": "character/moss_monk_blink.png",
@@ -35,7 +35,7 @@
     },
     {
       "checks": [],
-      "hash": "741fc1857a3a9448",
+      "hash": "5cf3a4af764833f6",
       "line": 4,
       "matrix": {},
       "path": "character/moss_monk_yawn.png",
@@ -46,7 +46,7 @@
     },
     {
       "checks": [],
-      "hash": "8ffc5d08a363f17f",
+      "hash": "7e6c510218c7c1ad",
       "line": 1,
       "matrix": {},
       "path": "monument/stone_lantern.png",
@@ -57,7 +57,7 @@
     },
     {
       "checks": [],
-      "hash": "08365b4af0ea5696",
+      "hash": "e4eb59004f865dc4",
       "line": 2,
       "matrix": {},
       "path": "monument/stone_lantern.svg",
@@ -90,7 +90,7 @@
     },
     {
       "checks": [],
-      "hash": "dd53ed9bcbdb42bc",
+      "hash": "6f07551162028c21",
       "line": 1,
       "matrix": {},
       "path": "produce/momo_peach.png",
@@ -101,7 +101,7 @@
     },
     {
       "checks": [],
-      "hash": "6e85f2109859c58d",
+      "hash": "2397aa392976044a",
       "line": 2,
       "matrix": {},
       "path": "produce/momo_peach.svg",

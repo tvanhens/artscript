@@ -10,10 +10,11 @@ palette peach
   leaf ramp #7db956 5
   twig ramp #8b5a3c 5
   face #6a2f3c
+  edge #7e253c
 
 # Leaf along +x from its base, 200 long and 100 wide; `vein` picks the shaded half.
 def _leaf tone:peach.leaf vein:1
-  curve 0,0 16,27 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 16,-15 closed fill:grad(down shade(tone 1) tone shade(tone -1)) name:blade
+  curve 0,0 18,18 50,60 90,72 130,58 164,33 186,13 200,3 186,-1 164,-4 130,-12 90,-21 50,-25 18,-10 closed fill:grad(down shade(tone 1) tone shade(tone -1)) name:blade
     subtract fill:shade(tone -1) a:.65 blur:1.5
       copy @blade
       copy @blade at:0,50*vein
@@ -27,6 +28,14 @@ def _leaf tone:peach.leaf vein:1
     ellipse 18,7 at:70,-14 fill:shade(tone 2) a:.55 blur:5
   fx rim 3 dir:1,1 color:p.rim a:.4
   fx outline 4 color:mix(line(tone) shade(tone -2) .35)
+  fx adjust sat:-.04 light:.012
+
+let skin_pts = [522,386 568,354 652,342 738,378 794,456 816,560 798,668 744,766 650,830 532,850 414,838 316,790 250,704 222,592 234,478 286,394 372,346 466,350]
+let skin_count = 18
+let fringe_steps = 80
+# Bases sit under the silhouette line. The body covers them, so only the tips read as fuzz.
+let fuzz_offset = 3.4
+let fuzz_ink = mix(peach.pink.3 peach.coral.2 .45)
 
 layer ground_shadow
   ellipse 290,32 at:520,866 fill:p.shadow a:.34 blur:16
@@ -37,16 +46,53 @@ layer twig
     curve 530,442 534,392 536,346 528,308 514,286 stroke:peach.twig.1,[12 12 10 8 7] taper:0 blur:3
     curve 523,390 525,344 517,306 stroke:peach.twig.3,[5 5 4] taper:.3 a:.85 blur:1.2
     ellipse 9,6 at:508,284 rot:-30 fill:peach.twig.4 a:.9
+    ellipse 4,2.5 at:510,286 rot:-30 fill:peach.twig.0 a:.6
     curve 522,330 530,333 538,331 stroke:peach.twig.0,2 a:.6
     curve 522,356 530,359 538,357 stroke:peach.twig.0,2 a:.6
   fx grain .05 scale:1.5
   fx outline 4
 
 layer leaf_back
-  _leaf tone:shade(peach.leaf -.4) vein:1 at:516,318 rot:210 scale:1.05,-.86
+  _leaf tone:shade(peach.leaf -.15) vein:1 at:516,318 rot:210 scale:1.05,-.86
+    fx adjust hue:5 light:-.01
 
 layer body
-  curve 522,386 568,354 652,342 738,378 794,456 816,560 798,668 744,766 650,830 532,850 414,838 316,790 250,704 222,592 234,478 286,394 372,346 466,350 closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3 peach.cream .6),.62 peach.cream,.85 peach.cream.1) name:skin
+  # Drawn under the body so the maroon line stays clean and the comb's spine stays hidden.
+  each segment in 0..skin_count
+    let i_prev = mod(segment-1 skin_count)
+    let i_next = mod(segment+1 skin_count)
+    let i_far = mod(segment+2 skin_count)
+    let p_prev = skin_pts.{i_prev}
+    let p_here = skin_pts.{segment}
+    let p_next = skin_pts.{i_next}
+    let p_far = skin_pts.{i_far}
+    let leg_prev = p_here-p_prev
+    let leg_here = p_next-p_here
+    let leg_next = p_far-p_next
+    let d_prev = sqrt(max(sqrt(leg_prev.x*leg_prev.x+leg_prev.y*leg_prev.y) .000001))
+    let d_here = sqrt(max(sqrt(leg_here.x*leg_here.x+leg_here.y*leg_here.y) .000001))
+    let d_next = sqrt(max(sqrt(leg_next.x*leg_next.x+leg_next.y*leg_next.y) .000001))
+    let pull = 1.1
+    let ctrl_here = p_here+((d_prev*d_prev*p_next-d_here*d_here*p_prev+(2*d_prev*d_prev+3*d_prev*d_here+d_here*d_here)*p_here)/(3*d_prev*(d_prev+d_here))-p_here)*pull
+    let ctrl_next = p_next+((d_next*d_next*p_here-d_here*d_here*p_far+(2*d_next*d_next+3*d_next*d_here+d_here*d_here)*p_next)/(3*d_next*(d_next+d_here))-p_next)*pull
+    let sample_count = fringe_steps*3
+    let along = [each k in 0..sample_count -> floor(k/3)/fringe_steps]
+    let remain = [each k in 0..sample_count -> 1-along.{k}]
+    let spot = [each k in 0..sample_count -> p_here*remain.{k}*remain.{k}*remain.{k}+ctrl_here*(3*remain.{k}*remain.{k}*along.{k})+ctrl_next*(3*remain.{k}*along.{k}*along.{k})+p_next*along.{k}*along.{k}*along.{k}]
+    let tangent = [each k in 0..sample_count -> (ctrl_here-p_here)*(3*remain.{k}*remain.{k})+(ctrl_next-ctrl_here)*(6*remain.{k}*along.{k})+(p_next-ctrl_next)*(3*along.{k}*along.{k})]
+    let tangent_len = [each k in 0..sample_count -> max(sqrt(tangent.{k}.x*tangent.{k}.x+tangent.{k}.y*tangent.{k}.y) .001)]
+    let tx = [each k in 0..sample_count -> tangent.{k}.x/tangent_len.{k}]
+    let ty = [each k in 0..sample_count -> tangent.{k}.y/tangent_len.{k}]
+    let ny = [each k in 0..sample_count -> 0-tx.{k}]
+    let facing = [each k in 0..sample_count -> (spot.{k}.x-516)*ty.{k}+(spot.{k}.y-598)*ny.{k}]
+    let flip = [each k in 0..sample_count -> if facing.{k} < 0 then 0-1 else 1]
+    let outx = [each k in 0..sample_count -> ty.{k}*flip.{k}]
+    let outy = [each k in 0..sample_count -> ny.{k}*flip.{k}]
+    let reach = [each k in 0..sample_count -> if outx.{k}+outy.{k} < 0 then rand(2.9 4.1 seed:k) else rand(2.15 3.05 seed:k)]
+    let wobble = [each k in 0..sample_count -> rand(-.16 .16 seed:k)]
+    let comb = [each k in 0..sample_count -> spot.{k}+(outx.{k},outy.{k})*(fuzz_offset+(if mod(k 3) == 1 then reach.{k} else 0))+(tx.{k},ty.{k})*(if mod(k 3) == 1 then wobble.{k}*reach.{k} else 0)]
+    curve comb tension:0 stroke:fuzz_ink,.6 a:.8
+  curve skin_pts closed tension:.55 fill:grad(down peach.pink peach.pink.3,.3 mix(peach.pink.3 peach.cream .6),.62 peach.cream,.85 peach.cream.1) name:skin
     rect 100%x100% fill:radial(fade(peach.coral .75) fade(peach.coral.3 .4),.45 fade(peach.coral.3 0) at:.72,.25 r:300)
     ellipse 150,80 at:380,420 fill:peach.pink a:.35 blur:40
     subtract fill:mix(peach.pink.1 peach.cream.1 .4) a:.55 blur:2.5
@@ -70,7 +116,8 @@ layer body
     fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
     fx rim 6 dir:1,1 color:p.rim a:.5
     fx grain .045 scale:1.6
-    fx outline 5.5 color:mix(peach.coral.line peach.coral.1 .4)
+    # Reference edge pixels on the clean side are opaque rgb(126, 37, 60), about 5px outside the fill.
+    fx outline 5.2 color:peach.edge
   assert inside(@skin canvas margin:24)
 
 layer face
