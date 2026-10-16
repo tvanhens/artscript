@@ -1,0 +1,47 @@
+{
+  "name": "artscript",
+  "displayName": "artscript",
+  "publisher": "artscript",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "artscript",
+        "aliases": [
+          "artscript"
+        ],
+        "extensions": [
+          ".art"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "artscript",
+        "scopeName": "source.art",
+        "path": "./syntaxes/artscript.tmLanguage.json"
+      }
+    ],
+    "configurationDefaults": {
+      "[artscript]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 2,
+        "editor.detectIndentation": false
+      }
+    }
+  },
+  "scripts": {
+    "test": "cargo test -q -p artscript-syntax highlight && node --test test/"
+  },
+  "devDependencies": {
+    "vscode-textmate": "^9",
+    "vscode-oniguruma": "^2"
+  }
+}

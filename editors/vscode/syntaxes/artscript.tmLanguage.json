@@ -1,0 +1,216 @@
+{
+  "comment": "Generated from crates/syntax/src/highlight/grammar.rs. Bless with ARTSCRIPT_BLESS=1 cargo test -p artscript-syntax highlight",
+  "fileTypes": [
+    "art"
+  ],
+  "name": "artscript",
+  "patterns": [
+    {
+      "begin": "\"\"\"",
+      "end": "\"\"\"",
+      "name": "string.quoted.art"
+    },
+    {
+      "begin": "\"",
+      "end": "\"|$",
+      "name": "string.quoted.art",
+      "patterns": [
+        {
+          "match": "\\\\(?:\\\\|\"|n)",
+          "name": "constant.character.escape.art"
+        },
+        {
+          "match": "\\\\.",
+          "name": "invalid.illegal.art"
+        }
+      ]
+    },
+    {
+      "match": "#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3})(?=$|[ \\t\\r\\n,)\\]])",
+      "name": "constant.other.color.rgb-value.hex.art"
+    },
+    {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.art"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "keyword.other.directive.art"
+        },
+        "2": {
+          "name": "string.unquoted.path.art"
+        }
+      },
+      "match": "^(@[A-Za-z_][A-Za-z0-9_]*)(?!\\.(?:[A-Za-z_0-9*]))(?:[ \\t]+([A-Za-z0-9_./{}*-]*[/.{][A-Za-z0-9_./{}*-]*))?"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "keyword.control.import.art"
+        },
+        "3": {
+          "name": "string.unquoted.path.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(use)(?![A-Za-z0-9_])(?:[ \\t]+([A-Za-z0-9_./{}*-]+))?"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "keyword.control.import.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(from|use|as)(?![A-Za-z0-9_])"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "storage.type.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(palette|shader|style|light|brush|rule|def|let)(?![A-Za-z0-9_])"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "keyword.control.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(assert|expect|then|else|each|if|in)(?![A-Za-z0-9_])"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "keyword.operator.logical.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(and|not|or)(?![A-Za-z0-9_])"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "constant.language.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(false|true|none)(?![A-Za-z0-9_])"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "variable.other.property.patch.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?(\\.[A-Za-z_][A-Za-z0-9_]*(?:\\.[A-Za-z_][A-Za-z0-9_]*)*)"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "entity.name.tag.slot.art"
+        },
+        "3": {
+          "name": "entity.name.tag.slot.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?([A-Za-z_][A-Za-z0-9_]*)(:)(?=[ \\t]*(?:\\r?$|#(?![0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{4}|[0-9a-fA-F]{3}(?=$|[ \\t\\r\\n,)\\]]))))"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "invalid.illegal.art"
+        },
+        "2": {
+          "name": "entity.name.function.verb.art"
+        }
+      },
+      "match": "^[ ]*([ \\t]*\\t[ \\t]*)?([A-Za-z_][A-Za-z0-9_]*)"
+    },
+    {
+      "match": "@[A-Za-z_][A-Za-z0-9_]*(?:\\.(?:[A-Za-z_][A-Za-z0-9_]*|[0-9]+|\\*))*",
+      "name": "variable.other.reference.art"
+    },
+    {
+      "match": "@(?![A-Za-z_])",
+      "name": "invalid.illegal.art"
+    },
+    {
+      "match": "\\.\\.",
+      "name": "keyword.operator.art"
+    },
+    {
+      "match": "(?:[0-9]+(?:\\.[0-9]+)?|(?<![A-Za-z0-9_)])\\.[0-9]+)(?:(?:deg|turn)(?![A-Za-z0-9_])|%(?:x(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]+)?)%?)?|x(?:\\.[0-9]+|[0-9]+(?:\\.[0-9]+)?)%?)?",
+      "name": "constant.numeric.art"
+    },
+    {
+      "captures": {
+        "1": {
+          "name": "entity.other.attribute-name.key.art"
+        },
+        "2": {
+          "name": "keyword.operator.art"
+        }
+      },
+      "match": "(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)(:)"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:from|use|as)(?![A-Za-z0-9_])",
+      "name": "keyword.control.import.art"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:palette|shader|style|light|brush|rule|def|let)(?![A-Za-z0-9_])",
+      "name": "storage.type.art"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:assert|expect|then|else|each|if|in)(?![A-Za-z0-9_])",
+      "name": "keyword.control.art"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:and|not|or)(?![A-Za-z0-9_])",
+      "name": "keyword.operator.logical.art"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])(?:false|true|none)(?![A-Za-z0-9_])",
+      "name": "constant.language.art"
+    },
+    {
+      "match": "(?<![A-Za-z0-9_])[A-Za-z_][A-Za-z0-9_]*(?![A-Za-z0-9_])"
+    },
+    {
+      "match": "==|!=|<=|>=|~=|->|[-+*/=<>:,]|\\.",
+      "name": "keyword.operator.art"
+    },
+    {
+      "match": "\\(|\\)|\\[|\\]|\\{|\\}",
+      "name": "punctuation.art"
+    },
+    {
+      "match": "\\S",
+      "name": "invalid.illegal.art"
+    }
+  ],
+  "scopeName": "source.art"
+}

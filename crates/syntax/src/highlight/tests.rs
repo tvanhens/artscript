@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use crate::ast::{Expr, File, Named, Span, Stmt, StmtKind};
 use crate::lex::{self, Kw, Tok};
 
+use super::grammar::{self, emit};
 use super::{Class, PATH_CHARS, Run, classify, is_path_char, ribbon};
 
 fn range_of(src: &str, needle: &str) -> Range<usize> {
@@ -643,8 +644,84 @@ fn span_byte(src: &str, starts: &[usize], span: Span) -> usize {
     panic!("span {span} is not on its line");
 }
 
+#[test]
+fn grammar_is_current() {
+    let root = workspace();
+    for (path, fresh) in [
+        (
+            root.join("editors/vscode/syntaxes/artscript.tmLanguage.json"),
+            grammar::to_json(&emit()),
+        ),
+        (
+            root.join("editors/vscode/test/scopes.json"),
+            grammar::scopes_json(),
+        ),
+    ] {
+        if std::env::var("ARTSCRIPT_BLESS").ok().as_deref() == Some("1") {
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(&path, &fresh).unwrap();
+        } else {
+            let have = fs::read_to_string(&path).unwrap_or_default();
+            assert_eq!(
+                have,
+                fresh,
+                "bless with ARTSCRIPT_BLESS=1 cargo test -p artscript-syntax highlight\n{}",
+                path.display()
+            );
+        }
+    }
+}
+
+#[test]
+fn emit_ribbons() {
+    let root = workspace();
+    let out = root.join("target/art-ribbons");
+    let _ = fs::remove_dir_all(&out);
+    fs::create_dir_all(&out).unwrap();
+    let mut manifest = Vec::new();
+    for path in corpus() {
+        let rel = path
+            .strip_prefix(&root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let src = fs::read_to_string(&path).unwrap();
+        let ribbon_rel = format!("{rel}.ribbon");
+        let ribbon_path = out.join(&ribbon_rel);
+        fs::create_dir_all(ribbon_path.parent().unwrap()).unwrap();
+        fs::write(&ribbon_path, ribbon(&src, &classify(&src))).unwrap();
+        manifest.push(serde_json::json!({
+            "source": rel,
+            "ribbon": ribbon_rel,
+        }));
+    }
+    fs::write(
+        out.join("manifest.json"),
+        serde_json::to_string_pretty(&manifest).unwrap() + "\n",
+    )
+    .unwrap();
+}
+
+#[test]
+fn edge_fixture_exercises_every_class() {
+    let src = fs::read_to_string(workspace().join("editors/vscode/test/edge.art")).unwrap();
+    span_set_equals_lex(&src);
+    let painted = ribbon(&src, &classify(&src));
+    for class in Class::ALL {
+        assert!(
+            painted.contains(class.letter()),
+            "edge.art ribbon has no {:?}\n{painted}",
+            class
+        );
+    }
+}
+
+fn workspace() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
 fn corpus() -> Vec<PathBuf> {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let root = workspace();
     let mut files = Vec::new();
     for dir in ["examples", "crates/syntax/tests/fixtures"] {
         collect(&root.join(dir), &mut files);

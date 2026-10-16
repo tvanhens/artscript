@@ -2,6 +2,8 @@ use std::ops::Range;
 
 use crate::lex::{self, Kw, Line, Tok, Token};
 
+mod grammar;
+
 #[cfg(test)]
 mod tests;
 

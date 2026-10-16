@@ -1,0 +1,22 @@
+{
+  "comment.line.number-sign.art": "c",
+  "constant.character.escape.art": "s",
+  "constant.language.art": "k",
+  "constant.numeric.art": "n",
+  "constant.other.color.rgb-value.hex.art": "h",
+  "entity.name.function.verb.art": "v",
+  "entity.name.tag.slot.art": "l",
+  "entity.other.attribute-name.key.art": "y",
+  "invalid.illegal.art": "!",
+  "keyword.control.art": "k",
+  "keyword.control.import.art": "k",
+  "keyword.operator.art": "o",
+  "keyword.operator.logical.art": "k",
+  "keyword.other.directive.art": "d",
+  "punctuation.art": "b",
+  "storage.type.art": "k",
+  "string.quoted.art": "s",
+  "string.unquoted.path.art": "a",
+  "variable.other.property.patch.art": "p",
+  "variable.other.reference.art": "r"
+}
