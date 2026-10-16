@@ -137,10 +137,23 @@ pub enum StmtKind {
         body: Vec<Stmt>,
     },
     /// `.arm_r rot:-20`, `.cape off`, `.head.eye_l iris:p.accent`.
+    /// A path segment may be `*`.
     Patch {
         path: Vec<String>,
         named: Vec<Named>,
         off: bool,
+    },
+    /// `anim idle dur:2s loop` and a body of patch lines.
+    Anim {
+        name: String,
+        dur: Expr,
+        loop_: bool,
+        body: Vec<Stmt>,
+    },
+    /// `play idle start:1s`. `name` is `None` for `play none`.
+    Play {
+        name: Option<String>,
+        start: Option<Expr>,
     },
 }
 
@@ -179,6 +192,8 @@ pub enum Expr {
     Percent(f64),
     /// Always degrees. `.25turn` parses to 90.
     Angle(f64),
+    /// Seconds. `200ms` is 0.2, `2s` and a bare time-position number are seconds.
+    Time(f64),
     /// `256x256`, `100%x60%`.
     Size(Box<Expr>, Box<Expr>),
     /// Hex without `#`, lowercased: `ff5e5b`, `fff`.

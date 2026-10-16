@@ -14,3 +14,7 @@ artscript-syntax.workspace = true
 artscript-ir.workspace = true
 artscript-render.workspace = true
 artscript-eval.workspace = true
+
+[dev-dependencies]
+gif = "0.13"
+color_quant = "1.1"

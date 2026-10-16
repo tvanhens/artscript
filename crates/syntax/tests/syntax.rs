@@ -157,6 +157,20 @@ fn directive_target_matrix() {
         format(&file),
         "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
     );
+    let clip = must_parse("@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n");
+    assert_eq!(clip.directives[0].each[0].key, "c");
+    assert_eq!(
+        clip.directives[0]
+            .named
+            .iter()
+            .map(|n| n.key.as_str())
+            .collect::<Vec<_>>(),
+        ["bg", "clip"]
+    );
+    assert_eq!(
+        format(&clip),
+        "@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n"
+    );
 }
 
 #[test]
@@ -553,7 +567,10 @@ fn suffixes_slots_and_else_if() {
 fn statement_if_then_says_to_remove_then() {
     let errs = parse("if ready then\n  circle 1\n").unwrap_err();
     let e = errs.iter().find(|e| e.code == "E0101").expect("E0101");
-    assert_eq!(e.fix.as_deref(), Some("statement `if` takes a block; remove `then`"));
+    assert_eq!(
+        e.fix.as_deref(),
+        Some("statement `if` takes a block; remove `then`")
+    );
 }
 
 #[test]
@@ -637,9 +654,18 @@ fn syntax_errors_carry_a_fix() {
 #[test]
 fn separator_commas_are_rejected() {
     for (src, fix) in [
-        ("let v = shade(c, -2)\n", "remove the comma: write `f(a b)`, not `f(a, b)`"),
-        ("let v = [a, b]\n", "remove the comma: write `[a b]`, not `[a, b]`"),
-        ("use a/b { x, y }\n", "remove the comma: write `use lib { a b }`"),
+        (
+            "let v = shade(c, -2)\n",
+            "remove the comma: write `f(a b)`, not `f(a, b)`",
+        ),
+        (
+            "let v = [a, b]\n",
+            "remove the comma: write `[a b]`, not `[a, b]`",
+        ),
+        (
+            "use a/b { x, y }\n",
+            "remove the comma: write `use lib { a b }`",
+        ),
     ] {
         let errs = parse(src).unwrap_err();
         assert_eq!(errs.len(), 1, "{src}: {errs:?}");
@@ -665,4 +691,74 @@ fn numbers_drop_leading_and_trailing_zeros() {
     assert_eq!(format(&must_parse("let n = 1.0\n")), "let n = 1\n");
     assert_eq!(format(&must_parse("let n = .25turn\n")), "let n = 90deg\n");
     assert_eq!(format(&must_parse("rect 100%x60%\n")), "rect 100%x60%\n");
+}
+
+#[test]
+fn time_anim_and_play_round_trip() {
+    let src = "\
+anim idle dur:2s loop
+  .face at:0,key(0 6 0)
+  .eyes.* lid:key(.6 1 .6 ease:in_out)
+anim yawn dur:1.6s
+  .mouth open:key(0 1 1 0 at:[0 .3 .7 1])
+anim blink dur:200ms
+  .eyes.* lid:key(.6 1 .6)
+play idle start:0s
+play none
+let n = t
+";
+    let file = must_parse(src);
+    match &file.stmts[0].kind {
+        StmtKind::Anim {
+            name,
+            dur,
+            loop_,
+            body,
+        } => {
+            assert_eq!(name, "idle");
+            assert_eq!(dur, &Expr::Time(2.0));
+            assert!(*loop_);
+            assert_eq!(body.len(), 2);
+            match &body[1].kind {
+                StmtKind::Patch { path, .. } => assert_eq!(path, &["eyes".to_string(), "*".into()]),
+                other => panic!("{other:?}"),
+            }
+        }
+        other => panic!("{other:?}"),
+    }
+    match &file.stmts[1].kind {
+        StmtKind::Anim { dur, loop_, .. } => {
+            assert_eq!(dur, &Expr::Time(1.6));
+            assert!(!*loop_);
+        }
+        other => panic!("{other:?}"),
+    }
+    match &file.stmts[2].kind {
+        StmtKind::Anim { dur, .. } => assert_eq!(dur, &Expr::Time(0.2)),
+        other => panic!("{other:?}"),
+    }
+    match &file.stmts[3].kind {
+        StmtKind::Play { name, start } => {
+            assert_eq!(name.as_deref(), Some("idle"));
+            assert_eq!(start, &Some(Expr::Time(0.0)));
+        }
+        other => panic!("{other:?}"),
+    }
+    match &file.stmts[4].kind {
+        StmtKind::Play {
+            name: None,
+            start: None,
+        } => {}
+        other => panic!("{other:?}"),
+    }
+    let once = format(&file);
+    assert!(once.contains("dur:200ms"), "{once}");
+    assert!(once.contains("dur:2s"), "{once}");
+    assert!(once.contains("dur:1.6s"), "{once}");
+    assert!(once.contains(".eyes.*"), "{once}");
+    round_trip_ast(&file);
+    round_trip_source(src);
+    assert_eq!(format(&must_parse("let n = 0.5s\n")), "let n = 500ms\n");
+    assert_eq!(format(&must_parse("let n = 1500ms\n")), "let n = 1.5s\n");
+    assert_eq!(format(&must_parse("let n = 0s\n")), "let n = 0s\n");
 }

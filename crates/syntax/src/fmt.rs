@@ -25,7 +25,7 @@ pub(crate) fn format_file_with_comments(
         for arg in &d.args {
             parts.push(fmt_expr(arg));
         }
-        for named in &d.named {
+        for named in d.named.iter().filter(|n| n.key != "clip") {
             parts.push(fmt_named(named));
         }
         if !d.each.is_empty() {
@@ -33,6 +33,9 @@ pub(crate) fn format_file_with_comments(
             for axis in &d.each {
                 parts.push(fmt_named(axis));
             }
+        }
+        for named in d.named.iter().filter(|n| n.key == "clip") {
+            parts.push(fmt_named(named));
         }
         p.emit(d.span.line, 0, &parts.join(" "));
     }
@@ -185,6 +188,27 @@ impl<'a> Printer<'a> {
                 }
                 if *off {
                     text.push_str(" off");
+                }
+                self.emit(stmt.span.line, indent, &text);
+            }
+            StmtKind::Anim {
+                name,
+                dur,
+                loop_,
+                body,
+            } => {
+                let mut text = format!("anim {name} dur:{}", fmt_expr(dur));
+                if *loop_ {
+                    text.push_str(" loop");
+                }
+                self.emit(stmt.span.line, indent, &text);
+                self.stmts(body, indent + 1);
+            }
+            StmtKind::Play { name, start } => {
+                let mut text = format!("play {}", name.as_deref().unwrap_or("none"));
+                if let Some(start) = start {
+                    text.push_str(" start:");
+                    text.push_str(&fmt_expr(start));
                 }
                 self.emit(stmt.span.line, indent, &text);
             }
@@ -410,6 +434,7 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Num(n) => fmt_number(*n),
         Expr::Percent(n) => format!("{}%", fmt_number(round_scaled(*n, 100.0))),
         Expr::Angle(n) => format!("{}deg", fmt_number(*n)),
+        Expr::Time(n) => fmt_time(*n),
         Expr::Size(w, h) => format!("{}x{}", fmt_expr(w), fmt_expr(h)),
         Expr::Hex(h) => format!("#{h}"),
         Expr::Str(s) => fmt_string(s),
@@ -501,6 +526,20 @@ fn fmt_string(s: &str) -> String {
 fn round_scaled(n: f64, scale: f64) -> f64 {
     let scaled = n * scale;
     (scaled * 1e8).round() / 1e8
+}
+
+/// Sub-second whole milliseconds print as `Nms`. Everything else prints as seconds.
+fn fmt_time(seconds: f64) -> String {
+    if !seconds.is_finite() {
+        return "0s".into();
+    }
+    let ms = seconds * 1000.0;
+    let whole_ms = (ms - ms.round()).abs() < 1e-6;
+    if seconds > 0.0 && seconds < 1.0 && whole_ms {
+        format!("{}ms", fmt_number(ms.round()))
+    } else {
+        format!("{}s", fmt_number(seconds))
+    }
 }
 
 fn fmt_number(n: f64) -> String {

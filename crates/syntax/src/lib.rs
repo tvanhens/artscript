@@ -9,7 +9,7 @@ pub use diag::{Diagnostic, Severity};
 /// Words reserved in v0.1 even where unimplemented. Using one as a name is error E0105.
 pub const RESERVED: &[&str] = &[
     "shader", "sksl", "field", "light", "brush", "warp", "backdrop", "profile", "pose", "joint",
-    "ease", "t", "frames", "anim", "key",
+    "ease", "t", "frames", "anim", "key", "play", "clip", "loop", "set", "mark", "root", "visible",
 ];
 
 /// Parses one `.art` source. Returns every syntax error found, not just the first.

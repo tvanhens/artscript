@@ -2,12 +2,12 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke,
+    Blend, Cap, Clip, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
+    NodeKind, Paint, Path, Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::Diagnostic;
 use artscript_syntax::ast::{BinOp, Expr, File, Named, Span, Stmt, StmtKind, UnOp};
@@ -15,10 +15,13 @@ use artscript_syntax::ast::{BinOp, Expr, File, Named, Span, Stmt, StmtKind, UnOp
 use crate::checks::{CheckState, Pending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::geom::{self, BoolOp, P};
+use crate::key::{self, Ease};
+use crate::motion::{self, absolute_channel, offset_channel, path_match};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::scope::{
-    Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, Table, new_table, table_get, table_names,
+    AnimDef, Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, Table, new_table,
+    table_get, table_names,
 };
 use crate::seed::{self, Rng};
 use crate::targets::{MatrixValue, TargetJob, is_entry};
@@ -36,7 +39,12 @@ pub struct Fail {
 pub type R<T> = Result<T, Fail>;
 
 pub fn fail(code: &'static str, msg: impl Into<String>) -> Fail {
-    Fail { code, msg: msg.into(), notes: Vec::new(), fix: None }
+    Fail {
+        code,
+        msg: msg.into(),
+        notes: Vec::new(),
+        fix: None,
+    }
 }
 
 impl Fail {
@@ -56,8 +64,12 @@ impl Fail {
     }
 }
 
-const MEASURES: &[&str] = &["x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area"];
-const NODE_KEYS: &[&str] = &["at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "mask", "feather"];
+const MEASURES: &[&str] = &[
+    "x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area",
+];
+const NODE_KEYS: &[&str] = &[
+    "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "mask", "feather",
+];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 /// A node's block split by role: effects, inline `fill:`/`stroke:`/`mask:` lines, a `mask:` block,
@@ -112,7 +124,14 @@ pub(crate) struct Scope {
 
 impl Scope {
     fn child(&self, path: &str, frame: Rect, world: Matrix) -> Scope {
-        Scope { path: path.to_string(), suffix: String::new(), frame, world, top: false, ..self.clone() }
+        Scope {
+            path: path.to_string(),
+            suffix: String::new(),
+            frame,
+            world,
+            top: false,
+            ..self.clone()
+        }
     }
 
     pub(crate) fn file(&self) -> &str {
@@ -121,7 +140,7 @@ impl Scope {
 }
 
 struct PatchRec {
-    target: String,
+    pattern: Vec<String>,
     named: Vec<(String, Value)>,
     off: bool,
     owner: String,
@@ -132,22 +151,41 @@ struct PatchRec {
     matched: Cell<bool>,
 }
 
+#[derive(Clone, Debug)]
+pub struct PlayMark {
+    pub end: f64,
+    pub loops: bool,
+}
+
+struct AnimClock {
+    local: f64,
+    dur: f64,
+}
+
+/// One channel from a `play`, applied after static patches. `live` is false when this frame is outside a non-looping anim.
+struct Channel {
+    pattern: Vec<String>,
+    owner: String,
+    key: String,
+    absolute: bool,
+    value: Value,
+    off: bool,
+    live: bool,
+    anim: String,
+    span: Span,
+    file: String,
+    matched: Cell<bool>,
+}
+
 #[derive(Default)]
 struct Siblings {
     items: Vec<(Node, f64)>,
-    counts: HashMap<String, usize>,
 }
 
 impl Siblings {
-    fn name(&mut self, base: &str, suffix: &str) -> String {
-        let key = format!("{base}{suffix}");
-        let n = self.counts.entry(key).or_insert(0);
-        *n += 1;
-        if *n == 1 { format!("{base}{suffix}") } else { format!("{base}{n}{suffix}") }
-    }
-
     fn finish(mut self) -> Vec<Node> {
-        self.items.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+        self.items
+            .sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
         self.items.into_iter().map(|(n, _)| n).collect()
     }
 }
@@ -160,7 +198,11 @@ pub(crate) struct Args {
 
 impl Args {
     pub fn get(&self, k: &str) -> Option<&Value> {
-        self.named.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v)
+        self.named
+            .iter()
+            .rev()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| v)
     }
 
     pub fn num(&self, k: &str) -> Option<f64> {
@@ -186,6 +228,12 @@ pub(crate) struct Evaluator<'a> {
     pub check: Option<CheckState>,
     seed_base: String,
     seed_count: u64,
+    /// Clip time in seconds. `t` reads this, unless an anim is being sampled.
+    pub time: f64,
+    anim_clock: Option<AnimClock>,
+    pub plays: Vec<PlayMark>,
+    channels: Vec<Channel>,
+    occurrences: HashMap<Span, usize>,
 }
 
 fn ident_of(e: &Expr) -> Option<&str> {
@@ -195,7 +243,60 @@ fn ident_of(e: &Expr) -> Option<&str> {
     }
 }
 
-fn mat_trs(at: (f64, f64), pivot: (f64, f64), rot: f64, skew: (f64, f64), scale: (f64, f64)) -> Matrix {
+fn blend_arg(
+    a: &mut Args,
+    key: &str,
+    absolute: bool,
+    value: &Value,
+    default_at: (f64, f64),
+) -> R<()> {
+    if absolute || !offset_channel(key) {
+        a.named.push((key.to_string(), value.clone()));
+        return Ok(());
+    }
+    match key {
+        "rot" => {
+            let base = a.num("rot").unwrap_or(0.0);
+            let d = value.num().ok_or_else(|| {
+                fail(
+                    "E0320",
+                    format!("`rot:` offset expects a number, got {}", value.kind()),
+                )
+            })?;
+            a.named.push(("rot".into(), Value::Num(base + d)));
+        }
+        "at" => {
+            let base = a.get("at").cloned().unwrap_or(Value::Vec2(
+                Coord::Num(default_at.0),
+                Coord::Num(default_at.1),
+            ));
+            let sum = arith(Arith::Add, &base, value).map_err(|m| fail("E0320", m))?;
+            a.named.push(("at".into(), sum));
+        }
+        "scale" => {
+            let base = a
+                .get("scale")
+                .cloned()
+                .unwrap_or(Value::Vec2(Coord::Num(1.0), Coord::Num(1.0)));
+            let factor = match value {
+                Value::Num(n) => Value::Vec2(Coord::Num(*n), Coord::Num(*n)),
+                other => other.clone(),
+            };
+            let prod = arith(Arith::Mul, &base, &factor).map_err(|m| fail("E0320", m))?;
+            a.named.push(("scale".into(), prod));
+        }
+        _ => a.named.push((key.to_string(), value.clone())),
+    }
+    Ok(())
+}
+
+fn mat_trs(
+    at: (f64, f64),
+    pivot: (f64, f64),
+    rot: f64,
+    skew: (f64, f64),
+    scale: (f64, f64),
+) -> Matrix {
     let f = |v: f64| v as f32;
     Matrix::translate((f(at.0), f(at.1)))
         * Matrix::translate((f(pivot.0), f(pivot.1)))
@@ -206,7 +307,17 @@ fn mat_trs(at: (f64, f64), pivot: (f64, f64), rot: f64, skew: (f64, f64), scale:
 }
 
 fn new_node(path: String, origin: String, transform: Matrix, kind: NodeKind) -> Node {
-    Node { path, origin, transform, opacity: 1.0, blend: Blend::Normal, clip: None, mask: None, effects: Vec::new(), kind }
+    Node {
+        path,
+        origin,
+        transform,
+        opacity: 1.0,
+        blend: Blend::Normal,
+        clip: None,
+        mask: None,
+        effects: Vec::new(),
+        kind,
+    }
 }
 
 fn inverse(m: &Matrix) -> Matrix {
@@ -223,9 +334,19 @@ fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
     }
     let pct = Value::Percent(p).show();
     Err(match sc.inst.as_ref() {
-        Some(inst) => fail("E0322", format!("`{}` has no size, so {pct} has nothing to measure", inst.def_name))
-            .fix(format!("declare the box with `size:`, as in `def {} size:72x32`", inst.def_name)),
-        None => fail("E0322", format!("{pct} has nothing to measure")).fix("use a number, or measure against a frame that has a size"),
+        Some(inst) => fail(
+            "E0322",
+            format!(
+                "`{}` has no size, so {pct} has nothing to measure",
+                inst.def_name
+            ),
+        )
+        .fix(format!(
+            "declare the box with `size:`, as in `def {} size:72x32`",
+            inst.def_name
+        )),
+        None => fail("E0322", format!("{pct} has nothing to measure"))
+            .fix("use a number, or measure against a frame that has a size"),
     })
 }
 
@@ -234,11 +355,27 @@ fn size_box(w: f64, h: f64) -> Rect {
 }
 
 /// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
-fn resolve_size(v: &Value, pair_default: bool, frame: Rect, sc: &Scope, def_name: &str) -> R<(Value, Rect)> {
+fn resolve_size(
+    v: &Value,
+    pair_default: bool,
+    frame: Rect,
+    sc: &Scope,
+    def_name: &str,
+) -> R<(Value, Rect)> {
     let positive = |n: f64| n.is_finite() && n > 0.0;
-    let reject = |got: &str| fail("E0320", format!("`size` of `{def_name}` must be positive, got {got}")).fix("write `size:40` or `size:72x32`");
+    let reject = |got: &str| {
+        fail(
+            "E0320",
+            format!("`size` of `{def_name}` must be positive, got {got}"),
+        )
+        .fix("write `size:40` or `size:72x32`")
+    };
     let square = |side: f64| {
-        let value = if pair_default { Value::Size(Coord::Num(side), Coord::Num(side)) } else { Value::Num(side) };
+        let value = if pair_default {
+            Value::Size(Coord::Num(side), Coord::Num(side))
+        } else {
+            Value::Num(side)
+        };
         (value, size_box(side, side))
     };
     let (fw, fh) = (frame.width() as f64, frame.height() as f64);
@@ -259,8 +396,14 @@ fn resolve_size(v: &Value, pair_default: bool, frame: Rect, sc: &Scope, def_name
         }
         other => {
             let Some((x, y)) = other.pair() else {
-                return Err(fail("E0320", format!("`size` of `{def_name}` expects a number or a size, got {}", v.kind()))
-                    .fix("write `size:40` or `size:72x32`"));
+                return Err(fail(
+                    "E0320",
+                    format!(
+                        "`size` of `{def_name}` expects a number or a size, got {}",
+                        v.kind()
+                    ),
+                )
+                .fix("write `size:40` or `size:72x32`"));
             };
             check_percent(x, frame, sc)?;
             check_percent(y, frame, sc)?;
@@ -282,7 +425,11 @@ fn axis_scale(m: &Matrix) -> f64 {
 
 fn each_items(it: Value) -> R<Vec<Value>> {
     let items = it.items().ok_or_else(|| {
-        fail("E0306", format!("`each` needs a list or range, got {}", it.kind())).fix("write `each x in [a b]` or `each i in 0..8`")
+        fail(
+            "E0306",
+            format!("`each` needs a list or range, got {}", it.kind()),
+        )
+        .fix("write `each x in [a b]` or `each i in 0..8`")
     })?;
     if items.len() > 100_000 {
         return Err(fail("E0306", "`each` is limited to 100000 iterations"));
@@ -317,7 +464,11 @@ fn blend_of(w: &str) -> Option<Blend> {
 /// The first shape color under a node, used for effect defaults.
 fn first_fill(n: &Node) -> Option<Rgba> {
     match &n.kind {
-        NodeKind::Shape(s) => s.fill.as_ref().or(s.stroke.as_ref().map(|st| &st.paint)).map(key_color),
+        NodeKind::Shape(s) => s
+            .fill
+            .as_ref()
+            .or(s.stroke.as_ref().map(|st| &st.paint))
+            .map(key_color),
         NodeKind::Group { children, .. } => children.iter().find_map(first_fill),
     }
 }
@@ -348,6 +499,20 @@ impl<'a> Evaluator<'a> {
             check: None,
             seed_base: String::new(),
             seed_count: 0,
+            time: job.frame_t,
+            anim_clock: None,
+            plays: Vec::new(),
+            channels: Vec::new(),
+            occurrences: HashMap::new(),
+        }
+    }
+
+    fn leaf_name(&self, st: &Stmt, base: &str, suffix: &str) -> String {
+        let n = self.occurrences.get(&st.span).copied().unwrap_or(1);
+        if n <= 1 {
+            format!("{base}{suffix}")
+        } else {
+            format!("{base}{n}{suffix}")
         }
     }
 
@@ -382,7 +547,11 @@ impl<'a> Evaluator<'a> {
         if let Some(f) = self.parsed.get(file) {
             return Ok(f.clone());
         }
-        let src = self.project.files.get(file).ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
+        let src = self
+            .project
+            .files
+            .get(file)
+            .ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
         match artscript_syntax::parse(src) {
             Ok(f) => {
                 let f = Rc::new(f);
@@ -414,7 +583,10 @@ impl<'a> Evaluator<'a> {
         {
             match self.load_module(&pfile, false) {
                 Ok(m) => {
-                    module.globals.borrow_mut().insert("p".into(), Value::Module(m));
+                    module
+                        .globals
+                        .borrow_mut()
+                        .insert("p".into(), Value::Module(m));
                 }
                 Err(f) => self.report(f, file, Span { line: 1, col: 1 }, ""),
             }
@@ -439,10 +611,13 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             StmtKind::Style { name, named } => {
-                module
-                    .styles
-                    .borrow_mut()
-                    .insert(name.clone(), Rc::new(StyleDef { module: module.path.clone(), named: named.clone() }));
+                module.styles.borrow_mut().insert(
+                    name.clone(),
+                    Rc::new(StyleDef {
+                        module: module.path.clone(),
+                        named: named.clone(),
+                    }),
+                );
                 module.own.borrow_mut().push(format!("style:{name}"));
                 Ok(())
             }
@@ -499,46 +674,97 @@ impl<'a> Evaluator<'a> {
                     StmtKind::Light { .. } => "light (Phase 2)",
                     _ => "brush (Phase 2)",
                 };
-                Err(fail("E0390", format!("{what} is not yet implemented in v0.1"))
-                    .fix("remove the declaration, or use built-in fields and fx lines"))
+                Err(
+                    fail("E0390", format!("{what} is not yet implemented in v0.1"))
+                        .fix("remove the declaration, or use built-in fields and fx lines"),
+                )
             }
             StmtKind::Let { .. } => Ok(()),
+            StmtKind::Anim {
+                name,
+                dur,
+                loop_,
+                body,
+            } => {
+                if !body
+                    .iter()
+                    .all(|s| matches!(s.kind, StmtKind::Patch { .. }))
+                {
+                    return Err(fail("E0336", "an anim body may only contain patch lines")
+                        .fix("move `if`, `play` and drawing out of the anim; put them next to `play`"));
+                }
+                let anim = Rc::new(AnimDef {
+                    name: name.clone(),
+                    dur: dur.clone(),
+                    loop_: *loop_,
+                    body: body.clone(),
+                    module: module.path.clone(),
+                    span: st.span,
+                });
+                module.anims.borrow_mut().insert(name.clone(), anim);
+                Ok(())
+            }
             _ if entry => Ok(()),
-            _ => Err(fail("E0204", "a library may only hold declarations at its top level")
-                .note("allowed: use, palette, style, def, rule, let")
-                .fix("wrap the drawing in a `def` and place it from an entry file")),
+            _ => Err(fail(
+                "E0204",
+                "a library may only hold declarations at its top level",
+            )
+            .note("allowed: use, palette, style, def, rule, let, anim")
+            .fix("wrap the drawing in a `def` and place it from an entry file")),
         }
     }
 
-    fn declare_use(&mut self, module: &Rc<Module>, path: &str, alias: &Option<String>, items: &[String]) -> R<()> {
+    fn declare_use(
+        &mut self,
+        module: &Rc<Module>,
+        path: &str,
+        alias: &Option<String>,
+        items: &[String],
+    ) -> R<()> {
         let rooted = format!("{path}.art");
         let target = match self.project.resolve_use(path) {
             Some(f) => f,
             None if self.project.files.contains_key(&rooted) => rooted,
             None => {
                 return Err(fail("E0210", format!("no library `{path}`"))
-                    .note(format!("libraries: {}", self.project.library_names().join(", ")))
-                    .fix(format!("create `{}/{path}.art`, or fix the path", self.project.manifest.lib[0])));
+                    .note(format!(
+                        "libraries: {}",
+                        self.project.library_names().join(", ")
+                    ))
+                    .fix(format!(
+                        "create `{}/{path}.art`, or fix the path",
+                        self.project.manifest.lib[0]
+                    )));
             }
         };
         let parsed = self.parse(&target)?;
         if is_entry(&parsed) {
-            return Err(fail("E0201", format!("`{target}` is an entry file and cannot be imported"))
-                .fix("move the shared code into a library under a lib root and `use` that instead"));
+            return Err(fail(
+                "E0201",
+                format!("`{target}` is an entry file and cannot be imported"),
+            )
+            .fix("move the shared code into a library under a lib root and `use` that instead"));
         }
         let m = self.load_module(&target, false)?;
         if let Some(a) = alias {
-            module.globals.borrow_mut().insert(a.clone(), Value::Module(m));
+            module
+                .globals
+                .borrow_mut()
+                .insert(a.clone(), Value::Module(m));
             return Ok(());
         }
         let exports = m.exports();
         let styles = m.styles.borrow().clone();
+        let anims = m.anims.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
                 module.globals.borrow_mut().insert(k, v);
             }
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
+            }
+            for (k, a) in anims.into_iter().filter(|(k, _)| !k.starts_with('_')) {
+                module.anims.borrow_mut().insert(k, a);
             }
             return Ok(());
         }
@@ -547,11 +773,15 @@ impl<'a> Evaluator<'a> {
                 module.globals.borrow_mut().insert(item.clone(), v.clone());
             } else if let Some(s) = styles.get(item) {
                 module.styles.borrow_mut().insert(item.clone(), s.clone());
+            } else if let Some(a) = anims.get(item) {
+                module.anims.borrow_mut().insert(item.clone(), a.clone());
             } else {
                 let names: Vec<String> = exports.iter().map(|(k, _)| k.clone()).collect();
                 return Err(fail("E0212", format!("`{path}` does not export `{item}`"))
                     .note(format!("exports: {}", names.join(", ")))
-                    .fix("import one of the exported names (names starting with `_` are private)"));
+                    .fix(
+                        "import one of the exported names (names starting with `_` are private)",
+                    ));
             }
         }
         Ok(())
@@ -577,24 +807,47 @@ impl<'a> Evaluator<'a> {
     }
 
     pub fn top_scope(&self, module: &Rc<Module>) -> Scope {
-        Scope { frame: self.canvas, top: true, ..self.module_scope(module) }
+        Scope {
+            frame: self.canvas,
+            top: true,
+            ..self.module_scope(module)
+        }
     }
 
-    fn palette(&mut self, module: &Rc<Module>, name: &str, from: Option<&str>, body: &[Stmt]) -> R<Rc<Palette>> {
+    fn palette(
+        &mut self,
+        module: &Rc<Module>,
+        name: &str,
+        from: Option<&str>,
+        body: &[Stmt],
+    ) -> R<Rc<Palette>> {
         let mut entries = Vec::new();
         if let Some(parent) = from {
             match module.global(parent) {
                 Some(Value::Palette(p)) => entries.extend(p.entries.iter().cloned()),
                 _ => {
-                    return Err(fail("E0304", format!("no palette `{parent}` to inherit from"))
-                        .fix("define or import the parent palette first"));
+                    return Err(
+                        fail("E0304", format!("no palette `{parent}` to inherit from"))
+                            .fix("define or import the parent palette first"),
+                    );
                 }
             }
         }
         let sc = self.module_scope(module);
         for st in body {
-            let StmtKind::Node { verb, args, named, .. } = &st.kind else {
-                self.report(fail("E0305", "a palette entry is `name <color>` or `name ramp …`"), &module.path, st.span, "");
+            let StmtKind::Node {
+                verb, args, named, ..
+            } = &st.kind
+            else {
+                self.report(
+                    fail(
+                        "E0305",
+                        "a palette entry is `name <color>` or `name ramp …`",
+                    ),
+                    &module.path,
+                    st.span,
+                    "",
+                );
                 continue;
             };
             match self.palette_entry(args, named, &sc) {
@@ -602,34 +855,56 @@ impl<'a> Evaluator<'a> {
                 Err(f) => self.report(f, &module.path, st.span, &format!("{name}.{verb}")),
             }
         }
-        Ok(Rc::new(Palette { name: name.to_string(), entries }))
+        Ok(Rc::new(Palette {
+            name: name.to_string(),
+            entries,
+        }))
     }
 
     fn palette_entry(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
         if args.first().and_then(ident_of) == Some("ramp") {
-            let vals: Vec<Value> = args[1..].iter().map(|e| self.expr(e, sc)).collect::<R<_>>()?;
+            let vals: Vec<Value> = args[1..]
+                .iter()
+                .map(|e| self.expr(e, sc))
+                .collect::<R<_>>()?;
             let hue = match named.iter().find(|n| n.key == "hue") {
                 Some(n) => self.expr(&n.value, sc)?.num().unwrap_or(DEFAULT_HUE_STEP),
                 None => DEFAULT_HUE_STEP,
             };
             return self.ramp(&vals, hue);
         }
-        let first = args.first().ok_or_else(|| fail("E0305", "palette entry needs a color"))?;
+        let first = args
+            .first()
+            .ok_or_else(|| fail("E0305", "palette entry needs a color"))?;
         let v = self.expr(first, sc)?;
         match v.kind() {
             Kind::Color => Ok(v),
-            k => Err(fail("E0305", format!("palette entries are colors or ramps, got {k}"))
-                .fix("write `name #rrggbb` or `name ramp #rrggbb 5`")),
+            k => Err(fail(
+                "E0305",
+                format!("palette entries are colors or ramps, got {k}"),
+            )
+            .fix("write `name #rrggbb` or `name ramp #rrggbb 5`")),
         }
     }
 
     pub fn ramp(&mut self, vals: &[Value], hue: f64) -> R<Value> {
-        let colors: Vec<Rgba> = vals.iter().filter_map(|v| v.color().map(|c| c.rgba)).collect();
-        let n = vals.iter().rev().find_map(Value::num).unwrap_or(5.0).max(1.0) as usize;
+        let colors: Vec<Rgba> = vals
+            .iter()
+            .filter_map(|v| v.color().map(|c| c.rgba))
+            .collect();
+        let n = vals
+            .iter()
+            .rev()
+            .find_map(Value::num)
+            .unwrap_or(5.0)
+            .max(1.0) as usize;
         let ramp = match colors.as_slice() {
             [c] => Ramp::single(*c, n, hue),
             [a, b] => Ramp::two(*a, *b, n),
-            _ => return Err(fail("E0305", "`ramp` takes one or two colors and a count").fix("write `ramp #f3a2a6 5`")),
+            _ => {
+                return Err(fail("E0305", "`ramp` takes one or two colors and a count")
+                    .fix("write `ramp #f3a2a6 5`"));
+            }
         };
         Ok(Value::Ramp(Rc::new(ramp)))
     }
@@ -637,8 +912,11 @@ impl<'a> Evaluator<'a> {
     // ---------------------------------------------------------------- statements
 
     pub fn eval_block_nodes(&mut self, stmts: &[Stmt], sc: &mut Scope) -> Vec<Node> {
+        let map = motion::occurrences(stmts);
+        let prev = std::mem::replace(&mut self.occurrences, map);
         let mut sib = Siblings::default();
         self.eval_block(stmts, sc, &mut sib);
+        self.occurrences = prev;
         sib.finish()
     }
 
@@ -655,7 +933,13 @@ impl<'a> Evaluator<'a> {
     fn eval_stmt(&mut self, st: &Stmt, sc: &mut Scope, out: &mut Siblings) -> R<()> {
         match &st.kind {
             StmtKind::Let { name, value } => {
-                self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
                 let v = self.expr(value, sc);
                 let v = match v {
                     Ok(v) => v,
@@ -665,20 +949,39 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 if sc.top {
-                    sc.module.globals.borrow_mut().insert(name.clone(), v.clone());
+                    sc.module
+                        .globals
+                        .borrow_mut()
+                        .insert(name.clone(), v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
             }
-            StmtKind::If { cond, then, otherwise } => {
-                self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
+            StmtKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
             StmtKind::Each { var, iter, body } => {
-                self.seed_at(format!("{}\0{}{}\0{}", sc.file(), sc.path, sc.suffix, st.span.line));
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
@@ -689,22 +992,59 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             StmtKind::Check { .. } => {
-                sc.checks.borrow_mut().push(Pending { stmt: st.clone(), scope: sc.clone() });
+                sc.checks.borrow_mut().push(Pending {
+                    stmt: st.clone(),
+                    scope: sc.clone(),
+                });
                 Ok(())
             }
-            StmtKind::Node { verb, args, named, body } => self.eval_node(st, verb, args, named, body, sc, out),
+            StmtKind::Node {
+                verb,
+                args,
+                named,
+                body,
+            } => self.eval_node(st, verb, args, named, body, sc, out),
             StmtKind::SlotFill { name, .. } if name == "mask" => Ok(()),
-            StmtKind::SlotFill { name, .. } => Err(fail("E0331", format!("slot fill `{name}:` is only valid under a component call"))
-                .fix("indent it under the component that exposes the slot")),
-            StmtKind::Patch { path, .. } => Err(fail("E0332", format!("patch `.{}` is only valid under a component call", path.join(".")))
-                .fix("indent it under the component instance it overrides")),
+            StmtKind::SlotFill { name, .. } => Err(fail(
+                "E0331",
+                format!("slot fill `{name}:` is only valid under a component call"),
+            )
+            .fix("indent it under the component that exposes the slot")),
+            StmtKind::Patch { .. } | StmtKind::Play { .. } | StmtKind::Anim { .. } if sc.top => {
+                Ok(())
+            }
+            StmtKind::Play { .. } => Err(fail(
+                "E0337",
+                "`play` is only valid at the top level of an entry file or under an instance",
+            )
+            .fix("move `play` out of this block, or indent it under the instance it drives")),
+            StmtKind::Patch { path, .. } => Err(fail(
+                "E0332",
+                format!(
+                    "patch `.{}` is only valid under a component call",
+                    path.join(".")
+                ),
+            )
+            .fix("indent it under the component instance it overrides")),
             _ if sc.top => Ok(()),
-            _ => Err(fail("E0303", "declarations belong at the top level of a file").fix("move it to the top level")),
+            _ => Err(
+                fail("E0303", "declarations belong at the top level of a file")
+                    .fix("move it to the top level"),
+            ),
         }
     }
 
-    fn eval_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope, skip_pos: usize) -> R<Args> {
-        let mut out = Args { pos: Vec::new(), named: Vec::new() };
+    fn eval_args(
+        &mut self,
+        args: &[Expr],
+        named: &[Named],
+        sc: &Scope,
+        skip_pos: usize,
+    ) -> R<Args> {
+        let mut out = Args {
+            pos: Vec::new(),
+            named: Vec::new(),
+        };
         for e in args.iter().skip(skip_pos) {
             out.pos.push(self.expr(e, sc)?);
         }
@@ -719,20 +1059,53 @@ impl<'a> Evaluator<'a> {
     }
 
     fn style_named(&mut self, name: &str, sc: &Scope) -> R<Vec<(String, Value)>> {
-        let style = sc.module.styles.borrow().get(name).cloned().ok_or_else(|| {
-            let names: Vec<String> = sc.module.styles.borrow().keys().cloned().collect();
-            fail("E0307", format!("no style `{name}`")).note(format!("styles: {}", names.join(", "))).fix("declare `style name key:value` or import it")
-        })?;
-        let module = self.modules.get(&style.module).cloned().unwrap_or(sc.module.clone());
+        let style = sc
+            .module
+            .styles
+            .borrow()
+            .get(name)
+            .cloned()
+            .ok_or_else(|| {
+                let names: Vec<String> = sc.module.styles.borrow().keys().cloned().collect();
+                fail("E0307", format!("no style `{name}`"))
+                    .note(format!("styles: {}", names.join(", ")))
+                    .fix("declare `style name key:value` or import it")
+            })?;
+        let module = self
+            .modules
+            .get(&style.module)
+            .cloned()
+            .unwrap_or(sc.module.clone());
         let msc = self.module_scope(&module);
-        style.named.iter().map(|n| Ok((n.key.clone(), self.expr(&n.value, &msc)?))).collect()
+        style
+            .named
+            .iter()
+            .map(|n| Ok((n.key.clone(), self.expr(&n.value, &msc)?)))
+            .collect()
     }
 
-    fn transform(&mut self, a: &Args, default_at: (f64, f64), frame: Rect, sc: &Scope, with_rot: bool) -> R<(Matrix, (f64, f64))> {
-        let (fx, fy, fw, fh) = (frame.left as f64, frame.top as f64, frame.width() as f64, frame.height() as f64);
+    fn transform(
+        &mut self,
+        a: &Args,
+        default_at: (f64, f64),
+        frame: Rect,
+        sc: &Scope,
+        with_rot: bool,
+    ) -> R<(Matrix, (f64, f64))> {
+        let (fx, fy, fw, fh) = (
+            frame.left as f64,
+            frame.top as f64,
+            frame.width() as f64,
+            frame.height() as f64,
+        );
         let at = match a.get("at") {
             Some(v) => {
-                let (x, y) = v.pair().ok_or_else(|| fail("E0320", format!("`at:` expects a vector like 4,2, got {}", v.kind())))?;
+                let (x, y) = v.pair().ok_or_else(|| {
+                    fail(
+                        "E0320",
+                        format!("`at:` expects a vector like 4,2, got {}", v.kind()),
+                    )
+                })?;
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
                 (x.pos(fx, fw), y.pos(fy, fh))
@@ -747,7 +1120,11 @@ impl<'a> Evaluator<'a> {
             }
             None => (0.0, 0.0),
         };
-        let rot = if with_rot { a.num("rot").unwrap_or(0.0) } else { 0.0 };
+        let rot = if with_rot {
+            a.num("rot").unwrap_or(0.0)
+        } else {
+            0.0
+        };
         let scale = a.get("scale").and_then(Value::vec2).unwrap_or((1.0, 1.0));
         let skew = match a.get("skew") {
             Some(Value::Num(k)) => (*k, 0.0),
@@ -764,21 +1141,35 @@ impl<'a> Evaluator<'a> {
         }
         if let Some(b) = a.word("blend") {
             node.blend = blend_of(&b).ok_or_else(|| {
-                fail("E0320", format!("unknown blend `{b}`")).fix("use normal, multiply, screen, overlay, soft_light, add, erase, …")
+                fail("E0320", format!("unknown blend `{b}`"))
+                    .fix("use normal, multiply, screen, overlay, soft_light, add, erase, …")
             })?;
         }
         Ok(match a.get("z") {
             Some(Value::Ident(w)) if w == "behind" => f64::NEG_INFINITY,
             Some(Value::Ident(w)) if w == "front" => f64::INFINITY,
             Some(Value::Num(n)) => *n,
-            Some(other) => return Err(fail("E0320", format!("`z:` expects behind, front or a number, got {}", other.show()))),
+            Some(other) => {
+                return Err(fail(
+                    "E0320",
+                    format!(
+                        "`z:` expects behind, front or a number, got {}",
+                        other.show()
+                    ),
+                ));
+            }
             None => 0.0,
         })
     }
 
     fn take_patches(&self, path: &str) -> (Vec<(String, Value)>, bool) {
-        let mut hits: Vec<(usize, usize)> =
-            self.patches.iter().enumerate().filter(|(_, p)| p.target == path).map(|(i, p)| (p.depth, i)).collect();
+        let mut hits: Vec<(usize, usize)> = self
+            .patches
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| path_match(path, &p.owner, &p.pattern))
+            .map(|(i, p)| (p.depth, i))
+            .collect();
         hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
         let mut named = Vec::new();
         let mut off = false;
@@ -798,12 +1189,23 @@ impl<'a> Evaluator<'a> {
     }
 
     fn split_body<'s>(&self, body: &'s [Stmt]) -> Body<'s> {
-        let mut parts = Body { fx: Vec::new(), inline: Vec::new(), mask: None, rest: Vec::new() };
+        let mut parts = Body {
+            fx: Vec::new(),
+            inline: Vec::new(),
+            mask: None,
+            rest: Vec::new(),
+        };
         for st in body {
             match &st.kind {
                 StmtKind::Node { verb, .. } if verb == "fx" => parts.fx.push(st),
-                StmtKind::Node { verb, .. } if matches!(verb.as_str(), "fill" | "stroke" | "mask") => parts.inline.push(st),
-                StmtKind::SlotFill { name, body } if name == "mask" => parts.mask = Some(body.as_slice()),
+                StmtKind::Node { verb, .. }
+                    if matches!(verb.as_str(), "fill" | "stroke" | "mask") =>
+                {
+                    parts.inline.push(st)
+                }
+                StmtKind::SlotFill { name, body } if name == "mask" => {
+                    parts.mask = Some(body.as_slice())
+                }
                 _ => parts.rest.push(st.clone()),
             }
         }
@@ -823,7 +1225,8 @@ impl<'a> Evaluator<'a> {
     ) -> R<()> {
         match verb {
             "fx" => {
-                return Err(fail("E0333", "`fx` applies to the node it is nested under").fix("indent the `fx` line under a shape, layer or instance"));
+                return Err(fail("E0333", "`fx` applies to the node it is nested under")
+                    .fix("indent the `fx` line under a shape, layer or instance"));
             }
             "fill" | "stroke" | "mask" => return Ok(()),
             "anchor" => return self.anchor(args, sc),
@@ -843,8 +1246,26 @@ impl<'a> Evaluator<'a> {
         }
         let known = matches!(
             verb,
-            "rect" | "circle" | "ellipse" | "poly" | "star" | "curve" | "path" | "blob" | "copy" | "subtract" | "union"
-                | "intersect" | "xor" | "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid"
+            "rect"
+                | "circle"
+                | "ellipse"
+                | "poly"
+                | "star"
+                | "curve"
+                | "path"
+                | "blob"
+                | "copy"
+                | "subtract"
+                | "union"
+                | "intersect"
+                | "xor"
+                | "layer"
+                | "group"
+                | "inside"
+                | "outside"
+                | "mirror"
+                | "repeat"
+                | "grid"
         );
         if comp.is_none() && !known {
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
@@ -861,10 +1282,18 @@ impl<'a> Evaluator<'a> {
             if !comps.is_empty() {
                 f = f.note(format!("components in scope: {}", comps.join(", ")));
             }
-            return Err(f.fix(format!("check the spelling, or `use` the library that defines `{verb}`")));
+            return Err(f.fix(format!(
+                "check the spelling, or `use` the library that defines `{verb}`"
+            )));
         }
-        let explicit = named.iter().find(|n| n.key == "name").and_then(|n| ident_of(&n.value)).map(str::to_string);
-        let positional_name = matches!(verb, "layer" | "group").then(|| args.first().and_then(ident_of).map(str::to_string)).flatten();
+        let explicit = named
+            .iter()
+            .find(|n| n.key == "name")
+            .and_then(|n| ident_of(&n.value))
+            .map(str::to_string);
+        let positional_name = matches!(verb, "layer" | "group")
+            .then(|| args.first().and_then(ident_of).map(str::to_string))
+            .flatten();
         let comp = comp.flatten();
         let base = explicit
             .clone()
@@ -872,20 +1301,32 @@ impl<'a> Evaluator<'a> {
             .or_else(|| comp.as_ref().map(|c| c.name.clone()))
             .unwrap_or_else(|| verb.to_string());
         let registered = explicit.is_some() || positional_name.is_some() || comp.is_some();
-        let leaf = out.name(&base, &sc.suffix);
-        let path = if sc.path.is_empty() { leaf.clone() } else { format!("{}.{leaf}", sc.path) };
+        let leaf = self.leaf_name(st, &base, &sc.suffix);
+        let path = if sc.path.is_empty() {
+            leaf.clone()
+        } else {
+            format!("{}.{leaf}", sc.path)
+        };
         let (patch_named, off) = self.take_patches(&path);
         if off {
+            self.mark_channels(&path);
             return Ok(());
         }
         self.seed_at(format!("{}\0{path}", sc.file()));
         let skip = usize::from(positional_name.is_some());
-        let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
+        let raw_flags: Vec<String> = args
+            .iter()
+            .filter_map(ident_of)
+            .map(str::to_string)
+            .collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
         let pos_exprs: Vec<Expr> = args
             .iter()
             .skip(skip)
-            .filter(|e| !(matches!(ident_of(e), Some("closed")) || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y")))))
+            .filter(|e| {
+                !(matches!(ident_of(e), Some("closed"))
+                    || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y"))))
+            })
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
@@ -894,7 +1335,12 @@ impl<'a> Evaluator<'a> {
             s.append(&mut a.named);
             a.named = s;
         }
-        let Body { fx, inline, mask: mask_block, rest } = self.split_body(body);
+        let Body {
+            fx,
+            inline,
+            mask: mask_block,
+            rest,
+        } = self.split_body(body);
         for st in &inline {
             if let StmtKind::Node { verb, args, .. } = &st.kind
                 && let Some(e) = args.first()
@@ -904,8 +1350,16 @@ impl<'a> Evaluator<'a> {
             }
         }
         a.named.extend(patch_named);
+        if comp.is_some() && self.hide_motion(&path, &mut a, (0.0, 0.0)) {
+            return Ok(());
+        }
         let origin = format!("{}:{}", sc.file(), st.span.line);
-        let name = registered.then(|| explicit.clone().or(positional_name.clone()).unwrap_or(base.clone()));
+        let name = registered.then(|| {
+            explicit
+                .clone()
+                .or(positional_name.clone())
+                .unwrap_or(base.clone())
+        });
 
         if let Some(comp) = comp {
             return self.instance(&comp, a, body, sc, out, path, origin, name);
@@ -920,9 +1374,19 @@ impl<'a> Evaluator<'a> {
         };
 
         let centered = CENTERED.contains(&verb);
-        let group_like = matches!(verb, "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid");
+        let group_like = matches!(
+            verb,
+            "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid"
+        );
         let frame = sc.frame;
-        let default_at = if centered { (frame.center_x() as f64, frame.center_y() as f64) } else { (0.0, 0.0) };
+        let default_at = if centered {
+            (frame.center_x() as f64, frame.center_y() as f64)
+        } else {
+            (0.0, 0.0)
+        };
+        if self.hide_motion(&path, &mut a, default_at) {
+            return Ok(());
+        }
         let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
         let world = sc.world * m;
         let mut node;
@@ -935,24 +1399,62 @@ impl<'a> Evaluator<'a> {
             if matches!(verb, "inside" | "outside") {
                 let r = match a.pos.first() {
                     Some(Value::Ref(r)) => r.clone(),
-                    _ => return Err(fail("E0320", format!("`{verb}` needs a node reference")).fix(format!("write `{verb} @torso`"))),
+                    _ => {
+                        return Err(fail("E0320", format!("`{verb}` needs a node reference"))
+                            .fix(format!("write `{verb} @torso`")));
+                    }
                 };
                 let to_local = inverse(&world);
                 let sil = r.silhouette().make_transform(&to_local);
                 inner.frame = geom::bounds(&sil);
-                clip = Some(Clip { path: sil, feather: a.num("feather").unwrap_or(0.0) as f32, invert: verb == "outside" });
+                clip = Some(Clip {
+                    path: sil,
+                    feather: a.num("feather").unwrap_or(0.0) as f32,
+                    invert: verb == "outside",
+                });
             }
-            let placeholder = new_node(path.clone(), origin.clone(), m, NodeKind::Group { isolate: verb == "layer", children: vec![] });
+            let placeholder = new_node(
+                path.clone(),
+                origin.clone(),
+                m,
+                NodeKind::Group {
+                    isolate: verb == "layer",
+                    children: vec![],
+                },
+            );
             if let Some(n) = &name {
-                record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(placeholder), anchor: None, at }));
+                record = Some(self.register(
+                    sc,
+                    n,
+                    Record {
+                        name: n.clone(),
+                        path: path.clone(),
+                        parent_world: sc.world,
+                        node: Some(placeholder),
+                        anchor: None,
+                        at,
+                    },
+                ));
             }
             let children = match verb {
-                "mirror" => self.mirror(&rest, &mut inner, if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) }),
+                "mirror" => self.mirror(
+                    &rest,
+                    &mut inner,
+                    if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) },
+                ),
                 "repeat" => self.repeat(&rest, &mut inner, &a)?,
                 "grid" => self.grid(&rest, &mut inner, &a)?,
                 _ => self.eval_block_nodes(&rest, &mut inner),
             };
-            node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: verb == "layer", children });
+            node = new_node(
+                path.clone(),
+                origin,
+                m,
+                NodeKind::Group {
+                    isolate: verb == "layer",
+                    children,
+                },
+            );
             node.clip = clip;
         } else {
             let inner_world = world;
@@ -967,15 +1469,25 @@ impl<'a> Evaluator<'a> {
                     let local_frame = inverse(&m).map_rect(frame).0;
                     let mut inner = sc.child(&path, local_frame, inner_world);
                     let operands = self.eval_block_nodes(&rest, &mut inner);
-                    let sils: Vec<Path> = operands.iter().map(|n| crate::scope::silhouette(n, &Matrix::new_identity())).collect();
+                    let sils: Vec<Path> = operands
+                        .iter()
+                        .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
+                        .collect();
                     (geom::boolean(op, &sils), None, true)
                 }
                 "copy" => {
                     let r = match a.pos.first() {
                         Some(Value::Ref(r)) => r.clone(),
-                        _ => return Err(fail("E0320", "`copy` needs a node reference").fix("write `copy @body`")),
+                        _ => {
+                            return Err(fail("E0320", "`copy` needs a node reference")
+                                .fix("write `copy @body`"));
+                        }
                     };
-                    (r.silhouette().make_transform(&inverse(&sc.world)), None, true)
+                    (
+                        r.silhouette().make_transform(&inverse(&sc.world)),
+                        None,
+                        true,
+                    )
                 }
                 _ => self.primitive(verb, &a, frame, sc, flag("closed"))?,
             };
@@ -983,25 +1495,44 @@ impl<'a> Evaluator<'a> {
             if let Some(spec) = a.get("jitter") {
                 let (amount, wavelength) = match spec {
                     Value::Num(amp) => {
-                        return Err(fail("E0320", "`jitter:` takes amplitude and wavelength").fix(format!("write `jitter:{},60`", num(*amp))));
+                        return Err(fail("E0320", "`jitter:` takes amplitude and wavelength")
+                            .fix(format!("write `jitter:{},60`", num(*amp))));
                     }
                     other => other.vec2().ok_or_else(|| {
-                        fail("E0320", format!("`jitter:` takes amplitude,wavelength, got {}", other.kind())).fix("write `jitter:1.5,60`")
+                        fail(
+                            "E0320",
+                            format!("`jitter:` takes amplitude,wavelength, got {}", other.kind()),
+                        )
+                        .fix("write `jitter:1.5,60`")
                     })?,
                 };
                 if amount != 0.0 {
                     if wavelength <= 0.0 {
-                        return Err(fail("E0320", "`jitter:` wavelength must be positive").fix("write `jitter:1.5,60`"));
+                        return Err(fail("E0320", "`jitter:` wavelength must be positive")
+                            .fix("write `jitter:1.5,60`"));
                     }
                     let extra = a.num("seed").unwrap_or(0.0) as u64;
-                    let mut rng = Rng::new(seed::node_seed(sc.file(), &format!("{path}#jitter"), extra));
+                    let mut rng =
+                        Rng::new(seed::node_seed(sc.file(), &format!("{path}#jitter"), extra));
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
-            let shape = self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
+            let shape =
+                self.paint_shape(&a, geometry, knots.as_deref(), closed, &sc.style, &world)?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(n) = &name {
-                record = Some(self.register(sc, n, Record { name: n.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at }));
+                record = Some(self.register(
+                    sc,
+                    n,
+                    Record {
+                        name: n.clone(),
+                        path: path.clone(),
+                        parent_world: sc.world,
+                        node: Some(node.clone()),
+                        anchor: None,
+                        at,
+                    },
+                ));
             }
             if !matches!(verb, "subtract" | "union" | "intersect" | "xor") && !rest.is_empty() {
                 let gb = match &node.kind {
@@ -1037,7 +1568,13 @@ impl<'a> Evaluator<'a> {
     }
 
     fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
-        let v = sc.env.iter().rev().find(|(k, _)| k == verb).map(|(_, v)| v.clone()).or_else(|| sc.module.global(verb))?;
+        let v = sc
+            .env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == verb)
+            .map(|(_, v)| v.clone())
+            .or_else(|| sc.module.global(verb))?;
         match v {
             Value::Component(c) => Some(Some(c)),
             Value::None => Some(None),
@@ -1045,7 +1582,14 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn mask(&mut self, node: &mut Node, a: &Args, block: Option<&[Stmt]>, sc: &Scope, world: Matrix) -> R<()> {
+    fn mask(
+        &mut self,
+        node: &mut Node,
+        a: &Args,
+        block: Option<&[Stmt]>,
+        sc: &Scope,
+        world: Matrix,
+    ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
         let source = if let Some(body) = block {
             let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
@@ -1055,34 +1599,87 @@ impl<'a> Evaluator<'a> {
                 None | Some(Value::None) => None,
                 Some(Value::Ref(r)) => {
                     let geometry = r.silhouette().make_transform(&inverse(&world));
-                    let shape = Shape { geometry, fill: Some(Paint::Solid(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }.to_ir())), stroke: None, blur: 0.0, children: vec![] };
-                    let n = new_node(format!("{}.mask", node.path), node.origin.clone(), Matrix::new_identity(), NodeKind::Shape(Box::new(shape)));
+                    let shape = Shape {
+                        geometry,
+                        fill: Some(Paint::Solid(
+                            Rgba {
+                                r: 1.0,
+                                g: 1.0,
+                                b: 1.0,
+                                a: 1.0,
+                            }
+                            .to_ir(),
+                        )),
+                        stroke: None,
+                        blur: 0.0,
+                        children: vec![],
+                    };
+                    let n = new_node(
+                        format!("{}.mask", node.path),
+                        node.origin.clone(),
+                        Matrix::new_identity(),
+                        NodeKind::Shape(Box::new(shape)),
+                    );
                     Some(MaskSource::Nodes(vec![n]))
                 }
-                Some(Value::FieldMask(f, t)) => Some(MaskSource::Field { field: (**f).clone(), threshold: Some(*t as f32) }),
-                Some(Value::Field(f)) => Some(MaskSource::Field { field: (**f).clone(), threshold: None }),
+                Some(Value::FieldMask(f, t)) => Some(MaskSource::Field {
+                    field: (**f).clone(),
+                    threshold: Some(*t as f32),
+                }),
+                Some(Value::Field(f)) => Some(MaskSource::Field {
+                    field: (**f).clone(),
+                    threshold: None,
+                }),
                 Some(other) => {
-                    return Err(fail("E0320", format!("`mask:` expects a node reference or a field, got {}", other.kind()))
-                        .fix("write `mask:@body` or `mask:simplex(30) > .5`"));
+                    return Err(fail(
+                        "E0320",
+                        format!(
+                            "`mask:` expects a node reference or a field, got {}",
+                            other.kind()
+                        ),
+                    )
+                    .fix("write `mask:@body` or `mask:simplex(30) > .5`"));
                 }
             }
         };
         if let Some(source) = source {
-            node.mask = Some(Box::new(Mask { source, luminance: false, feather, invert: false }));
+            node.mask = Some(Box::new(Mask {
+                source,
+                luminance: false,
+                feather,
+                invert: false,
+            }));
         }
         Ok(())
     }
 
     fn anchor(&mut self, args: &[Expr], sc: &Scope) -> R<()> {
-        let name = args.first().and_then(ident_of).ok_or_else(|| fail("E0320", "`anchor` needs a name").fix("write `anchor neck 0,-4`"))?;
+        let name = args.first().and_then(ident_of).ok_or_else(|| {
+            fail("E0320", "`anchor` needs a name").fix("write `anchor neck 0,-4`")
+        })?;
         let at = match args.get(1) {
             Some(e) => self.expr(e, sc)?.vec2().unwrap_or((0.0, 0.0)),
             None => (0.0, 0.0),
         };
         let p = sc.world.map_point(Point::new(at.0 as f32, at.1 as f32));
-        let path = if sc.path.is_empty() { name.to_string() } else { format!("{}.{name}", sc.path) };
+        let path = if sc.path.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}.{name}", sc.path)
+        };
         self.anchors.insert(path.clone(), p);
-        self.register(sc, name, Record { name: name.to_string(), path, parent_world: sc.world, node: None, anchor: Some(p), at });
+        self.register(
+            sc,
+            name,
+            Record {
+                name: name.to_string(),
+                path,
+                parent_world: sc.world,
+                node: None,
+                anchor: Some(p),
+                at,
+            },
+        );
         Ok(())
     }
 
@@ -1097,7 +1694,18 @@ impl<'a> Evaluator<'a> {
             m.transform = Matrix::scale(flip) * n.transform;
             let name = to.rsplit('.').next().unwrap_or(&to).to_string();
             if table_get(&sc.register, from.rsplit('.').next().unwrap_or(&from)).is_some() {
-                self.register(sc, &name, Record { name: name.clone(), path: to.clone(), parent_world: sc.world, node: Some(m.clone()), anchor: None, at: (0.0, 0.0) });
+                self.register(
+                    sc,
+                    &name,
+                    Record {
+                        name: name.clone(),
+                        path: to.clone(),
+                        parent_world: sc.world,
+                        node: Some(m.clone()),
+                        anchor: None,
+                        at: (0.0, 0.0),
+                    },
+                );
             }
             out.push(m);
         }
@@ -1105,13 +1713,16 @@ impl<'a> Evaluator<'a> {
     }
 
     fn repeat(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
-        let n = a.pos.first().and_then(Value::num).ok_or_else(|| fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`"))?;
+        let n = a.pos.first().and_then(Value::num).ok_or_else(|| {
+            fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
+        })?;
         let rot = a.num("rot").unwrap_or(0.0);
         let step = a.get("step").and_then(Value::vec2).unwrap_or((0.0, 0.0));
         let mut out = Vec::new();
         for i in 0..(n.max(0.0) as usize).min(10_000) {
             let fi = i as f64;
-            let copy_m = Matrix::translate(((step.0 * fi) as f32, (step.1 * fi) as f32)) * Matrix::rotate_deg((rot * fi) as f32);
+            let copy_m = Matrix::translate(((step.0 * fi) as f32, (step.1 * fi) as f32))
+                * Matrix::rotate_deg((rot * fi) as f32);
             let mut inner = sc.clone();
             inner.env.push(("i".into(), Value::Num(fi)));
             inner.suffix = format!("{}#{i}", sc.suffix);
@@ -1125,7 +1736,9 @@ impl<'a> Evaluator<'a> {
     }
 
     fn grid(&mut self, body: &[Stmt], sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
-        let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`"))?;
+        let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| {
+            fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`")
+        })?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
         let mut copies = Vec::new();
@@ -1143,7 +1756,10 @@ impl<'a> Evaluator<'a> {
         let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
             Some(c) => c,
             None => {
-                let b = copies.first().and_then(|(_, ns)| artscript_ir::union_bounds(ns)).unwrap_or(Rect::new_empty());
+                let b = copies
+                    .first()
+                    .and_then(|(_, ns)| artscript_ir::union_bounds(ns))
+                    .unwrap_or(Rect::new_empty());
                 (b.width() as f64, b.height() as f64)
             }
         };
@@ -1151,7 +1767,8 @@ impl<'a> Evaluator<'a> {
         let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
         let mut out = Vec::new();
         for ((row, col), nodes) in copies {
-            let t = Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32));
+            let t =
+                Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32));
             for mut n in nodes {
                 n.transform = t * n.transform;
                 out.push(n);
@@ -1160,13 +1777,29 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn primitive(&mut self, verb: &str, a: &Args, frame: Rect, sc: &Scope, closed_flag: bool) -> R<(Path, Option<Vec<P>>, bool)> {
-        let (fx, fy, fw, fh) = (frame.left as f64, frame.top as f64, frame.width() as f64, frame.height() as f64);
+    fn primitive(
+        &mut self,
+        verb: &str,
+        a: &Args,
+        frame: Rect,
+        sc: &Scope,
+        closed_flag: bool,
+    ) -> R<(Path, Option<Vec<P>>, bool)> {
+        let (fx, fy, fw, fh) = (
+            frame.left as f64,
+            frame.top as f64,
+            frame.width() as f64,
+            frame.height() as f64,
+        );
         let first = a.pos.first();
-        let need = |what: &str, example: &str| fail("E0320", format!("`{verb}` needs {what}")).fix(format!("write `{example}`"));
+        let need = |what: &str, example: &str| {
+            fail("E0320", format!("`{verb}` needs {what}")).fix(format!("write `{example}`"))
+        };
         Ok(match verb {
             "rect" => {
-                let (w, h) = first.and_then(Value::pair).ok_or_else(|| need("a size", "rect 40x20"))?;
+                let (w, h) = first
+                    .and_then(Value::pair)
+                    .ok_or_else(|| need("a size", "rect 40x20"))?;
                 check_percent(w, frame, sc)?;
                 check_percent(h, frame, sc)?;
                 let radii = match a.get("r") {
@@ -1183,19 +1816,25 @@ impl<'a> Evaluator<'a> {
                 (geom::rect(w.len(fw), h.len(fh), radii), None, true)
             }
             "circle" => {
-                let r = first.and_then(Value::coord).ok_or_else(|| need("a radius", "circle 12"))?;
+                let r = first
+                    .and_then(Value::coord)
+                    .ok_or_else(|| need("a radius", "circle 12"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
                 (geom::ellipse(r, r), None, true)
             }
             "ellipse" => {
-                let (rx, ry) = first.and_then(Value::pair).ok_or_else(|| need("two radii", "ellipse 20,12"))?;
+                let (rx, ry) = first
+                    .and_then(Value::pair)
+                    .ok_or_else(|| need("two radii", "ellipse 20,12"))?;
                 check_percent(rx, frame, sc)?;
                 check_percent(ry, frame, sc)?;
                 (geom::ellipse(rx.len(fw), ry.len(fh)), None, true)
             }
             "poly" | "star" => {
-                let n = first.and_then(Value::num).ok_or_else(|| need("a point count", "star 5 r:20"))?;
+                let n = first
+                    .and_then(Value::num)
+                    .ok_or_else(|| need("a point count", "star 5 r:20"))?;
                 let r = a.num("r").unwrap_or(10.0);
                 let inner = (verb == "star").then(|| a.num("inner").unwrap_or(0.5));
                 let mut p = geom::regular(n as usize, r, inner);
@@ -1215,7 +1854,9 @@ impl<'a> Evaluator<'a> {
                 };
                 let mut pts = Vec::with_capacity(values.len());
                 for v in &values {
-                    let (x, y) = v.pair().ok_or_else(|| need("points like 0,0 20,-15", "curve 0,0 20,-15 40,0"))?;
+                    let (x, y) = v
+                        .pair()
+                        .ok_or_else(|| need("points like 0,0 20,-15", "curve 0,0 20,-15 40,0"))?;
                     check_percent(x, frame, sc)?;
                     check_percent(y, frame, sc)?;
                     pts.push((x.pos(fx, fw), y.pos(fy, fh)));
@@ -1225,7 +1866,10 @@ impl<'a> Evaluator<'a> {
                 }
                 let closed = closed_flag && pts.len() >= 3;
                 let tension = a.num("tension").unwrap_or(0.5);
-                let path = if closed && tension == 0.0 && let Some(round) = a.num("round").filter(|v| *v > 0.0) {
+                let path = if closed
+                    && tension == 0.0
+                    && let Some(round) = a.num("round").filter(|v| *v > 0.0)
+                {
                     // A tension-0 spline is cubics. Skia's corner effect only rounds line joins,
                     // so the straight sides are a polygon before the same effect `poly` uses.
                     geom::round_corners(&geom::polygon(&pts), round)
@@ -1240,57 +1884,113 @@ impl<'a> Evaluator<'a> {
                     _ => None,
                 });
                 let d = d.ok_or_else(|| need("SVG path data", "path \"M0 0 L10 0 Z\""))?;
-                let p = skia_safe::utils::parse_path::from_svg(&d).ok_or_else(|| fail("E0320", "invalid SVG path data").fix("check the path string"))?;
+                let p = skia_safe::utils::parse_path::from_svg(&d).ok_or_else(|| {
+                    fail("E0320", "invalid SVG path data").fix("check the path string")
+                })?;
                 (p, None, true)
             }
             "blob" => {
-                let r = first.and_then(Value::coord).ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?;
+                let r = first
+                    .and_then(Value::coord)
+                    .ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
                 let extra = a.num("seed").unwrap_or(0.0) as u64;
                 let mut rng = Rng::new(seed::node_seed(&self.seed_base, "blob", extra));
                 let points = a.num("points").unwrap_or(7.0) as usize;
-                (geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng), None, true)
+                (
+                    geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng),
+                    None,
+                    true,
+                )
             }
             _ => unreachable!("primitive {verb}"),
         })
     }
 
-    fn paint_shape(&mut self, a: &Args, geometry: Path, knots: Option<&[P]>, closed: bool, style: &[(String, Value)], world: &Matrix) -> R<Shape> {
-        let pick = |k: &str| a.get(k).cloned().or_else(|| style.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone()));
+    fn paint_shape(
+        &mut self,
+        a: &Args,
+        geometry: Path,
+        knots: Option<&[P]>,
+        closed: bool,
+        style: &[(String, Value)],
+        world: &Matrix,
+    ) -> R<Shape> {
+        let pick = |k: &str| {
+            a.get(k).cloned().or_else(|| {
+                style
+                    .iter()
+                    .rev()
+                    .find(|(n, _)| n == k)
+                    .map(|(_, v)| v.clone())
+            })
+        };
         let bounds = geom::bounds(&geometry);
         let fill_v = pick("fill");
         let fill = match &fill_v {
             Some(Value::None) => None,
             Some(v) => Some(to_paint(v, bounds).ok_or_else(|| {
-                fail("E0320", format!("`fill:` expects a color, gradient or field, got {}", v.kind())).fix("write `fill:p.skin` or `fill:grad(down a b)`")
+                fail(
+                    "E0320",
+                    format!(
+                        "`fill:` expects a color, gradient or field, got {}",
+                        v.kind()
+                    ),
+                )
+                .fix("write `fill:p.skin` or `fill:grad(down a b)`")
             })?),
             None if closed => Some(Paint::Solid(Rgba::GRAY.to_ir())),
             None => None,
         };
-        let line_of = |fill: &Option<Paint>| color::line(fill.as_ref().map(key_color).unwrap_or(Rgba::GRAY));
+        let line_of =
+            |fill: &Option<Paint>| color::line(fill.as_ref().map(key_color).unwrap_or(Rgba::GRAY));
         enum W {
             Const(f64),
             List(Vec<f64>),
         }
         let stroke_v = pick("stroke");
         let (paint_v, width) = match stroke_v {
-            None if !closed && fill.is_none() => (Value::Color(Col::plain(color::line(Rgba::GRAY))), Some(W::Const(2.0))),
+            None if !closed && fill.is_none() => (
+                Value::Color(Col::plain(color::line(Rgba::GRAY))),
+                Some(W::Const(2.0)),
+            ),
             None | Some(Value::None) => (Value::None, None),
             Some(Value::Num(w)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::Const(w))),
-            Some(Value::Range(x, y)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(vec![x, y]))),
-            Some(Value::List(ws)) => (Value::Color(Col::plain(line_of(&fill))), Some(W::List(ws.iter().filter_map(Value::num).collect()))),
+            Some(Value::Range(x, y)) => (
+                Value::Color(Col::plain(line_of(&fill))),
+                Some(W::List(vec![x, y])),
+            ),
+            Some(Value::List(ws)) => (
+                Value::Color(Col::plain(line_of(&fill))),
+                Some(W::List(ws.iter().filter_map(Value::num).collect())),
+            ),
             Some(Value::Tuple(xs)) if xs.len() == 2 => {
                 let w = match &xs[1] {
                     Value::Num(w) => W::Const(*w),
                     Value::Range(x, y) => W::List(vec![*x, *y]),
                     Value::List(ws) => W::List(ws.iter().filter_map(Value::num).collect()),
-                    other => return Err(fail("E0320", format!("stroke width must be a number, list or range, got {}", other.kind())).fix("write `stroke:p.ink,2`")),
+                    other => {
+                        return Err(fail(
+                            "E0320",
+                            format!(
+                                "stroke width must be a number, list or range, got {}",
+                                other.kind()
+                            ),
+                        )
+                        .fix("write `stroke:p.ink,2`"));
+                    }
                 };
                 (xs[0].clone(), Some(w))
             }
             Some(v) if v.kind() == Kind::Color => (v, Some(W::Const(1.0))),
-            Some(v) => return Err(fail("E0320", format!("`stroke:` expects color,width, got {}", v.kind())).fix("write `stroke:p.ink,2`")),
+            Some(v) => {
+                return Err(fail(
+                    "E0320",
+                    format!("`stroke:` expects color,width, got {}", v.kind()),
+                )
+                .fix("write `stroke:p.ink,2`"));
+            }
         };
         let taper = match pick("taper") {
             Some(Value::Num(t)) => Some((t, t)),
@@ -1299,7 +1999,13 @@ impl<'a> Evaluator<'a> {
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
         let Some(width) = width else {
-            return Ok(Shape { geometry, fill, stroke: None, blur, children: vec![] });
+            return Ok(Shape {
+                geometry,
+                fill,
+                stroke: None,
+                blur,
+                children: vec![],
+            });
         };
         let tapered = matches!(width, W::List(_)) || taper.is_some();
         if tapered {
@@ -1312,13 +2018,27 @@ impl<'a> Evaluator<'a> {
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
-            let outline = geom::brush(&geometry, knots, &widths, taper.unwrap_or((0.0, 0.0)), 0.75 / px);
+            let outline = geom::brush(
+                &geometry,
+                knots,
+                &widths,
+                taper.unwrap_or((0.0, 0.0)),
+                0.75 / px,
+            );
             let ob = geom::bounds(&outline);
-            let paint = to_paint(&paint_v, ob).ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
-            return Ok(Shape { geometry: outline, fill: Some(paint), stroke: None, blur, children: vec![] });
+            let paint = to_paint(&paint_v, ob)
+                .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
+            return Ok(Shape {
+                geometry: outline,
+                fill: Some(paint),
+                stroke: None,
+                blur,
+                children: vec![],
+            });
         }
         let W::Const(w) = width else { unreachable!() };
-        let paint = to_paint(&paint_v, bounds).ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
+        let paint = to_paint(&paint_v, bounds)
+            .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
         let cap = match pick("cap").as_ref().and_then(Value::word) {
             Some("butt") => Cap::Butt,
             Some("square") => Cap::Square,
@@ -1329,13 +2049,32 @@ impl<'a> Evaluator<'a> {
             Some("bevel") => Join::Bevel,
             _ => Join::Round,
         };
-        let dash = pick("dash").and_then(|v| v.items()).map(|xs| xs.iter().filter_map(Value::num).map(|v| v as f32).collect()).unwrap_or_default();
-        Ok(Shape { geometry, fill, stroke: Some(Stroke { paint, width: w as f32, cap, join, dash }), blur, children: vec![] })
+        let dash = pick("dash")
+            .and_then(|v| v.items())
+            .map(|xs| xs.iter().filter_map(Value::num).map(|v| v as f32).collect())
+            .unwrap_or_default();
+        Ok(Shape {
+            geometry,
+            fill,
+            stroke: Some(Stroke {
+                paint,
+                width: w as f32,
+                cap,
+                join,
+                dash,
+            }),
+            blur,
+            children: vec![],
+        })
     }
 
     fn effect(&mut self, st: &Stmt, sc: &Scope, f: Rgba, path: &str) -> R<Effect> {
-        let StmtKind::Node { args, named, .. } = &st.kind else { unreachable!() };
-        let op_name = args.first().and_then(ident_of).ok_or_else(|| fail("E0320", "`fx` needs an effect name").fix("write `fx shadow 0,6 blur:8`"))?;
+        let StmtKind::Node { args, named, .. } = &st.kind else {
+            unreachable!()
+        };
+        let op_name = args.first().and_then(ident_of).ok_or_else(|| {
+            fail("E0320", "`fx` needs an effect name").fix("write `fx shadow 0,6 blur:8`")
+        })?;
         let input_of = |e: &Expr, ev: &mut Self| -> R<EffectInput> {
             Ok(match e {
                 Expr::Ident(s) if s == "self" => EffectInput::Source,
@@ -1344,11 +2083,20 @@ impl<'a> Evaluator<'a> {
                     Value::Ref(r) => EffectInput::Node(r.record.path.clone()),
                     _ => EffectInput::Previous,
                 },
-                _ => return Err(fail("E0320", "an effect input is `self`, a name, or `@node`")),
+                _ => {
+                    return Err(fail(
+                        "E0320",
+                        "an effect input is `self`, a name, or `@node`",
+                    ));
+                }
             })
         };
         let rest: Vec<Expr> = args[1..].to_vec();
-        let plain_named: Vec<Named> = named.iter().filter(|n| n.key != "of" && n.key != "as").cloned().collect();
+        let plain_named: Vec<Named> = named
+            .iter()
+            .filter(|n| n.key != "of" && n.key != "as")
+            .cloned()
+            .collect();
         let a = if op_name == "merge" {
             self.eval_args(&[], &plain_named, sc, 0)?
         } else {
@@ -1357,37 +2105,74 @@ impl<'a> Evaluator<'a> {
         let alpha = a.num("a").unwrap_or(1.0);
         let color = |default: Rgba| -> R<artscript_ir::Color> {
             let c = match a.get("color") {
-                Some(v) => v.color().ok_or_else(|| fail("E0320", "`color:` expects a color"))?.rgba,
+                Some(v) => {
+                    v.color()
+                        .ok_or_else(|| fail("E0320", "`color:` expects a color"))?
+                        .rgba
+                }
                 None => default,
             };
             Ok(c.with_alpha(c.a * alpha).to_ir())
         };
         let n0 = a.pos.first().and_then(Value::num);
-        let offset = a.pos.first().and_then(Value::vec2).filter(|_| !matches!(a.pos.first(), Some(Value::Num(_))));
+        let offset = a
+            .pos
+            .first()
+            .and_then(Value::vec2)
+            .filter(|_| !matches!(a.pos.first(), Some(Value::Num(_))));
         let op = match op_name {
-            "blur" => EffectOp::Blur { sigma: n0.or(a.num("blur")).unwrap_or(4.0) as f32 },
+            "blur" => EffectOp::Blur {
+                sigma: n0.or(a.num("blur")).unwrap_or(4.0) as f32,
+            },
             "shadow" | "inner" => {
                 let (dx, dy) = offset.unwrap_or((0.0, 4.0));
                 let blur = a.num("blur").unwrap_or(4.0) as f32;
                 let c = color(color::step(f, -2.0, DEFAULT_HUE_STEP).with_alpha(0.35))?;
                 if op_name == "shadow" {
-                    EffectOp::Shadow { dx: dx as f32, dy: dy as f32, blur, color: c }
+                    EffectOp::Shadow {
+                        dx: dx as f32,
+                        dy: dy as f32,
+                        blur,
+                        color: c,
+                    }
                 } else {
-                    EffectOp::Inner { dx: dx as f32, dy: dy as f32, blur, color: c }
+                    EffectOp::Inner {
+                        dx: dx as f32,
+                        dy: dy as f32,
+                        blur,
+                        color: c,
+                    }
                 }
             }
-            "glow" => EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))? },
+            "glow" => EffectOp::Glow {
+                radius: n0.unwrap_or(8.0) as f32,
+                color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))?,
+            },
             "rim" => {
                 let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
-                let rim = color::from_oklch(color::Lch { l: 0.86, c: 0.05, h: 265.0 }, 1.0);
-                EffectOp::Rim { width: n0.unwrap_or(3.0) as f32, dir: Point::new(dir.0 as f32, dir.1 as f32), color: color(rim)? }
+                let rim = color::from_oklch(
+                    color::Lch {
+                        l: 0.86,
+                        c: 0.05,
+                        h: 265.0,
+                    },
+                    1.0,
+                );
+                EffectOp::Rim {
+                    width: n0.unwrap_or(3.0) as f32,
+                    dir: Point::new(dir.0 as f32, dir.1 as f32),
+                    color: color(rim)?,
+                }
             }
             "adjust" => EffectOp::Adjust {
                 hue: a.num("hue").unwrap_or(0.0) as f32,
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
+            "outline" => EffectOp::Outline {
+                width: n0.unwrap_or(2.0) as f32,
+                color: color(color::line(f))?,
+            },
             "grain" => {
                 let extra = a.num("seed").unwrap_or(0.0) as u64;
                 EffectOp::Grain {
@@ -1397,16 +2182,25 @@ impl<'a> Evaluator<'a> {
                 }
             }
             "merge" => {
-                let inputs = rest.iter().map(|e| input_of(e, self)).collect::<R<Vec<_>>>()?;
+                let inputs = rest
+                    .iter()
+                    .map(|e| input_of(e, self))
+                    .collect::<R<Vec<_>>>()?;
                 let alphas = match a.get("a") {
-                    Some(v) => v.items().map(|xs| xs.iter().filter_map(Value::num).map(|x| x as f32).collect()).unwrap_or_else(|| vec![v.num().unwrap_or(1.0) as f32]),
+                    Some(v) => v
+                        .items()
+                        .map(|xs| xs.iter().filter_map(Value::num).map(|x| x as f32).collect())
+                        .unwrap_or_else(|| vec![v.num().unwrap_or(1.0) as f32]),
                     None => vec![1.0; inputs.len()],
                 };
                 EffectOp::Merge { inputs, alphas }
             }
             "bevel" | "displace" | "halftone" | "posterize" => {
-                return Err(fail("E0391", format!("`fx {op_name}` is a Phase 2 effect, not yet implemented in v0.1"))
-                    .fix("use blur, shadow, inner, glow, rim, adjust, outline or grain"));
+                return Err(fail(
+                    "E0391",
+                    format!("`fx {op_name}` is a Phase 2 effect, not yet implemented in v0.1"),
+                )
+                .fix("use blur, shadow, inner, glow, rim, adjust, outline or grain"));
             }
             other => {
                 return Err(fail("E0391", format!("unknown effect `{other}`"))
@@ -1418,7 +2212,11 @@ impl<'a> Evaluator<'a> {
             Some(n) => input_of(&n.value, self)?,
             None => EffectInput::Previous,
         };
-        let name = named.iter().find(|n| n.key == "as").and_then(|n| ident_of(&n.value)).map(str::to_string);
+        let name = named
+            .iter()
+            .find(|n| n.key == "as")
+            .and_then(|n| ident_of(&n.value))
+            .map(str::to_string);
         Ok(Effect { op, input, name })
     }
 
@@ -1436,26 +2234,42 @@ impl<'a> Evaluator<'a> {
         origin: String,
         name: Option<String>,
     ) -> R<()> {
-        let module = self.modules.get(&comp.module).cloned().ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", comp.module)))?;
+        let module = self
+            .modules
+            .get(&comp.module)
+            .cloned()
+            .ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", comp.module)))?;
         let param_names: Vec<&str> = comp.params.iter().map(|p| p.key.as_str()).collect();
         let mut given: Vec<(String, Value)> = Vec::new();
         for (i, v) in a.pos.iter().enumerate() {
             let p = comp.params.get(i).ok_or_else(|| {
-                fail("E0321", format!("`{}` takes {} positional argument(s)", comp.name, comp.params.len().min(1)))
-                    .fix("pass the rest as key:value")
+                fail(
+                    "E0321",
+                    format!(
+                        "`{}` takes {} positional argument(s)",
+                        comp.name,
+                        comp.params.len().min(1)
+                    ),
+                )
+                .fix("pass the rest as key:value")
             })?;
             given.push((p.key.clone(), v.clone()));
         }
-        let mut node_args = Args { pos: Vec::new(), named: Vec::new() };
+        let mut node_args = Args {
+            pos: Vec::new(),
+            named: Vec::new(),
+        };
         for (k, v) in &a.named {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
-                return Err(fail("E0321", format!("`{}` has no parameter `{k}`", comp.name))
-                    .note(format!("parameters: {}", param_names.join(", ")))
-                    .fix("use one of the listed parameters"));
+                return Err(
+                    fail("E0321", format!("`{}` has no parameter `{k}`", comp.name))
+                        .note(format!("parameters: {}", param_names.join(", ")))
+                        .fix("use one of the listed parameters"),
+                );
             }
         }
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
@@ -1473,15 +2287,35 @@ impl<'a> Evaluator<'a> {
                     if let Ok(d) = &default
                         && !d.accepts(v)
                     {
-                        return Err(fail("E0320", format!("`{}` of `{}` expects {}, got {}", p.key, comp.name, d.kind(), v.kind()))
-                            .fix(format!("pass {} like `{}:{}`", d.kind(), p.key, d.show())));
+                        return Err(fail(
+                            "E0320",
+                            format!(
+                                "`{}` of `{}` expects {}, got {}",
+                                p.key,
+                                comp.name,
+                                d.kind(),
+                                v.kind()
+                            ),
+                        )
+                        .fix(format!(
+                            "pass {} like `{}:{}`",
+                            d.kind(),
+                            p.key,
+                            d.show()
+                        )));
                     }
                     v.clone()
                 }
-                None => default.map_err(|f| f.note(format!("in the default of `{}` ({}:{})", p.key, comp.module, comp.span.line)))?,
+                None => default.map_err(|f| {
+                    f.note(format!(
+                        "in the default of `{}` ({}:{})",
+                        p.key, comp.module, comp.span.line
+                    ))
+                })?,
             };
             let value = if p.key == "size" {
-                let (value, rect) = resolve_size(&value, pair_default, caller_local, sc, &comp.name)?;
+                let (value, rect) =
+                    resolve_size(&value, pair_default, caller_local, sc, &comp.name)?;
                 box_frame = rect;
                 value
             } else {
@@ -1493,8 +2327,14 @@ impl<'a> Evaluator<'a> {
             for need in &comp.needs {
                 if table_get(&host.table, need).is_none() {
                     let parts = table_names(&host.table);
-                    let mut f = fail("E0311", format!("{} needs @{need}, but the host `{}` has no part named {need}", comp.name, host.def_name))
-                        .note(format!("parts available: {}", parts.join(", ")));
+                    let mut f = fail(
+                        "E0311",
+                        format!(
+                            "{} needs @{need}, but the host `{}` has no part named {need}",
+                            comp.name, host.def_name
+                        ),
+                    )
+                    .note(format!("parts available: {}", parts.join(", ")));
                     f = match parts.first() {
                         Some(first) => f.fix(format!("rename {}'s `{first}` to `{need}`, or fill a slot on a host that has `{need}`", host.def_name)),
                         None => f.fix(format!("give `{}` a part named `{need}`", host.def_name)),
@@ -1508,49 +2348,17 @@ impl<'a> Evaluator<'a> {
         let mut fills = Vec::new();
         let mut block_fx = Vec::new();
         let mut mask_block = None;
-        let depth = path.matches('.').count();
-        for b in block {
-            match &b.kind {
-                StmtKind::SlotFill { name, body } if name == "mask" => mask_block = Some(body.as_slice()),
-                StmtKind::SlotFill { name, body } => fills.push(Fill { name: name.clone(), body: body.clone(), scope: sc.clone(), span: b.span }),
-                StmtKind::Patch { path: segs, named, off } => {
-                    let mut vals = Vec::new();
-                    for n in named {
-                        vals.push((n.key.clone(), self.expr(&n.value, sc)?));
-                    }
-                    let rel = segs.join(".");
-                    self.patches.push(PatchRec {
-                        target: format!("{path}.{rel}"),
-                        named: vals,
-                        off: *off,
-                        owner: path.clone(),
-                        depth,
-                        rel,
-                        span: b.span,
-                        file: sc.file().to_string(),
-                        matched: Cell::new(false),
-                    });
-                }
-                StmtKind::Node { verb, .. } if verb == "fx" => block_fx.push(b),
-                StmtKind::Node { verb, args, .. } if verb == "mask" => {
-                    if let Some(e) = args.first() {
-                        let v = self.expr(e, sc)?;
-                        node_args.named.push(("mask".into(), v));
-                    }
-                }
-                StmtKind::Check { .. } => sc.checks.borrow_mut().push(Pending { stmt: b.clone(), scope: sc.clone() }),
-                _ => {
-                    let file = sc.file().to_string();
-                    self.report(
-                        fail("E0330", format!("only slot fills, patches, fx and mask: may go under an instance of `{}`", comp.name))
-                            .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
-                        &file,
-                        b.span,
-                        &path,
-                    );
-                }
-            }
-        }
+        self.absorb(
+            block,
+            sc,
+            &path,
+            &comp.name,
+            false,
+            &mut fills,
+            &mut block_fx,
+            &mut mask_block,
+            &mut node_args,
+        )?;
         let inst = Rc::new(Instance {
             def_name: comp.name.clone(),
             fills,
@@ -1576,12 +2384,28 @@ impl<'a> Evaluator<'a> {
             checks: checks.clone(),
             top: false,
         };
-        let Body { fx: body_fx, rest: body_rest, .. } = self.split_body(&comp.body);
+        let Body {
+            fx: body_fx,
+            rest: body_rest,
+            ..
+        } = self.split_body(&comp.body);
         let children = self.eval_block_nodes(&body_rest, &mut body_scope);
-        let mut node = new_node(path.clone(), origin, m, NodeKind::Group { isolate: false, children });
+        let mut node = new_node(
+            path.clone(),
+            origin,
+            m,
+            NodeKind::Group {
+                isolate: false,
+                children,
+            },
+        );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(&path, body_scope.frame, world);
-        for (fst, scope) in body_fx.iter().map(|s| (*s, &fx_scope)).chain(block_fx.iter().map(|s| (*s, &*sc))) {
+        for (fst, scope) in body_fx
+            .iter()
+            .map(|s| (*s, &fx_scope))
+            .chain(block_fx.iter().map(|s| (*s, &*sc)))
+        {
             match self.effect(fst, scope, f, &path) {
                 Ok(e) => node.effects.push(e),
                 Err(e) => {
@@ -1593,14 +2417,29 @@ impl<'a> Evaluator<'a> {
         self.mask(&mut node, &node_args, mask_block, sc, world)?;
         let z = self.finish_node(&mut node, &node_args)?;
         let reg_name = name.unwrap_or(comp.name.clone());
-        let rec = self.register(sc, &reg_name, Record { name: reg_name.clone(), path: path.clone(), parent_world: sc.world, node: Some(node.clone()), anchor: None, at });
+        let rec = self.register(
+            sc,
+            &reg_name,
+            Record {
+                name: reg_name.clone(),
+                path: path.clone(),
+                parent_world: sc.world,
+                node: Some(node.clone()),
+                anchor: None,
+                at,
+            },
+        );
         *inst.record.borrow_mut() = Some(rec);
         self.run_checks(&checks);
         for fill in &inst.fills {
             if !inst.used_fills.borrow().contains(&fill.name) {
                 let file = fill.scope.file().to_string();
                 self.report(
-                    fail("E0335", format!("`{}` has no slot `{}`", comp.name, fill.name)).fix("fill one of the slots the def declares with `slot <name>`"),
+                    fail(
+                        "E0335",
+                        format!("`{}` has no slot `{}`", comp.name, fill.name),
+                    )
+                    .fix("fill one of the slots the def declares with `slot <name>`"),
                     &file,
                     fill.span,
                     &path,
@@ -1617,30 +2456,50 @@ impl<'a> Evaluator<'a> {
             let parts = part_names(&node);
             for (rel, span, file) in unmatched {
                 self.report(
-                    fail("E0340", format!("patch `.{rel}` matches no part of `{}`", comp.name))
-                        .note(format!("parts: {}", parts.join(", ")))
-                        .fix("use one of the listed part paths"),
+                    fail(
+                        "E0340",
+                        format!("patch `.{rel}` matches no part of `{}`", comp.name),
+                    )
+                    .note(format!("parts: {}", parts.join(", ")))
+                    .fix("use one of the listed part paths"),
                     &file,
                     span,
                     &path,
                 );
             }
         }
+        self.finish_channels(&path);
         out.items.push((node, z));
         Ok(())
     }
 
-    fn slot(&mut self, st: &Stmt, args: &[Expr], named: &[Named], body: &[Stmt], sc: &mut Scope, out: &mut Siblings) -> R<()> {
-        let inst = sc.inst.clone().ok_or_else(|| fail("E0334", "`slot` is only valid inside a `def`").fix("move it into a def body"))?;
-        let name = args.first().and_then(ident_of).ok_or_else(|| fail("E0320", "`slot` needs a name").fix("write `slot head at:0,-30`"))?;
-        let leaf = out.name(name, &sc.suffix);
+    fn slot(
+        &mut self,
+        st: &Stmt,
+        args: &[Expr],
+        named: &[Named],
+        body: &[Stmt],
+        sc: &mut Scope,
+        out: &mut Siblings,
+    ) -> R<()> {
+        let inst = sc.inst.clone().ok_or_else(|| {
+            fail("E0334", "`slot` is only valid inside a `def`").fix("move it into a def body")
+        })?;
+        let name = args.first().and_then(ident_of).ok_or_else(|| {
+            fail("E0320", "`slot` needs a name").fix("write `slot head at:0,-30`")
+        })?;
+        let leaf = self.leaf_name(st, name, &sc.suffix);
         let path = format!("{}.{leaf}", sc.path);
         let (patch_named, off) = self.take_patches(&path);
         if off {
+            self.mark_channels(&path);
             return Ok(());
         }
         let mut a = self.eval_args(&[], named, sc, 0)?;
         a.named.extend(patch_named);
+        if self.hide_motion(&path, &mut a, (0.0, 0.0)) {
+            return Ok(());
+        }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
         let world = sc.world * m;
         let mapped = inverse(&m).map_rect(sc.frame).0;
@@ -1653,7 +2512,10 @@ impl<'a> Evaluator<'a> {
                 let mut lookup = vec![inst.table.clone()];
                 lookup.extend(fill.scope.lookup.iter().cloned());
                 fsc.lookup = Rc::new(lookup);
-                fsc.host = Some(Rc::new(Host { def_name: inst.def_name.clone(), table: inst.table.clone() }));
+                fsc.host = Some(Rc::new(Host {
+                    def_name: inst.def_name.clone(),
+                    table: inst.table.clone(),
+                }));
                 self.eval_block_nodes(&fill.body, &mut fsc)
             }
             None => {
@@ -1661,10 +2523,523 @@ impl<'a> Evaluator<'a> {
                 self.eval_block_nodes(body, &mut inner)
             }
         };
-        let mut node = new_node(path, format!("{}:{}", sc.file(), st.span.line), m, NodeKind::Group { isolate: false, children });
+        let mut node = new_node(
+            path,
+            format!("{}:{}", sc.file(), st.span.line),
+            m,
+            NodeKind::Group {
+                isolate: false,
+                children,
+            },
+        );
         let z = self.finish_node(&mut node, &a)?;
         out.items.push((node, z));
         Ok(())
+    }
+
+    // ---------------------------------------------------------------- time, anims, plays
+
+    pub fn collect_entry(&mut self, stmts: &[Stmt], sc: &Scope) {
+        let mut scratch = sc.clone();
+        self.collect_surface(stmts, &mut scratch, "");
+    }
+
+    fn collect_surface(&mut self, stmts: &[Stmt], sc: &mut Scope, owner: &str) {
+        for st in stmts {
+            if let Err(f) = self.collect_one(st, sc, owner) {
+                let file = sc.file().to_string();
+                self.report(f, &file, st.span, owner);
+            }
+        }
+    }
+
+    fn collect_one(&mut self, st: &Stmt, sc: &mut Scope, owner: &str) -> R<()> {
+        match &st.kind {
+            StmtKind::Let { name, value } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let v = self.expr(value, sc).unwrap_or(Value::None);
+                if sc.top {
+                    sc.module
+                        .globals
+                        .borrow_mut()
+                        .insert(name.clone(), v.clone());
+                }
+                sc.env.push((name.clone(), v));
+                Ok(())
+            }
+            StmtKind::If {
+                cond,
+                then,
+                otherwise,
+            } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let c = self.expr(cond, sc)?;
+                let branch = if c.truthy() { then } else { otherwise };
+                self.collect_surface(branch, sc, owner);
+                Ok(())
+            }
+            StmtKind::Each { var, iter, body } => {
+                self.seed_at(format!(
+                    "{}\0{}{}\0{}",
+                    sc.file(),
+                    sc.path,
+                    sc.suffix,
+                    st.span.line
+                ));
+                let items = each_items(self.expr(iter, sc)?)?;
+                for (i, v) in items.into_iter().enumerate() {
+                    let mut inner = sc.clone();
+                    inner.env.push((var.clone(), v));
+                    inner.suffix = format!("{}#{i}", sc.suffix);
+                    self.collect_surface(body, &mut inner, owner);
+                }
+                Ok(())
+            }
+            StmtKind::Patch { path, named, off } => {
+                self.push_patch(path, named, *off, sc, owner, st.span)?;
+                Ok(())
+            }
+            StmtKind::Play { name, start } => {
+                self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn absorb<'s>(
+        &mut self,
+        stmts: &'s [Stmt],
+        sc: &mut Scope,
+        owner: &str,
+        def_name: &str,
+        nested: bool,
+        fills: &mut Vec<Fill>,
+        block_fx: &mut Vec<&'s Stmt>,
+        mask_block: &mut Option<&'s [Stmt]>,
+        node_args: &mut Args,
+    ) -> R<()> {
+        for b in stmts {
+            match &b.kind {
+                StmtKind::If {
+                    cond,
+                    then,
+                    otherwise,
+                } => {
+                    self.seed_at(format!(
+                        "{}\0{}{}\0{}",
+                        sc.file(),
+                        sc.path,
+                        sc.suffix,
+                        b.span.line
+                    ));
+                    let c = self.expr(cond, sc)?;
+                    let branch = if c.truthy() { then } else { otherwise };
+                    self.absorb(
+                        branch, sc, owner, def_name, true, fills, block_fx, mask_block, node_args,
+                    )?;
+                }
+                StmtKind::Each { var, iter, body } => {
+                    self.seed_at(format!(
+                        "{}\0{}{}\0{}",
+                        sc.file(),
+                        sc.path,
+                        sc.suffix,
+                        b.span.line
+                    ));
+                    let items = each_items(self.expr(iter, sc)?)?;
+                    for (i, v) in items.into_iter().enumerate() {
+                        let mut inner = sc.clone();
+                        inner.env.push((var.clone(), v));
+                        inner.suffix = format!("{}#{i}", sc.suffix);
+                        self.absorb(
+                            body, &mut inner, owner, def_name, true, fills, block_fx, mask_block,
+                            node_args,
+                        )?;
+                    }
+                }
+                StmtKind::Play { name, start } => {
+                    self.schedule_play(name.as_deref(), start.as_ref(), sc, b.span, owner)
+                }
+                StmtKind::Patch { path, named, off } => {
+                    self.push_patch(path, named, *off, sc, owner, b.span)?
+                }
+                StmtKind::Let { name, value } => {
+                    self.seed_at(format!(
+                        "{}\0{}{}\0{}",
+                        sc.file(),
+                        sc.path,
+                        sc.suffix,
+                        b.span.line
+                    ));
+                    let v = self.expr(value, sc)?;
+                    sc.env.push((name.clone(), v));
+                }
+                StmtKind::SlotFill { .. } | StmtKind::Node { .. } | StmtKind::Check { .. }
+                    if nested =>
+                {
+                    self.report(
+                        fail("E0330", format!("only patches and `play` may sit inside `if` or `each` under `{def_name}`"))
+                            .fix("keep slot fills, fx and checks as direct lines under the instance"),
+                        sc.file(),
+                        b.span,
+                        owner,
+                    );
+                }
+                StmtKind::SlotFill { name, body } if name == "mask" => {
+                    *mask_block = Some(body.as_slice())
+                }
+                StmtKind::SlotFill { name, body } => fills.push(Fill {
+                    name: name.clone(),
+                    body: body.clone(),
+                    scope: sc.clone(),
+                    span: b.span,
+                }),
+                StmtKind::Node { verb, .. } if verb == "fx" => block_fx.push(b),
+                StmtKind::Node { verb, args, .. } if verb == "mask" => {
+                    if let Some(e) = args.first() {
+                        node_args.named.push(("mask".into(), self.expr(e, sc)?));
+                    }
+                }
+                StmtKind::Check { .. } => sc.checks.borrow_mut().push(Pending {
+                    stmt: b.clone(),
+                    scope: sc.clone(),
+                }),
+                _ => {
+                    self.report(
+                        fail("E0330", format!("only slot fills, patches, fx and mask: may go under an instance of `{def_name}`"))
+                            .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
+                        sc.file(),
+                        b.span,
+                        owner,
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn push_patch(
+        &mut self,
+        segs: &[String],
+        named: &[Named],
+        off: bool,
+        sc: &Scope,
+        owner: &str,
+        span: Span,
+    ) -> R<()> {
+        let mut vals = Vec::new();
+        for n in named {
+            vals.push((n.key.clone(), self.expr(&n.value, sc)?));
+        }
+        let depth = owner.matches('.').count();
+        self.patches.push(PatchRec {
+            pattern: segs.to_vec(),
+            named: vals,
+            off,
+            owner: owner.to_string(),
+            depth,
+            rel: segs.join("."),
+            span,
+            file: sc.file().to_string(),
+            matched: Cell::new(false),
+        });
+        Ok(())
+    }
+
+    fn schedule_play(
+        &mut self,
+        name: Option<&str>,
+        start: Option<&Expr>,
+        sc: &Scope,
+        span: Span,
+        owner: &str,
+    ) {
+        let Some(name) = name else { return };
+        let anim = match sc.module.anims.borrow().get(name).cloned() {
+            Some(a) => a,
+            None => {
+                self.report(
+                    fail("E0308", format!("no anim `{name}`"))
+                        .fix(format!("declare `anim {name}` or import it")),
+                    sc.file(),
+                    span,
+                    owner,
+                );
+                return;
+            }
+        };
+        let start_v = match start {
+            Some(e) => match self.time_secs(e, sc) {
+                Ok(n) => n,
+                Err(f) => {
+                    self.report(f, sc.file(), span, owner);
+                    return;
+                }
+            },
+            None => 0.0,
+        };
+        let module = self.modules.get(&anim.module).cloned();
+        let dur_scope = match &module {
+            Some(m) => self.module_scope(m),
+            None => sc.clone(),
+        };
+        let dur = match self.time_secs(&anim.dur, &dur_scope) {
+            Ok(n) if n > 0.0 => n,
+            Ok(_) => {
+                self.report(
+                    fail(
+                        "E0320",
+                        format!("`{}` duration must be positive", anim.name),
+                    )
+                    .note(format!("declared at {}:{}", anim.module, anim.span.line))
+                    .fix("write `dur:1s`"),
+                    sc.file(),
+                    span,
+                    owner,
+                );
+                return;
+            }
+            Err(f) => {
+                self.report(f, sc.file(), span, owner);
+                return;
+            }
+        };
+        self.plays.push(PlayMark {
+            end: start_v + dur,
+            loops: anim.loop_,
+        });
+        let raw = self.time - start_v;
+        let live = if anim.loop_ {
+            true
+        } else {
+            raw >= 0.0 && raw < dur
+        };
+        let local = if anim.loop_ {
+            raw.rem_euclid(dur)
+        } else {
+            raw.clamp(0.0, dur)
+        };
+        let saved = self.anim_clock.replace(AnimClock { local, dur });
+        let file = sc.file().to_string();
+        for st in &anim.body {
+            let StmtKind::Patch { path, named, off } = &st.kind else {
+                continue;
+            };
+            if *off {
+                self.channels.push(Channel {
+                    pattern: path.clone(),
+                    owner: owner.to_string(),
+                    key: String::new(),
+                    absolute: true,
+                    value: Value::None,
+                    off: true,
+                    live,
+                    anim: name.to_string(),
+                    span,
+                    file: file.clone(),
+                    matched: Cell::new(false),
+                });
+                continue;
+            }
+            for n in named {
+                let (absolute, expr) = match absolute_channel(&n.key, &n.value) {
+                    Some(inner) => (true, inner),
+                    None => (!offset_channel(&n.key), &n.value),
+                };
+                match self.expr(expr, &dur_scope) {
+                    Ok(value) => self.channels.push(Channel {
+                        pattern: path.clone(),
+                        owner: owner.to_string(),
+                        key: n.key.clone(),
+                        absolute,
+                        value,
+                        off: false,
+                        live,
+                        anim: name.to_string(),
+                        span,
+                        file: file.clone(),
+                        matched: Cell::new(false),
+                    }),
+                    Err(f) => self.report(f, &file, span, owner),
+                }
+            }
+        }
+        self.anim_clock = saved;
+    }
+
+    fn time_secs(&mut self, e: &Expr, sc: &Scope) -> R<f64> {
+        let v = self.expr(e, sc)?;
+        v.num().filter(|n| n.is_finite()).ok_or_else(|| {
+            fail("E0320", format!("expected a time, got {}", v.kind()))
+                .fix("write `1s`, `200ms`, or a number of seconds")
+        })
+    }
+
+    pub fn key_call(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
+        for n in named {
+            if !matches!(n.key.as_str(), "at" | "ease" | "dur") {
+                return Err(fail("E0320", format!("`key` does not take `{}:`", n.key))
+                    .fix("use at:, ease:, dur: or a bare `loop`"));
+            }
+        }
+        let mut values = Vec::new();
+        let mut loop_ = false;
+        for e in args {
+            if ident_of(e) == Some("loop") {
+                loop_ = true;
+            } else {
+                values.push(self.expr(e, sc)?);
+            }
+        }
+        let dur = match named.iter().find(|n| n.key == "dur") {
+            Some(n) => self.time_secs(&n.value, sc)?,
+            None => self.anim_clock.as_ref().map(|c| c.dur).ok_or_else(|| {
+                fail("E0320", "`key` needs `dur:` outside an anim")
+                    .fix("write `dur:1s`, or place the key in an anim")
+            })?,
+        };
+        if !(dur.is_finite() && dur > 0.0) {
+            return Err(fail("E0320", "`key` duration must be positive").fix("write `dur:1s`"));
+        }
+        let local = self
+            .anim_clock
+            .as_ref()
+            .map(|c| c.local)
+            .unwrap_or(self.time);
+        let u = if loop_ {
+            local.rem_euclid(dur) / dur
+        } else if local <= 0.0 {
+            0.0
+        } else if local >= dur {
+            1.0
+        } else {
+            local / dur
+        };
+        let at = match named.iter().find(|n| n.key == "at") {
+            None => key::even_at(values.len()),
+            Some(n) => {
+                let v = self.expr(&n.value, sc)?;
+                let items = v.items().ok_or_else(|| {
+                    fail("E0320", "`at:` needs a list of fractions").fix("write `at:[0 .5 1]`")
+                })?;
+                items
+                    .iter()
+                    .map(|x| {
+                        x.num()
+                            .ok_or_else(|| fail("E0320", "`at:` values are numbers"))
+                    })
+                    .collect::<R<Vec<_>>>()?
+            }
+        };
+        let segments = values.len().saturating_sub(1);
+        let eases = match named.iter().find(|n| n.key == "ease") {
+            None => vec![Ease::Smooth; segments],
+            Some(n) => {
+                let v = self.expr(&n.value, sc)?;
+                let one = |name: &str| {
+                    key::ease_named(name).ok_or_else(|| {
+                        fail("E0320", format!("unknown ease `{name}`"))
+                            .fix("use linear, in, out, in_out or hold")
+                    })
+                };
+                match v {
+                    Value::Ident(s) => vec![one(&s)?; segments],
+                    Value::List(xs) => {
+                        if xs.len() != segments {
+                            return Err(fail(
+                                "E0320",
+                                format!(
+                                    "`ease:` has {} value(s) for {segments} segment(s)",
+                                    xs.len()
+                                ),
+                            ));
+                        }
+                        xs.iter()
+                            .map(|x| one(x.word().unwrap_or("")))
+                            .collect::<R<Vec<_>>>()?
+                    }
+                    other => {
+                        return Err(fail(
+                            "E0320",
+                            format!("`ease:` expects a name or a list, got {}", other.kind()),
+                        ));
+                    }
+                }
+            }
+        };
+        key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
+    }
+
+    fn mark_channels(&self, path: &str) {
+        for ch in &self.channels {
+            if path_match(path, &ch.owner, &ch.pattern) {
+                ch.matched.set(true);
+            }
+        }
+    }
+
+    /// Applies live channels onto `a`. Returns whether a live `off` hides the node.
+    fn hide_motion(&mut self, path: &str, a: &mut Args, default_at: (f64, f64)) -> bool {
+        let mut hide = false;
+        for i in 0..self.channels.len() {
+            if !path_match(path, &self.channels[i].owner, &self.channels[i].pattern) {
+                continue;
+            }
+            self.channels[i].matched.set(true);
+            if !self.channels[i].live {
+                continue;
+            }
+            if self.channels[i].off {
+                hide = true;
+                continue;
+            }
+            let key = self.channels[i].key.clone();
+            let absolute = self.channels[i].absolute;
+            let value = self.channels[i].value.clone();
+            let span = self.channels[i].span;
+            let file = self.channels[i].file.clone();
+            let anim = self.channels[i].anim.clone();
+            if let Err(f) = blend_arg(a, &key, absolute, &value, default_at) {
+                self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
+            }
+        }
+        hide
+    }
+
+    pub fn finish_channels(&mut self, owner: &str) {
+        let pending: Vec<(String, String, Span, String)> = self
+            .channels
+            .iter()
+            .filter(|c| c.owner == owner && !c.matched.get())
+            .map(|c| (c.anim.clone(), c.pattern.join("."), c.span, c.file.clone()))
+            .collect();
+        let mut seen = HashSet::new();
+        for (anim, rel, span, file) in pending {
+            if !seen.insert((anim.clone(), rel.clone())) {
+                continue;
+            }
+            self.report(
+                fail("E0340", format!("`{anim}` patch `.{rel}` matches nothing"))
+                    .fix("use a path that reaches a node, or remove the line"),
+                &file,
+                span,
+                owner,
+            );
+        }
     }
 
     // ---------------------------------------------------------------- expressions
@@ -1674,7 +3049,30 @@ impl<'a> Evaluator<'a> {
             return Some(v.clone());
         }
         if name == "target" {
-            return Some(self.job.label.clone().map(Value::Ident).unwrap_or(Value::None));
+            return Some(
+                self.job
+                    .label
+                    .clone()
+                    .map(Value::Ident)
+                    .unwrap_or(Value::None),
+            );
+        }
+        if name == "t" {
+            let t = self
+                .anim_clock
+                .as_ref()
+                .map(|c| c.local)
+                .unwrap_or(self.time);
+            return Some(Value::Num(t));
+        }
+        if name == "clip" {
+            return Some(
+                self.job
+                    .clip
+                    .clone()
+                    .map(Value::Ident)
+                    .unwrap_or(Value::None),
+            );
         }
         if let Some((_, v)) = self.job.matrix.iter().find(|(k, _)| k == name) {
             return Some(match v {
@@ -1691,7 +3089,14 @@ impl<'a> Evaluator<'a> {
             "none" => Some(Value::None),
             "canvas" => Some(Value::Ref(Rc::new(RefVal {
                 label: "canvas".into(),
-                record: Record { name: "canvas".into(), path: "canvas".into(), parent_world: Matrix::new_identity(), node: None, anchor: None, at: (0.0, 0.0) },
+                record: Record {
+                    name: "canvas".into(),
+                    path: "canvas".into(),
+                    parent_world: Matrix::new_identity(),
+                    node: None,
+                    anchor: None,
+                    at: (0.0, 0.0),
+                },
                 canvas: Some(self.canvas),
             }))),
             _ => None,
@@ -1703,6 +3108,7 @@ impl<'a> Evaluator<'a> {
             Expr::Num(n) => Value::Num(*n),
             Expr::Percent(p) => Value::Percent(*p),
             Expr::Angle(d) => Value::Num(*d),
+            Expr::Time(s) => Value::Num(*s),
             Expr::Size(w, h) => {
                 let (w, h) = (self.expr(w, sc)?, self.expr(h, sc)?);
                 match (w.coord(), h.coord()) {
@@ -1710,9 +3116,13 @@ impl<'a> Evaluator<'a> {
                     _ => return Err(fail("E0320", "a size is two numbers or percents")),
                 }
             }
-            Expr::Hex(h) => Value::Color(Col::plain(Rgba::hex(h).ok_or_else(|| fail("E0320", format!("bad color #{h}")))?)),
+            Expr::Hex(h) => Value::Color(Col::plain(
+                Rgba::hex(h).ok_or_else(|| fail("E0320", format!("bad color #{h}")))?,
+            )),
             Expr::Str(s) => Value::Str(s.clone()),
-            Expr::Ident(name) => self.lookup_ident(name, sc).unwrap_or_else(|| Value::Ident(name.clone())),
+            Expr::Ident(name) => self
+                .lookup_ident(name, sc)
+                .unwrap_or_else(|| Value::Ident(name.clone())),
             Expr::Ref(segs) => self.reference(segs, sc)?,
             Expr::Member(base, seg) => {
                 let b = self.expr(base, sc)?;
@@ -1740,14 +3150,22 @@ impl<'a> Evaluator<'a> {
             Expr::Unary(UnOp::Neg, x) => {
                 let v = self.expr(x, sc)?;
                 match v {
-                    Value::Field(f) => Value::Field(Rc::new(artscript_ir::Field::Unary(artscript_ir::FieldFn::Neg, Box::new((*f).clone())))),
-                    other => arith(Arith::Mul, &other, &Value::Num(-1.0)).map_err(|m| fail("E0320", m))?,
+                    Value::Field(f) => Value::Field(Rc::new(artscript_ir::Field::Unary(
+                        artscript_ir::FieldFn::Neg,
+                        Box::new((*f).clone()),
+                    ))),
+                    other => arith(Arith::Mul, &other, &Value::Num(-1.0))
+                        .map_err(|m| fail("E0320", m))?,
                 }
             }
             Expr::Unary(UnOp::Not, x) => Value::Bool(!self.expr(x, sc)?.truthy()),
             Expr::Binary(op, l, r) => self.binary(*op, l, r, sc)?,
             Expr::Call { func, args, named } => self.call(func, args, named, sc)?,
-            Expr::If { cond, then, otherwise } => {
+            Expr::If {
+                cond,
+                then,
+                otherwise,
+            } => {
                 if self.expr(cond, sc)?.truthy() {
                     self.expr(then, sc)?
                 } else {
@@ -1759,10 +3177,14 @@ impl<'a> Evaluator<'a> {
 
     fn binary(&mut self, op: BinOp, l: &Expr, r: &Expr, sc: &Scope) -> R<Value> {
         if op == BinOp::And {
-            return Ok(Value::Bool(self.expr(l, sc)?.truthy() && self.expr(r, sc)?.truthy()));
+            return Ok(Value::Bool(
+                self.expr(l, sc)?.truthy() && self.expr(r, sc)?.truthy(),
+            ));
         }
         if op == BinOp::Or {
-            return Ok(Value::Bool(self.expr(l, sc)?.truthy() || self.expr(r, sc)?.truthy()));
+            return Ok(Value::Bool(
+                self.expr(l, sc)?.truthy() || self.expr(r, sc)?.truthy(),
+            ));
         }
         let (a, b) = (self.expr(l, sc)?, self.expr(r, sc)?);
         let ar = |o| arith(o, &a, &b).map_err(|m| fail("E0320", m));
@@ -1771,9 +3193,17 @@ impl<'a> Evaluator<'a> {
             BinOp::Sub => ar(Arith::Sub)?,
             BinOp::Mul | BinOp::Div => match (&a, b.num()) {
                 (Value::Range(x, y), Some(k)) => {
-                    if op == BinOp::Mul { Value::Range(x * k, y * k) } else { Value::Range(x / k, y / k) }
+                    if op == BinOp::Mul {
+                        Value::Range(x * k, y * k)
+                    } else {
+                        Value::Range(x / k, y / k)
+                    }
                 }
-                _ => ar(if op == BinOp::Mul { Arith::Mul } else { Arith::Div })?,
+                _ => ar(if op == BinOp::Mul {
+                    Arith::Mul
+                } else {
+                    Arith::Div
+                })?,
             },
             BinOp::Eq => Value::Bool(equal(&a, &b)),
             BinOp::Ne => Value::Bool(!equal(&a, &b)),
@@ -1786,7 +3216,12 @@ impl<'a> Evaluator<'a> {
                 }
                 let (x, y) = match (a.num(), b.num()) {
                     (Some(x), Some(y)) => (x, y),
-                    _ => return Err(fail("E0320", format!("cannot compare {} and {}", a.kind(), b.kind()))),
+                    _ => {
+                        return Err(fail(
+                            "E0320",
+                            format!("cannot compare {} and {}", a.kind(), b.kind()),
+                        ));
+                    }
                 };
                 Value::Bool(match op {
                     BinOp::Lt => x < y,
@@ -1799,11 +3234,27 @@ impl<'a> Evaluator<'a> {
                 let tol = self.check.as_ref().map(|c| c.tol).unwrap_or(0.5);
                 let ok = match (a.num(), b.num(), a.vec2(), b.vec2()) {
                     (Some(x), Some(y), _, _) => (x - y).abs() <= tol,
-                    (_, _, Some(p), Some(q)) => (p.0 - q.0).abs() <= tol && (p.1 - q.1).abs() <= tol,
-                    _ => return Err(fail("E0320", format!("`~=` compares numbers or vectors, got {} and {}", a.kind(), b.kind()))),
+                    (_, _, Some(p), Some(q)) => {
+                        (p.0 - q.0).abs() <= tol && (p.1 - q.1).abs() <= tol
+                    }
+                    _ => {
+                        return Err(fail(
+                            "E0320",
+                            format!(
+                                "`~=` compares numbers or vectors, got {} and {}",
+                                a.kind(),
+                                b.kind()
+                            ),
+                        ));
+                    }
                 };
                 if !ok {
-                    self.note(format!("{} ~= {} is off by more than tol {}", a.show(), b.show(), num(tol)));
+                    self.note(format!(
+                        "{} ~= {} is off by more than tol {}",
+                        a.show(),
+                        b.show(),
+                        num(tol)
+                    ));
                 }
                 Value::Bool(ok)
             }
@@ -1816,16 +3267,29 @@ impl<'a> Evaluator<'a> {
                     Value::Bool(ok)
                 }
                 (_, Value::List(xs)) => Value::Bool(xs.iter().any(|x| equal(x, &a))),
-                _ => return Err(fail("E0320", format!("`in` needs a range or list on the right, got {}", b.kind()))),
+                _ => {
+                    return Err(fail(
+                        "E0320",
+                        format!("`in` needs a range or list on the right, got {}", b.kind()),
+                    ));
+                }
             },
             BinOp::Map => {
                 let field = match &a {
                     Value::Field(f) => f.clone(),
-                    _ => return Err(fail("E0320", "`->` maps a field through colors").fix("write `fill:fbm(simplex(30)) -> p.stone`")),
+                    _ => {
+                        return Err(fail("E0320", "`->` maps a field through colors")
+                            .fix("write `fill:fbm(simplex(30)) -> p.stone`"));
+                    }
                 };
                 let colors: Vec<Rgba> = match &b {
                     Value::Ramp(r) => r.stops.clone(),
-                    other => other.items().unwrap_or_default().iter().filter_map(|v| v.color().map(|c| c.rgba)).collect(),
+                    other => other
+                        .items()
+                        .unwrap_or_default()
+                        .iter()
+                        .filter_map(|v| v.color().map(|c| c.rgba))
+                        .collect(),
                 };
                 if colors.is_empty() {
                     return Err(fail("E0320", "`->` needs a ramp or a list of colors"));
@@ -1846,26 +3310,46 @@ impl<'a> Evaluator<'a> {
 
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
         let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => self.lookup_ident(var, sc).and_then(|v| v.word().map(str::to_string).or(v.num().map(num))).unwrap_or(var.to_string()),
+            Some(var) => self
+                .lookup_ident(var, sc)
+                .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
+                .unwrap_or(var.to_string()),
             None => seg.to_string(),
         };
         let seg = seg.as_str();
         let missing = |what: &str, names: Vec<String>| {
-            fail("E0350", format!("{what} has no member `{seg}`")).note(format!("members: {}", names.join(", "))).fix("use one of the listed members")
+            fail("E0350", format!("{what} has no member `{seg}`"))
+                .note(format!("members: {}", names.join(", ")))
+                .fix("use one of the listed members")
         };
         Ok(match base {
-            Value::Palette(p) => p.get(seg).ok_or_else(|| missing(&format!("palette `{}`", p.name), p.entries.iter().map(|e| e.0.clone()).collect()))?,
+            Value::Palette(p) => p.get(seg).ok_or_else(|| {
+                missing(
+                    &format!("palette `{}`", p.name),
+                    p.entries.iter().map(|e| e.0.clone()).collect(),
+                )
+            })?,
             Value::Module(m) => m.member(seg).ok_or_else(|| {
                 let mut names: Vec<String> = m.exports().into_iter().map(|e| e.0).collect();
-                names.extend(m.palettes.borrow().iter().flat_map(|p| p.entries.iter().map(|e| e.0.clone())));
+                names.extend(
+                    m.palettes
+                        .borrow()
+                        .iter()
+                        .flat_map(|p| p.entries.iter().map(|e| e.0.clone())),
+                );
                 missing(&format!("`{}`", m.path), names)
             })?,
             Value::Ramp(r) => match seg {
                 "line" => Value::Color(Col::plain(r.line())),
                 "base" => base.clone(),
                 _ => {
-                    let i: f64 = seg.parse().map_err(|_| missing("a ramp", vec!["0..n".into(), "line".into(), "base".into()]))?;
-                    Value::Color(Col { rgba: r.at(i), ramp: Some((r.clone(), i)) })
+                    let i: f64 = seg.parse().map_err(|_| {
+                        missing("a ramp", vec!["0..n".into(), "line".into(), "base".into()])
+                    })?;
+                    Value::Color(Col {
+                        rgba: r.at(i),
+                        ramp: Some((r.clone(), i)),
+                    })
                 }
             },
             Value::Color(c) if seg == "line" => Value::Color(Col::plain(color::line(c.rgba))),
@@ -1882,20 +3366,34 @@ impl<'a> Evaluator<'a> {
             }
             Value::Ref(r) => self.measure(r, seg)?,
             Value::Tuple(xs) | Value::List(xs) => {
-                let i: usize = seg.parse().map_err(|_| missing("a list", vec!["0..n".into()]))?;
-                xs.get(i).cloned().ok_or_else(|| fail("E0350", format!("index {i} is out of range")))?
+                let i: usize = seg
+                    .parse()
+                    .map_err(|_| missing("a list", vec!["0..n".into()]))?;
+                xs.get(i)
+                    .cloned()
+                    .ok_or_else(|| fail("E0350", format!("index {i} is out of range")))?
             }
             Value::Color(_) => {
                 return Err(fail("E0350", format!("a plain color has no step `.{seg}`; only ramps are indexed"))
                     .fix("declare the palette entry as `name ramp <color> 5` to index it, or drop the index"));
             }
-            other => return Err(fail("E0350", format!("{} has no member `.{seg}`", other.kind()))),
+            other => {
+                return Err(fail(
+                    "E0350",
+                    format!("{} has no member `.{seg}`", other.kind()),
+                ));
+            }
         })
     }
 
     pub fn measure(&mut self, r: &RefVal, m: &str) -> R<Value> {
-        let b = r.bounds().ok_or_else(|| fail("E0351", format!("@{} has no geometry", r.label)))?;
-        let v = measure_rect(b, m).ok_or_else(|| fail("E0350", format!("unknown measurement `.{m}`")).note(format!("measurements: {}", MEASURES.join(" "))))?;
+        let b = r
+            .bounds()
+            .ok_or_else(|| fail("E0351", format!("@{} has no geometry", r.label)))?;
+        let v = measure_rect(b, m).ok_or_else(|| {
+            fail("E0350", format!("unknown measurement `.{m}`"))
+                .note(format!("measurements: {}", MEASURES.join(" ")))
+        })?;
         self.note(format!("{}.{m} = {}", r.label, num(v)));
         Ok(Value::Num(v))
     }
@@ -1903,62 +3401,111 @@ impl<'a> Evaluator<'a> {
     fn reference(&mut self, segs: &[String], sc: &Scope) -> R<Value> {
         let first = &segs[0];
         let mut cur = if first == "self" {
-            let inst = sc.inst.clone().ok_or_else(|| fail("E0350", "`@self` is only valid inside a def"))?;
-            let rec = inst.record.borrow().clone().ok_or_else(|| fail("E0350", "`@self` is only available in checks"))?;
+            let inst = sc
+                .inst
+                .clone()
+                .ok_or_else(|| fail("E0350", "`@self` is only valid inside a def"))?;
+            let rec = inst
+                .record
+                .borrow()
+                .clone()
+                .ok_or_else(|| fail("E0350", "`@self` is only available in checks"))?;
             let rec = rec.borrow().clone();
-            RefVal { label: "self".into(), record: rec, canvas: None }
+            RefVal {
+                label: "self".into(),
+                record: rec,
+                canvas: None,
+            }
         } else if first == "canvas" {
             match self.lookup_ident("canvas", sc) {
                 Some(Value::Ref(r)) => (*r).clone(),
                 _ => unreachable!(),
             }
         } else {
-            let rec = sc.lookup.iter().find_map(|t| table_get(t, first)).ok_or_else(|| {
-                let mut names: Vec<String> = Vec::new();
-                for t in sc.lookup.iter() {
-                    for n in table_names(t) {
-                        if !names.contains(&n) {
-                            names.push(n);
+            let rec = sc
+                .lookup
+                .iter()
+                .find_map(|t| table_get(t, first))
+                .ok_or_else(|| {
+                    let mut names: Vec<String> = Vec::new();
+                    for t in sc.lookup.iter() {
+                        for n in table_names(t) {
+                            if !names.contains(&n) {
+                                names.push(n);
+                            }
                         }
                     }
-                }
-                fail("E0350", format!("no part named `{first}` here"))
-                    .note(format!("named so far: {}", if names.is_empty() { "(none)".into() } else { names.join(", ") }))
-                    .fix("name the node with `name:` before this line, or fix the spelling")
-            })?;
+                    fail("E0350", format!("no part named `{first}` here"))
+                        .note(format!(
+                            "named so far: {}",
+                            if names.is_empty() {
+                                "(none)".into()
+                            } else {
+                                names.join(", ")
+                            }
+                        ))
+                        .fix("name the node with `name:` before this line, or fix the spelling")
+                })?;
             let rec = rec.borrow().clone();
-            RefVal { label: first.clone(), record: rec, canvas: None }
+            RefVal {
+                label: first.clone(),
+                record: rec,
+                canvas: None,
+            }
         };
         let mut i = 1;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i == segs.len() - 1;
             if seg == "*" {
-                return Ok(Value::List(cur.children().into_iter().map(|c| Value::Ref(Rc::new(c))).collect()));
+                return Ok(Value::List(
+                    cur.children()
+                        .into_iter()
+                        .map(|c| Value::Ref(Rc::new(c)))
+                        .collect(),
+                ));
             }
             if seg == "geom" && i + 1 < segs.len() {
                 let m = segs[i + 1].as_str();
-                let b = cur.geom_bounds().ok_or_else(|| fail("E0351", format!("@{} has no geometry", cur.label)))?;
-                let v = measure_rect(b, m).ok_or_else(|| fail("E0350", format!("unknown measurement `.geom.{m}`")))?;
+                let b = cur
+                    .geom_bounds()
+                    .ok_or_else(|| fail("E0351", format!("@{} has no geometry", cur.label)))?;
+                let v = measure_rect(b, m)
+                    .ok_or_else(|| fail("E0350", format!("unknown measurement `.geom.{m}`")))?;
                 self.note(format!("{}.geom.{m} = {}", cur.label, num(v)));
                 return Ok(Value::Num(v));
             }
-            if last && MEASURES.contains(&seg) && !cur.children().iter().any(|c| c.record.name == seg) {
+            if last
+                && MEASURES.contains(&seg)
+                && !cur.children().iter().any(|c| c.record.name == seg)
+            {
                 return self.measure(&cur, seg);
             }
             let child_path = format!("{}.{seg}", cur.record.path);
             if let Some(p) = self.anchors.get(&child_path) {
                 cur = RefVal {
                     label: format!("{}.{seg}", cur.label),
-                    record: Record { name: seg.into(), path: child_path, parent_world: Matrix::new_identity(), node: None, anchor: Some(*p), at: (0.0, 0.0) },
+                    record: Record {
+                        name: seg.into(),
+                        path: child_path,
+                        parent_world: Matrix::new_identity(),
+                        node: None,
+                        anchor: Some(*p),
+                        at: (0.0, 0.0),
+                    },
                     canvas: None,
                 };
             } else {
                 let kids = cur.children();
                 let names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
-                cur = kids.into_iter().find(|c| c.record.name == seg).ok_or_else(|| {
-                    fail("E0350", format!("@{} has no part `{seg}`", cur.label)).note(format!("parts: {}", names.join(", "))).fix("use one of the listed parts")
-                })?;
+                cur = kids
+                    .into_iter()
+                    .find(|c| c.record.name == seg)
+                    .ok_or_else(|| {
+                        fail("E0350", format!("@{} has no part `{seg}`", cur.label))
+                            .note(format!("parts: {}", names.join(", ")))
+                            .fix("use one of the listed parts")
+                    })?;
             }
             i += 1;
         }
@@ -1967,7 +3514,10 @@ impl<'a> Evaluator<'a> {
 }
 
 fn is_paint_key(k: &str) -> bool {
-    matches!(k, "fill" | "stroke" | "cap" | "join" | "dash" | "taper" | "blur")
+    matches!(
+        k,
+        "fill" | "stroke" | "cap" | "join" | "dash" | "taper" | "blur"
+    )
 }
 
 pub fn measure_rect(b: Rect, m: &str) -> Option<f64> {

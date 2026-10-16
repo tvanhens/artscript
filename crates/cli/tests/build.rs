@@ -29,15 +29,24 @@ fn fixture(tag: &str) -> PathBuf {
 }
 
 fn artscript(dir: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_artscript")).args(args).current_dir(dir).output().unwrap()
+    Command::new(env!("CARGO_BIN_EXE_artscript"))
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .unwrap()
 }
 
 fn text(o: &Output) -> String {
-    format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr))
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&o.stdout),
+        String::from_utf8_lossy(&o.stderr)
+    )
 }
 
 fn manifest(dir: &Path) -> serde_json::Value {
-    serde_json::from_str(&fs::read_to_string(dir.join("assets/art-manifest.json")).unwrap()).unwrap()
+    serde_json::from_str(&fs::read_to_string(dir.join("assets/art-manifest.json")).unwrap())
+        .unwrap()
 }
 
 fn fnv_hex(bytes: &[u8]) -> String {
@@ -64,31 +73,56 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|o| (o["path"].as_str().unwrap(), o["hash"].as_str().unwrap(), o["status"].as_str().unwrap()))
+        .map(|o| {
+            (
+                o["path"].as_str().unwrap(),
+                o["hash"].as_str().unwrap(),
+                o["status"].as_str().unwrap(),
+            )
+        })
         .collect();
     let (png_hash, svg_hash) = (fnv_hex(&png_bytes), fnv_hex(&svg_bytes));
     assert_eq!(
         outputs,
-        [("produce/momo_peach.png", png_hash.as_str(), "pass"), ("produce/momo_peach.svg", svg_hash.as_str(), "pass")]
+        [
+            ("produce/momo_peach.png", png_hash.as_str(), "pass"),
+            ("produce/momo_peach.svg", svg_hash.as_str(), "pass")
+        ]
     );
     let manifest_bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
 
     let started = std::time::Instant::now();
     let second = artscript(&dir, &only);
     assert_eq!(second.status.code(), Some(0), "{}", text(&second));
-    assert!(started.elapsed().as_secs_f32() < 2.0, "cache miss: second build took {:?}", started.elapsed());
+    assert!(
+        started.elapsed().as_secs_f32() < 2.0,
+        "cache miss: second build took {:?}",
+        started.elapsed()
+    );
     assert_eq!(fs::read(&png).unwrap(), png_bytes);
     assert_eq!(fs::read(&svg).unwrap(), svg_bytes);
-    assert_eq!(fs::read(dir.join("assets/art-manifest.json")).unwrap(), manifest_bytes);
+    assert_eq!(
+        fs::read(dir.join("assets/art-manifest.json")).unwrap(),
+        manifest_bytes
+    );
 
     let art = dir.join("art/produce/momo_peach.art");
     let src = fs::read_to_string(&art).unwrap();
-    fs::write(&art, src.replace("@target produce/momo_peach.svg 1024x1024\n", "")).unwrap();
+    fs::write(
+        &art,
+        src.replace("@target produce/momo_peach.svg 1024x1024\n", ""),
+    )
+    .unwrap();
     let third = artscript(&dir, &only);
     assert_eq!(third.status.code(), Some(0), "{}", text(&third));
     assert!(!svg.exists(), "stale svg survived");
     assert!(text(&third).contains("removed stale produce/momo_peach.svg"));
-    let paths: Vec<String> = manifest(&dir)["outputs"].as_array().unwrap().iter().map(|o| o["path"].as_str().unwrap().to_string()).collect();
+    let paths: Vec<String> = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["path"].as_str().unwrap().to_string())
+        .collect();
     assert_eq!(paths, ["produce/momo_peach.png"]);
 
     let _ = fs::remove_dir_all(&dir);
@@ -99,16 +133,103 @@ fn check_json_reports_failed_asserts_with_exit_2() {
     let dir = fixture("check");
     let art = dir.join("art/produce/momo_peach.art");
     let src = fs::read_to_string(&art).unwrap();
-    fs::write(&art, src.replace("name:eye_r", "name:eye_r rot:0 at:550,640")).unwrap();
+    fs::write(
+        &art,
+        src.replace("name:eye_r", "name:eye_r rot:0 at:550,640"),
+    )
+    .unwrap();
     let out = artscript(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let diags = json["diagnostics"].as_array().unwrap();
-    let level = diags.iter().find(|d| d["code"] == "C0101").unwrap_or_else(|| panic!("{json}"));
+    let level = diags
+        .iter()
+        .find(|d| d["code"] == "C0101")
+        .unwrap_or_else(|| panic!("{json}"));
     assert_eq!(level["file"], "art/produce/momo_peach.art");
     assert_eq!(level["severity"], "error");
     assert_eq!(level["message"], "assert level(@eye_l @eye_r) tol:.5");
-    assert!(level["fix"].as_str().unwrap().starts_with("set .eye_r at:550,"), "{level}");
+    assert!(
+        level["fix"]
+            .as_str()
+            .unwrap()
+            .starts_with("set .eye_r at:550,"),
+        "{level}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn monk_gif_frames_match_the_sampled_palette() {
+    let dir = fixture("gif");
+    let built = artscript(&dir, &["build", "--only", "character/moss_monk_*.gif"]);
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built));
+    let project = artscript_eval::load(&dir).unwrap();
+    let plan = artscript_eval::plan(&project);
+    let jobs: Vec<_> = plan
+        .jobs
+        .iter()
+        .filter(|j| {
+            j.outputs
+                .iter()
+                .any(|o| o.format == artscript_eval::Format::Gif)
+        })
+        .collect();
+    assert_eq!(jobs.len(), 3, "idle, blink and yawn");
+    for job in jobs {
+        let sampled = artscript_eval::sample(&project, job);
+        let bad: Vec<_> = sampled
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == artscript_syntax::Severity::Error)
+            .map(|d| d.code.clone())
+            .collect();
+        assert!(bad.is_empty(), "{bad:?} {}", job.outputs[0].path);
+        let bytes = fs::read(dir.join("assets").join(&job.outputs[0].path)).unwrap();
+        let mut reader = gif::DecodeOptions::new()
+            .read_info(std::io::Cursor::new(&bytes))
+            .unwrap();
+        assert_eq!(reader.width(), 512);
+        assert_eq!(reader.height(), 512);
+        let expect_repeat = if sampled.loops {
+            gif::Repeat::Infinite
+        } else {
+            gif::Repeat::Finite(0)
+        };
+        assert_eq!(reader.repeat(), expect_repeat, "{}", job.outputs[0].path);
+        let mut rasters = Vec::with_capacity(sampled.frames.len());
+        for frame in &sampled.frames {
+            let (w, h, px) =
+                artscript_render::render_rgba(&frame.scene, job.outputs[0].scale).unwrap();
+            assert_eq!((w, h), (512, 512));
+            rasters.push(px);
+        }
+        let flat: Vec<u8> = rasters.iter().flatten().copied().collect();
+        let nq = color_quant::NeuQuant::new(10, 256, &flat);
+        let delays = artscript_eval::frame_delays(sampled.frames.len(), sampled.dur);
+        let mut seen = 0usize;
+        while let Some(frame) = reader.read_next_frame().unwrap() {
+            assert_eq!(
+                frame.delay, delays[seen],
+                "frame {seen} {}",
+                job.outputs[0].path
+            );
+            assert_eq!((frame.width, frame.height), (512, 512));
+            assert!(frame.palette.is_none(), "one global palette");
+            let src = &rasters[seen];
+            assert_eq!(frame.buffer.len(), src.len() / 4);
+            for (px, idx) in src.as_chunks::<4>().0.iter().zip(frame.buffer.iter()) {
+                assert_eq!(
+                    *idx as usize,
+                    nq.index_of(px),
+                    "frame {seen} {}",
+                    job.outputs[0].path
+                );
+            }
+            seen += 1;
+        }
+        assert_eq!(seen, sampled.frames.len());
+    }
     let _ = fs::remove_dir_all(&dir);
 }
 

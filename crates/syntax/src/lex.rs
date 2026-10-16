@@ -30,6 +30,8 @@ pub(crate) enum Tok {
     Num(f64),
     Percent(f64),
     Angle(f64),
+    /// Seconds. `200ms` and `1.6s` are both this token.
+    Time(f64),
     Size(SizePart, SizePart),
     Hex(String),
     Str(String),
@@ -85,6 +87,8 @@ pub(crate) enum Kw {
     True,
     False,
     None,
+    Anim,
+    Play,
 }
 
 impl Kw {
@@ -114,6 +118,8 @@ impl Kw {
             Kw::True => "true",
             Kw::False => "false",
             Kw::None => "none",
+            Kw::Anim => "anim",
+            Kw::Play => "play",
         }
     }
 
@@ -143,6 +149,8 @@ impl Kw {
             "true" => Kw::True,
             "false" => Kw::False,
             "none" => Kw::None,
+            "anim" => Kw::Anim,
+            "play" => Kw::Play,
             _ => return None,
         })
     }
@@ -156,6 +164,7 @@ impl Tok {
             Tok::Num(n) => format!("number {n}"),
             Tok::Percent(_) => "percent".into(),
             Tok::Angle(_) => "angle".into(),
+            Tok::Time(_) => "time".into(),
             Tok::Size(_, _) => "size".into(),
             Tok::Hex(h) => format!("color `#{h}`"),
             Tok::Str(_) => "string".into(),
@@ -630,6 +639,12 @@ impl<'a> Scanner<'a> {
         }
         if self.consume_suffix("turn") {
             return Tok::Angle(value * 360.0);
+        }
+        if self.consume_suffix("ms") {
+            return Tok::Time(value / 1000.0);
+        }
+        if self.consume_suffix("s") {
+            return Tok::Time(value);
         }
         if self.peek() == Some('%') {
             self.bump();

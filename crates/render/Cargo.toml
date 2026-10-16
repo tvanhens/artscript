@@ -6,3 +6,5 @@ edition.workspace = true
 [dependencies]
 skia-safe.workspace = true
 artscript-ir.workspace = true
+gif = "0.13"
+color_quant = "1.1"

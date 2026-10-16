@@ -11,9 +11,9 @@ The author-facing reference is `docs/language.md`. This file settles the details
   - Any other `#` starts a comment that runs to end of line.
 - **Numbers.**
   - Numbers look like `12`, `1.5`, `.5`. There is no exponent, and the sign is never part of the token.
-  - The suffixes `%`, `deg` and `turn` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees.
+  - The suffixes `%`, `deg`, `turn`, `ms`, and `s` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees. `ms` and `s` store seconds. The lexer tries `ms` before `s`.
 - **Sizes.** A number or percent, then `x`, then a number or percent with no spaces is one size token: `256x256`, `100%x60%`, `8x40`. `mirror x` stays an identifier because `x` is not glued to a number.
-- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Keywords are `use as from palette style def rule let shader light brush assert expect if then else each in and or not true false none`, plus the reserved list in `lib.rs`. A reserved word used as a name is E0105.
+- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Keywords are `use as from palette style def rule let shader light brush assert expect if then else each in and or not true false none anim play`, plus the reserved list in `lib.rs`. A reserved word used as a name is E0105. `in` is also a value word, so `ease:in` parses. Reserved words are allowed in expression position, so `t`, `clip`, and `key(...)` parse.
 - **References.** `@` followed by an identifier, then `.segment` repeats where a segment is an identifier, digits or `*`.
 - **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by an identifier is a patch.
 - **Strings.** `"..."` supports the escapes `\" \\ \n`. `"""..."""` is raw and may span lines. Its common leading indentation is stripped.
@@ -25,12 +25,14 @@ The first tokens of a line decide its form:
 
 | line starts with | form |
 |---|---|
-| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes |
+| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each`. Axes are the named lists after `each`. A later non-list, such as `clip:c`, is a target key |
 | `use` | `use <raw path> [as x] [{ a b }]` |
 | `palette`, `style`, `def`, `rule`, `let`, `shader`, `light`, `brush` | declarations. In `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs` |
 | `assert`, `expect` | `expr named* "message"?` |
 | `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed |
-| `.ident` | patch. Path segments, named args, and an optional trailing `off` |
+| `.ident` | patch. Path segments, named args, and an optional trailing `off`. A segment may be `*` |
+| `anim` | `anim <name> dur:<time> [loop]` and a block of patch lines |
+| `play` | `play <name>|none [start:<time>]` |
 | `ident:` then end of line | slot fill, which needs a block |
 | any other identifier | node: the verb, then items |
 
@@ -116,9 +118,9 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   2. a layer's or group's positional name
   3. for an instance, the def name
   4. otherwise the verb
-- A second unnamed sibling with the same base name gets a 1-based suffix, so the second is `circle2`.
+- An unnamed sibling's suffix is the statement's 1-based occurrence among sibling statements with the same base name. The count includes both arms of an `if` and statements inside an `each`. It does not walk into a `group`, `layer`, shape, `repeat`, `grid`, or `mirror` body. Index 1 omits the suffix, so the second circle is `circle2`. A dynamic `name:` does not change the index.
 - Mirror copies append `_m`.
-- Repeat, grid and each copies append `#<i>` to every top-level node of the copy.
+- Repeat, grid and each copies append `#<i>` to every top-level node of the copy. The occurrence index counts the `each` statement once, so two successive `each` loops are `circle#0` and `circle2#0`.
 - Slot content lives under `<instance path>.<slot name>`.
 
 ## 5. Values and types
@@ -261,7 +263,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `use` of an entry file is E0201.
 - Two declarations that produce the same output path, after matrix expansion, are E0202. The note names the first declaration.
 - `@target` under a manifest lib root is E0203.
-- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `def`, `rule`, and `let`.
+- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `def`, `rule`, `let`, and `anim`.
 - The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`.
 - `bg:` defaults to the manifest `[defaults] bg`, which defaults to `none` (transparent).
 - `art-manifest.json` sits in `out`. It holds `{ "version": 1, "outputs": [ { "path", "source", "line", "target", "matrix", "scale", "hash", "status": "pass|warn|fail", "checks": [..] } ] }`, sorted by path.
@@ -272,7 +274,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - every transitively imported library source
   - the manifest
   - the hash of the `artscript` executable, so a renderer change re-renders every target
-  - the target's matrix values
+  - the target's matrix values, `fps`, `dur` (or `auto`), `clip` (or `none`), and `t`
   
   When the key matches and the outputs on disk match their hashes, skip the target.
 - **Determinism.**
@@ -296,7 +298,8 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A `use` that names a project-relative entry file (`use art/b`) is E0201, the same as one that resolves through a lib root.
   - Top-level `let`s of a module are visible inside its `def`s.
 - **Node identity.**
-  - The sibling suffix counter is keyed by the base name plus any `#i` suffix. So the copies of one `each` are `circle#0`, `circle#1`, and a second loop's copies are `circle2#0`, `circle2#1`.
+  - The suffix is the static occurrence from section 4, not a count of emitted nodes. One `each` emits `circle#0`, `circle#1`. A second `each` is the next occurrence, so its copies are `circle2#0`, `circle2#1`.
+  - Seeds follow that path. Toggling an `if` does not renumber a later sibling.
   - Only nodes with `name:`, named layers and groups, and instances are registered for `@refs`. A bare `circle` is not addressable.
   - Slot content registers its names in the caller's table, and resolves `@x` against the host first.
 - **Patches.** When an outer instance and an inner one both patch the same node, the outer one wins.
@@ -317,7 +320,12 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
 - **Codes added in this version.**
   - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
-  - E0206: a bad `@target` size, scale, extension, profile or matrix axis.
+  - E0206: a bad `@target` size, scale, extension, profile, matrix axis, `fps`, `dur`, or `t`. Also a GIF with no duration, or a GIF whose background is missing or not opaque (`a gif needs an opaque bg:`).
+  - E0308: `play` names an anim that is not in scope.
+  - E0320 also covers a value that cannot be animated, a bad `key` (`dur`, `at`, `ease`), a non-positive duration, and a `key` outside an anim with no `dur:`. The message is `cannot animate <kind> yet` when the kind has no interpolation.
+  - E0336: an `anim` body contains something other than a patch line.
+  - E0337: `play` is not at the top level of an entry file and not under an instance.
+  - E0340: a patch matches nothing. A `play` reports it at the `play` site and the message names the anim.
   - E0207: an unknown `{var}` in a target path.
   - E0208: an unknown directive.
   - E0209: a `profile:vector` target that uses raster-only features. The notes list each node.
@@ -337,3 +345,18 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A target whose evaluation reports an `E` error writes no outputs. Its previous manifest entries are kept with `status: fail`, so the old outputs are not deleted.
   - With `--only`, entries of targets that were not selected stay in the manifest unchanged.
   - The manifest's `checks` field lists the `C` diagnostics as `"<code>: <message>"`.
+
+## 14. Time, anims and GIFs
+
+- **Time.** `ms` and `s` are suffixes. A bare number in a time position is seconds. `fmt` prints a positive sub-second whole number of milliseconds as `Nms`, and every other time as seconds. `0.5s` prints as `500ms`. `1500ms` prints as `1.5s`.
+- **`t` and `clip`.** `t` reads the evaluator's time. While an anim's body is sampled, that time is the anim's local time. `clip` reads the target's clip name, or `none`.
+- **`key`.** Fractions are `i / (n - 1)`. One value returns that value. `at:` is fractions of the key's duration, non-decreasing, in `[0, 1]`. The length must match the values. A zero-width segment uses the later value at that instant. The default duration is the anim's `dur`. Outside an anim, a missing `dur:` is E0320. `dur` must be positive.
+  - The default interpolation is uniform Catmull-Rom with the endpoint tangents duplicated. `ease:` replaces that curve. `linear` is `s`. `in` is `s^2`. `out` is `1 - (1 - s)^2`. `in_out` is `2s^2` below 0.5 and `1 - (2 - 2s)^2 / 2` otherwise. `hold` keeps the left value until the next key.
+  - A non-looping key holds the first value before 0 and the last value after `dur`. `loop` uses the fractional part of `t / dur`.
+  - Numbers, angles, vectors, and sizes interpolate in value space. An angle does not take the short arc. Colors interpolate in OKLab, with alpha linear, then the usual gamut map. Words, components, and booleans step and ignore `ease`. A percent, ramp, gradient, list, string, field, or reference is E0320. Mixed kinds in one key are E0320.
+- **`anim`.** The duration is evaluated in the anim's module. The body is patch lines only (E0336). Anims are not values. `use` copies them the way it copies styles, skipping `_` names. `at` and `rot` add to the rest value. `scale` multiplies. `skew` and `pivot` are set. `abs(v)` on `at`, `rot`, or `scale` sets that channel. `off` hides the node and still counts as a match. A `*` segment matches one path segment.
+- **`play`.** Allowed at the top level of an entry file and under an instance (E0337). The entry file's top level is the instance those paths patch. Static patches set the rest pose. Plays then apply in source order. Offsets accumulate. The last set value wins. `play none` records nothing.
+  - Local time is `t - start` (`start` defaults to 0, evaluated at the `play`). A looping anim is always live and wraps with `rem_euclid`. A non-looping anim is live only on `[0, dur)`. A path that matches nothing is E0340 at the `play`, once per anim and path, including when this frame is outside the window.
+  - The clip duration, when `dur:` is omitted, is the latest `end` among plays reached at `t = 0`. A clip loops when any reached play's anim loops.
+- **Sampling.** `sample` is the entry point for a time-based target. Frame `i` is at `t = i / fps`, over `[0, dur)`, for both looping and non-looping clips. Checks run on every frame. One failure is reported once, with notes `first at {t}s` and `worst at {t}s`. The worst frame is the greatest absolute number found in the failure's notes, otherwise the greatest failing `t`.
+- **GIF.** One NeuQuant palette, `sample_fac` 10, built from every frame. Delays are centiseconds. The total is `round(dur * 100)`, spread with Bresenham so 24 fps over 1 second is `4,4,4,4,4,5`. A zero delay is raised to 1 and stolen from a later delay above 1. A looping clip repeats forever. Any other clip plays once. A missing background, a background alpha below 1, or any pixel with alpha below 255 is E0206.

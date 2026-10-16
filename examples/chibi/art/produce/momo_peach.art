@@ -18,8 +18,8 @@ palette peach
 def _leaf tone:peach.leaf vein:1 bend:.19 wide:.48
   # No power operator, so t^.8 is this square-root fit. It stays within a thousandth on the sample stations.
   let station = [0 .08 .25 .45 .65 .82 .93 0 .93 .82 .65 .45 .25 .08]
-  let root = [each i in 0..14 -> sqrt(station.{i})]
-  let grow = [each i in 0..14 -> .161*root.{i}+1.24*station.{i}-.569*station.{i}*root.{i}+.169*station.{i}*station.{i}]
+  let radical = [each i in 0..14 -> sqrt(station.{i})]
+  let grow = [each i in 0..14 -> .161*radical.{i}+1.24*station.{i}-.569*station.{i}*radical.{i}+.169*station.{i}*station.{i}]
   let breadth = [each i in 0..14 -> 100*sin(180*grow.{i})*(1-.25*station.{i})]
   let droop = [each i in 0..14 -> bend*200*sin(180*station.{i})]
   let blade_x = [each i in 0..14 -> if i == 0 then 0 else if i == 7 then 200 else 200*station.{i}]

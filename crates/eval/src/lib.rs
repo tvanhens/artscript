@@ -8,7 +8,9 @@ pub mod color;
 mod eval;
 mod explain;
 mod geom;
+mod key;
 mod lints;
+mod motion;
 mod paint;
 pub mod project;
 mod scope;
@@ -23,9 +25,12 @@ use artscript_syntax::Diagnostic;
 use artscript_syntax::ast::StmtKind;
 
 pub use explain::explain;
+pub use key::{frame_count, frame_delays};
 pub use project::{LintLevel, Manifest, Project, find_root, load};
 pub use seed::fnv1a;
 pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
+
+use crate::eval::PlayMark;
 
 use crate::color::Rgba;
 use crate::eval::Evaluator;
@@ -36,6 +41,21 @@ pub struct Evaluation {
     /// `None` when the entry file could not be evaluated at all.
     pub scene: Option<Scene>,
     pub diagnostics: Vec<Diagnostic>,
+    /// Every `play` the frame reached, including ones outside their active window.
+    pub plays: Vec<PlayMark>,
+}
+
+pub struct Frame {
+    pub t: f64,
+    pub scene: Scene,
+}
+
+pub struct Sample {
+    pub frames: Vec<Frame>,
+    pub diagnostics: Vec<Diagnostic>,
+    pub loops: bool,
+    pub dur: f64,
+    pub fps: f64,
 }
 
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
@@ -45,12 +65,18 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         Ok(m) => m,
         Err(f) => {
             ev.report(f, &job.source, job.span, "");
-            return Evaluation { scene: None, diagnostics: ev.diags };
+            return Evaluation {
+                scene: None,
+                diagnostics: ev.diags,
+                plays: Vec::new(),
+            };
         }
     };
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
+    ev.collect_entry(&file.stmts, &sc);
     let children = ev.eval_block_nodes(&file.stmts, &mut sc);
+    ev.finish_channels("");
     let checks = sc.checks.clone();
     ev.run_checks(&checks);
     let background = match &job.bg {
@@ -61,9 +87,17 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
                 None
             }
         },
-        None => ev.background.or_else(|| project.manifest.bg.as_deref().and_then(Rgba::hex)),
+        None => ev
+            .background
+            .or_else(|| project.manifest.bg.as_deref().and_then(Rgba::hex)),
     };
-    let scene = Scene { width: job.size.0, height: job.size.1, background: background.map(Rgba::to_ir), children };
+    let scene = Scene {
+        width: job.size.0,
+        height: job.size.1,
+        background: background.map(Rgba::to_ir),
+        children,
+    };
+    let plays = ev.plays.clone();
     let mut diagnostics = ev.diags;
     let mut files: Vec<&String> = ev.parsed.keys().collect();
     files.sort();
@@ -73,7 +107,153 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::unused(parsed, f, &project.manifest));
     }
     diagnostics.extend(lints::off_canvas(&scene, &project.manifest, &job.source));
-    Evaluation { scene: Some(scene), diagnostics }
+    Evaluation {
+        scene: Some(scene),
+        diagnostics,
+        plays,
+    }
+}
+
+/// Frames `i` at `t = i/fps` for `t` in `[0, dur)`. Checks run on every frame and a failure is reported once.
+pub fn sample(project: &Project, job: &TargetJob) -> Sample {
+    let fps = if job.fps.is_finite() && job.fps > 0.0 {
+        job.fps
+    } else {
+        24.0
+    };
+    let mut probe_job = job.clone();
+    probe_job.frame_t = 0.0;
+    let probe = evaluate(project, &probe_job);
+    let dur = job
+        .dur
+        .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
+    let loops = probe.plays.iter().any(|p| p.loops);
+    let n = frame_count(dur, fps);
+    let mut frames = Vec::new();
+    let mut per_frame: Vec<(f64, Vec<Diagnostic>)> = Vec::new();
+    if n == 0 {
+        per_frame.push((0.0, probe.diagnostics));
+    } else {
+        if let Some(scene) = probe.scene {
+            frames.push(Frame { t: 0.0, scene });
+        }
+        per_frame.push((0.0, probe.diagnostics));
+        for i in 1..n {
+            let t = i as f64 / fps;
+            let mut frame_job = job.clone();
+            frame_job.frame_t = t;
+            let ev = evaluate(project, &frame_job);
+            if let Some(scene) = ev.scene {
+                frames.push(Frame { t, scene });
+            }
+            per_frame.push((t, ev.diagnostics));
+        }
+    }
+    Sample {
+        frames,
+        diagnostics: aggregate_frames(&per_frame),
+        loops,
+        dur,
+        fps,
+    }
+}
+
+fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let mut seen_lints = false;
+    let mut groups: Vec<Agg> = Vec::new();
+    for (i, (t, diags)) in frames.iter().enumerate() {
+        for d in diags {
+            if d.code.starts_with('L') {
+                if i == 0 && !seen_lints {
+                    // kept with the first frame below
+                }
+                continue;
+            }
+            let key = (
+                d.file.clone(),
+                d.span.line,
+                d.span.col,
+                d.code.clone(),
+                d.message.clone(),
+            );
+            if let Some(agg) = groups.iter_mut().find(|g| g.key == key) {
+                let mag = note_magnitude(d);
+                if let Some(mag) = mag
+                    && (!agg.has_mag || mag > agg.mag)
+                {
+                    agg.has_mag = true;
+                    agg.mag = mag;
+                    agg.worst = *t;
+                } else if mag.is_none() && !agg.has_mag && *t > agg.worst {
+                    agg.worst = *t;
+                }
+            } else {
+                let mag = note_magnitude(d);
+                groups.push(Agg {
+                    key,
+                    diag: d.clone(),
+                    first: *t,
+                    worst: *t,
+                    mag: mag.unwrap_or(0.0),
+                    has_mag: mag.is_some(),
+                });
+            }
+        }
+        if i == 0 {
+            for d in diags.iter().filter(|d| d.code.starts_with('L')) {
+                out.push(d.clone());
+            }
+            seen_lints = true;
+        }
+    }
+    for mut agg in groups {
+        if frames.len() > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
+            agg.diag
+                .notes
+                .push(format!("first at {}s", num_s(agg.first)));
+            agg.diag
+                .notes
+                .push(format!("worst at {}s", num_s(agg.worst)));
+        }
+        out.push(agg.diag);
+    }
+    out
+}
+
+struct Agg {
+    key: (String, u32, u32, String, String),
+    diag: Diagnostic,
+    first: f64,
+    worst: f64,
+    mag: f64,
+    has_mag: bool,
+}
+
+fn note_magnitude(d: &Diagnostic) -> Option<f64> {
+    let mut best = None;
+    for note in &d.notes {
+        for token in note.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')) {
+            if token.is_empty() || token == "-" || token == "." {
+                continue;
+            }
+            if let Ok(n) = token.parse::<f64>()
+                && n.is_finite()
+            {
+                let a = n.abs();
+                if best.map(|b: f64| a > b).unwrap_or(true) {
+                    best = Some(a);
+                }
+            }
+        }
+    }
+    best
+}
+
+fn num_s(t: f64) -> String {
+    let rounded = (t * 1e6).round() / 1e6;
+    let raw = format!("{rounded:.6}");
+    raw.trim_end_matches('0').trim_end_matches('.').to_string()
 }
 
 /// The entry file plus every library it transitively imports (and the default palette),
@@ -81,19 +261,31 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
 pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
     let mut seen = BTreeSet::new();
     let mut stack = vec![entry.to_string()];
-    if let Some(p) = project.manifest.palette.as_deref().and_then(|p| project.resolve_use(p)) {
+    if let Some(p) = project
+        .manifest
+        .palette
+        .as_deref()
+        .and_then(|p| project.resolve_use(p))
+    {
         stack.push(p);
     }
     while let Some(f) = stack.pop() {
         if !seen.insert(f.clone()) {
             continue;
         }
-        let Some(src) = project.files.get(&f) else { continue };
-        let Ok(file) = artscript_syntax::parse(src) else { continue };
+        let Some(src) = project.files.get(&f) else {
+            continue;
+        };
+        let Ok(file) = artscript_syntax::parse(src) else {
+            continue;
+        };
         for st in &file.stmts {
             if let StmtKind::Use { path, .. } = &st.kind {
                 let rooted = format!("{path}.art");
-                if let Some(t) = project.resolve_use(path).or(project.files.contains_key(&rooted).then_some(rooted)) {
+                if let Some(t) = project
+                    .resolve_use(path)
+                    .or(project.files.contains_key(&rooted).then_some(rooted))
+                {
                     stack.push(t);
                 }
             }

@@ -1,11 +1,11 @@
 # artscript language card (v0.1)
 
-artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG and SVG. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
+artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
 
 ## Files
 
-- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `def`, `rule`, `let`.
-- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a b]` fans out a matrix interpolated as `{k}` in the path.
+- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `def`, `rule`, `let`, `anim`.
+- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. `.gif` targets write a GIF. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `fps:` (default 24), `dur:`, `clip:` (the file reads it as `clip`, default `none`), `t:` (the time a still draws, default 0), `each k:[a b]` fans out a matrix interpolated as `{k}` in the path. `fmt` prints `clip:` after `each`. A GIF needs an opaque `bg:`.
 - `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The manifest's default palette is always available as `p`.
 
@@ -16,6 +16,7 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 | number | `12`, `.5`, `-3` (canvas units) |
 | percent | `50%` of the current frame (the canvas, a parent shape's bounds, or a def's `size` box) |
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
+| time | `200ms`, `2s`, a bare number in a time position is seconds |
 | vector / size | `14,0` (no spaces around the comma), `256x256` |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
@@ -107,6 +108,26 @@ def eye size:10 iris:p.sky.3 look:0,0
 - `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants.
+
+## Animation
+
+`t` is the clip time in seconds. Inside an `anim` it is that anim's local time. `clip` is the target's `clip:` name, or `none`.
+
+```
+key(0 6 0)
+key(0 1 1 0 at:[0 .3 .7 1] ease:in_out)
+anim idle dur:2s loop
+  .face at:0,key(0 6 0)
+  .leaf rot:key(-4 4 -4)
+anim blink dur:200ms
+  .eyes.* lid:key(.6 1 .6)
+play idle start:0s
+```
+
+- `key` samples the current time. Values are spaced evenly unless `at:` lists fractions from 0 to 1. The default curve is smooth. `ease:` is `linear`, `in`, `out`, `in_out`, or `hold`, one name or one per segment. `loop` wraps. Outside an anim, `dur:` is required.
+- Numbers, angles, vectors, and sizes interpolate. Colors interpolate in OKLab. Words, components, and booleans step. Anything else is an error.
+- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins.
+- An unnamed sibling's suffix is the statement's occurrence among siblings with the same base name, counting both arms of an `if` and the body of an `each`.
 
 ## Checks
 

@@ -116,7 +116,13 @@ impl<'a> Parser<'a> {
                             );
                             break;
                         }
-                        each.push(self.parse_named());
+                        let item = self.parse_named();
+                        // A list is an axis. A later non-list is a target key (`clip:c`).
+                        if matches!(item.value, Expr::List(_)) || each.is_empty() {
+                            each.push(item);
+                        } else {
+                            named.push(item);
+                        }
                     } else {
                         self.fail_here(
                             "expected a named axis after `each`",
@@ -195,6 +201,8 @@ impl<'a> Parser<'a> {
             Tok::Kw(Kw::Expect) => self.parse_check(CheckKind::Expect),
             Tok::Kw(Kw::If) => self.parse_if(),
             Tok::Kw(Kw::Each) => self.parse_each(),
+            Tok::Kw(Kw::Anim) => self.parse_anim(),
+            Tok::Kw(Kw::Play) => self.parse_play(),
             Tok::Kw(Kw::Else) => {
                 let span = self.cur_span();
                 self.fail(
@@ -600,17 +608,103 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_anim(&mut self) -> Stmt {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let mut dur = None;
+        let mut loop_ = false;
+        while !self.eol() {
+            if self.is_named() {
+                let n = self.parse_named();
+                if n.key == "dur" && dur.is_none() {
+                    dur = Some(n.value);
+                } else {
+                    self.fail(
+                        n.span,
+                        format!("`anim` does not take `{}:`", n.key),
+                        "write `anim name dur:<time>` and an optional `loop`",
+                    );
+                }
+            } else if self.eat_ident("loop") {
+                loop_ = true;
+            } else {
+                self.fail_here("expected `dur:` or `loop`", "write `anim name dur:1s loop`");
+                break;
+            }
+        }
+        let dur = dur.unwrap_or_else(|| {
+            self.fail(span, "`anim` needs `dur:`", "write `anim name dur:1s`");
+            Expr::Time(1.0)
+        });
+        let body = self.parse_block(indent, span.line);
+        Stmt {
+            kind: StmtKind::Anim {
+                name,
+                dur,
+                loop_,
+                body,
+            },
+            span,
+        }
+    }
+
+    fn parse_play(&mut self) -> Stmt {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = if self.eat_kw(Kw::None) {
+            None
+        } else if self.eol() {
+            self.fail(
+                span,
+                "expected an anim name after `play`",
+                "write `play name` or `play none`",
+            );
+            None
+        } else {
+            Some(self.expect_name())
+        };
+        let mut start = None;
+        while !self.eol() {
+            if self.is_named() {
+                let n = self.parse_named();
+                if n.key == "start" && start.is_none() {
+                    start = Some(n.value);
+                } else {
+                    self.fail(
+                        n.span,
+                        format!("`play` does not take `{}:`", n.key),
+                        "write `play name start:<time>`",
+                    );
+                }
+            } else {
+                self.fail_here(
+                    "expected `start:` or the end of the line",
+                    "write `play name start:0s`",
+                );
+                break;
+            }
+        }
+        self.no_block(indent);
+        Stmt {
+            kind: StmtKind::Play { name, start },
+            span,
+        }
+    }
+
     fn parse_patch(&mut self) -> Stmt {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let mut path = vec![self.expect_name()];
+        let mut path = vec![self.patch_seg()];
         while self
             .cur()
             .is_some_and(|t| matches!(t.kind, Tok::Dot) && !t.ws_before)
         {
             self.bump();
-            path.push(self.expect_name());
+            path.push(self.patch_seg());
         }
         let mut named = Vec::new();
         let mut off = false;
@@ -635,6 +729,18 @@ impl<'a> Parser<'a> {
         Stmt {
             kind: StmtKind::Patch { path, named, off },
             span,
+        }
+    }
+
+    fn patch_seg(&mut self) -> String {
+        if self
+            .cur()
+            .is_some_and(|t| matches!(t.kind, Tok::Star) && !t.ws_before)
+        {
+            self.bump();
+            "*".into()
+        } else {
+            self.expect_name()
         }
     }
 
@@ -1141,8 +1247,11 @@ impl<'a> Parser<'a> {
             }
             Tok::Ident(s) => {
                 self.bump();
-                self.reject_reserved(&s, tok.span);
                 Expr::Ident(s)
+            }
+            Tok::Time(n) => {
+                self.bump();
+                Expr::Time(n)
             }
             Tok::Kw(Kw::True) => {
                 self.bump();
@@ -1155,6 +1264,10 @@ impl<'a> Parser<'a> {
             Tok::Kw(Kw::None) => {
                 self.bump();
                 Expr::Ident("none".into())
+            }
+            Tok::Kw(Kw::In) => {
+                self.bump();
+                Expr::Ident("in".into())
             }
             Tok::Ref(segs) => {
                 self.bump();
@@ -1238,10 +1351,7 @@ impl<'a> Parser<'a> {
             self.parse_prec(PREC_MAP + 1)
         };
         if !self.eat(&Tok::Arrow) {
-            self.fail_here(
-                "expected `->`",
-                "write `[each name in <expr> -> <expr>]`",
-            );
+            self.fail_here("expected `->`", "write `[each name in <expr> -> <expr>]`");
             return Expr::Each {
                 var,
                 iter: Box::new(iter),

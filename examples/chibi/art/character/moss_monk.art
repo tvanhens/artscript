@@ -1,7 +1,8 @@
 @target character/moss_monk.png 1024x1024
 @target character/moss_monk.svg 1024x1024
-@target character/moss_monk_blink.png 1024x1024 as:blink
-@target character/moss_monk_yawn.png 1024x1024 as:yawn
+@target character/moss_monk_blink.png 1024x1024 t:100ms clip:blink
+@target character/moss_monk_yawn.png 1024x1024 t:800ms clip:yawn
+@target character/moss_monk_{c}.gif 512x512 bg:#f1ede4 fps:24 each c:[idle blink yawn] clip:c
 use face/parts { eye blush smile o_mouth sparkle }
 use shade/cel { cel }
 palette monk
@@ -71,11 +72,16 @@ def _ear s:1
   group at:512,0 scale:s,1
     curve -194,400 -230,396 -242,430 -228,466 -196,470 closed fill:grad(90-39*s skin.3 skin,.45 skin.1) name:ear
       cel @ear tone:skin shift:-10*s,-8
-layer ground_shadow
+def mouth open:0
+  if open >= 1
+    o_mouth 36 at:512,508 color:monk.mouth
+  else
+    smile 54 at:512,504 color:monk.mouth
+layer ground_shadow scale:canvas.w/1024
   ellipse 250,28 at:512,896 fill:monk.shadow a:.36 blur:14
   ellipse 160,14 at:512,894 fill:monk.shadow a:.25 blur:7
   ellipse 46,9 at:754,890 fill:monk.shadow a:.3 blur:5
-layer pebble
+layer pebble scale:canvas.w/1024
   curve 712,884 724,858 754,848 784,856 798,878 780,892 740,894 closed fill:grad(28 stone.3 stone,.45 stone.1) name:stone
     cel @stone tone:stone shift:-12,-10
     ellipse 14,6 at:736,862 fill:stone.4 a:.7 blur:3
@@ -84,15 +90,15 @@ layer pebble
       circle rand(1.4 2.6) at:rand(734 780),rand(840 856) fill:leaf.4 a:.6
   fx grain .05 scale:1.8
   fx outline 3.5 color:stone.line
-layer leg_l
+layer leg_l scale:canvas.w/1024
   _foot at:452,0
   fx rim 3 dir:1,1 color:rim a:.4
   fx outline 4 color:skin.line
-layer leg_r
+layer leg_r scale:canvas.w/1024
   _foot at:572,0
   fx rim 3 dir:1,1 color:rim a:.4
   fx outline 4 color:skin.line
-layer body
+layer body scale:canvas.w/1024
   curve 448,560 576,560 628,584 660,636 680,730 702,812 712,842 690,860 636,864 576,856 512,868 448,856 388,864 334,860 312,842 322,812 344,730 364,636 396,584 closed fill:grad(40 moss.3 moss,.45 moss.1) name:robe
     cel @robe tone:moss shift:-40,-20
     curve 452,566 512,640 574,566 588,576 512,668 438,576 closed tension:.3 fill:grad(32 ochre.3 ochre.1) stroke:fade(ochre_line .7),2
@@ -126,7 +132,7 @@ layer body
   fx rim 5 dir:1,1 color:rim a:.45
   fx grain .045 scale:2.2
   fx outline 5 color:moss_line
-layer sash_bow
+layer sash_bow scale:canvas.w/1024
   _bow [616,764 632,762 648,794 662,822 646,818 638,828 624,796] ang:55 ten:.35 name:tail_b
   _bow [600,764 616,766 624,804 630,836 616,826 604,834 596,800] ang:65 ten:.35 name:tail_a
   group name:tails
@@ -143,66 +149,63 @@ layer sash_bow
   ellipse 5,3 at:606,752 fill:ochre.4 a:.8 blur:1
   fx rim 3 dir:1,1 color:rim a:.4
   fx outline 3.5 color:ochre_line
-layer head
-  _ear s:1
-  _ear s:-1
-  curve 512,212 630,224 708,292 738,394 722,492 654,562 512,592 372,564 304,492 286,394 314,292 392,224 closed tension:.52 fill:grad(42 skin.3 skin,.45 skin.1) name:skull
-    cel @skull tone:skin shift:-34,-26 core:.1
-    curve 320,300 400,214 512,196 628,212 704,296 640,316 512,300 380,316 closed fill:mix(skin.1 monk.stubble .45) a:.28 blur:26
-    ellipse 150,26 at:512,596 fill:skin.0 a:.4 blur:10
-    ellipse 14,40 at:300,432 fill:skin.0 a:.5 blur:8
-    ellipse 14,40 at:724,432 fill:skin.0 a:.6 blur:8
-    ellipse 26,10 at:526,222 fill:skin.0 a:.5 blur:6
-    ellipse 60,40 at:388,470 fill:skin.3 a:.5 blur:18
-    ellipse 170,50 at:500,520 fill:skin.3 a:.35 blur:24
-    ellipse 66,30 at:410,270 rot:-32 fill:skin.4 a:.8 blur:12
-    ellipse 26,9 at:398,262 rot:-34 fill:glint a:.9 blur:1.5
-    circle 5 at:442,236 fill:glint a:.85 blur:1
-    ellipse 60,20 at:600,560 fill:moss.3 a:.25 blur:12
-  fx rim 5 dir:1,1 color:rim a:.45
-  fx grain .03 scale:2
-  fx outline 6 color:skin.line
-layer cheeks
-  each s in [-1 1]
-    blush 70x32 at:512+150*s,498 color:monk.blush lines:3
-layer eyes
-  each s in [-1 1]
-    curve 512+120*s,362 512+92*s,348 512+60*s,354 stroke:fade(skin.line .7),[2 5 2] taper:.35
-    eye 104x112 iris:iris side:s look:0,.4 lid:if target == blink then 1 else .6 at:512+88*s,440
-layer mouth
-  if target == yawn
-    o_mouth 36 at:512,508 color:monk.mouth
-  else
-    smile 54 at:512,504 color:monk.mouth
-layer leaf
-  let stem = [522,226 521,204 520,178 534,150 556,136]
-  curve stem stroke:leaf.1,[11 10 9 8 7] taper:0,.3
-  group at:-2,0
-    curve stem stroke:leaf.3,[4 4 4 3 2] taper:.3 a:.8
-  group at:556,138 scale:1.25
-    curve -4,2 18,-30 58,-50 120,-56 104,-26 74,2 34,16 closed fill:grad(31 leaf.3 leaf,.5 leaf.1)
-      curve -4,4 64,-22 120,-56 104,-24 74,4 34,18 closed fill:mix(leaf.1 leaf.0 .3) a:.85 blur:1
-      curve 0,2 44,-20 84,-38 116,-54 stroke:leaf.0,[3.2 2.8 1.9 1] taper:0,.5 a:.8
-      each v in [28,-12 56,-26 84,-38]
-        curve v v+(6,-18) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
-        curve v v+(14,12) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
-      ellipse 22,6.4 at:40,-30 rot:-24 fill:leaf.4 a:.8 blur:2.4
-    curve 66,-10 74,-16 82,-8 78,2 68,2 closed fill:mix(leaf.3 rim .5) a:.85
-      ellipse 5.6,4 at:78,0 fill:leaf.0 a:.6 blur:1.6
-    circle 2.2 at:70,-10 fill:glint
-  fx rim 3 dir:1,1 color:rim a:.4
-  fx outline 4.5 color:leaf.line
-layer arm_l
+group face scale:canvas.w/1024
+  layer head
+    _ear s:1
+    _ear s:-1
+    curve 512,212 630,224 708,292 738,394 722,492 654,562 512,592 372,564 304,492 286,394 314,292 392,224 closed tension:.52 fill:grad(42 skin.3 skin,.45 skin.1) name:skull
+      cel @skull tone:skin shift:-34,-26 core:.1
+      curve 320,300 400,214 512,196 628,212 704,296 640,316 512,300 380,316 closed fill:mix(skin.1 monk.stubble .45) a:.28 blur:26
+      ellipse 150,26 at:512,596 fill:skin.0 a:.4 blur:10
+      ellipse 14,40 at:300,432 fill:skin.0 a:.5 blur:8
+      ellipse 14,40 at:724,432 fill:skin.0 a:.6 blur:8
+      ellipse 26,10 at:526,222 fill:skin.0 a:.5 blur:6
+      ellipse 60,40 at:388,470 fill:skin.3 a:.5 blur:18
+      ellipse 170,50 at:500,520 fill:skin.3 a:.35 blur:24
+      ellipse 66,30 at:410,270 rot:-32 fill:skin.4 a:.8 blur:12
+      ellipse 26,9 at:398,262 rot:-34 fill:glint a:.9 blur:1.5
+      circle 5 at:442,236 fill:glint a:.85 blur:1
+      ellipse 60,20 at:600,560 fill:moss.3 a:.25 blur:12
+    fx rim 5 dir:1,1 color:rim a:.45
+    fx grain .03 scale:2
+    fx outline 6 color:skin.line
+  layer cheeks
+    each s in [-1 1]
+      blush 70x32 at:512+150*s,498 color:monk.blush lines:3
+  layer eyes
+    each s in [-1 1]
+      curve 512+120*s,362 512+92*s,348 512+60*s,354 stroke:fade(skin.line .7),[2 5 2] taper:.35
+      eye 104x112 iris:iris side:s look:0,.4 lid:.6 at:512+88*s,440
+  mouth
+  layer leaf pivot:522,226
+    let stem = [522,226 521,204 520,178 534,150 556,136]
+    curve stem stroke:leaf.1,[11 10 9 8 7] taper:0,.3
+    group at:-2,0
+      curve stem stroke:leaf.3,[4 4 4 3 2] taper:.3 a:.8
+    group at:556,138 scale:1.25
+      curve -4,2 18,-30 58,-50 120,-56 104,-26 74,2 34,16 closed fill:grad(31 leaf.3 leaf,.5 leaf.1)
+        curve -4,4 64,-22 120,-56 104,-24 74,4 34,18 closed fill:mix(leaf.1 leaf.0 .3) a:.85 blur:1
+        curve 0,2 44,-20 84,-38 116,-54 stroke:leaf.0,[3.2 2.8 1.9 1] taper:0,.5 a:.8
+        each v in [28,-12 56,-26 84,-38]
+          curve v v+(6,-18) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
+          curve v v+(14,12) stroke:leaf.0,[1.9 .8] taper:0,.6 a:.5
+        ellipse 22,6.4 at:40,-30 rot:-24 fill:leaf.4 a:.8 blur:2.4
+      curve 66,-10 74,-16 82,-8 78,2 68,2 closed fill:mix(leaf.3 rim .5) a:.85
+        ellipse 5.6,4 at:78,0 fill:leaf.0 a:.6 blur:1.6
+      circle 2.2 at:70,-10 fill:glint
+    fx rim 3 dir:1,1 color:rim a:.4
+    fx outline 4.5 color:leaf.line
+layer arm_l scale:canvas.w/1024
   _arm side:1
   fx rim 4 dir:1,1 color:rim a:.45
   fx grain .04 scale:2.2
   fx outline 4.5 color:moss_line
-layer arm_r
+layer arm_r scale:canvas.w/1024
   _arm side:-1
   fx rim 4 dir:1,1 color:rim a:.45
   fx grain .04 scale:2.2
   fx outline 4.5 color:moss_line
-layer beads
+layer beads scale:canvas.w/1024
   curve 490,702 480,730 476,764 490,794 512,804 534,794 548,764 544,730 534,702 stroke:cedar.0,2.5
   curve 512,814 528,840 532,864 512,870 492,864 496,840 closed tension:.45 fill:grad(56 ochre.3 ochre.1)
     group at:512,0
@@ -214,7 +217,20 @@ layer beads
       _bead at:512+s*p.x,p.y
   _bead 13 at:512,810
   fx outline 3 color:cedar.line
-layer sparkles
+layer sparkles scale:canvas.w/1024
   sparkle 44 at:742,196 color:monk.star
   sparkle 26 at:318,222 color:monk.star
+anim idle dur:2s loop
+  .face at:0,key(0 6 0)
+  .face.leaf rot:key(-4 4 -4)
+anim blink dur:200ms
+  .face.eyes.* lid:key(.6 1 .6)
+anim yawn dur:1.6s
+  .face.mouth open:key(0 1 1 0 at:[0 .3 .7 1])
+if clip == idle
+  play idle
+if clip == blink
+  play blink
+if clip == yawn
+  play yawn
 assert inside(@robe canvas margin:24)

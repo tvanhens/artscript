@@ -103,6 +103,44 @@ pub fn render_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, RenderError> {
     png_bytes(&image)
 }
 
+pub fn render_rgba(scene: &Scene, scale: f32) -> Result<(u32, u32, Vec<u8>), RenderError> {
+    if !(scale.is_finite() && scale > 0.0) {
+        return Err(RenderError::Skia("scale must be positive".into()));
+    }
+    let w = (scene.width * scale).ceil().max(1.0) as i32;
+    let h = (scene.height * scale).ceil().max(1.0) as i32;
+    let mut surface =
+        surfaces::raster_n32_premul((w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.scale((scale, scale));
+    if let Some(bg) = scene.background {
+        canvas.clear(color4(bg));
+    }
+    let ctx = DrawCtx::new(scene);
+    for child in &scene.children {
+        draw_node(canvas, child, &ctx, Matrix::new_identity())?;
+    }
+    let image = surface.image_snapshot();
+    let info = skia_safe::ImageInfo::new(
+        (w, h),
+        skia_safe::ColorType::RGBA8888,
+        skia_safe::AlphaType::Unpremul,
+        None,
+    );
+    let row = w as usize * 4;
+    let mut buf = vec![0u8; row * h as usize];
+    if !image.read_pixels(
+        &info,
+        &mut buf,
+        row,
+        (0, 0),
+        skia_safe::image::CachingHint::Disallow,
+    ) {
+        return Err(RenderError::Skia("read pixels".into()));
+    }
+    Ok((w as u32, h as u32, buf))
+}
+
 pub struct Baked {
     pub png: Vec<u8>,
     pub x: f32,
