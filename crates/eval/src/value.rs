@@ -66,7 +66,7 @@ pub enum Value {
     /// `field -> ramp`, a field mapped through colors.
     FieldPaint(Rc<Field>, Vec<Rgba>),
     Range(Range),
-    List(Vec<Value>),
+    List(Rc<Vec<Value>>),
     Str(String),
     Ident(String),
     Component(Rc<Component>),
@@ -175,7 +175,8 @@ impl Value {
             Value::Vec2(a, b) | Value::Size(a, b) => Some((*a, *b)),
             Value::Num(v) => Some((Coord::Num(*v), Coord::Num(*v))),
             Value::Percent(p) => Some((Coord::Pct(*p), Coord::Pct(*p))),
-            Value::Tuple(xs) | Value::List(xs) if xs.len() == 2 => Some((xs[0].coord()?, xs[1].coord()?)),
+            Value::Tuple(xs) if xs.len() == 2 => Some((xs[0].coord()?, xs[1].coord()?)),
+            Value::List(xs) if xs.len() == 2 => Some((xs[0].coord()?, xs[1].coord()?)),
             _ => None,
         }
     }
@@ -198,7 +199,8 @@ impl Value {
 
     pub fn items(&self) -> Option<Vec<Value>> {
         match self {
-            Value::List(xs) | Value::Tuple(xs) => Some(xs.clone()),
+            Value::List(xs) => Some(xs.as_ref().clone()),
+            Value::Tuple(xs) => Some(xs.clone()),
             Value::Range(r) => Some(r.steps().map(Value::Num).collect()),
             _ => None,
         }
@@ -341,12 +343,10 @@ pub fn arith(op: Arith, a: &Value, b: &Value) -> Result<Value, String> {
             let (fa, fb) = (as_field(a).ok_or_else(fail)?, as_field(b).ok_or_else(fail)?);
             Field(Rc::new(artscript_ir::Field::Binary(op.field(), Box::new(fa), Box::new(fb))))
         }
-        (List(xs), Num(_)) | (Tuple(xs), Num(_)) => {
-            List(xs.iter().map(|x| arith(op, x, b)).collect::<Result<_, _>>()?)
-        }
-        (Num(_), List(ys)) | (Num(_), Tuple(ys)) if op == Arith::Mul => {
-            List(ys.iter().map(|y| arith(op, a, y)).collect::<Result<_, _>>()?)
-        }
+        (List(xs), Num(_)) => List(Rc::new(xs.iter().map(|x| arith(op, x, b)).collect::<Result<Vec<_>, _>>()?)),
+        (Tuple(xs), Num(_)) => List(Rc::new(xs.iter().map(|x| arith(op, x, b)).collect::<Result<Vec<_>, _>>()?)),
+        (Num(_), List(ys)) if op == Arith::Mul => List(Rc::new(ys.iter().map(|y| arith(op, a, y)).collect::<Result<Vec<_>, _>>()?)),
+        (Num(_), Tuple(ys)) if op == Arith::Mul => List(Rc::new(ys.iter().map(|y| arith(op, a, y)).collect::<Result<Vec<_>, _>>()?)),
         _ => {
             let (pa, pb) = (a.pair().ok_or_else(fail)?, b.pair().ok_or_else(fail)?);
             let x = coord_op(op, pa.0, pb.0).ok_or_else(fail)?;
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn lists_scale_elementwise() {
-        let l = Value::List(vec![Value::Num(2.0), Value::Num(4.0)]);
+        let l = Value::List(Rc::new(vec![Value::Num(2.0), Value::Num(4.0)]));
         let out = arith(Arith::Mul, &l, &Value::Num(1.5)).unwrap();
         assert_eq!(out.show(), "[3, 6]");
         assert_eq!(arith(Arith::Div, &l, &Value::Num(2.0)).unwrap().show(), "[1, 2]");

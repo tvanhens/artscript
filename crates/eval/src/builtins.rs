@@ -50,7 +50,7 @@ impl Evaluator<'_> {
         Ok(match func {
             "min" | "max" => {
                 let items = match a.as_slice() {
-                    [Value::List(xs)] => xs.clone(),
+                    [Value::List(xs)] => xs.as_ref().clone(),
                     [v @ Value::Range(_)] => v.items().unwrap_or_else(|| a.clone()),
                     _ => a.clone(),
                 };
