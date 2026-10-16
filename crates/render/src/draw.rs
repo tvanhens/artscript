@@ -169,10 +169,7 @@ pub fn draw_node(
     let world = parent_world * node.transform;
 
     if needs_layer(node) {
-        if canvas.is_clip_rect()
-            && !canvas.is_clip_empty()
-            && let Some(steps) = effects::layer_steps(&node.effects, &FxEnv { ctx, world })?
-        {
+        if let Some(steps) = effects::layer_steps(&node.effects, &FxEnv { ctx, world })? {
             paint_layer_steps(canvas, node, ctx, world, steps)?;
         } else {
             let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
@@ -228,7 +225,7 @@ fn paint_layer_steps(
                 effects::apply_image_filter(image, &local_to_px, filter)?
             }
             effects::LayerStep::Outline { width, color } => {
-                effects::outline_image(image, &local_to_px, width, color)?
+                effects::outline_geometry(image, &local_to_px, node, width, color)?
             }
         };
     }

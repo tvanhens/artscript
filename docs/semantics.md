@@ -194,6 +194,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `a:` multiplies the effect color's alpha.
 - `rim` takes `dir` (default `1,1`).
 - `grain` defaults to scale 1.5, with its seed from the node path.
+- `outline` traces the node's shape geometry and draws it behind the content. Earlier `blur`, `shadow`, and `glow` do not change the traced path. The areas are the filled geometry of the subtree. A shape's children are omitted, because they composite source-atop and do not change its alpha. A stroke contributes that stroke's filled path. Each area is filled and stroked at `2 * width` with round cap and join, in the outline color.
 - `as:` sets `Effect.name`. `of:` takes `self`, a name, or `@node`.
 
 ## 9. Components, slots and overrides

@@ -251,7 +251,8 @@ pub enum EffectOp {
     Rim { width: f32, dir: Point, color: Color },
     /// OKLCH shift of every pixel: hue degrees, chroma fraction (+.2 = 20% more), OKLab lightness.
     Adjust { hue: f32, sat: f32, light: f32 },
-    /// Round silhouette line of `width` around the input's alpha, drawn behind it.
+    /// Line of `width` around the node's shape geometry, drawn behind the content.
+    /// Earlier effects do not change the traced path.
     Outline { width: f32, color: Color },
     /// Fine value noise inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%), `scale` the finest feature in canvas units.

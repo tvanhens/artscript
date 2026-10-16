@@ -66,12 +66,11 @@ fn effect_feature(op: &EffectOp) -> Option<&'static str> {
     match op {
         EffectOp::Inner { .. } => Some("fx inner"),
         EffectOp::Rim { .. } => Some("fx rim"),
-        EffectOp::Outline { .. } => Some("fx outline"),
         EffectOp::Grain { .. } => Some("fx grain"),
         EffectOp::Adjust { .. } => Some("fx adjust"),
         EffectOp::Glow { .. } => Some("fx glow"),
         EffectOp::Merge { .. } => Some("fx merge"),
-        EffectOp::Blur { .. } | EffectOp::Shadow { .. } => None,
+        EffectOp::Blur { .. } | EffectOp::Shadow { .. } | EffectOp::Outline { .. } => None,
     }
 }
 

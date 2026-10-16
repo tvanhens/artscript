@@ -3,23 +3,26 @@
 //! `None` means the layer's own content (Skia's null filter input). Named results remember that
 //! same choice so a later `Named` input can point at the untouched source.
 //!
-//! A linear chain that contains an outline is executed on a raster layer instead. The outline
-//! reads alpha on the CPU and disc-dilates the bbox, because a full-frame shader sampling that
-//! disc is the expensive part.
+//! An outline is not a filter. A chain that contains one is split around it. The outline fills
+//! and strokes the node's filled regions, so earlier effects do not change the path it traces.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 
-use artscript_ir::{Color, Effect, EffectInput, EffectOp};
+use artscript_ir::{
+    Clip, Color, Effect, EffectInput, EffectOp, Node, NodeKind, Paint as IrPaint, Path, Shape,
+    Stroke,
+};
 use skia_safe::canvas::SaveLayerRec;
+use skia_safe::paint::{Cap, Join, Style};
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
-    AlphaType, BlendMode, Color4f, ColorMatrix, ColorType, Data, Image, ImageFilter, ImageInfo,
-    Matrix, Paint, PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, surfaces,
+    BlendMode, Color4f, ColorMatrix, Data, Image, ImageFilter, Matrix, Paint, PathBuilder, PathOp,
+    PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
 use crate::draw::{DrawCtx, draw_node};
-use crate::paint::color4;
+use crate::paint::{color4, content_paint};
 
 pub struct FxEnv<'a> {
     pub ctx: &'a DrawCtx<'a>,
@@ -107,7 +110,7 @@ fn apply(
             color,
         } => inner(*dx, *dy, *blur, *color, input),
         EffectOp::Rim { width, dir, color } => rim(*width, *dir, *color, input),
-        EffectOp::Outline { width, color } => outline(*width, *color, input),
+        EffectOp::Outline { .. } => Ok(input),
         EffectOp::Grain {
             strength,
             scale,
@@ -177,31 +180,6 @@ fn rim(
     Ok(Some(req(
         "rim composite",
         image_filters::blend(BlendMode::SrcATop, input, band, None),
-    )?))
-}
-
-fn outline(
-    width: f32,
-    color: Color,
-    input: Option<ImageFilter>,
-) -> Result<Option<ImageFilter>, RenderError> {
-    if width <= 0.0 {
-        return Ok(input);
-    }
-    // Skia's dilate is a square kernel. A disc of samples keeps the silhouette round at 45 degrees.
-    let c = color4(color);
-    let grown = shader_on(
-        OUTLINE_SKSL,
-        "child",
-        &[("radius", &[width]), ("color", &[c.r, c.g, c.b, c.a])],
-        input.clone(),
-        width,
-        false,
-    )?;
-    let grown = maybe_blur(grown, 0.45)?;
-    Ok(Some(req(
-        "outline composite",
-        image_filters::blend(BlendMode::SrcOver, grown, input, None),
     )?))
 }
 
@@ -375,31 +353,6 @@ half4 main(float2 p) {
 }
 "#;
 
-const OUTLINE_SKSL: &str = r#"
-uniform shader child;
-uniform float radius;
-uniform float4 color;
-half4 main(float2 p) {
-    half m = child.eval(p).a;
-    float step = max(radius / 8.0, 0.5);
-    for (int j = -8; j <= 8; j++) {
-        for (int i = -8; i <= 8; i++) {
-            float2 o = float2(float(i), float(j)) * step;
-            if (dot(o, o) <= radius * radius) {
-                m = max(m, child.eval(p + o).a);
-            }
-        }
-    }
-    for (int k = 0; k < 24; k++) {
-        float ang = float(k) * 0.26179938779;
-        float2 o = float2(cos(ang), sin(ang)) * radius;
-        m = max(m, child.eval(p + o).a);
-    }
-    half cov = m * color.a;
-    return half4(color.rgb * cov, cov);
-}
-"#;
-
 const GRAIN_SKSL: &str = r#"
 uniform shader child;
 uniform float strength;
@@ -522,25 +475,24 @@ half4 main(half4 c) {
 }
 "#;
 
-/// One step of a linear effect chain. Filters are the Skia graph for a run of non-outline ops.
+/// One step of an effect chain that contains an outline. Filters are the Skia graph for a run
+/// of non-outline ops. An outline is geometry, so a name defined in an earlier run is not
+/// visible to a later one.
 pub enum LayerStep {
     Filter(ImageFilter),
     Outline { width: f32, color: Color },
 }
 
-/// Splits a `Previous`-only chain that contains a positive outline. Anything else (a named
-/// input, a merge, no outline) stays on the single image-filter path.
+/// Splits a chain that contains a positive outline. A chain with none stays on the single
+/// image-filter path.
 pub fn layer_steps(
     effects: &[Effect],
     env: &FxEnv<'_>,
 ) -> Result<Option<Vec<LayerStep>>, RenderError> {
-    let linear = effects
-        .iter()
-        .all(|e| e.input == EffectInput::Previous && !matches!(e.op, EffectOp::Merge { .. }));
     let outlined = effects
         .iter()
         .any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0));
-    if !linear || !outlined {
+    if !outlined {
         return Ok(None);
     }
     let mut steps = Vec::new();
@@ -568,27 +520,165 @@ pub fn layer_steps(
     Ok(Some(steps))
 }
 
-const OUTLINE_SOFTEN: f32 = 0.45;
+/// A filled area in the outlined node's local space, with the coverage that area contributes.
+pub(crate) struct Region {
+    pub path: Path,
+    pub alpha: f32,
+}
 
-/// Disc-dilates `src` alpha in the layer's pixel grid and paints that tint behind the content.
-pub fn outline_image(
+/// Each filled region, filled and stroked at width `2 * width` (round caps and joins).
+/// Drawn with DstOver, so it sits behind `src`.
+pub fn outline_geometry(
     src: Image,
     local_to_px: &Matrix,
+    node: &Node,
     width: f32,
     color: Color,
 ) -> Result<Image, RenderError> {
     if width <= 0.0 {
         return Ok(src);
     }
-    let (w, h, alpha) = read_alpha(&src)?;
-    if local_to_px.is_similarity() {
-        let radius = local_to_px.map_radius(width).unwrap_or(width);
-        let sigma = local_to_px
-            .map_radius(OUTLINE_SOFTEN)
-            .unwrap_or(OUTLINE_SOFTEN);
-        return paint_disc(&src, &alpha, w, h, radius, sigma, color);
+    let regions = silhouette(node)?;
+    if regions.is_empty() {
+        return Ok(src);
     }
-    paint_local_disc(&src, &alpha, w, h, local_to_px, width, color)
+    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
+        .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.draw_image(&src, (0.0, 0.0), None);
+    canvas.save();
+    canvas.concat(local_to_px);
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_blend_mode(BlendMode::DstOver);
+    paint.set_stroke_cap(Cap::Round);
+    paint.set_stroke_join(Join::Round);
+    paint.set_stroke_width(width * 2.0);
+    for region in &regions {
+        let mut ink = color4(color);
+        ink.a *= region.alpha;
+        paint.set_color4f(ink, None);
+        paint.set_style(Style::Fill);
+        canvas.draw_path(&region.path, &paint);
+        paint.set_style(Style::Stroke);
+        canvas.draw_path(&region.path, &paint);
+    }
+    canvas.restore();
+    Ok(surface.image_snapshot())
+}
+
+pub(crate) fn silhouette(node: &Node) -> Result<Vec<Region>, RenderError> {
+    let mut regions = Vec::new();
+    gather(node, &Matrix::new_identity(), 1.0, true, &mut regions)?;
+    Ok(regions)
+}
+
+/// `root` is the outlined node. Its transform is already on the canvas, and its opacity
+/// tints the finished layer, so neither is baked into the regions.
+fn gather(
+    node: &Node,
+    to_outline: &Matrix,
+    inherited: f32,
+    root: bool,
+    out: &mut Vec<Region>,
+) -> Result<(), RenderError> {
+    let alpha = if root {
+        inherited
+    } else {
+        inherited * node.opacity.clamp(0.0, 1.0)
+    };
+    if alpha <= 0.0 {
+        return Ok(());
+    }
+    let here = if root {
+        *to_outline
+    } else {
+        *to_outline * node.transform
+    };
+    let mut local = Vec::new();
+    match &node.kind {
+        NodeKind::Shape(shape) => push_shape(shape, &mut local)?,
+        NodeKind::Group { children, .. } => {
+            for child in children {
+                gather(child, &Matrix::new_identity(), 1.0, false, &mut local)?;
+            }
+        }
+    }
+    if let Some(clip) = &node.clip {
+        local = local
+            .into_iter()
+            .filter_map(|region| {
+                clip_region(&region.path, clip).map(|path| Region {
+                    path,
+                    alpha: region.alpha,
+                })
+            })
+            .collect();
+    }
+    for region in local {
+        out.push(Region {
+            path: region.path.with_transform(&here),
+            alpha: (region.alpha * alpha).clamp(0.0, 1.0),
+        });
+    }
+    Ok(())
+}
+
+/// Fill path, plus the stroke's own filled outline. Shape children are source-atop, so they
+/// leave this alpha alone and are not part of the silhouette.
+fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
+    if let Some(fill) = &shape.fill {
+        let alpha = coverage_alpha(fill);
+        if alpha > 0.0 && !shape.geometry.is_empty() {
+            out.push(Region {
+                path: shape.geometry.clone(),
+                alpha,
+            });
+        }
+    }
+    if let Some(stroke) = &shape.stroke {
+        let alpha = coverage_alpha(&stroke.paint);
+        if alpha > 0.0 {
+            let filled = stroke_fill(&shape.geometry, stroke)?;
+            if !filled.is_empty() {
+                out.push(Region {
+                    path: filled,
+                    alpha,
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
+fn stroke_fill(path: &Path, stroke: &Stroke) -> Result<Path, RenderError> {
+    let paint = content_paint(&stroke.paint, 0.0, Some(stroke))?;
+    let mut dst = PathBuilder::new();
+    path_utils::fill_path_with_paint(path, &paint, &mut dst, None::<&Rect>, None::<Matrix>);
+    Ok(dst.snapshot())
+}
+
+fn clip_region(path: &Path, clip: &Clip) -> Option<Path> {
+    let op = if clip.invert {
+        PathOp::Difference
+    } else {
+        PathOp::Intersect
+    };
+    skia_safe::op(path, &clip.path, op).filter(|p| !p.is_empty())
+}
+
+fn coverage_alpha(paint: &IrPaint) -> f32 {
+    match paint {
+        IrPaint::Solid(c) => c.a.clamp(0.0, 1.0),
+        IrPaint::Linear { stops, .. }
+        | IrPaint::Radial { stops, .. }
+        | IrPaint::Conic { stops, .. }
+        | IrPaint::Field { stops, .. } => stops
+            .iter()
+            .map(|stop| stop.color.a)
+            .fold(0.0_f32, f32::max)
+            .clamp(0.0, 1.0),
+    }
 }
 
 /// Runs `filter` in `local_to_px` over a device-space image of that same layer.
@@ -611,279 +701,6 @@ pub fn apply_image_filter(
     Ok(surface.image_snapshot())
 }
 
-fn paint_disc(
-    src: &Image,
-    alpha: &[f32],
-    w: i32,
-    h: i32,
-    radius: f32,
-    sigma: f32,
-    color: Color,
-) -> Result<Image, RenderError> {
-    let Some((grown, left, top, cw, ch)) = dilate_crop(alpha, w, h, radius) else {
-        return Ok(src.clone());
-    };
-    let mask = premul_image(&tinted(&grown, color), cw, ch)?;
-    let mut place = Matrix::new_identity();
-    place.pre_translate((left as f32, top as f32));
-    composite_behind(src, &mask, &place, sigma)
-}
-
-fn paint_local_disc(
-    src: &Image,
-    alpha: &[f32],
-    w: i32,
-    h: i32,
-    local_to_px: &Matrix,
-    width: f32,
-    color: Color,
-) -> Result<Image, RenderError> {
-    let Some(inv) = local_to_px.invert() else {
-        let radius = local_to_px.map_radius(width).unwrap_or(width);
-        let sigma = local_to_px
-            .map_radius(OUTLINE_SOFTEN)
-            .unwrap_or(OUTLINE_SOFTEN);
-        return paint_disc(src, alpha, w, h, radius, sigma, color);
-    };
-    let (sx, sy) = axis_scales(local_to_px);
-    let s = sx.max(sy).max(1.0e-3);
-    let Some(bounds) = alpha_bounds(alpha, w, h) else {
-        return Ok(src.clone());
-    };
-    let dev = Rect::from_ltrb(
-        bounds.left as f32,
-        bounds.top as f32,
-        bounds.right as f32,
-        bounds.bottom as f32,
-    );
-    let (mut local, _) = inv.map_rect(dev);
-    local.outset((width + 3.0 / s, width + 3.0 / s));
-    if !(local.width() > 0.0 && local.height() > 0.0) {
-        return Ok(src.clone());
-    }
-    if local.width() * s > 8192.0 || local.height() * s > 8192.0 {
-        let radius = local_to_px.map_radius(width).unwrap_or(width);
-        let sigma = local_to_px
-            .map_radius(OUTLINE_SOFTEN)
-            .unwrap_or(OUTLINE_SOFTEN);
-        return paint_disc(src, alpha, w, h, radius, sigma, color);
-    }
-    let bw = (local.width() * s).ceil() as i32;
-    let bh = (local.height() * s).ceil() as i32;
-    let mut sampled = vec![0.0f32; (bw as usize) * (bh as usize)];
-    for j in 0..bh {
-        for i in 0..bw {
-            let lx = local.left + (i as f32 + 0.5) / s;
-            let ly = local.top + (j as f32 + 0.5) / s;
-            let p = local_to_px.map_point((lx, ly));
-            sampled[(j * bw + i) as usize] = sample_alpha(alpha, w, h, p.x, p.y);
-        }
-    }
-    let grown = dilate_disc(&sampled, bw, bh, width * s);
-    let mask = premul_image(&tinted(&grown, color), bw, bh)?;
-    let mut place = *local_to_px;
-    place.pre_translate((local.left, local.top));
-    place.pre_scale((1.0 / s, 1.0 / s), None);
-    composite_behind(src, &mask, &place, OUTLINE_SOFTEN * s)
-}
-
-fn composite_behind(
-    src: &Image,
-    mask: &Image,
-    place: &Matrix,
-    sigma: f32,
-) -> Result<Image, RenderError> {
-    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
-        .ok_or_else(|| RenderError::Skia("outline surface".into()))?;
-    let canvas = surface.canvas();
-    canvas.draw_image(src, (0.0, 0.0), None);
-    canvas.concat(place);
-    let mut paint = Paint::default();
-    paint.set_blend_mode(BlendMode::DstOver);
-    if sigma > 0.0 {
-        let blur = req(
-            "outline blur",
-            image_filters::blur((sigma, sigma), TileMode::Decal, None, None),
-        )?;
-        paint.set_image_filter(blur);
-    }
-    canvas.draw_image(mask, (0.0, 0.0), Some(&paint));
-    Ok(surface.image_snapshot())
-}
-
-fn dilate_crop(
-    alpha: &[f32],
-    w: i32,
-    h: i32,
-    radius: f32,
-) -> Option<(Vec<f32>, i32, i32, i32, i32)> {
-    let bounds = alpha_bounds(alpha, w, h)?;
-    let margin = radius.ceil() as i32 + 3;
-    let left = (bounds.left - margin).max(0);
-    let top = (bounds.top - margin).max(0);
-    let right = (bounds.right + margin).min(w);
-    let bottom = (bounds.bottom + margin).min(h);
-    let cw = right - left;
-    let ch = bottom - top;
-    if cw <= 0 || ch <= 0 {
-        return None;
-    }
-    let mut crop = vec![0.0f32; (cw as usize) * (ch as usize)];
-    for y in 0..ch {
-        let src_i = ((top + y) * w + left) as usize;
-        let dst_i = (y * cw) as usize;
-        crop[dst_i..dst_i + cw as usize].copy_from_slice(&alpha[src_i..src_i + cw as usize]);
-    }
-    Some((dilate_disc(&crop, cw, ch, radius), left, top, cw, ch))
-}
-
-/// Max over a disc of radius `r`. `dy` runs out to `ceil(r)`, and each row's half-width is
-/// `floor(sqrt(r^2-dy^2))`, so a fractional radius still reaches the next pixel on the axis.
-fn dilate_disc(src: &[f32], w: i32, h: i32, radius: f32) -> Vec<f32> {
-    let n = (w as usize) * (h as usize);
-    if w <= 0 || h <= 0 || radius <= 0.0 || !radius.is_finite() {
-        return src.to_vec();
-    }
-    let ri = radius.ceil().min((w + h) as f32) as usize;
-    let mut out = vec![0.0f32; n];
-    let pad_w = w as usize + 2 * ri;
-    let mut padded = vec![0.0f32; pad_w];
-    let mut windowed = vec![0.0f32; pad_w];
-    let r2 = radius * radius;
-    for dy in -(ri as i32)..=ri as i32 {
-        let k = (r2 - (dy as f32) * (dy as f32)).max(0.0).sqrt().floor() as usize;
-        let window = 2 * k + 1;
-        let start = ri - k;
-        for y in 0..h {
-            padded.fill(0.0);
-            let sy = y + dy;
-            if (0..h).contains(&sy) {
-                let row =
-                    &src[(sy as usize) * (w as usize)..(sy as usize) * (w as usize) + w as usize];
-                padded[ri..ri + w as usize].copy_from_slice(row);
-            }
-            sliding_max(&padded, window, &mut windowed[..pad_w - window + 1]);
-            let dst =
-                &mut out[(y as usize) * (w as usize)..(y as usize) * (w as usize) + w as usize];
-            for x in 0..w as usize {
-                dst[x] = dst[x].max(windowed[start + x]);
-            }
-        }
-    }
-    out
-}
-
-fn sliding_max(row: &[f32], window: usize, out: &mut [f32]) {
-    let mut dq = VecDeque::new();
-    for i in 0..row.len() {
-        while dq.front().copied().is_some_and(|j| j + window <= i) {
-            dq.pop_front();
-        }
-        while dq.back().copied().is_some_and(|j| row[j] <= row[i]) {
-            dq.pop_back();
-        }
-        dq.push_back(i);
-        if i + 1 >= window {
-            out[i + 1 - window] = row[dq[0]];
-        }
-    }
-}
-
-fn alpha_bounds(alpha: &[f32], w: i32, h: i32) -> Option<skia_safe::IRect> {
-    let mut left = w;
-    let mut top = h;
-    let mut right = 0;
-    let mut bottom = 0;
-    for y in 0..h {
-        let row = &alpha[(y * w) as usize..((y + 1) * w) as usize];
-        for (x, v) in row.iter().enumerate() {
-            if *v > 0.0 {
-                let x = x as i32;
-                left = left.min(x);
-                right = right.max(x + 1);
-                top = top.min(y);
-                bottom = bottom.max(y + 1);
-            }
-        }
-    }
-    if right <= left || bottom <= top {
-        None
-    } else {
-        Some(skia_safe::IRect::from_ltrb(left, top, right, bottom))
-    }
-}
-
-fn sample_alpha(alpha: &[f32], w: i32, h: i32, x: f32, y: f32) -> f32 {
-    let x = x - 0.5;
-    let y = y - 0.5;
-    let x0 = x.floor() as i32;
-    let y0 = y.floor() as i32;
-    let tx = x - x0 as f32;
-    let ty = y - y0 as f32;
-    let at = |ix: i32, iy: i32| -> f32 {
-        if ix < 0 || iy < 0 || ix >= w || iy >= h {
-            0.0
-        } else {
-            alpha[(iy * w + ix) as usize]
-        }
-    };
-    let a0 = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
-    let a1 = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
-    a0 + (a1 - a0) * ty
-}
-
-fn axis_scales(m: &Matrix) -> (f32, f32) {
-    let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
-    let sy = (m.skew_x() * m.skew_x() + m.scale_y() * m.scale_y()).sqrt();
-    (sx, sy)
-}
-
-fn tinted(alpha: &[f32], color: Color) -> Vec<u8> {
-    let mut px = Vec::with_capacity(alpha.len() * 4);
-    for &cov in alpha {
-        let a = (cov.clamp(0.0, 1.0) * color.a).clamp(0.0, 1.0);
-        px.push(unit_byte(a * color.r));
-        px.push(unit_byte(a * color.g));
-        px.push(unit_byte(a * color.b));
-        px.push(unit_byte(a));
-    }
-    px
-}
-
-fn unit_byte(v: f32) -> u8 {
-    (v.clamp(0.0, 1.0) * 255.0).round() as u8
-}
-
-fn premul_image(pixels: &[u8], w: i32, h: i32) -> Result<Image, RenderError> {
-    let info = ImageInfo::new((w, h), ColorType::RGBA8888, AlphaType::Premul, None);
-    skia_safe::images::raster_from_data(&info, Data::new_copy(pixels), (w as usize) * 4)
-        .ok_or_else(|| RenderError::Skia("outline image".into()))
-}
-
-fn read_alpha(image: &Image) -> Result<(i32, i32, Vec<f32>), RenderError> {
-    let w = image.width();
-    let h = image.height();
-    let info = ImageInfo::new((w, h), ColorType::RGBA8888, AlphaType::Premul, None);
-    let row = (w as usize) * 4;
-    let mut bytes = vec![0u8; row * (h as usize)];
-    if !image.read_pixels(
-        &info,
-        &mut bytes,
-        row,
-        (0, 0),
-        skia_safe::image::CachingHint::Disallow,
-    ) {
-        return Err(RenderError::Skia("outline read".into()));
-    }
-    let alpha = bytes
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|p| p[3] as f32 / 255.0)
-        .collect();
-    Ok((w, h, alpha))
-}
-
 pub fn white_paint() -> Paint {
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
@@ -898,20 +715,4 @@ pub fn white_paint() -> Paint {
         None,
     );
     paint
-}
-
-#[cfg(test)]
-mod dilate_tests {
-    use super::dilate_disc;
-
-    #[test]
-    fn disc_covers_the_axis_and_the_near_diagonal() {
-        let mut src = vec![0.0f32; 11 * 11];
-        src[5 * 11 + 5] = 1.0;
-        let out = dilate_disc(&src, 11, 11, 3.0);
-        assert_eq!(out[5 * 11 + 8], 1.0);
-        assert_eq!(out[7 * 11 + 7], 1.0);
-        assert_eq!(out[8 * 11 + 8], 0.0);
-        assert_eq!(out[5 * 11 + 9], 0.0);
-    }
 }

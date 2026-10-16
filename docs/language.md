@@ -84,7 +84,7 @@ curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body
 
 - `inside @torso` draws its block clipped to another node's silhouette, and `outside @x` does the inverse.
 - Masks are `mask:@body`, `mask:simplex(30) > .5`, or a `mask:` block, with `feather:6` for a soft edge.
-- `fx` lines apply to the node they're nested under, in order. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a silhouette line behind the node, defaulting to `line(fill)`), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
+- `fx` lines apply to the node they're nested under, in order. Use `blur 4`, `shadow 0,6 blur:8`, `inner 0,4 blur:4` (a shadow cast inward from the top edge), `glow 8`, `rim 3 dir:1,1` (a light band on that side), `adjust hue:10 sat:-.2 light:.05`, `outline 4` (a line around the shape geometry behind the node, default `line(fill)`, unchanged by an earlier blur, shadow, or glow), and `grain .05 scale:1.5`. Each takes `color:` and `a:`. `as:name` names a result and `of:name|@node|self` picks an input, and `merge a b a:.4,1` combines them.
 
 ## Fields
 

@@ -106,27 +106,122 @@ impl Writer {
             self.body.push_str(&fmt_num(node.opacity));
             self.body.push('"');
         }
-        self.clip_attr(node, &id);
-        self.mask_attr(scene, node, &id, bake_scale)?;
         self.blend_style(node);
-        if let Some(filter) = self.fx_filter(node, &id) {
-            self.body.push_str(" filter=\"url(#");
-            self.body.push_str(&filter);
-            self.body.push_str(")\"");
+        if !has_outline(node) {
+            self.clip_attr(node, &id);
+            self.mask_attr(scene, node, &id, bake_scale)?;
+            if let Some(filter) = self.fx_filter(node, &id) {
+                self.body.push_str(" filter=\"url(#");
+                self.body.push_str(&filter);
+                self.body.push_str(")\"");
+            }
+            self.body.push_str(">\n");
+            self.write_kind(scene, node, &id, bake_scale, depth)?;
+        } else {
+            self.body.push_str(">\n");
+            let steps = svg_steps(&node.effects);
+            self.emit_outlined(scene, node, &id, bake_scale, depth, &steps)?;
         }
-        self.body.push_str(">\n");
 
+        self.body.push_str(&pad);
+        self.body.push_str("</g>\n");
+        Ok(())
+    }
+
+    fn write_kind(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
         match &node.kind {
             NodeKind::Group { children, .. } => {
                 for child in children {
                     self.node(scene, child, bake_scale, depth + 1)?;
                 }
             }
-            NodeKind::Shape(shape) => self.shape(scene, shape, &id, bake_scale, depth + 1)?,
+            NodeKind::Shape(shape) => self.shape(scene, shape, id, bake_scale, depth + 1)?,
         }
+        Ok(())
+    }
 
-        self.body.push_str(&pad);
-        self.body.push_str("</g>\n");
+    /// Outline paths sit behind the content. A blur or shadow after an outline wraps both.
+    /// One before an outline wraps only the content, so it does not change the outline.
+    fn emit_outlined(
+        &mut self,
+        scene: &Scene,
+        node: &Node,
+        id: &str,
+        bake_scale: f32,
+        depth: usize,
+        steps: &[SvgStep<'_>],
+    ) -> Result<(), RenderError> {
+        let Some((last, head)) = steps.split_last() else {
+            return self.write_masked_kind(scene, node, id, bake_scale, depth);
+        };
+        match last {
+            SvgStep::Outline { width, color } => {
+                self.outline_paths(node, *width, *color, depth + 1)?;
+                self.emit_outlined(scene, node, id, bake_scale, depth, head)
+            }
+            SvgStep::Filters(effects) => {
+                let pad = "  ".repeat(depth + 1);
+                let fid = format!("{id}-fx{}", steps.len());
+                if self.write_fx_filter(effects, &fid) {
+                    self.body.push_str(&pad);
+                    self.body.push_str("<g filter=\"url(#");
+                    self.body.push_str(&fid);
+                    self.body.push_str(")\">\n");
+                    self.emit_outlined(scene, node, id, bake_scale, depth + 1, head)?;
+                    self.body.push_str(&pad);
+                    self.body.push_str("</g>\n");
+                } else {
+                    self.emit_outlined(scene, node, id, bake_scale, depth, head)?;
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn write_masked_kind(
+        &mut self,
+        scene: &Scene,
+        node: &Node,
+        id: &str,
+        bake_scale: f32,
+        depth: usize,
+    ) -> Result<(), RenderError> {
+        let wrap = node.clip.is_some() || node.mask.is_some();
+        if wrap {
+            let pad = "  ".repeat(depth + 1);
+            self.body.push_str(&pad);
+            self.body.push_str("<g");
+            self.clip_attr(node, id);
+            self.mask_attr(scene, node, id, bake_scale)?;
+            self.body.push_str(">\n");
+            self.write_kind(scene, node, id, bake_scale, depth + 1)?;
+            self.body.push_str(&pad);
+            self.body.push_str("</g>\n");
+        } else {
+            self.write_kind(scene, node, id, bake_scale, depth)?;
+        }
+        Ok(())
+    }
+
+    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, depth: usize) -> Result<(), RenderError> {
+        let regions = crate::effects::silhouette(node)?;
+        let pad = "  ".repeat(depth);
+        for region in regions.iter().rev() {
+            let mut ink = color;
+            ink.a = (ink.a * region.alpha).clamp(0.0, 1.0);
+            if ink.a <= 0.0 {
+                continue;
+            }
+            self.body.push_str(&pad);
+            self.body.push_str("<path d=\"");
+            self.body.push_str(&path_data(&region.path));
+            self.body.push('"');
+            self.color_attrs("fill", ink);
+            self.color_attrs("stroke", ink);
+            self.body.push_str(" stroke-width=\"");
+            self.body.push_str(&fmt_num(width * 2.0));
+            self.body.push_str("\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n");
+        }
         Ok(())
     }
 
@@ -436,18 +531,21 @@ impl Writer {
     }
 
     fn fx_filter(&mut self, node: &Node, id: &str) -> Option<String> {
-        let usable: Vec<&Effect> = node
-            .effects
+        let fid = format!("{id}-fx");
+        if self.write_fx_filter(&node.effects, &fid) { Some(fid) } else { None }
+    }
+
+    fn write_fx_filter(&mut self, effects: &[Effect], fid: &str) -> bool {
+        let usable: Vec<&Effect> = effects
             .iter()
             .filter(|e| matches!(e.op, EffectOp::Blur { .. } | EffectOp::Shadow { .. }))
             .filter(|e| !matches!(e.input, EffectInput::Node(_)))
             .collect();
         if usable.is_empty() {
-            return None;
+            return false;
         }
-        let fid = format!("{id}-fx");
         self.defs.push_str("    <filter id=\"");
-        self.defs.push_str(&fid);
+        self.defs.push_str(fid);
         self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
         let mut names: Vec<(String, String)> = Vec::new();
         let mut prev = "SourceGraphic".to_string();
@@ -497,8 +595,46 @@ impl Writer {
             prev = result;
         }
         self.defs.push_str("</filter>\n");
-        Some(fid)
+        true
     }
+}
+
+fn has_outline(node: &Node) -> bool {
+    node.effects.iter().any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0))
+}
+
+enum SvgStep<'a> {
+    Filters(&'a [Effect]),
+    Outline { width: f32, color: Color },
+}
+
+fn svg_steps(effects: &[Effect]) -> Vec<SvgStep<'_>> {
+    let mut steps = Vec::new();
+    let mut start: Option<usize> = None;
+    for (i, effect) in effects.iter().enumerate() {
+        match &effect.op {
+            EffectOp::Outline { width, color } if *width > 0.0 => {
+                if let Some(s) = start.take() {
+                    steps.push(SvgStep::Filters(&effects[s..i]));
+                }
+                steps.push(SvgStep::Outline { width: *width, color: *color });
+            }
+            EffectOp::Blur { .. } | EffectOp::Shadow { .. } => {
+                if start.is_none() {
+                    start = Some(i);
+                }
+            }
+            _ => {
+                if let Some(s) = start.take() {
+                    steps.push(SvgStep::Filters(&effects[s..i]));
+                }
+            }
+        }
+    }
+    if let Some(s) = start {
+        steps.push(SvgStep::Filters(&effects[s..]));
+    }
+    steps
 }
 
 fn rgb_hex(c: Color) -> String {

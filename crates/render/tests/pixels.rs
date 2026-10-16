@@ -34,14 +34,32 @@ fn outline_ring_is_round() {
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0).unwrap();
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 80, 60), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 85, 60), [0, 0, 0, 244]);
+    assert_eq!(pixel(&png, 86, 60), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 76, 76), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 78, 78), [0, 0, 0, 86]);
+    assert_eq!(pixel(&png, 79, 79), [0, 0, 0, 0]);
     let axis = outer_radius(&png, 60.0, 60.0, 1.0, 0.0);
     let diag = outer_radius(&png, 60.0, 60.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2);
-    assert!((axis - diag).abs() <= 1.0, "axis {axis} diag {diag}");
-    assert!((axis - 26.0).abs() <= 2.0, "radius {axis}");
-    let ring = pixel(&png, 83, 60);
-    assert!(ring[3] > 200, "ring {ring:?}");
-    assert!(ring[0] < 40, "ring color {ring:?}");
-    assert_eq!(pixel(&png, 110, 60), [0, 0, 0, 0]);
+    assert_eq!(axis, 25.0);
+    assert_eq!(diag, 24.5);
+}
+
+#[test]
+fn svg_outline_is_a_round_stroked_path() {
+    let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
+    let scene = scene(140.0, 140.0, vec![node]);
+    let svg = render_svg(&scene, Profile::Svg, 1.0).unwrap();
+    let outline_at = svg.find("stroke-linejoin=\"round\"").expect(&svg);
+    let fill_at = svg.find("fill=\"#ffffff\"").expect(&svg);
+    assert!(outline_at < fill_at, "{svg}");
+    assert!(svg.contains("stroke-linecap=\"round\""), "{svg}");
+    assert!(svg.contains("stroke-width=\"12\""), "{svg}");
+    assert!(!svg.contains("<image"), "{svg}");
+    assert_eq!(raster_only_features(&scene), Vec::new());
+    render_svg(&scene, Profile::Vector, 1.0).unwrap();
 }
 
 #[test]
@@ -50,10 +68,14 @@ fn outline_width_scales_with_the_canvas() {
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0).unwrap();
     assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 160, 120), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 170, 120), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 171, 120), [0, 0, 0, 249]);
+    assert_eq!(pixel(&png, 172, 120), [0, 0, 0, 0]);
     let axis = outer_radius(&png, 120.0, 120.0, 1.0, 0.0);
     let diag = outer_radius(&png, 120.0, 120.0, std::f32::consts::FRAC_1_SQRT_2, std::f32::consts::FRAC_1_SQRT_2);
-    assert!((axis - diag).abs() <= 2.0, "axis {axis} diag {diag}");
-    assert!((axis - 52.0).abs() <= 4.0, "radius {axis}");
+    assert_eq!(axis, 51.0);
+    assert_eq!(diag, 51.5);
 }
 
 #[test]
@@ -150,7 +172,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
 fn outer_radius(png: &[u8], cx: f32, cy: f32, ux: f32, uy: f32) -> f32 {
     let mut last = 0.0;
     let mut t = 0.0;
-    while t < 50.0 {
+    while t < 60.0 {
         let x = (cx + ux * t).round() as i32;
         let y = (cy + uy * t).round() as i32;
         if pixel(png, x, y)[3] > 128 {
