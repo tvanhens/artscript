@@ -95,14 +95,18 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Inside a layer or group, it is the parent frame mapped into the group's local coordinates.
   - Inside a shape's children, it is the shape's local geometry bounds.
   - Inside `inside @x`, it is `@x`'s bounds in local coordinates.
-  - Inside a `def` body, it is an empty rect at the origin.
+  - Inside a `def` body, it is the instance's own box when the def declares `size`, and an empty rect at the origin otherwise. The box is that size centered on the local origin. `size:40` is a 40 by 40 square. `size:72x32` is 72 wide and 32 tall.
+  - Inside a slot, it is the enclosing frame mapped through the slot's transform, for the caller's fill and for the slot's own block.
 - **Percentages.**
   - A position percent is `frame.min + p * frame.size` on that axis.
   - A size percent is `p * frame.size`.
   - A plain number is always a local coordinate.
+  - A percent of an empty frame is E0322, not 0. Inside a def, the message names the def.
+  - A percent passed as `size` resolves against the caller's frame mapped into the instance. A pair uses each axis. A bare percent uses the smaller side, as `circle` does. The body then sees `size` as those numbers. A non-positive or non-numeric `size` is E0320.
 - **Default `at:`.**
   - For a primitive shape, the default is the frame center. So `rect 100%x100%` at top level fills the canvas, and a child circle defaults to its parent's center.
   - For layers, groups and instances, the default is `0,0`.
+  - Inside a def, the box center is the origin, so a primitive with no `at:` stays on the instance origin.
 
 ## 4. Node identity
 
@@ -209,7 +213,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - **Calling a def.**
   1. Bind its params (positional first, then named).
   2. Collect the instance block. It may contain slot fills, patches, `fx`, and `mask:`. Anything else is E0330, and the fix suggests wrapping it in a slot fill.
-  3. Evaluate the body in a fresh scope whose frame is the empty rect.
+  3. Evaluate the body in a fresh scope whose frame is the instance box. That box is the resolved `size`, centered on the origin. A def with no `size` keeps an empty frame.
 - **Patches.**
   - Patches are applied in source order, and the last value set wins.
   - When the instance body creates a node whose path relative to the instance equals a patch path, the patch's named args are merged over the node's own.
@@ -217,7 +221,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - Patches with longer paths are forwarded into nested instances with the prefix stripped.
   - A patch that matches nothing is E0340, and the note lists the part names.
 - **Slots.**
-  - `slot name [at:]` emits the caller's fill content, or its own block if there is no fill, at that z position, transformed by its `at:`.
+  - `slot name [at:]` emits the caller's fill content, or its own block if there is no fill, at that z position, transformed by its `at:`. The slot frame is the enclosing frame mapped through that transform.
   - Slot content is evaluated with the caller's lexical scope plus host lookup. `@x` searches the host instance's named nodes created so far first, then outward.
 - **`needs:@a`.** When the def is instantiated as slot content, the host must have a part `a`. Otherwise it is E0311, listing the host's parts.
 - **Component values.**
@@ -304,7 +308,7 @@ These pin down points the sections above leave open. Earlier sections still gove
 - **Measurements.** `.area` is the bounds area, `w * h`.
 - **Lints.**
   - `raw-color` only scans statements. `@target` keys such as `bg:` are exempt.
-  - `unused` (L0103) covers `let` bindings, def parameters other than `needs`, and imported names. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
+  - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
 - **Codes added in this version.**
   - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
@@ -318,6 +322,7 @@ These pin down points the sections above leave open. Earlier sections still gove
   - E0304: `palette x from y` where `y` does not exist. E0305: a malformed palette entry or `ramp`.
   - E0306: `each` over something that is not a list or range, or more than 100000 iterations. `[each k in ... -> ...]` uses the same rule.
   - E0307: an unknown style.
+  - E0322: a percent measured against an empty frame. Inside a def, the message names the def.
   - E0334: `slot` outside a `def`.
   - E0350: an unknown reference or member. The notes list the names that exist.
   - E0351: measuring a reference that has no geometry.

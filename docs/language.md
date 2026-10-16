@@ -14,7 +14,7 @@ artscript is a declarative language for vector art. `artscript build` turns ever
 | kind | examples |
 |---|---|
 | number | `12`, `.5`, `-3` (canvas units) |
-| percent | `50%` of the current frame (canvas, or the parent shape's bounds) |
+| percent | `50%` of the current frame (the canvas, a parent shape's bounds, or a def's `size` box) |
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | vector / size | `14,0` (no spaces around the comma), `256x256` |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
@@ -101,6 +101,7 @@ def eye size:10 iris:p.sky.3 look:0,0
 ```
 
 - The first parameter is positional (`eye 9 at:-14,0`), and types come from the defaults.
+- `size` is the def's box, centered on the origin. `size:40` is a square. `size:72x32` is 72 wide and 32 tall. A bare percent uses the smaller side. Percents in the body measure that box, and a child with no `at:` stays at the origin.
 - Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
 - `slot name` exposes an insertion point, filled by the caller with a `name:` block. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
 - `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning.
