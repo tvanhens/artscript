@@ -1,3 +1,4 @@
 /target
 .artscript/
 .DS_Store
+node_modules/

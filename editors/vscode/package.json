@@ -38,7 +38,7 @@
     }
   },
   "scripts": {
-    "test": "cargo test -q -p artscript-syntax highlight && node --test test/"
+    "test": "cargo test -q -p artscript-syntax highlight && node --test test/conformance.test.mjs"
   },
   "devDependencies": {
     "vscode-textmate": "^9",

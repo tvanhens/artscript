@@ -4,7 +4,8 @@ use super::{Class, PATH_CHARS};
 use crate::lex::{ANGLE_SUFFIXES, HEX_DELIMS, HEX_LENS, Kw, STRING_ESCAPES};
 
 const IDENT: &str = "[A-Za-z_][A-Za-z0-9_]*";
-const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z0-9_])";
+/// A digit may sit in front of a word. `5degx` is a number and then a name.
+const NOT_IDENT_BEFORE: &str = "(?<![A-Za-z_])";
 const NOT_IDENT_AFTER: &str = "(?![A-Za-z0-9_])";
 /// Spaces, then an optional tab-tainted indent in capture 1.
 const HEAD: &str = "^[ ]*([ \\t]*\\t[ \\t]*)?";
