@@ -34,8 +34,7 @@ def split_comment(line: str) -> CodeAndComment:
     i = 0
     while i < len(line):
         if line[i] == '"':
-            j = line.find('"', i + 1)
-            i = len(line) if j < 0 else j + 1
+            i = skip_string(line, i)
             continue
         if line[i] == "#":
             m = re.match(r"#([0-9A-Fa-f]+)", line[i:])
@@ -256,14 +255,13 @@ def rename_outside_strings(text: str, pairs: dict[str, str]) -> str:
     i = 0
     while i < len(text):
         if text[i] == '"':
-            j = text.find('"', i + 1)
-            j = len(text) if j < 0 else j + 1
+            j = skip_string(text, i)
             out.append(text[i:j])
             i = j
             continue
-        j = text.find('"', i)
-        if j < 0:
-            j = len(text)
+        j = i
+        while j < len(text) and text[j] != '"':
+            j += 1
         chunk = text[i:j]
         for old, new in pairs.items():
             chunk = re.sub(rf"(?<![\w.#@]){old}(?![\w:])", new, chunk)
@@ -284,8 +282,58 @@ class Migrated(NamedTuple):
     notes: list[str]
 
 
+RAW_MARK = "# __migrate_raw_"
+
+
+def unclosed_raw(line: str) -> bool:
+    i = 0
+    while i < len(line):
+        if line.startswith('"""', i):
+            j = line.find('"""', i + 3)
+            if j < 0:
+                return True
+            i = j + 3
+            continue
+        if line[i] == '"':
+            i = skip_string(line, i)
+            continue
+        i += 1
+    return False
+
+
+def hide_raw_lines(lines: list[str]) -> tuple[list[str], dict[int, str]]:
+    inside = False
+    out = []
+    saved: dict[int, str] = {}
+    n = 0
+    for line in lines:
+        if inside:
+            end = line.find('"""')
+            if end < 0:
+                saved[n] = line
+                out.append(" " * indent_of(line) + f"{RAW_MARK}{n}__")
+                n += 1
+                continue
+            inside = unclosed_raw(line[end + 3:])
+        else:
+            inside = unclosed_raw(line)
+        out.append(line)
+    return out, saved
+
+
+def restore_raw_lines(lines: list[str], saved: dict[int, str]) -> list[str]:
+    out = []
+    for line in lines:
+        m = re.search(rf"{re.escape(RAW_MARK)}(\d+)__$", line)
+        if m and int(m.group(1)) in saved and line.strip() == m.group(0):
+            out.append(saved[int(m.group(1))])
+        else:
+            out.append(line)
+    return out
+
+
 def migrate(src: str) -> Migrated:
-    lines = src.split("\n")
+    lines, saved = hide_raw_lines(src.split("\n"))
     out = []
     in_palette = False
     for line in lines:
@@ -299,7 +347,7 @@ def migrate(src: str) -> Migrated:
             out.append(swatch_row(line))
         else:
             out.append(mask_head(line))
-    out = rename_fx_lets(lift_mask_args(out))
+    out = restore_raw_lines(rename_fx_lets(lift_mask_args(out)), saved)
     notes = [
         f"line {k + 1}: top-level `fx` has no draw to attach to"
         for k, l in enumerate(out)

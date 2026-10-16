@@ -95,6 +95,16 @@ class MigrateStatementHeads(unittest.TestCase):
         src = 'group\n  let fx = 1\n  text "fx" fx\n'
         out, _ = migrate(src)
         self.assertEqual(out, 'group\n  let fiber_x = 1\n  text "fx" fiber_x\n')
+        src = 'group\n  let fx = 1\n  text "say \\"fx\\"" fx\n'
+        out, _ = migrate(src)
+        self.assertEqual(out, 'group\n  let fiber_x = 1\n  text "say \\"fx\\"" fiber_x\n')
+
+    def test_a_raw_string_body_is_left_alone(self):
+        src = 'text """\nfoo mask:@body\n"""\n'
+        self.assertEqual(migrate(src)[0], src)
+        src = 'group\n  let fx = 1\n  text """\n  fx\n  """\n  curve fx\n'
+        out, _ = migrate(src)
+        self.assertEqual(out, 'group\n  let fiber_x = 1\n  text """\n  fx\n  """\n  curve fiber_x\n')
 
     def test_top_level_fx_is_reported(self):
         out, notes = migrate("layer foil\nfx grade warm:.2\n")
