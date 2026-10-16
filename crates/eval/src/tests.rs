@@ -1998,6 +1998,94 @@ fn a_list_clip_stays_a_target_option_after_format() {
 }
 
 #[test]
+fn a_loop_reached_after_the_first_frame_loops_the_clip() {
+    let late = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:2s fps:2\nanim pulse dur:1s loop\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
+    )]);
+    let late_plan = plan(&late);
+    assert!(
+        late_plan.diagnostics.is_empty(),
+        "{:?}",
+        late_plan.diagnostics
+    );
+    let late_sample = crate::sample(&late, &late_plan.jobs[0]);
+    assert!(late_sample.loops, "{}", show(&late_sample.diagnostics));
+    let once = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:2s fps:2\nanim pulse dur:1s\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
+    )]);
+    let once_plan = plan(&once);
+    assert!(!crate::sample(&once, &once_plan.jobs[0]).loops);
+}
+
+#[test]
+fn a_gif_without_an_opaque_background_is_e0206() {
+    let bare = project(&[("art/t.art", "@target t.gif 8x8 dur:1s fps:2\ncircle 1\n")]);
+    let bare_plan = plan(&bare);
+    let bare_sample = crate::sample(&bare, &bare_plan.jobs[0]);
+    assert!(
+        bare_sample
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0206" && d.message.contains("opaque")),
+        "{}",
+        show(&bare_sample.diagnostics)
+    );
+    let painted = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\ncircle 1\n",
+    )]);
+    let painted_plan = plan(&painted);
+    let painted_sample = crate::sample(&painted, &painted_plan.jobs[0]);
+    assert!(
+        painted_sample.diagnostics.iter().all(|d| d.code != "E0206"),
+        "{}",
+        show(&painted_sample.diagnostics)
+    );
+}
+
+#[test]
+fn added_times_do_not_grow_a_boundary_frame() {
+    let p = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff fps:10\nanim idle dur:200ms\n  .c at:1,0\ncircle 4 name:c\nplay idle start:100ms\n",
+    )]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    assert!(
+        sampled.diagnostics.iter().all(|d| d.code != "E0206"),
+        "{}",
+        show(&sampled.diagnostics)
+    );
+    assert_eq!(sampled.frames.len(), 3, "{}", sampled.dur);
+}
+
+#[test]
+fn a_boolean_is_not_a_time() {
+    let cases = [
+        "@target t.png 40x40\nanim idle dur:true\n  .c a:.2\ncircle 4 name:c\nplay idle\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .c a:.2\ncircle 4 name:c\nplay idle start:false\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .c a:key(0 1 dur:true)\ncircle 4 name:c\nplay idle\n",
+    ];
+    for src in cases {
+        let ev = run_with(src, &[]);
+        let d = ev
+            .diagnostics
+            .iter()
+            .find(|d| d.code == "E0320")
+            .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+        assert!(
+            d.message.contains("boolean"),
+            "{}\n{}",
+            d.message,
+            show(&ev.diagnostics)
+        );
+    }
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

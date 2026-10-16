@@ -128,7 +128,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let dur = job
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
-    let loops = probe.plays.iter().any(|p| p.loops);
+    let mut loops = probe.plays.iter().any(|p| p.loops);
     let n = match frame_count(dur, fps) {
         Ok(n) => n,
         Err(msg) => {
@@ -161,6 +161,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             let mut frame_job = job.clone();
             frame_job.frame_t = t;
             let ev = evaluate(project, &frame_job);
+            loops |= ev.plays.iter().any(|p| p.loops);
             if let Some(scene) = ev.scene {
                 frames.push(Frame { t, scene });
             }
@@ -169,7 +170,8 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     }
     let mut diagnostics = aggregate_frames(&per_frame);
     if !diagnostics.iter().any(|d| d.code.starts_with('E'))
-        && let Some(d) = gif_timing_error(job, frames.len(), dur)
+        && let Some(d) =
+            gif_timing_error(job, frames.len(), dur).or_else(|| gif_background_error(job, &frames))
     {
         diagnostics.push(d);
     }
@@ -202,6 +204,27 @@ fn gif_timing_error(job: &TargetJob, frames: usize, dur: f64) -> Option<Diagnost
         Diagnostic::error("E0206", job.span, msg)
             .in_file(&job.source)
             .with_fix(fix),
+    )
+}
+
+/// The declared-background check `build` uses before it encodes. Pixel alpha still waits for the encoder.
+fn gif_background_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
+    if !job.outputs.iter().any(|o| o.format == Format::Gif) {
+        return None;
+    }
+    let opaque = frames.iter().all(|frame| {
+        frame
+            .scene
+            .background
+            .is_some_and(|color| color.a >= 1.0 - 1e-4)
+    });
+    if opaque {
+        return None;
+    }
+    Some(
+        Diagnostic::error("E0206", job.span, "a gif needs an opaque `bg:`")
+            .in_file(&job.source)
+            .with_fix("set `bg:` to an opaque color; transparent gifs come later"),
     )
 }
 

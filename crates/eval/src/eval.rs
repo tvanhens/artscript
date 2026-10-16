@@ -3088,10 +3088,11 @@ impl<'a> Evaluator<'a> {
 
     fn time_secs(&mut self, e: &Expr, sc: &Scope) -> R<f64> {
         let v = self.expr(e, sc)?;
-        v.num().filter(|n| n.is_finite()).ok_or_else(|| {
-            fail("E0320", format!("expected a time, got {}", v.kind()))
-                .fix("write `1s`, `200ms`, or a number of seconds")
-        })
+        match v {
+            Value::Num(n) if n.is_finite() => Ok(n),
+            _ => Err(fail("E0320", format!("expected a time, got {}", v.kind()))
+                .fix("write `1s`, `200ms`, or a number of seconds")),
+        }
     }
 
     pub fn key_call(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {

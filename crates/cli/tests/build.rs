@@ -347,3 +347,28 @@ fn check_reports_a_gif_build_would_refuse() {
     );
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn check_reports_a_gif_without_an_opaque_background() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifbg-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifbg\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target tiny.gif 8x8 dur:1s fps:2\ncircle 1\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("a gif needs an opaque `bg:`"),
+        "{}",
+        text(&out)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}

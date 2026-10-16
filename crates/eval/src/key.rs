@@ -269,15 +269,25 @@ pub fn frame_delays(frame_count: usize, dur: f64) -> Result<Vec<u16>, &'static s
 }
 
 pub fn frame_count(dur: f64, fps: f64) -> Result<usize, &'static str> {
-    if dur <= 0.0 || fps <= 0.0 {
+    if !(dur.is_finite() && fps.is_finite() && dur > 0.0 && fps > 0.0) {
         return Ok(0);
     }
-    let mut n = 0usize;
-    while (n as f64) / fps < dur {
-        n += 1;
-        if n > 100_000 {
-            return Err("a clip has more than 100000 frames");
-        }
+    // Frame i is at i/fps and belongs when i < dur*fps. Adding 100ms and 200ms
+    // lands a hair past 0.3, which would otherwise count the boundary frame.
+    let product = dur * fps;
+    let nearest = product.round();
+    let snapped = if (product - nearest).abs() <= 1e-8 {
+        nearest
+    } else {
+        product
+    };
+    let frames = snapped.ceil();
+    if !frames.is_finite() || frames < 0.0 {
+        return Ok(0);
+    }
+    let n = frames as usize;
+    if n > 100_000 {
+        return Err("a clip has more than 100000 frames");
     }
     Ok(n)
 }
@@ -424,6 +434,8 @@ mod tests {
             "a clip has more than 100000 frames"
         );
         assert_eq!(frame_count(1.0, 24.0).unwrap(), 24);
+        assert_eq!(frame_count(0.1 + 0.2, 10.0).unwrap(), 3);
+        assert_eq!(frame_count(0.31, 10.0).unwrap(), 4);
     }
 
     #[test]
