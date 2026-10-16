@@ -1,0 +1,9 @@
+# Cel shadow on the side away from the upper-left light: a hard crescent where `form` shifted by
+# `shift` no longer covers it, plus a softer core. Nest it under `form`.
+def cel form:@self tone:p.shadow shift:-30,-28 core:.4
+  subtract fill:mix(shade(tone -1) shade(tone -2) core) a:.9 blur:1.2
+    copy form
+    copy form at:shift
+  subtract fill:shade(tone -2) a:.35 blur:8
+    copy form
+    copy form at:shift*.45

@@ -1,6 +1,6 @@
 @target prop/matcha_teacup.png 1024x1024
 @target prop/matcha_teacup.svg 1024x1024
-use face/parts { eye blush sparkle }
+use face/parts { eye blush open_mouth sparkle }
 palette tea
   matcha ramp #8db54a 5
   jade ramp #5f8f78 5
@@ -18,14 +18,6 @@ palette tea
   drip_hi #f4fff6
   rim #b4cbe6
   mist #ffffff
-# Left eye closed. scale:-1,1 turns it into the right eye.
-def _lid
-  curve 42.14,1 22.36,20 -2.58,26 -25.8,17 -42.14,-1 -49.88,-10 stroke:mix(line(tea.iris) p.ink .7),[2.58 8.6 11.18 10.32 6.88 2.15] taper:.15,.3
-  curve -21.5,19 -24.51,26 -25.8,33 stroke:mix(line(tea.iris) p.ink .7),3.87 taper:0,.8
-  curve -31.82,12.5 -36.12,18.25 -38.7,24 stroke:mix(line(tea.iris) p.ink .7),3.87 taper:0,.8
-def _open_mouth
-  curve -19,0 0,2.28 19,0 13.68,12.92 0,21.28 -13.68,12.92 closed tension:.45 fill:p.mouth stroke:tea.ink,1.9 name:lips
-    ellipse 11.4,7.6 at:1.52,19.76 fill:p.tongue
 # Boolean nodes consume every child as an operand, so each painted form is a copy of a
 # fill-none union. Shading nests under that copy and the outline traces only the shell.
 layer ground_shadow
@@ -162,10 +154,10 @@ layer saucer pivot:512,800
       eye 86 h:100 iris:tea.iris side:1 look:.1,.12 at:604,648 name:eye_r
       assert level(@eye_l @eye_r) tol:.5
     layer eyes_closed pivot:512,648 a:0
-      _lid at:420,648
-      _lid at:604,648 scale:-1,1
+      eye 86 h:100 iris:tea.iris side:-1 lid:1 at:420,648
+      eye 86 h:100 iris:tea.iris side:1 lid:1 at:604,648
     layer mouth
-      _open_mouth at:512,698
+      open_mouth 38 at:512,698 color:tea.ink
     layer sparkle
       sparkle 28 at:300,440 color:tea.twinkle
       sparkle 15 at:748,418 color:tea.twinkle

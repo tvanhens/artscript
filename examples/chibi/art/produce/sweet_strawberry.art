@@ -1,6 +1,6 @@
 @target produce/sweet_strawberry.png 1024x1024
 @target produce/sweet_strawberry.svg 1024x1024
-use face/parts { blush sparkle }
+use face/parts { eye blush open_mouth sparkle }
 palette berry
   red ramp #e2404e 5
   gold ramp #f2c04e 5
@@ -12,40 +12,6 @@ palette berry
   lip #7a2232
   glint #fff6f0
   twinkle #ffe39a
-# House eye with the upper lid lowered, the shy squint from the original.
-def _shy_eye w:68 h:80 iris:berry.iris side:1 look:0,0
-  group scale:side*w/68,h/80
-    curve -32,2.4 -22,-16.4 -6,-26.3 12,-26.3 27,-17.3 34,-5 32,11 22,30 3,39 -16,34 -29,18 closed fill:p.sclera name:white
-      copy @white fill:grad(down p.sclera_shade fade(p.sclera_shade 0),.37) a:.8
-      ellipse 22.4,34.4 at:look.x*8.8,4+look.y*5.6 fill:grad(down shade(iris -2) shade(iris -1),.38 iris,.72 shade(iris 1)) stroke:fade(line(iris) .9),2 name:disc
-        ellipse 25.8,14.4 at:0,-26.8 fill:line(iris) a:.6 blur:2.8
-        ellipse 16.1,10.3 at:0,21.3 fill:shade(iris 2) a:.8 blur:3.2 blend:screen
-        ellipse 7.6,15.1 at:0,-1.4 fill:mix(line(iris) p.ink .4) a:.92 blur:.5
-        curve -13.9,17.9 0,27.5 13.9,17.9 stroke:shade(iris 2),1.2 a:.55
-        ellipse 9.6,11.6 at:-6.7*side,-12.4 rot:-25*side fill:p.glint a:.25 blur:1.4
-        ellipse 7.6,9.6 at:-6.7*side,-12.4 rot:-25*side fill:p.glint
-        circle 3.1 at:8.5*side,15.1 fill:p.glint a:.95
-        circle 1.3 at:-2.2*side,6.9 fill:p.glint a:.7
-      copy @white fill:grad(down fade(line(iris) .45) fade(line(iris) 0),.24) blend:multiply
-    curve -32.6,4.6 -22.4,-17.1 -6.1,-26.9 12.2,-26.9 26.5,-17.8 34,-5.3 40.8,-18.4 stroke:p.ink,[1.4 3.4 5.1 6.5 7.1 6.1 1.4] taper:.12,.16
-    curve 33.3,-.6 37.4,.2 39.8,3.4 stroke:p.ink,2.7 taper:0,.85
-    curve -10.2,38 6.8,38.8 21.1,31.2 stroke:p.ink,2 taper:.4 a:.45
-def _closed_eye cx:436 side:-1
-  let hw = 35
-  let hh = 42
-  let cy = 592
-  let w = 70
-  let lash = mix(line(berry.iris) p.ink .7)
-  curve cx+side*-.98*hw,cy+.02*hh cx+side*-.52*hw,cy+.4*hh cx+side*.06*hw,cy+.52*hh cx+side*.6*hw,cy+.34*hh cx+side*.98*hw,cy-.02*hh cx+side*1.16*hw,cy-.2*hh stroke:lash,[w*.03 w*.1 w*.13 w*.12 w*.08 w*.025] taper:.15,.3
-  curve cx+side*.5*hw,cy+.38*hh cx+side*.57*hw,cy+.52*hh cx+side*.6*hw,cy+.66*hh stroke:lash,w*.045 taper:0,.8
-  curve cx+side*.74*hw,cy+.25*hh cx+side*.84*hw,cy+.365*hh cx+side*.9*hw,cy+.48*hh stroke:lash,w*.045 taper:0,.8
-def _open_mouth
-  let cx = 512
-  let cy = 642
-  let w = 30
-  curve cx-w/2,cy cx,cy+w*.06 cx+w/2,cy cx+w*.36,cy+w*.34 cx,cy+w*.56 cx-w*.36,cy+w*.34 closed tension:.45 fill:p.mouth name:lips
-    ellipse w*.3,w*.2 at:cx+w*.04,cy+w*.52 fill:p.tongue
-  curve cx-w/2,cy cx,cy+w*.06 cx+w/2,cy cx+w*.36,cy+w*.34 cx,cy+w*.56 cx-w*.36,cy+w*.34 closed tension:.45 fill:none stroke:berry.lip,w*.05
 def _seed x:0 y:0
   let dx = (x-512)/280
   let dy = (y-580)/280
@@ -139,15 +105,15 @@ layer body pivot:506,846
     blush 86 h:40 at:646,648 color:berry.blush lines:3
     blush 56 h:24 at:646,648 color:berry.blush lines:0
   layer eyes pivot:512,592
-    _shy_eye 72 h:86 at:436,592 side:-1 look:-.3,.35 name:eye_l
-    _shy_eye 72 h:86 at:588,592 side:1 look:-.3,.35 name:eye_r
+    eye 72 h:86 iris:berry.iris side:-1 look:-.3,.35 lid:.18 at:436,592 name:eye_l
+    eye 72 h:86 iris:berry.iris side:1 look:-.3,.35 lid:.18 at:588,592 name:eye_r
     assert level(@eye_l @eye_r) tol:.5
   # Blink alternate. Hidden in the still.
   layer eyes_closed pivot:512,592 a:0
-    _closed_eye 436 side:-1
-    _closed_eye 588 side:1
+    eye 70 h:84 iris:berry.iris side:-1 lid:1 at:436,592
+    eye 70 h:84 iris:berry.iris side:1 lid:1 at:588,592
   layer mouth
-    _open_mouth
+    open_mouth at:512,642 color:berry.lip
   layer calyx pivot:512,338
     group name:crown
       _sepals
