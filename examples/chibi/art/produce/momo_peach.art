@@ -5,11 +5,11 @@ use face/parts { happy_eye blush cat_mouth sparkle }
 
 palette peach
   cream ramp #f6e2c6 5
-  pink  ramp #f3a2a6 5
+  pink ramp #f3a2a6 5
   coral ramp #ec7a6a 5
-  leaf  ramp #7db956 5
-  twig  ramp #8b5a3c 5
-  face  #6a2f3c
+  leaf ramp #7db956 5
+  twig ramp #8b5a3c 5
+  face #6a2f3c
 
 # Leaf along +x from its base, 200 long and 100 wide; `vein` picks the shaded half.
 def _leaf tone:peach.leaf vein:1
@@ -20,7 +20,7 @@ def _leaf tone:peach.leaf vein:1
     curve 0,0 60,23 120,27 180,9 stroke:shade(tone -2),[5 4 3 1.5] taper:0,.6 a:.8
     curve -2,-2 58,21 118,25 stroke:shade(tone 2),[2.5 2 1.5] taper:0,.6 a:.6
     each f in [.22 .42 .62]
-      let k = 100*(1 - .6*f)
+      let k = 100*(1-.6*f)
       let m = 200*f,28*sin(180*f)
       each s in [-1 1]
         curve m m+(.08*k,s*.22*k) m+(.3*k,s*.36*k) stroke:shade(tone -2),[2 1.6 .8] taper:0,.8 a:.3
@@ -65,7 +65,7 @@ layer body
     ellipse 32,14 at:330,452 rot:-35 fill:p.glint a:.45 blur:8
     each i in 0..900
       let r = sqrt(rand(0 1))
-      let q = (516,598) + polar(1 rand(0 360))*(290*r,250*r)
+      let q = (516,598)+polar(1 rand(0 360))*(290*r,250*r)
       curve q q+polar(rand(2.5 5) rand(-160 -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08 .2)
     fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
     fx rim 6 dir:1,1 color:p.rim a:.5

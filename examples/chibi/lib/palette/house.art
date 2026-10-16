@@ -1,13 +1,13 @@
 # House neutrals shared by every piece: key light from the upper left, warm glints, cool rims.
 palette house
-  ink          #3d2632
-  glint        #fff4e6
-  rim          #b9c9ec
-  shadow       #4a3036
-  sclera       #f6f2f4
+  ink #3d2632
+  glint #fff4e6
+  rim #b9c9ec
+  shadow #4a3036
+  sclera #f6f2f4
   sclera_shade #c8bdd3
-  mouth        #93404d
-  tongue       #ec8f92
-  blush        #f0a0a0
-  dew          #d8f0ff
-  iris         #8a4a3c
+  mouth #93404d
+  tongue #ec8f92
+  blush #f0a0a0
+  dew #d8f0ff
+  iris #8a4a3c

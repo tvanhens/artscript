@@ -34,8 +34,8 @@ def _pillar cx:334
     ellipse 12,300 at:46,520 fill:verm.0 a:.45 blur:9
     curve -28,300 -30,520 -33,740 stroke:verm.4,[3 9 4] a:.55 blur:2.5
     each k in 0..4
-      let gx = -36 + k*20 + rand(-3 3)
-      curve gx,300 + k*40 gx + 1,480 gx - 1,700 - k*30 stroke:verm.1,1.3 a:.22
+      let gx = -36+k*20+rand(-3 3)
+      curve gx,300+k*40 gx+1,480 gx-1,700-k*30 stroke:verm.1,1.3 a:.22
     rect 160x46 at:0,273 r:4 fill:verm.0 a:.7 blur:9
     rect 160x28 at:0,414 r:4 fill:verm.0 a:.65 blur:8
     rect 124x108 at:0,766 fill:grad(right char char.3,.22 char,.5 char.0) name:band
@@ -48,40 +48,40 @@ def _pillar cx:334
     fx grain .04 scale:2.5
     fx outline 6 color:gate
 def _stone cx:334
-  curve cx - 94,848 cx - 90,806 cx - 70,772 cx - 28,758 cx + 28,758 cx + 72,774 cx + 92,806 cx + 96,848 cx,856 closed tension:.5 fill:grad(28 stone.3 stone,.45 stone.1) name:rock
-    curve cx + 26,750 cx + 110,770 cx + 110,866 cx - 10,866 cx + 34,822 cx + 40,786 closed tension:.5 fill:stone.1 a:.9 blur:1.2
-    ellipse 26,32 at:cx + 70,826 fill:stone.0 a:.4 blur:10
-    ellipse 70,12 at:cx + 4,770 fill:stone.0 a:.6 blur:6
-    curve cx - 78,814 cx - 62,784 cx - 30,768 stroke:stone.4,[3 6 3] a:.75 blur:1
+  curve cx-94,848 cx-90,806 cx-70,772 cx-28,758 cx+28,758 cx+72,774 cx+92,806 cx+96,848 cx,856 closed tension:.5 fill:grad(28 stone.3 stone,.45 stone.1) name:rock
+    curve cx+26,750 cx+110,770 cx+110,866 cx-10,866 cx+34,822 cx+40,786 closed tension:.5 fill:stone.1 a:.9 blur:1.2
+    ellipse 26,32 at:cx+70,826 fill:stone.0 a:.4 blur:10
+    ellipse 70,12 at:cx+4,770 fill:stone.0 a:.6 blur:6
+    curve cx-78,814 cx-62,784 cx-30,768 stroke:stone.4,[3 6 3] a:.75 blur:1
     ellipse 92,8 at:cx,850 fill:stone.0 a:.5 blur:5
     each i in 0..22
-      circle rand(1 2.2) at:cx + rand(-82 82),rand(782 842) fill:stone.0 a:.4
-    curve cx + 40,798 cx + 52,814 cx + 46,832 stroke:stone.line,1.8 a:.45
+      circle rand(1 2.2) at:cx+rand(-82 82),rand(782 842) fill:stone.0 a:.4
+    curve cx+40,798 cx+52,814 cx+46,832 stroke:stone.line,1.8 a:.45
     fx rim 4 dir:1,1 color:p.rim a:.5
     fx grain .06 scale:2
     fx outline 5 color:stone.line
 def _groove x:512
-  let u = (x - 512)/242
-  let yc = 472 - 36*u*u
-  let hw = 38 - 17*u*u
-  curve x - 10,yc - hw x - 3,yc - hw*.35 x + 7,yc + hw*.35 x + 18,yc + hw stroke:straw.1,9 taper:.2 a:.55 blur:3.5
-  curve x - 16,yc - hw x - 9,yc - hw*.35 x + 1,yc + hw*.35 x + 12,yc + hw stroke:straw.0,[1.2 3.4 3.4 1.2] taper:.25 a:.8
-  curve x - 24,yc - hw*.75 x - 17,yc - hw*.1 x - 10,yc + hw*.4 stroke:straw.4,[2 4.5 1.5] a:.65 blur:1.2
+  let u = (x-512)/242
+  let yc = 472-36*u*u
+  let hw = 38-17*u*u
+  curve x-10,yc-hw x-3,yc-hw*.35 x+7,yc+hw*.35 x+18,yc+hw stroke:straw.1,9 taper:.2 a:.55 blur:3.5
+  curve x-16,yc-hw x-9,yc-hw*.35 x+1,yc+hw*.35 x+12,yc+hw stroke:straw.0,[1.2 3.4 3.4 1.2] taper:.25 a:.8
+  curve x-24,yc-hw*.75 x-17,yc-hw*.1 x-10,yc+hw*.4 stroke:straw.4,[2 4.5 1.5] a:.65 blur:1.2
   each i in 0..3
-    let fx = x + rand(-12 4)
-    let fy = yc + rand(-1 1)*hw*.6
-    curve fx - 4,fy - 3 fx + 4,fy + 3 stroke:straw.1,1 a:.4
+    let fx = x+rand(-12 4)
+    let fy = yc+rand(-1 1)*hw*.6
+    curve fx-4,fy-3 fx+4,fy+3 stroke:straw.1,1 a:.4
 def _tassel tx:467
-  let u = (tx - 512)/242
-  let ty = 496 - 53*u*u
-  curve tx - 9,ty tx + 9,ty tx + 10,ty + 22 tx + 18,ty + 58 tx + 10,ty + 64 tx + 2,ty + 60 tx - 6,ty + 66 tx - 17,ty + 58 tx - 10,ty + 22 closed tension:.35 fill:grad(63 straw.3 straw,.5 straw.1) name:fringe
-    curve tx + 4,ty tx + 30,ty tx + 30,ty + 80 tx + 8,ty + 80 closed tension:0 fill:straw.1 a:.7 blur:1
+  let u = (tx-512)/242
+  let ty = 496-53*u*u
+  curve tx-9,ty tx+9,ty tx+10,ty+22 tx+18,ty+58 tx+10,ty+64 tx+2,ty+60 tx-6,ty+66 tx-17,ty+58 tx-10,ty+22 closed tension:.35 fill:grad(63 straw.3 straw,.5 straw.1) name:fringe
+    curve tx+4,ty tx+30,ty tx+30,ty+80 tx+8,ty+80 closed tension:0 fill:straw.1 a:.7 blur:1
     each k in 0..8
-      let f = (k - 3.5)/3.5
-      let ink = if k - 2*floor(k/2) > .5 then straw.0 else straw.4
-      curve tx + f*6,ty + 18 tx + f*10,ty + 40 tx + f*15,ty + 60 stroke:ink,1.3 a:.55
-    ellipse 14,8 at:tx,ty + 6 fill:straw.0 a:.6 blur:4
-    rect 22x7 at:tx,ty + 17.5 r:2 fill:verm
+      let f = (k-3.5)/3.5
+      let ink = if k-2*floor(k/2) > .5 then straw.0 else straw.4
+      curve tx+f*6,ty+18 tx+f*10,ty+40 tx+f*15,ty+60 stroke:ink,1.3 a:.55
+    ellipse 14,8 at:tx,ty+6 fill:straw.0 a:.6 blur:4
+    rect 22x7 at:tx,ty+17.5 r:2 fill:verm
       curve -9,-2.5 8,-2.5 stroke:verm.4,1.4 a:.7
     fx rim 4 dir:1,1 color:p.rim a:.4
     fx grain .05 scale:1.8

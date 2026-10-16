@@ -17,7 +17,7 @@ def _shy_eye w:68 h:80 iris:berry.iris side:1 look:0,0
   group scale:side*w/68,h/80
     curve -32,2.4 -22,-16.4 -6,-26.3 12,-26.3 27,-17.3 34,-5 32,11 22,30 3,39 -16,34 -29,18 closed fill:p.sclera name:white
       copy @white fill:grad(down p.sclera_shade fade(p.sclera_shade 0),.37) a:.8
-      ellipse 22.4,34.4 at:look.x*8.8,4 + look.y*5.6 fill:grad(down shade(iris -2) shade(iris -1),.38 iris,.72 shade(iris 1)) stroke:fade(line(iris) .9),2 name:disc
+      ellipse 22.4,34.4 at:look.x*8.8,4+look.y*5.6 fill:grad(down shade(iris -2) shade(iris -1),.38 iris,.72 shade(iris 1)) stroke:fade(line(iris) .9),2 name:disc
         ellipse 25.8,14.4 at:0,-26.8 fill:line(iris) a:.6 blur:2.8
         ellipse 16.1,10.3 at:0,21.3 fill:shade(iris 2) a:.8 blur:3.2 blend:screen
         ellipse 7.6,15.1 at:0,-1.4 fill:mix(line(iris) p.ink .4) a:.92 blur:.5
@@ -36,60 +36,60 @@ def _closed_eye cx:436 side:-1
   let cy = 592
   let w = 70
   let lash = mix(line(berry.iris) p.ink .7)
-  curve cx + side*-.98*hw,cy + .02*hh cx + side*-.52*hw,cy + .4*hh cx + side*.06*hw,cy + .52*hh cx + side*.6*hw,cy + .34*hh cx + side*.98*hw,cy - .02*hh cx + side*1.16*hw,cy - .2*hh stroke:lash,[w*.03 w*.1 w*.13 w*.12 w*.08 w*.025] taper:.15,.3
-  curve cx + side*.5*hw,cy + .38*hh cx + side*.57*hw,cy + .52*hh cx + side*.6*hw,cy + .66*hh stroke:lash,w*.045 taper:0,.8
-  curve cx + side*.74*hw,cy + .25*hh cx + side*.84*hw,cy + .365*hh cx + side*.9*hw,cy + .48*hh stroke:lash,w*.045 taper:0,.8
+  curve cx+side*-.98*hw,cy+.02*hh cx+side*-.52*hw,cy+.4*hh cx+side*.06*hw,cy+.52*hh cx+side*.6*hw,cy+.34*hh cx+side*.98*hw,cy-.02*hh cx+side*1.16*hw,cy-.2*hh stroke:lash,[w*.03 w*.1 w*.13 w*.12 w*.08 w*.025] taper:.15,.3
+  curve cx+side*.5*hw,cy+.38*hh cx+side*.57*hw,cy+.52*hh cx+side*.6*hw,cy+.66*hh stroke:lash,w*.045 taper:0,.8
+  curve cx+side*.74*hw,cy+.25*hh cx+side*.84*hw,cy+.365*hh cx+side*.9*hw,cy+.48*hh stroke:lash,w*.045 taper:0,.8
 def _open_mouth
   let cx = 512
   let cy = 642
   let w = 30
-  curve cx - w/2,cy cx,cy + w*.06 cx + w/2,cy cx + w*.36,cy + w*.34 cx,cy + w*.56 cx - w*.36,cy + w*.34 closed tension:.45 fill:p.mouth name:lips
-    ellipse w*.3,w*.2 at:cx + w*.04,cy + w*.52 fill:p.tongue
-  curve cx - w/2,cy cx,cy + w*.06 cx + w/2,cy cx + w*.36,cy + w*.34 cx,cy + w*.56 cx - w*.36,cy + w*.34 closed tension:.45 fill:none stroke:berry.lip,w*.05
+  curve cx-w/2,cy cx,cy+w*.06 cx+w/2,cy cx+w*.36,cy+w*.34 cx,cy+w*.56 cx-w*.36,cy+w*.34 closed tension:.45 fill:p.mouth name:lips
+    ellipse w*.3,w*.2 at:cx+w*.04,cy+w*.52 fill:p.tongue
+  curve cx-w/2,cy cx,cy+w*.06 cx+w/2,cy cx+w*.36,cy+w*.34 cx,cy+w*.56 cx-w*.36,cy+w*.34 closed tension:.45 fill:none stroke:berry.lip,w*.05
 def _seed x:0 y:0
-  let dx = (x - 512)/280
-  let dy = (y - 580)/280
+  let dx = (x-512)/280
+  let dy = (y-580)/280
   let ang = dx*28
-  let sc = 1.05 - .3*min(1 sqrt(dx*dx + dy*dy))
+  let sc = 1.05-.3*min(1 sqrt(dx*dx+dy*dy))
   group at:x,y rot:ang
     ellipse 10*sc,14*sc at:0,1 fill:mix(berry.red.1 berry.red .3) a:.7 blur:1.2
       ellipse 10*sc,14*sc at:4*sc,5*sc fill:berry.red.3 a:.75 blur:2
     curve 0,-9*sc 4.8*sc,1 1,7.5*sc -4.4*sc,2 closed tension:.65 fill:grad(58deg berry.gold.4 berry.gold,.5 berry.gold.1) stroke:fade(berry.gold.line .55),1.2
-  circle 1.4*sc at:x - 1.4*sc,y - 3.4*sc fill:berry.glint a:.85
+  circle 1.4*sc at:x-1.4*sc,y-3.4*sc fill:berry.glint a:.85
 # One sepal of the crown. `cast` paints the berry's shoulder shadow instead of the leaf.
 def _sepal tx:0 ty:0 width:76 ox:0 oy:0 cast:0
-  let dx = tx - 512
-  let dy = ty - 338
-  let len = sqrt(dx*dx + dy*dy)
+  let dx = tx-512
+  let dy = ty-338
+  let len = sqrt(dx*dx+dy*dy)
   let ux = dx/len
   let uy = dy/len
   let nx = -uy
   let ny = ux
   let hw = width/2
   let sag = if ty > 298 then 1 else .3
-  let p0 = 512 + ox + nx*-hw*.45,338 + oy + ny*-hw*.45
-  let p1 = 512 + ox + dx*.28 + nx*-hw*1.05,338 + oy + dy*.28 + ny*-hw*1.05 + sin(.28*180)*14*sag
-  let p2 = 512 + ox + dx*.62 + nx*-hw*.9,338 + oy + dy*.62 + ny*-hw*.9 + sin(.62*180)*14*sag
-  let p3 = 512 + ox + dx*.88 + nx*-hw*.4,338 + oy + dy*.88 + ny*-hw*.4 + sin(.88*180)*14*sag
-  let p4 = tx + ox,ty + oy
-  let p5 = 512 + ox + dx*.86 + nx*hw*.32,338 + oy + dy*.86 + ny*hw*.32 + sin(.86*180)*14*sag
-  let p6 = 512 + ox + dx*.6 + nx*hw*.8,338 + oy + dy*.6 + ny*hw*.8 + sin(.6*180)*14*sag
-  let p7 = 512 + ox + dx*.3 + nx*hw,338 + oy + dy*.3 + ny*hw + sin(.3*180)*14*sag
-  let p8 = 512 + ox + nx*hw*.45,338 + oy + ny*hw*.45
+  let p0 = 512+ox+nx*-hw*.45,338+oy+ny*-hw*.45
+  let p1 = 512+ox+dx*.28+nx*-hw*1.05,338+oy+dy*.28+ny*-hw*1.05+sin(.28*180)*14*sag
+  let p2 = 512+ox+dx*.62+nx*-hw*.9,338+oy+dy*.62+ny*-hw*.9+sin(.62*180)*14*sag
+  let p3 = 512+ox+dx*.88+nx*-hw*.4,338+oy+dy*.88+ny*-hw*.4+sin(.88*180)*14*sag
+  let p4 = tx+ox,ty+oy
+  let p5 = 512+ox+dx*.86+nx*hw*.32,338+oy+dy*.86+ny*hw*.32+sin(.86*180)*14*sag
+  let p6 = 512+ox+dx*.6+nx*hw*.8,338+oy+dy*.6+ny*hw*.8+sin(.6*180)*14*sag
+  let p7 = 512+ox+dx*.3+nx*hw,338+oy+dy*.3+ny*hw+sin(.3*180)*14*sag
+  let p8 = 512+ox+nx*hw*.45,338+oy+ny*hw*.45
   if cast
     curve p0 p1 p2 p3 p4 p5 p6 p7 p8 closed fill:berry.red.0 a:.38 blur:9
   else
-    let lit = nx*-.7 + ny*-.7 > 0
+    let lit = nx*-.7+ny*-.7 > 0
     let side_color = if lit then berry.leaf.1 else berry.leaf.3
     let side_a = if lit then .45 else .35
-    let m0 = 512 + dx*.12,338 + dy*.12 + sin(.12*180)*5
-    let m1 = 512 + dx*.5,338 + dy*.5 + sin(.5*180)*5
-    let m2 = 512 + dx*.86,338 + dy*.86 + sin(.86*180)*5
+    let m0 = 512+dx*.12,338+dy*.12+sin(.12*180)*5
+    let m1 = 512+dx*.5,338+dy*.5+sin(.5*180)*5
+    let m2 = 512+dx*.86,338+dy*.86+sin(.86*180)*5
     curve p0 p1 p2 p3 p4 p5 p6 p7 p8 closed fill:grad(25deg berry.leaf.3 berry.leaf,.5 berry.leaf.1) stroke:fade(berry.leaf.line .85),2.4 name:blade
       ellipse 110,48 at:512,338 fill:berry.leaf.1 a:.65 blur:10
-      curve 512,338 tx + ux*10,ty + uy*10 tx + nx*60,ty + ny*60 512 + nx*60,338 + ny*60 closed tension:0 fill:side_color a:side_a blur:1.2
+      curve 512,338 tx+ux*10,ty+uy*10 tx+nx*60,ty+ny*60 512+nx*60,338+ny*60 closed tension:0 fill:side_color a:side_a blur:1.2
       curve m0 m1 m2 stroke:fade(berry.leaf.0 .6),[4 3 1.2] taper:.35
-      curve m0 + (-3,-4) m1 + (-3,-4) stroke:fade(berry.leaf.4 .7),[2.6 1.4] taper:.35 blur:.6
+      curve m0+(-3,-4) m1+(-3,-4) stroke:fade(berry.leaf.4 .7),[2.6 1.4] taper:.35 blur:.6
 def _sepals ox:0 oy:0 cast:0
   _sepal 448 246 76 ox:ox oy:oy cast:cast
   _sepal 590 244 76 ox:ox oy:oy cast:cast
@@ -100,12 +100,12 @@ def _sepals ox:0 oy:0 cast:0
   _sepal 584 428 70 ox:ox oy:oy cast:cast
   _sepal 452 432 70 ox:ox oy:oy cast:cast
 def _dew x:418 y:772 r:15
-  curve x + 4,y - r*1.5 + 6 x + r*.9 + 4,y + r*.1 + 6 x + r*.5 + 4,y + r*.9 + 6 x - r*.5 + 4,y + r*.9 + 6 x - r*.9 + 4,y + r*.1 + 6 closed tension:.6 fill:berry.red.0 a:.45 blur:3
-  curve x,y - r*1.5 x + r*.9,y + r*.1 x + r*.5,y + r*.9 x - r*.5,y + r*.9 x - r*.9,y + r*.1 closed tension:.6 fill:fade(berry.red.4 .5) name:drop
-    curve x,y - r*1.5 x + r*.9,y + r*.1 x + r*.5,y + r*.9 x - r*.5,y + r*.9 x - r*.9,y + r*.1 closed tension:.6 fill:grad(45deg fade(berry.red.1 0) berry.red.4) a:.7
-    ellipse r*1.05,r*.62 at:x + r*.08,y + r*.48 fill:mix(berry.glint berry.red.4 .22) a:.62 blur:3.5
-  curve x,y - r*1.5 x + r*.9,y + r*.1 x + r*.5,y + r*.9 x - r*.5,y + r*.9 x - r*.9,y + r*.1 closed tension:.6 fill:none stroke:fade(berry.red.line .4),1.4
-  ellipse r*.22,r*.4 at:x - r*.35,y - r*.2 rot:20 fill:berry.glint a:.95
+  curve x+4,y-r*1.5+6 x+r*.9+4,y+r*.1+6 x+r*.5+4,y+r*.9+6 x-r*.5+4,y+r*.9+6 x-r*.9+4,y+r*.1+6 closed tension:.6 fill:berry.red.0 a:.45 blur:3
+  curve x,y-r*1.5 x+r*.9,y+r*.1 x+r*.5,y+r*.9 x-r*.5,y+r*.9 x-r*.9,y+r*.1 closed tension:.6 fill:fade(berry.red.4 .5) name:drop
+    curve x,y-r*1.5 x+r*.9,y+r*.1 x+r*.5,y+r*.9 x-r*.5,y+r*.9 x-r*.9,y+r*.1 closed tension:.6 fill:grad(45deg fade(berry.red.1 0) berry.red.4) a:.7
+    ellipse r*1.05,r*.62 at:x+r*.08,y+r*.48 fill:mix(berry.glint berry.red.4 .22) a:.62 blur:3.5
+  curve x,y-r*1.5 x+r*.9,y+r*.1 x+r*.5,y+r*.9 x-r*.5,y+r*.9 x-r*.9,y+r*.1 closed tension:.6 fill:none stroke:fade(berry.red.line .4),1.4
+  ellipse r*.22,r*.4 at:x-r*.35,y-r*.2 rot:20 fill:berry.glint a:.95
 layer ground_shadow
   ellipse 250,34 at:512,878 fill:berry.plum a:.36 blur:16
   ellipse 150,18 at:500,872 fill:berry.plum a:.25 blur:8

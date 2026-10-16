@@ -26,7 +26,7 @@ def happy_eye w:68 color:p.ink
 def blush w:72 h:32 color:p.blush lines:3
   ellipse w/2,h/2 fill:color a:.6 blur:min(w h)*.2
   each k in 0..lines
-    let x = (k - (lines - 1)/2)*w*.22
+    let x = (k-(lines-1)/2)*w*.22
     curve x-w*.05,h*.18 x+w*.05,-h*.18 stroke:shade(color -1),w*.045 taper:.5 a:.7
 
 def cat_mouth w:46 color:p.ink

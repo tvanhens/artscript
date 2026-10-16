@@ -37,16 +37,16 @@ def _fabric form:@self
 def _sleepy_eye w:104 h:112 side:1 iris:monk.iris lid:.6
   let sx = side*w/2
   let sy = h/2
-  let v0 = -.02 + lid*.47
-  let v1 = -.6 + lid*1.05
-  let v2 = -.9 + lid*1.35
-  let v4 = -.62 + lid*1.07
-  let v5 = -.24 + lid*.69
+  let v0 = -.02+lid*.47
+  let v1 = -.6+lid*1.05
+  let v2 = -.9+lid*1.35
+  let v4 = -.62+lid*1.07
+  let v5 = -.24+lid*.69
   eye w h:h iris:iris side:side look:0,.4
     mask:
       curve -.94*sx,v0*sy -.66*sx,v1*sy -.18*sx,v2*sy .36*sx,v2*sy .78*sx,v4*sy sx,v5*sy .93*sx,.28*sy 1.4*sx,1.6*sy -1.4*sx,1.6*sy -.84*sx,.44*sy closed
-  curve -.96*sx,(v0 + .06)*sy -.66*sx,(v1 - .02)*sy -.18*sx,(v2 - .02)*sy .36*sx,(v2 - .02)*sy .78*sx,(v4 - .02)*sy sx,(v5 - .02)*sy 1.2*sx,(v5 - .22)*sy stroke:mix(line(iris) p.ink .7),[w*.02 w*.05 w*.075 w*.095 w*.105 w*.09 w*.02] taper:.12,.16
-  curve .98*sx,(v5 + .1)*sy 1.1*sx,(v5 + .12)*sy 1.17*sx,(v5 + .2)*sy stroke:mix(line(iris) p.ink .7),w*.04 taper:0,.85
+  curve -.96*sx,(v0+.06)*sy -.66*sx,(v1-.02)*sy -.18*sx,(v2-.02)*sy .36*sx,(v2-.02)*sy .78*sx,(v4-.02)*sy sx,(v5-.02)*sy 1.2*sx,(v5-.22)*sy stroke:mix(line(iris) p.ink .7),[w*.02 w*.05 w*.075 w*.095 w*.105 w*.09 w*.02] taper:.12,.16
+  curve .98*sx,(v5+.1)*sy 1.1*sx,(v5+.12)*sy 1.17*sx,(v5+.2)*sy stroke:mix(line(iris) p.ink .7),w*.04 taper:0,.85
 def _closed_eye w:104 h:112 side:1 iris:monk.iris
   let sx = side*w/2
   let sy = h/2
@@ -69,7 +69,7 @@ def _foot
     curve 20,874 22,882 stroke:monk.skin.0,[1.6 .8] taper:.35 a:.5
 def _stitches p0:0,0 p1:0,0
   each i in 0..4
-    curve p0 + (p1 - p0)*((i + .2)/4) p0 + (p1 - p0)*((i + .65)/4) stroke:monk.ochre.3,2.2
+    curve p0+(p1-p0)*((i+.2)/4) p0+(p1-p0)*((i+.65)/4) stroke:monk.ochre.3,2.2
 # Left arm at side:1; side:-1 mirrors the shapes about x=512 but keeps the upper-left light.
 def _arm side:1
   group at:512,0 name:mass
@@ -215,8 +215,8 @@ layer leaf
       curve -4,4 64,-22 120,-56 104,-24 74,4 34,18 closed fill:mix(monk.leaf.1 monk.leaf.0 .3) a:.85 blur:1
       curve 0,2 44,-20 84,-38 116,-54 stroke:monk.leaf.0,[3.2 2.8 1.9 1] taper:0,.5 a:.8
       each v in [28,-12 56,-26 84,-38]
-        curve v v + (6,-18) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
-        curve v v + (14,12) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
+        curve v v+(6,-18) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
+        curve v v+(14,12) stroke:monk.leaf.0,[1.9 .8] taper:0,.6 a:.5
       ellipse 22,6.4 at:40,-30 rot:-24 fill:monk.leaf.4 a:.8 blur:2.4
     curve 66,-10 74,-16 82,-8 78,2 68,2 closed fill:mix(monk.leaf.3 monk.rim .5) a:.85 name:drop
       ellipse 5.6,4 at:78,0 fill:monk.leaf.0 a:.6 blur:1.6
