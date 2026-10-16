@@ -1,0 +1,140 @@
+{
+  "encoding": "o200k_base",
+  "project": "examples/chibi",
+  "files": {
+    "art/character/moss_monk.art": {
+      "tokens": 4336,
+      "lines": 220,
+      "palette_prefix_tokens": 35
+    },
+    "art/monument/stone_lantern.art": {
+      "tokens": 6392,
+      "lines": 286,
+      "palette_prefix_tokens": 418
+    },
+    "art/monument/vermilion_torii.art": {
+      "tokens": 5017,
+      "lines": 253,
+      "palette_prefix_tokens": 33
+    },
+    "art/produce/momo_peach.art": {
+      "tokens": 3520,
+      "lines": 159,
+      "palette_prefix_tokens": 104
+    },
+    "art/produce/sweet_strawberry.art": {
+      "tokens": 2507,
+      "lines": 114,
+      "palette_prefix_tokens": 20
+    },
+    "art/prop/matcha_teacup.art": {
+      "tokens": 2509,
+      "lines": 128,
+      "palette_prefix_tokens": 118
+    },
+    "lib/face/parts.art": {
+      "tokens": 1685,
+      "lines": 63,
+      "palette_prefix_tokens": 0
+    },
+    "lib/palette/house.art": {
+      "tokens": 135,
+      "lines": 14,
+      "palette_prefix_tokens": 0
+    },
+    "lib/shade/cel.art": {
+      "tokens": 131,
+      "lines": 9,
+      "palette_prefix_tokens": 0
+    }
+  },
+  "total_tokens": 26232,
+  "lexemes": {
+    "comments": {
+      "tokens": 357,
+      "share": 0.0136
+    },
+    "strings": {
+      "tokens": 161,
+      "share": 0.0061
+    },
+    "colors": {
+      "tokens": 486,
+      "share": 0.0185
+    },
+    "keys": {
+      "tokens": 3979,
+      "share": 0.1517
+    },
+    "palette_refs": {
+      "tokens": 1245,
+      "share": 0.0475
+    },
+    "identifiers": {
+      "tokens": 4992,
+      "share": 0.1903
+    },
+    "numbers": {
+      "tokens": 7391,
+      "share": 0.2818
+    },
+    "operators": {
+      "tokens": 3892,
+      "share": 0.1484
+    },
+    "indentation": {
+      "tokens": 1072,
+      "share": 0.0409
+    },
+    "newlines": {
+      "tokens": 1054,
+      "share": 0.0402
+    },
+    "whitespace": {
+      "tokens": 1603,
+      "share": 0.0611
+    }
+  },
+  "roles": {
+    "comments": {
+      "tokens": 362,
+      "share": 0.0138
+    },
+    "palette": {
+      "tokens": 1092,
+      "share": 0.0416
+    },
+    "fx": {
+      "tokens": 1412,
+      "share": 0.0538
+    },
+    "cel_shading": {
+      "tokens": 564,
+      "share": 0.0215
+    },
+    "soft_light_shadow": {
+      "tokens": 3952,
+      "share": 0.1507
+    },
+    "accent_strokes": {
+      "tokens": 4593,
+      "share": 0.1751
+    },
+    "form_outlines": {
+      "tokens": 6833,
+      "share": 0.2605
+    },
+    "logic_math": {
+      "tokens": 3910,
+      "share": 0.1491
+    },
+    "structure": {
+      "tokens": 3514,
+      "share": 0.134
+    }
+  },
+  "palette_prefix_tokens": 728,
+  "house_prefix_tokens": 38,
+  "card_tokens": 2809,
+  "cryptic_names": {}
+}

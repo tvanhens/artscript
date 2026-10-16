@@ -4,62 +4,25 @@ Python source that drew the same piece.
     uv run --with tiktoken python scripts/tokens.py
 """
 
-import re
 import sys
-from pathlib import Path
 
-import tiktoken
+from corpus import PROJECT, ROOT, count, cryptic_names, imports
 
-ROOT = Path(__file__).resolve().parent.parent
-PROJECT = ROOT / "examples" / "chibi"
 CHIBI = ROOT.parent / "chibi"
-ENC = tiktoken.get_encoding("o200k_base")
-
-
-def count(path: Path) -> int:
-    return len(ENC.encode(path.read_text()))
-
-
-def imports(art: Path) -> list[Path]:
-    libs = []
-    for m in re.finditer(r"^use (\S+)", art.read_text(), re.M):
-        lib = PROJECT / "lib" / f"{m.group(1)}.art"
-        if lib.exists():
-            libs.append(lib)
-    return libs
-
-
-def cryptic_names(art: Path) -> list[str]:
-    """Palettes, palette entries and top-level lets named in one or two letters. They shrink the
-    count without making the art cheaper to write, so a file that has them is not scored."""
-    names = []
-    in_palette = False
-    for line in art.read_text().splitlines():
-        if m := re.match(r"^palette (\w+)", line):
-            names.append(m.group(1))
-            in_palette = True
-            continue
-        if in_palette and (m := re.match(r"^  (\w+) ", line)):
-            names.append(m.group(1))
-            continue
-        in_palette = False
-        if m := re.match(r"^let (\w+) =", line):
-            names.append(m.group(1))
-    return [n for n in names if len(n) <= 2]
 
 
 rows = []
 cryptic = {}
 for art in sorted((PROJECT / "art").rglob("*.art")):
-    if bad := cryptic_names(art):
+    if bad := cryptic_names(art.read_text()):
         cryptic[art.relative_to(PROJECT / "art")] = bad
     rel = art.relative_to(PROJECT / "art").with_suffix(".py")
     py = CHIBI / "art" / rel
     if not py.exists():
         continue
-    own = count(art)
-    libs = sum(count(lib) for lib in imports(art))
-    rows.append((str(rel.with_suffix("")), own, libs, count(py)))
+    own = count(art.read_text())
+    libs = sum(count(lib.read_text()) for lib in imports(art))
+    rows.append((str(rel.with_suffix("")), own, libs, count(py.read_text())))
 
 if not rows:
     sys.exit("no artscript ports with a matching chibi source")
