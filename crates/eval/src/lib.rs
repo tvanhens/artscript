@@ -173,6 +173,7 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
                 d.span.col,
                 d.code.clone(),
                 d.message.clone(),
+                d.node.clone(),
             );
             if let Some(agg) = groups.iter_mut().find(|g| g.key == key) {
                 let mag = note_magnitude(d);
@@ -182,8 +183,10 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
                     agg.has_mag = true;
                     agg.mag = mag;
                     agg.worst = *t;
+                    agg.diag = d.clone();
                 } else if mag.is_none() && !agg.has_mag && *t > agg.worst {
                     agg.worst = *t;
+                    agg.diag = d.clone();
                 }
             } else {
                 let mag = note_magnitude(d);
@@ -218,7 +221,7 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
 }
 
 struct Agg {
-    key: (String, u32, u32, String, String),
+    key: (String, u32, u32, String, String, String),
     diag: Diagnostic,
     first: f64,
     worst: f64,

@@ -1626,6 +1626,120 @@ circle 2
 }
 
 #[test]
+fn a_let_inside_if_does_not_escape_and_a_later_let_is_not_early() {
+    let leaked = run_with(
+        "@target t.png 40x40\nif true\n  let r = 9\ncircle r name:c\n",
+        &[],
+    );
+    assert!(
+        !leaked.diagnostics.is_empty(),
+        "a let inside if reached the circle"
+    );
+    if let Some(scene) = &leaked.scene {
+        let mut all = Vec::new();
+        walk(&scene.children, &mut all);
+        assert!(
+            all.iter().all(|n| n.path != "c" || {
+                let b = n.bounds().unwrap();
+                (f64::from(b.width()) - 18.0).abs() > 1.0
+            }),
+            "{}",
+            show(&leaked.diagnostics)
+        );
+    }
+    let early = run_with(
+        "@target t.png 40x40\ncircle r name:c\nlet r = 9\n",
+        &[],
+    );
+    assert!(!early.diagnostics.is_empty(), "{}", show(&early.diagnostics));
+    let s = scene("@target t.png 40x40\nlet r = 9\ncircle r name:c\n");
+    assert_box(&s, "c", 18.0, 18.0);
+    let moved = scene(
+        "@target t.png 40x40\nlet n = 7\nanim idle dur:1s\n  .c at:n,0\ncircle 4 name:c\nplay idle\n",
+    );
+    near(at(node(&moved, "c")), (27.0, 20.0));
+}
+
+#[test]
+fn the_same_check_on_two_instances_stays_two_failures() {
+    let ev = run_with(
+        "@target t.png 40x20\nuse d\ndot name:a\ndot name:b\n",
+        &[("lib/d.art", "def dot\n  circle 4\n  assert false\n")],
+    );
+    let mut nodes: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "C0101")
+        .map(|d| d.node.as_str())
+        .collect();
+    nodes.sort();
+    assert_eq!(nodes, ["a", "b"], "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn the_worst_frame_keeps_its_notes_and_fix() {
+    use artscript_syntax::ast::Span;
+    let span = Span { line: 2, col: 1 };
+    let mild = Diagnostic::error("C0101", span, "gap")
+        .in_file("art/t.art")
+        .at_node("a")
+        .with_note("gap is 1")
+        .with_fix("nudge 1");
+    let worse = Diagnostic::error("C0101", span, "gap")
+        .in_file("art/t.art")
+        .at_node("a")
+        .with_note("gap is 9")
+        .with_fix("nudge 9");
+    let other = Diagnostic::error("C0101", span, "gap")
+        .in_file("art/t.art")
+        .at_node("b")
+        .with_note("gap is 2")
+        .with_fix("nudge 2");
+    let out = super::aggregate_frames(&[(0.0, vec![mild, other.clone()]), (0.5, vec![worse])]);
+    assert_eq!(out.len(), 2);
+    let a = out.iter().find(|d| d.node == "a").unwrap();
+    assert_eq!(a.fix.as_deref(), Some("nudge 9"));
+    assert!(a.notes.iter().any(|n| n == "gap is 9"), "{:?}", a.notes);
+    assert!(a.notes.iter().any(|n| n.contains("first at 0s")), "{:?}", a.notes);
+    assert!(
+        a.notes.iter().any(|n| n.contains("worst at 0.5s")),
+        "{:?}",
+        a.notes
+    );
+    assert_eq!(out.iter().filter(|d| d.node == "b").count(), 1);
+}
+
+#[test]
+fn play_marks_an_imported_anim_as_used() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
+    let files = [
+        (
+            "art/t.art".to_string(),
+            "@target t.png 40x40\nuse motion { idle spare }\ncircle 4 name:c\nplay idle\n"
+                .to_string(),
+        ),
+        (
+            "lib/motion.art".to_string(),
+            "anim idle dur:1s\n  .c at:1,0\nstyle spare ink:#000000\n".to_string(),
+        ),
+    ]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    let unused: Vec<&str> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0103")
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(unused.iter().any(|m| m.contains("`spare`")), "{unused:?}");
+    assert!(unused.iter().all(|m| !m.contains("`idle`")), "{unused:?}");
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (21.0, 20.0));
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

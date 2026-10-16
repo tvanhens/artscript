@@ -116,6 +116,7 @@ pub(crate) struct Scope {
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<Pending>>>,
     top: bool,
+    publish: bool,
 }
 
 impl Scope {
@@ -126,6 +127,7 @@ impl Scope {
             frame,
             world,
             top: false,
+            publish: false,
             ..self.clone()
         }
     }
@@ -861,6 +863,7 @@ impl<'a> Evaluator<'a> {
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
             top: false,
+            publish: false,
         }
     }
 
@@ -868,6 +871,7 @@ impl<'a> Evaluator<'a> {
         Scope {
             frame: self.canvas,
             top: true,
+            publish: true,
             ..self.module_scope(module)
         }
     }
@@ -1000,7 +1004,7 @@ impl<'a> Evaluator<'a> {
                         return Err(f);
                     }
                 };
-                if sc.top {
+                if sc.top && sc.publish {
                     sc.module
                         .globals
                         .borrow_mut()
@@ -1023,6 +1027,7 @@ impl<'a> Evaluator<'a> {
                 ));
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
+                inner.publish = false;
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
@@ -1037,6 +1042,7 @@ impl<'a> Evaluator<'a> {
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
+                    inner.publish = false;
                     inner.env.push((var.clone(), v));
                     inner.suffix = format!("{}#{i}", sc.suffix);
                     self.eval_block(body, &mut inner, out);
@@ -2311,6 +2317,7 @@ impl<'a> Evaluator<'a> {
             host: None,
             checks: checks.clone(),
             top: false,
+            publish: false,
         };
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
@@ -2462,8 +2469,10 @@ impl<'a> Evaluator<'a> {
     // ---------------------------------------------------------------- expressions
 
     pub fn collect_entry(&mut self, scenes: &[Scene], sc: &Scope) {
+        let saved = sc.module.globals.borrow().clone();
         let mut scratch = sc.clone();
         self.collect_surface(scenes, &mut scratch, "");
+        *sc.module.globals.borrow_mut() = saved;
     }
 
     fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, owner: &str) {
@@ -2486,7 +2495,7 @@ impl<'a> Evaluator<'a> {
                     st.span.line
                 ));
                 let v = self.expr(value, sc).unwrap_or(Value::None);
-                if sc.top {
+                if sc.top && sc.publish {
                     sc.module
                         .globals
                         .borrow_mut()
@@ -2508,8 +2517,10 @@ impl<'a> Evaluator<'a> {
                     st.span.line
                 ));
                 let c = self.expr(cond, sc)?;
+                let mut inner = sc.clone();
+                inner.publish = false;
                 let branch = if c.truthy() { then } else { otherwise };
-                self.collect_surface(branch, sc, owner);
+                self.collect_surface(branch, &mut inner, owner);
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
@@ -2523,6 +2534,7 @@ impl<'a> Evaluator<'a> {
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
+                    inner.publish = false;
                     inner.env.push((var.clone(), v));
                     inner.suffix = format!("{}#{i}", sc.suffix);
                     self.collect_surface(body, &mut inner, owner);

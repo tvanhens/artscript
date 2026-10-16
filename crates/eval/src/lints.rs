@@ -248,6 +248,9 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
         });
     }
     for s in scenes {
+        if let SceneKind::Play { name: Some(n), .. } = &s.kind {
+            out.insert(n.clone());
+        }
         if let SceneKind::Draw(d) = &s.kind {
             out.insert(d.verb.clone());
             if let Some(st) = d.named.iter().find(|n| n.key == "style")

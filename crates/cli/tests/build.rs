@@ -258,3 +258,29 @@ fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
     assert!(!dir.join("assets/tiny.gif").exists(), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_gif_frame_longer_than_the_field_is_e0206() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-long-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"long\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target tiny.gif 8x8 bg:#ffffff fps:.001 dur:700s\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let err = text(&out);
+    assert!(
+        err.contains("E0206") && err.contains("a gif frame is longer than 65535cs"),
+        "{err}"
+    );
+    assert!(!dir.join("assets/tiny.gif").exists(), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}

@@ -56,6 +56,22 @@ fn stepped(v: &Value) -> bool {
     matches!(v, Value::Bool(_) | Value::Ident(_) | Value::Component(_))
 }
 
+fn animatable(v: &Value) -> Result<(), String> {
+    if stepped(v) {
+        return Ok(());
+    }
+    match v {
+        Value::Num(_) | Value::Color(_) => Ok(()),
+        Value::Vec2(..) | Value::Size(..) => {
+            let (x, y) = v.pair().ok_or_else(|| phrase(v))?;
+            numeric_coord(x)?;
+            numeric_coord(y)?;
+            Ok(())
+        }
+        _ => Err(format!("cannot animate {} yet", phrase(v))),
+    }
+}
+
 fn numeric_coord(c: Coord) -> Result<f64, String> {
     match c {
         Coord::Num(n) => Ok(n),
@@ -97,14 +113,7 @@ pub fn sample_track(values: &[Value], at: &[f64], eases: &[Ease], u: f64) -> Res
         if phrase(v) != phrase(first) {
             return Err(format!("`key` mixes {} and {}", phrase(first), phrase(v)));
         }
-        if !stepped(v)
-            && !matches!(
-                v,
-                Value::Num(_) | Value::Vec2(..) | Value::Size(..) | Value::Color(_)
-            )
-        {
-            return Err(format!("cannot animate {} yet", phrase(v)));
-        }
+        animatable(v)?;
     }
     if values.len() == 1 || u < at[0] {
         return Ok(first.clone());
@@ -246,6 +255,9 @@ pub fn frame_delays(frame_count: usize, dur: f64) -> Result<Vec<u16>, &'static s
         acc += total;
         let d = acc / n;
         acc %= n;
+        if d > u16::MAX as u64 {
+            return Err("a gif frame is longer than 65535cs");
+        }
         delays.push(d as u16);
     }
     if dur > 0.0 && delays.contains(&0) {
@@ -363,6 +375,27 @@ mod tests {
         assert_eq!(rest.num(), Some(0.0));
         let before = sample_track(&nums(&[4.0, 10.0]), &[0.2, 1.0], &smooth(2), 0.1).unwrap();
         assert_eq!(before.num(), Some(4.0));
+    }
+
+    #[test]
+    fn a_percent_vector_fails_before_any_sample() {
+        let v = vec![
+            Value::Vec2(Coord::Pct(0.1), Coord::Pct(0.2)),
+            Value::Vec2(Coord::Pct(0.3), Coord::Pct(0.4)),
+        ];
+        for u in [0.0, 0.5, 1.0] {
+            let err = sample_track(&v, &even_at(2), &[Ease::Hold], u).unwrap_err();
+            assert!(err.contains("cannot animate a percent"), "{u}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_frame_longer_than_the_gif_field_is_an_error() {
+        assert_eq!(
+            frame_delays(1, 700.0).unwrap_err(),
+            "a gif frame is longer than 65535cs"
+        );
+        assert_eq!(frame_delays(1, 655.0).unwrap(), vec![65500]);
     }
 
     #[test]

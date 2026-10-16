@@ -778,7 +778,21 @@ impl<'a> Parser<'a> {
             self.fail(span, "`anim` needs `dur:`", "write `anim name dur:1s`");
             Expr::Time(1.0)
         });
+        let has_child = self
+            .lines
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent);
         let body = self.block(indent, span.line, Self::anim_line);
+        if body.is_empty() && !has_child {
+            self.errors.push(
+                Diagnostic::error(
+                    "E0341",
+                    span,
+                    format!("anim `{name}` needs an indented block of patch lines"),
+                )
+                .with_fix(format!("indent `.part key:value` under `anim {name}`")),
+            );
+        }
         Some(DeclKind::Anim {
             name,
             dur,

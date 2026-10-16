@@ -970,6 +970,22 @@ fn finish_body_takes_only_fx_lines() {
 }
 
 #[test]
+fn an_anim_without_a_body_is_e0341() {
+    let empty = parse("anim idle dur:1s\n").unwrap_err();
+    assert_eq!(empty[0].code, "E0341");
+    assert_eq!(
+        empty[0].message,
+        "anim `idle` needs an indented block of patch lines"
+    );
+    let bad = parse("anim idle dur:1s\n  circle 4\n").unwrap_err();
+    assert!(
+        bad.iter()
+            .any(|e| e.code == "E0341" && e.message.contains("patch lines")),
+        "{bad:?}"
+    );
+}
+
+#[test]
 fn time_anim_and_play_round_trip() {
     let src = "\
 anim idle dur:2s loop
