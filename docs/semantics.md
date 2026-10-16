@@ -135,6 +135,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 ## 5. Values and types
 
 - **Runtime values** are Num, Vec2, Size, Percent, Color (which remembers its ramp and index if it came from one), Ramp, Palette, Paint (gradient), Field, Range, List, Str, Ident (enum-like words such as `slim`, `down`, `closed`), Component, Ref, Bool and None.
+- **Range `a..b`.** The range holds every number `x` with `a <= x < b`. `x in a..b` uses that test. `each` visits `a`, then `a + 1`, then `a + 2`, while the value stays below `b`, so `each i in 0..n` runs `n` times and the last `i` is `n - 1`. When `b <= a`, the range is empty. `in` matches nothing and `each` runs zero times. `pick`, one-argument `min` and `max`, `dash:`, `rect r:`, and merge `a:` read those steps. Two ranges compare equal when both are empty, or when both ends match. A range does not equal a list. A range is not a stroke width. `stroke:c,a..b` is E0320, and the fix is `stroke:c,[a b]`.
 - **Def parameter types** are inferred from their default. Passing a different kind is E0320, and the fix names the expected kind.
 - **Ramp as a color.** A ramp used where a color is expected is its base stop.
 - **Identifiers** resolve in this order: `let` and loop bindings, def params, the `target` constant and matrix variables, palettes and aliases, components, and finally bare enum words.
@@ -183,12 +184,12 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - `stroke:c,w` gives a constant width with round cap and join.
   - `stroke:w` alone uses `line(fill)` (or `line(#8a8a8a)`).
   - `cap:` and `join:` override, and `dash:4,2` dashes.
-- **Tapered ink.** A stroke whose width is a list or range, or a stroke with `taper:` set, becomes a filled outline (`Shape.fill = stroke paint`, no stroke). Use the `brush` algorithm from chibi `paths.py`:
+- **Tapered ink.** A stroke whose width is a list, or a stroke with `taper:` set, becomes a filled outline (`Shape.fill = stroke paint`, no stroke). Use the `brush` algorithm from chibi `paths.py`:
   1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the target's highest `scale:`, so `@2x` stays as smooth as `scale:1`. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
   2. Interpolate the per-point widths by chord fraction.
   3. Taper each end with the floor `.12` and ease `sin(x*pi/2)^.8`.
   4. Add round caps.
-  - A range `a..b` is two widths, and a single width with `taper:` is that width everywhere.
+  - A single width with `taper:` is that width everywhere.
 - **Curve.** Use centripetal Catmull-Rom with tension (default .5), exactly as `_spline` in chibi `paths.py`. `closed` closes the curve. Points are the positional arguments. When the only positional argument is a list, its items are the points (`curve pts`, `curve [each k in 0..n -> x,y]`). A list beside other points is E0320. There is no separate polygon-of-points verb: a closed curve is that polygon.
 - **Blob.**
   - Use `points:` (default 7) points on a circle of radius r.

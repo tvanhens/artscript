@@ -12,6 +12,7 @@ mod geom;
 mod lints;
 mod paint;
 pub mod project;
+mod range;
 mod scope;
 mod seed;
 pub mod targets;
