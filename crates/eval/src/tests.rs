@@ -885,6 +885,39 @@ fn palette_rows_evaluate_to_colors_and_ramps() {
 }
 
 #[test]
+fn palette_rows_may_take_reserved_names_and_read_back_qualified() {
+    let s = scene(
+        "@target t.png 10x10 bg:shroom.backdrop\npalette shroom\n  ramp cap #e0453a 5\n  color backdrop #1d2b53\n  color if #ff00ff\n\
+         palette night from shroom\n  ramp cap #102030 3\n\
+         circle 1 fill:night.backdrop name:inherited\ncircle 1 fill:night.if name:keyword\n",
+    );
+    assert_eq!(s.background.map(|c| c.hex()).as_deref(), Some("#1d2b53"));
+    assert_eq!(fill_hex(node(&s, "inherited")), "#1d2b53");
+    assert_eq!(fill_hex(node(&s, "keyword")), "#ff00ff");
+
+    let p = Project::from_sources(
+        &format!("{MANIFEST}\n[defaults]\npalette = \"palette/house\"\n"),
+        [
+            (
+                "art/t.art".to_string(),
+                "@target t.png 10x10\ncircle 1 fill:p.backdrop name:c\n".to_string(),
+            ),
+            (
+                "lib/palette/house.art".to_string(),
+                "palette house\n  color backdrop #1d2b53\n".to_string(),
+            ),
+        ]
+        .into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    assert_eq!(fill_hex(node(&ev.scene.unwrap(), "c")), "#1d2b53");
+}
+
+
+#[test]
 fn mask_value_and_mask_block_both_mask_the_draw() {
     let s = scene(
         "@target t.png 100x100\ncircle 10 name:body\ngroup g\n  rect 4x4\n  mask @body\ngroup f\n  mask simplex(30) > .5\n  rect 4x4\ngroup b\n  mask\n    circle 3\n",

@@ -882,6 +882,17 @@ fn fx_mask_and_slot_are_reserved_but_ramp_and_color_are_names() {
 }
 
 #[test]
+fn a_palette_row_may_be_named_with_a_reserved_word() {
+    must_parse(
+        "palette shroom\n  color backdrop #1d2b53\n  ramp t #e0453a 5\n  color if #ff00ff\n  color fx #00ff00\ncircle 1 fill:shroom.backdrop stroke:shroom.if,1\n",
+    );
+    for src in ["let backdrop = 1\n", "let if = 1\n"] {
+        let e = one_error(src);
+        assert_eq!(e.code, "E0105", "{src}");
+    }
+}
+
+#[test]
 fn a_def_parameter_cannot_be_a_reserved_word() {
     for word in ["fx", "mask", "slot", "finish"] {
         let e = one_error(&format!("def cup {word}:1\n  circle 4\n"));
