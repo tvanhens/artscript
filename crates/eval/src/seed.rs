@@ -18,7 +18,7 @@ pub fn node_seed(file: &str, node_path: &str, extra: u64) -> u64 {
     fnv1a(&bytes).wrapping_add(extra.wrapping_mul(0x9e3779b97f4a7c15))
 }
 
-/// SplitMix64.
+/// SplitMix64: a small, fast, seeded generator. Same seed, same sequence.
 pub struct Rng(u64);
 
 impl Rng {
