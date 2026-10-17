@@ -1,0 +1,4 @@
+# prop: scale-isolated
+# entry: art/fuzz/case.art
+@target fz/clip.gif 256x256 bg:#ffffff fps:4 dur:500ms
+curve 40,200 128,40 216,200 stroke:#203040,[2 14 2] taper:.3

@@ -1,0 +1,9 @@
+# prop: fmt-keeps-output
+# issue: 39
+# entry: art/fuzz/case.art
+@target r.svg 256x256
+circle 4 fill:p.ink
+
+
+let y = rand(20 230)
+circle 10 at:128,y fill:p.ink

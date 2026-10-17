@@ -1,0 +1,5 @@
+# prop: scale-isolated
+# issue: 40
+# entry: art/fuzz/case.art
+@target taper.png 256x256
+curve 40,200 128,40 216,200 stroke:p.ink,[2 14 2] taper:.3

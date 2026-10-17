@@ -1,0 +1,4 @@
+# prop: gif-timing
+# entry: art/fuzz/case.art
+@target fz/c.gif 64x64 bg:#ffffff fps:120 dur:1s
+circle 10 at:32,32 fill:p.ink

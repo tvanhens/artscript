@@ -1,0 +1,11 @@
+[package]
+name = "artfuzz"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+artscript-syntax.workspace = true
+artscript-eval.workspace = true
+artscript-render.workspace = true
+artscript-ir.workspace = true

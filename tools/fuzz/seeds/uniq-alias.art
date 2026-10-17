@@ -1,0 +1,7 @@
+# prop: unique-paths
+# entry: art/fuzz/case.art
+@target c.svg 256x256
+use face/parts { eye }
+let alias = eye
+alias 20 at:80,128
+eye 20 at:180,128

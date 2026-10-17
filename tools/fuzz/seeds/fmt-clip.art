@@ -1,0 +1,4 @@
+# prop: fmt-keeps-output
+# entry: art/fuzz/case.art
+@target fz/c_{k}.png 64x64 clip:[idle blink] each k:[a b]
+circle 10 fill:p.ink

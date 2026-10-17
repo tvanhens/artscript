@@ -39,9 +39,29 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.run }}
 
+  fuzz:
+    runs-on: ubuntu-24.04
+    # A release build plus four fuzz workers. Known failures map to filed issues; see tools/fuzz/README.md.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libfontconfig-dev libfreetype-dev
+      - run: rustup toolchain install --no-self-update
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: tools/fuzz/ci.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-findings
+          path: target/fuzz-ci
+
   ci:
-    needs: gate
+    needs: [gate, fuzz]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - run: test "${{ needs.gate.result }}" = success
+      - run: test "${{ needs.fuzz.result }}" = success

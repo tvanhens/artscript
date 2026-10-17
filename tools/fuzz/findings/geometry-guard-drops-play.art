@@ -1,0 +1,10 @@
+# prop: wrap-inert
+# issue: 41
+# entry: art/fuzz/case.art
+@target fz/clip.gif 256x256 bg:#ffffff fps:8 dur:500ms
+layer fz_node pivot:128,128
+  circle 30 at:128,128 fill:#c84 name:fz_disc
+anim fzwig dur:500ms loop
+  .fz_node rot:key(-10 10 -10)
+if @fz_disc.w > -1 # fzwrap
+  play fzwig

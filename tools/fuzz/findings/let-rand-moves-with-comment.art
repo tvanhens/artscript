@@ -1,0 +1,8 @@
+# prop: comment-inert
+# issue: 39
+# entry: art/fuzz/case.art
+@target r.svg 256x256
+# fzmark
+each i in 0..4
+  let y = rand(100 150)
+  circle 5 at:40+i*50,y fill:p.ink

@@ -1,0 +1,12 @@
+# prop: last-play-wins
+# entry: art/fuzz/case.art
+@target fz/clip.gif 256x256 bg:#ffffff fps:4 dur:500ms
+def fz_pbox
+  rect 20x20 at:128,128 fill:#335577 name:part
+anim fz_early dur:1s loop
+  .part at:abs(11,0)
+anim fz_late dur:1s loop
+  .fz_bx.part at:abs(77,0)
+fz_pbox name:fz_bx
+  play fz_early # fzearly
+play fz_late

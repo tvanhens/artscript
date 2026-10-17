@@ -18,6 +18,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "artfuzz"
+version = "0.1.0"
+dependencies = [
+ "artscript-eval",
+ "artscript-ir",
+ "artscript-render",
+ "artscript-syntax",
+]
+
+[[package]]
 name = "artscript"
 version = "0.1.0"
 dependencies = [
