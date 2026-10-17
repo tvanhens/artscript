@@ -55,7 +55,8 @@ pub struct TargetJob {
     pub size: (f32, f32),
     pub bg: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked tiles and tapered strokes sample at. A GIF is 1. Anything else is the target's highest scale.
+    /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, else the target's highest scale.
+    /// An SVG samples at this scale. A PNG output samples at its own `scale:` instead.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
