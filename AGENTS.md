@@ -33,7 +33,8 @@ When the two docs disagree, choose the better behavior and make them agree. A ro
 
 ## When `claude-review` fails
 
-- Find the findings with `gh run view <run-id> --log-failed` and the unresolved review threads on the PR.
+- Wait for the check with `gh pr checks <pr> --watch`. A review takes a few minutes.
+- The blocking findings are in the PR's "Claude review" comment, with links to their threads. Read the unresolved threads for the detail.
 - Fix the code, or reply on the thread with a concrete reason: the input or state that makes the finding wrong. Then push.
 - Each push is re-reviewed. The reviewer resolves a thread when the code is fixed or it accepts your reply.
 - To have a reply re-evaluated with no code change, run `gh run rerun <run-id> --failed`.

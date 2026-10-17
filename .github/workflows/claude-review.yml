@@ -5,7 +5,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
-  contents: read
+  # resolveReviewThread rejects GITHUB_TOKEN without contents: write.
+  contents: write
   pull-requests: write
 
 concurrency:
