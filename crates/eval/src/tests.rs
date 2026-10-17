@@ -999,6 +999,22 @@ fn lib_scene(src: &str, lib: &str) -> Scene {
 }
 
 #[test]
+fn a_def_instance_keeps_its_blend_modes_inside_it() {
+    let lib = "def hole r:20\n  circle r fill:#000 blend:erase\ndef tint\n  rect 60x60 fill:#3366ff blend:multiply\n";
+    let src = "@target t.png 300x100 bg:#ffffff\nuse d { hole tint }\nrect 100%x100% fill:#e0a020\nhole 30 at:50,50\nlayer iso at:150,50\n  tint\ntint at:250,50\n";
+    let ev = run_with(src, &[("lib/d.art", lib)]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let png = artscript_render::render_png(&ev.scene.unwrap(), 1.0, artscript_render::Backend::Cpu).unwrap();
+    let (w, _, px) = rgba(&png);
+    let at = |x: i32, y: i32| {
+        let i = (y * w + x) as usize * 4;
+        [px[i], px[i + 1], px[i + 2], px[i + 3]]
+    };
+    assert_eq!(at(50, 50), at(5, 5), "hole erased the caller's art");
+    assert_eq!(at(250, 50), at(150, 50), "tint blended with the caller's art");
+}
+
+#[test]
 fn def_size_box_measures_percents_from_its_own_center() {
     let lib = "def d size:40x20\n  rect 100%x100% name:r\n  circle 50% name:c\n  circle 2 at:0%,0% name:mark\n";
     let s = lib_scene("@target t.png 200x100\nuse d\nd name:d\n", lib);

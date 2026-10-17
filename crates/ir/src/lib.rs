@@ -68,7 +68,7 @@ pub struct Node {
 
 #[derive(Clone, Debug)]
 pub enum NodeKind {
-    /// `layer` sets `isolate`: child blend modes never reach content below the group.
+    /// `layer` and def instances set `isolate`: child blend modes never reach content below the group.
     Group { isolate: bool, children: Vec<Node> },
     Shape(Box<Shape>),
 }
