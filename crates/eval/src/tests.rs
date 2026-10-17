@@ -3891,3 +3891,77 @@ fn the_prepass_records_the_names_the_drawing_pass_registers() {
     let codes: Vec<_> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
     assert_eq!(codes, [("E0344", 7)], "{}", show(&ev.diagnostics));
 }
+
+const BADGE_LIB: &str = "def badge r:20\n  circle r fill:#cc3333 name:disc\n  circle r*.4 fill:#ffffff name:_core\n  copy @_core at:0,0\n";
+
+fn e0340s(ev: &Evaluation) -> Vec<&Diagnostic> {
+    ev.diagnostics.iter().filter(|d| d.code == "E0340").collect()
+}
+
+#[test]
+fn a_patch_on_a_private_part_is_e0340_naming_it_private() {
+    let public = run_with(
+        "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  .disc off\n",
+        &[("lib/badge.art", BADGE_LIB)],
+    );
+    assert!(public.diagnostics.is_empty(), "{}", show(&public.diagnostics));
+    let ev = run_with(
+        "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  ._core off\n",
+        &[("lib/badge.art", BADGE_LIB)],
+    );
+    let ds = e0340s(&ev);
+    assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].span.line, 4);
+    assert!(ds[0].message.contains("`_core`, which is private to `badge`"), "{}", ds[0]);
+    assert!(ds[0].notes.iter().any(|n| n == "names: disc"), "{}", ds[0]);
+}
+
+#[test]
+fn an_anim_patch_on_a_private_part_is_e0340_at_the_play() {
+    let ev = run_with(
+        "@target t.png 100x100\nuse badge\nanim pulse dur:1s\n  ._core scale:2\nbadge 20 at:50,50 name:b\n  play pulse\n",
+        &[("lib/badge.art", BADGE_LIB)],
+    );
+    let ds = e0340s(&ev);
+    assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].span.line, 6);
+    assert!(ds[0].message.contains("`pulse` patch `._core`"), "{}", ds[0]);
+    assert!(ds[0].message.contains("private to `badge`"), "{}", ds[0]);
+}
+
+#[test]
+fn a_star_patch_skips_private_parts() {
+    let s = run_with(
+        "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  .* fill:#0000ff\n",
+        &[("lib/badge.art", BADGE_LIB)],
+    );
+    assert!(s.diagnostics.is_empty(), "{}", show(&s.diagnostics));
+    let s = s.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "b.disc")), "#0000ff");
+    assert_eq!(fill_hex(node(&s, "b._core")), "#ffffff");
+    let only_private = run_with(
+        "@target t.png 100x100\ndef dot\n  circle 4 name:_c\ndot name:d\n  .* off\n",
+        &[],
+    );
+    assert_eq!(e0340s(&only_private).len(), 1, "{}", show(&only_private.diagnostics));
+}
+
+#[test]
+fn a_patch_into_a_slot_fill_cannot_name_a_private_part() {
+    let ev = run_with(
+        "@target t.png 100x100\nuse eye\neye 10 at:50,50 name:e\n  lashes:\n    circle 2 name:_tip\n  .lashes._tip off\n",
+        &[("lib/eye.art", EYE_LIB)],
+    );
+    let ds = e0340s(&ev);
+    assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(ds[0].message.contains("private to the `lashes:` fill"), "{}", ds[0]);
+}
+
+#[test]
+fn an_entry_file_patches_its_own_underscore_names() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  ._c scale:2\ncircle 4 name:_c\nplay idle\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
