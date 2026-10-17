@@ -4005,3 +4005,28 @@ fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     near(at(node(&s, "r")), (3.0, 10.0));
     near(at(node(&s, "v")), (4.0, 6.0));
 }
+
+#[test]
+fn a_reference_inside_a_def_reads_in_the_def_s_local_frame() {
+    scene(
+        "@target t.png 64x64\n\
+         def post\n  rect 4x20 at:0,-10 fill:#000000 name:pole\n  anchor top 0,-20\n\
+         def pair\n  post name:a\n  circle 3 at:@a.top.x,@a.top.y fill:#000000 name:knob\n\
+         pair at:32,50 name:p1\n\
+         pair at:20,40 scale:-1,1 rot:90 name:p2\n\
+         assert @p1.knob.cx == @p1.a.top.x\n\
+         assert @p1.knob.cy == @p1.a.top.y\n\
+         assert @p2.knob.cx == @p2.a.top.x\n\
+         assert @p2.knob.cy == @p2.a.top.y\n",
+    );
+}
+
+#[test]
+fn a_reference_inside_an_offset_group_reads_in_the_group_s_frame() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:32,50 name:g\n  rect 4x4 at:-10,0 fill:#000000 name:a\n  circle 2 at:@a.x,@a.cy fill:#000000 name:b\n\
+         assert @g.b.cx == @g.a.x\n\
+         assert @g.b.cy == @g.a.cy\n",
+    );
+}
