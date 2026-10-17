@@ -9,6 +9,7 @@ mod eval;
 mod explain;
 mod fx;
 mod geom;
+mod identity;
 mod key;
 mod lints;
 mod motion;
