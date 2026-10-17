@@ -115,8 +115,8 @@ impl Manifest {
             };
             lint.insert(k, level);
         }
-        let spanned = toml::from_str::<SpannedDoc>(src).ok();
-        let backend = match spanned.as_ref().and_then(|d| d.build.as_ref()?.backend.as_ref()) {
+        let spanned: SpannedDoc = toml::from_str(src).map_err(|e| bad(format!("invalid manifest: {e}")))?;
+        let backend = match spanned.build.as_ref().and_then(|b| b.backend.as_ref()) {
             None => BackendChoice::default(),
             Some(v) => v
                 .get_ref()
@@ -125,7 +125,7 @@ impl Manifest {
                 .and_then(str::parse)
                 .map_err(|e| bad_at(span_at(src, v.span().start), format!("[build] {e}")))?,
         };
-        let profile = match spanned.as_ref().and_then(|d| d.defaults.as_ref()?.profile.as_ref()) {
+        let profile = match spanned.defaults.as_ref().and_then(|d| d.profile.as_ref()) {
             None => "auto".to_string(),
             Some(v) => match v.get_ref().as_str() {
                 Some(p @ ("vector" | "svg" | "raster" | "auto")) => p.to_string(),
