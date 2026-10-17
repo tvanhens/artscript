@@ -2,7 +2,7 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -117,8 +117,6 @@ pub(crate) struct Scope {
     pending: Rc<Pending>,
     ids: Rc<ModuleIds>,
     depth: u32,
-    /// Names whose prepass `let` read the drawn scene. Reading one fails the same way.
-    unseen: Vec<String>,
     pub frame: Rect,
     /// Canvas from local coordinates.
     pub world: Matrix,
@@ -282,8 +280,6 @@ pub(crate) struct Evaluator<'a> {
     guards: HashMap<Vec<u32>, Option<usize>>,
     /// True while `collect_entry` runs, before anything is drawn.
     pub(crate) prepass: bool,
-    /// Entry-file globals whose prepass `let` read the drawn scene.
-    unseen_globals: HashSet<String>,
     silence: bool,
 }
 
@@ -734,7 +730,6 @@ impl<'a> Evaluator<'a> {
             plays: Vec::new(),
             guards: HashMap::new(),
             prepass: false,
-            unseen_globals: HashSet::new(),
             silence: false,
         }
     }
@@ -1115,7 +1110,6 @@ impl<'a> Evaluator<'a> {
             pending: Rc::new(Pending::empty()),
             ids,
             depth: 0,
-            unseen: Vec::new(),
             frame: Rect::new_empty(),
             world: Matrix::new_identity(),
             style: Rc::new(Vec::new()),
@@ -2701,7 +2695,6 @@ impl<'a> Evaluator<'a> {
             sc.depth + 1,
         );
         body_scope.env = env;
-        body_scope.unseen = Vec::new();
         body_scope.module = module;
         body_scope.ids = def_ids;
         body_scope.inst = Some(inst.clone());
@@ -3194,7 +3187,6 @@ impl<'a> Evaluator<'a> {
         self.prepass = true;
         self.collect_surface(scenes, &mut scratch, true);
         self.prepass = false;
-        self.unseen_globals.clear();
         *sc.module.globals.borrow_mut() = saved;
         let region = sc.names.borrow().region();
         let incoming = std::mem::take(&mut self.incoming);
@@ -3216,23 +3208,16 @@ impl<'a> Evaluator<'a> {
         match &st.kind {
             SceneKind::Let { name, value } => {
                 self.seed_line(sc, st.span);
-                let v = self.quiet_expr(value, sc);
-                let blind = matches!(&v, Err(f) if f.code == "E0344");
-                let v = v.unwrap_or(Value::None);
-                sc.unseen.retain(|n| n != name);
-                if blind {
-                    sc.unseen.push(name.clone());
-                }
+                let v = match self.quiet_expr(value, sc) {
+                    Ok(v) => v,
+                    Err(f) if f.code == "E0344" => Value::Unseen,
+                    Err(_) => Value::None,
+                };
                 if sc.top && sc.publish {
                     sc.module
                         .globals
                         .borrow_mut()
                         .insert(name.clone(), v.clone());
-                    if blind {
-                        self.unseen_globals.insert(name.clone());
-                    } else {
-                        self.unseen_globals.remove(name);
-                    }
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -3873,13 +3858,6 @@ impl<'a> Evaluator<'a> {
             .unwrap_or(self.time)
     }
 
-    fn is_unseen(&self, name: &str, sc: &Scope) -> bool {
-        if sc.env.iter().any(|(k, _)| k == name) {
-            return sc.unseen.iter().any(|n| n == name);
-        }
-        sc.file() == self.job.source && self.unseen_globals.contains(name)
-    }
-
     pub fn lookup_ident(&self, name: &str, sc: &Scope) -> Option<Value> {
         if let Some((_, v)) = sc.env.iter().rev().find(|(k, _)| k == name) {
             return Some(v.clone());
@@ -3955,13 +3933,11 @@ impl<'a> Evaluator<'a> {
                 Rgba::hex(h).ok_or_else(|| fail("E0320", format!("bad color #{h}")))?,
             )),
             Expr::Str(s) => Value::Str(s.clone()),
-            Expr::Ident(name) => {
-                if self.prepass && self.is_unseen(name, sc) {
-                    return Err(unseen(name));
-                }
-                self.lookup_ident(name, sc)
-                    .unwrap_or_else(|| Value::Ident(name.clone()))
-            }
+            Expr::Ident(name) => match self.lookup_ident(name, sc) {
+                Some(Value::Unseen) => return Err(unseen(name)),
+                Some(v) => v,
+                None => Value::Ident(name.clone()),
+            },
             Expr::Ref(segs) => self.reference(segs, sc)?,
             Expr::Member(base, seg) => {
                 let b = self.expr(base, sc)?;
@@ -4152,10 +4128,12 @@ impl<'a> Evaluator<'a> {
 
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
         let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => self
-                .lookup_ident(var, sc)
-                .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
-                .unwrap_or(var.to_string()),
+            Some(var) => match self.lookup_ident(var, sc) {
+                Some(Value::Unseen) => return Err(unseen(var)),
+                v => v
+                    .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
+                    .unwrap_or(var.to_string()),
+            },
             None => seg.to_string(),
         };
         let seg = seg.as_str();
@@ -4277,6 +4255,9 @@ impl<'a> Evaluator<'a> {
             return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
+        if self.prepass && matches!(resolved, Resolved::Missing(_) | Resolved::Undrawn(_)) {
+            return Err(unseen(&format!("@{first}")));
+        }
         let (cur, depth) = self.refs_of(resolved, first)?;
         if self.prepass && segs[1..].iter().any(|s| !is_copy_index(s)) {
             return Err(unseen(&format!("@{}", segs.join("."))));
