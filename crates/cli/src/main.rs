@@ -1,4 +1,6 @@
 //! `artscript` command line: build, check, fmt, explain, init, docs.
+//!
+//! `docs` prints the core language card and an index of topics. `docs <topic>...` prints the card and those topic files.
 
 mod build;
 
@@ -19,7 +21,7 @@ commands:
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
-  docs                                     print the language card
+  docs [TOPIC...]                          print the core language card and topic index, or the card and the named topics
 
 exit codes: 0 ok, 1 compile error, 2 assert or lint error, 3 warnings only";
 
@@ -47,12 +49,9 @@ fn main() -> ExitCode {
             Ok(_) => init(&cwd),
             Err(msg) => usage_error(&msg),
         },
-        Some("docs") => match flag_set(&args[1..], &[]) {
-            Ok(_) => {
-                print!("{}", include_str!("../../../docs/language.md"));
-                0
-            }
-            Err(msg) => usage_error(&msg),
+        Some("docs") => match args[1..].iter().find(|a| a.starts_with('-')) {
+            Some(flag) => usage_error(&format!("unknown flag `{flag}`")),
+            None => docs(&args[1..]),
         },
         Some("--version" | "-V") => {
             println!("artscript {}", artscript_eval::VERSION);
@@ -65,6 +64,58 @@ fn main() -> ExitCode {
         Some(other) => usage_error(&format!("unknown command `{other}`")),
     };
     ExitCode::from(code)
+}
+
+const CARD: &str = include_str!("../../../docs/language.md");
+
+/// One entry per file in `docs/topics/`. The file's first line, `# <name>: <summary>`, is its index line.
+const TOPICS: &[(&str, &str)] = &[
+    ("targets", include_str!("../../../docs/topics/targets.md")),
+    ("values", include_str!("../../../docs/topics/values.md")),
+    ("color", include_str!("../../../docs/topics/color.md")),
+    ("shapes", include_str!("../../../docs/topics/shapes.md")),
+    ("structure", include_str!("../../../docs/topics/structure.md")),
+    ("fields", include_str!("../../../docs/topics/fields.md")),
+    ("components", include_str!("../../../docs/topics/components.md")),
+    ("anim", include_str!("../../../docs/topics/anim.md")),
+    ("checks", include_str!("../../../docs/topics/checks.md")),
+    ("cli", include_str!("../../../docs/topics/cli.md")),
+    ("craft", include_str!("../../../docs/topics/craft.md")),
+];
+
+fn docs(names: &[String]) -> u8 {
+    if names.is_empty() {
+        print!("{CARD}\n{}", topic_index());
+        println!("\nRun `artscript docs <topic> [topic...]` and name every topic the task touches in one call.");
+        return 0;
+    }
+    let mut bodies = Vec::new();
+    for name in names {
+        match TOPICS.iter().find(|(n, _)| n == name) {
+            Some((_, body)) => bodies.push(*body),
+            None => {
+                eprintln!("error: unknown docs topic `{name}`\n\n{}", topic_index());
+                return 1;
+            }
+        }
+    }
+    print!("{CARD}\n{}", bodies.join("\n"));
+    0
+}
+
+fn topic_index() -> String {
+    let width = TOPICS.iter().map(|(n, _)| n.len()).max().unwrap_or(0);
+    let mut out = String::from("## Topics\n\n");
+    for (name, body) in TOPICS {
+        let first = body.lines().next().unwrap_or("");
+        let summary = first
+            .strip_prefix("# ")
+            .and_then(|l| l.strip_prefix(name))
+            .and_then(|l| l.strip_prefix(": "))
+            .unwrap_or(first);
+        out.push_str(&format!("{name:<width$}  {summary}\n"));
+    }
+    out
 }
 
 fn usage_error(msg: &str) -> u8 {

@@ -389,7 +389,7 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let name = self.expect_name();
+        let name = self.expect_word();
         let (args, named) = self.parse_items();
         self.no_block(indent);
         if self.line_failed {
@@ -1518,6 +1518,9 @@ impl<'a> Parser<'a> {
         } else if let Some(Tok::Ident(s)) = self.cur().map(|t| t.kind.clone()) {
             self.bump();
             s
+        } else if let Some(Tok::Kw(k)) = self.cur().map(|t| t.kind.clone()) {
+            self.bump();
+            k.as_str().to_string()
         } else if let Some(tok) = self.cur() {
             if matches!(tok.kind, Tok::Num(_)) {
                 let text = self.src[tok.start..tok.end].to_string();
@@ -1854,6 +1857,15 @@ impl<'a> Parser<'a> {
     }
 
     fn expect_name(&mut self) -> String {
+        let span = self.cur_span();
+        let name = self.expect_word();
+        if !name.is_empty() {
+            self.reject_reserved(&name, span);
+        }
+        name
+    }
+
+    fn expect_word(&mut self) -> String {
         if self.eol() {
             self.fail_here("expected a name", "write a name");
             return String::new();
@@ -1862,12 +1874,10 @@ impl<'a> Parser<'a> {
         match self.cur().map(|t| t.kind.clone()) {
             Some(Tok::Ident(s)) => {
                 self.bump();
-                self.reject_reserved(&s, span);
                 s
             }
             Some(Tok::Kw(k)) => {
                 self.bump();
-                self.reject_reserved(k.as_str(), span);
                 k.as_str().to_string()
             }
             Some(other) => {

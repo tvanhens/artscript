@@ -1,0 +1,3 @@
+# fields: noise fields, fbm, ridged, field fills and masks, seeds
+
+`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or a `mask worley(20) > .6` child line to threshold one into a shape. Seeds default to a hash of the file and the node's key. A named node keeps its seed when other nodes change. An unnamed node's seed can shift when a sibling with the same verb is added ahead of it, and `positional-seed` warns. Add `name:` to pin it.
