@@ -1,8 +1,8 @@
 //! The evaluator: modules and declarations, the drawing statements, components with slots and
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
-use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap, VecDeque};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -15,20 +15,23 @@ use artscript_syntax::ast::{
 };
 use artscript_syntax::{Diagnostic, format_expr};
 
-use crate::checks::{CheckState, Pending};
+use crate::checks::{CheckState, Pending as CheckPending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
+use crate::identity::{
+    self, Arrival, ChannelPatch, DeclId, Entry, Key, Lookup, ModuleIds, Names, Pending,
+    PendingPatch, ReportKey, Resolved, Site,
+};
 use crate::key::Ease;
-use crate::motion::{absolute_channel, offset_channel, path_covers, path_match, static_base};
+use crate::motion::{absolute_channel, offset_channel};
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AnimDef, Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, Table, new_table,
-    table_get, table_names,
+    AnimDef, Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, ref_from,
 };
-use crate::seed::{self, Rng};
+use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
 
@@ -80,7 +83,7 @@ const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"]
 pub(crate) struct Instance {
     pub def_name: String,
     fills: Vec<Fill>,
-    pub table: Table,
+    names: Rc<RefCell<Names>>,
     used_fills: RefCell<Vec<String>>,
     record: RefCell<Option<Rc<RefCell<Record>>>>,
 }
@@ -94,7 +97,9 @@ struct Fill {
 
 pub(crate) struct Host {
     def_name: String,
-    table: Table,
+    names: Rc<RefCell<Names>>,
+    copies: Vec<u32>,
+    loops: Vec<Span>,
 }
 
 /// Everything a block of statements is evaluated against.
@@ -102,30 +107,71 @@ pub(crate) struct Host {
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
     pub module: Rc<Module>,
-    /// Path of the enclosing node; children are `path.<name>`.
-    pub path: String,
-    /// `#i` suffixes from enclosing `each`/`repeat`/`grid` copies, appended to new node names.
-    pub suffix: String,
+    owner: Key,
+    parent: Key,
+    scope_copies: Vec<u32>,
+    parent_copies: Vec<u32>,
+    scope_loops: Vec<Span>,
+    names: Rc<RefCell<Names>>,
+    lookup: Lookup,
+    pending: Rc<Pending>,
+    ids: Rc<ModuleIds>,
+    depth: u32,
     pub frame: Rect,
     /// Canvas from local coordinates.
     pub world: Matrix,
     pub style: Rc<Vec<(String, Value)>>,
-    pub register: Table,
-    pub lookup: Rc<Vec<Table>>,
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
-    pub checks: Rc<RefCell<Vec<Pending>>>,
+    pub checks: Rc<RefCell<Vec<CheckPending>>>,
     top: bool,
     publish: bool,
 }
 
 impl Scope {
-    fn child(&self, path: &str, frame: Rect, world: Matrix) -> Scope {
+    fn child(&self, parent: Key, frame: Rect, world: Matrix) -> Scope {
         Scope {
-            path: path.to_string(),
-            suffix: String::new(),
+            parent,
+            parent_copies: Vec::new(),
             frame,
             world,
+            top: false,
+            publish: false,
+            ..self.clone()
+        }
+    }
+
+    fn iteration(&self, span: Span, i: u32) -> Scope {
+        let mut inner = self.clone();
+        inner.scope_copies.push(i);
+        inner.parent_copies.push(i);
+        inner.scope_loops.push(span);
+        inner
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn enter(
+        &self,
+        key: Key,
+        names: Rc<RefCell<Names>>,
+        lookup: Lookup,
+        pending: Pending,
+        frame: Rect,
+        world: Matrix,
+        depth: u32,
+    ) -> Scope {
+        Scope {
+            owner: key.clone(),
+            parent: key,
+            scope_copies: Vec::new(),
+            parent_copies: Vec::new(),
+            scope_loops: Vec::new(),
+            names,
+            lookup,
+            pending: Rc::new(pending),
+            frame,
+            world,
+            depth,
             top: false,
             publish: false,
             ..self.clone()
@@ -135,18 +181,36 @@ impl Scope {
     pub(crate) fn file(&self) -> &str {
         &self.module.path
     }
-}
 
-struct PatchRec {
-    pattern: Vec<String>,
-    named: Vec<(String, Value)>,
-    off: bool,
-    owner: String,
-    depth: usize,
-    rel: String,
-    span: Span,
-    file: String,
-    matched: Cell<bool>,
+    pub(crate) fn owner(&self) -> &Key {
+        &self.owner
+    }
+
+    /// The key a diagnostic on a statement in this block is attached to.
+    pub(crate) fn node_name(&self) -> String {
+        if self.parent.is_root() {
+            String::new()
+        } else {
+            self.parent.to_string()
+        }
+    }
+
+    fn node_key(&self, span: Span) -> Key {
+        let region = self.names.borrow().region();
+        if let Some(id) = region.decl_at(span) {
+            let name = region.decl(id).name.clone();
+            return Key::named(&self.owner, &name, &self.scope_copies);
+        }
+        if let Some(anon) = self.ids.anon(span) {
+            Key::anon(&self.parent, anon, &self.parent_copies)
+        } else {
+            self.parent.clone()
+        }
+    }
+
+    fn decl_at(&self, span: Span) -> Option<DeclId> {
+        self.names.borrow().region().decl_at(span)
+    }
 }
 
 #[derive(Default)]
@@ -194,20 +258,34 @@ pub(crate) struct Evaluator<'a> {
     loading: Vec<String>,
     pub diags: Vec<Diagnostic>,
     pub canvas: Rect,
-    patches: Vec<PatchRec>,
     pub anchors: HashMap<String, Point>,
     pub background: Option<Rgba>,
     pub check: Option<CheckState>,
-    seed_base: String,
+    ids: HashMap<String, Rc<ModuleIds>>,
+    incoming: Vec<PendingPatch>,
+    reported: BTreeSet<ReportKey>,
+    pub(crate) uses: identity::PositionalUses,
+    seed_file: String,
+    seed_key: Key,
     seed_count: u64,
+    style_hits: Vec<StyleHit>,
+    pub(crate) accept_family: bool,
+    patch_order: u32,
+    unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
     anim_clock: Option<AnimClock>,
     pub plays: Vec<PlayMark>,
-    channels: Vec<Channel>,
     next_play: u32,
     play_ords: HashMap<Span, VecDeque<u32>>,
-    occurrences: HashMap<Span, usize>,
     silence: bool,
+}
+
+struct StyleHit {
+    key: String,
+    word: String,
+    file: String,
+    span: Span,
+    anim: String,
 }
 
 #[derive(Clone, Debug)]
@@ -221,24 +299,10 @@ struct AnimClock {
     dur: f64,
 }
 
-struct Channel {
-    pattern: Vec<String>,
-    owner: String,
-    key: String,
-    absolute: bool,
-    value: Value,
-    off: bool,
-    live: bool,
-    anim: String,
-    /// The `play` that scheduled this channel. E0340 stays here.
-    span: Span,
+struct SeedSnap {
     file: String,
-    /// The patch key in the anim's file. Expression and blend failures stay here.
-    patch_span: Span,
-    patch_file: String,
-    matched: Cell<bool>,
-    /// Source order. A play under an instance is scheduled later, and this keeps it earlier.
-    ord: u32,
+    key: Key,
+    count: u64,
 }
 
 /// A percent rest and a numeric offset are different units. Resolve only the percent
@@ -326,6 +390,10 @@ pub(crate) fn ident_of(e: &Expr) -> Option<&str> {
     }
 }
 
+fn is_name(e: &Expr) -> bool {
+    ident_of(e).is_some_and(|s| identity::Name::parse(s).is_some())
+}
+
 fn mat_trs(
     at: (f64, f64),
     pivot: (f64, f64),
@@ -358,6 +426,48 @@ fn new_node(path: String, origin: String, transform: Matrix, kind: NodeKind) -> 
 
 fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
+}
+
+fn record_ids(names: &Rc<RefCell<Names>>) -> BTreeSet<usize> {
+    names
+        .borrow()
+        .records()
+        .iter()
+        .map(|r| Rc::as_ptr(r) as usize)
+        .collect()
+}
+
+fn records_after(names: &Rc<RefCell<Names>>, seen: &BTreeSet<usize>) -> Vec<Rc<RefCell<Record>>> {
+    names
+        .borrow()
+        .records()
+        .into_iter()
+        .filter(|r| !seen.contains(&(Rc::as_ptr(r) as usize)))
+        .collect()
+}
+
+/// `grid` learns its cell pitch after the copies are drawn, then moves the nodes.
+/// Records were placed before that move, so the same translation has to land on them.
+fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
+    let Some(inv) = base.invert() else {
+        return;
+    };
+    let shift = *base * *t * inv;
+    let mut stack: Vec<Rc<RefCell<Record>>> = roots.to_vec();
+    let mut seen = BTreeSet::new();
+    while let Some(rec) = stack.pop() {
+        if !seen.insert(Rc::as_ptr(&rec) as usize) {
+            continue;
+        }
+        if let Some(inner) = rec.borrow().inner.clone() {
+            stack.extend(inner.borrow().records());
+        }
+        let mut r = rec.borrow_mut();
+        r.parent_world = shift * r.parent_world;
+        if let Some(p) = r.anchor {
+            r.anchor = Some(shift.map_point(p));
+        }
+    }
 }
 
 /// A percent of an empty frame would resolve to 0 and hide a missing box.
@@ -549,16 +659,6 @@ fn first_fill(n: &Node) -> Option<Rgba> {
     }
 }
 
-fn rename(node: &mut Node, from: &str, to: &str) {
-    if let Some(rest) = node.path.strip_prefix(from) {
-        node.path = format!("{to}{rest}");
-    }
-    match &mut node.kind {
-        NodeKind::Shape(s) => s.children.iter_mut().for_each(|c| rename(c, from, to)),
-        NodeKind::Group { children, .. } => children.iter_mut().for_each(|c| rename(c, from, to)),
-    }
-}
-
 impl<'a> Evaluator<'a> {
     pub fn new(project: &'a Project, job: &'a TargetJob) -> Self {
         Evaluator {
@@ -569,29 +669,26 @@ impl<'a> Evaluator<'a> {
             loading: Vec::new(),
             diags: Vec::new(),
             canvas: Rect::from_wh(job.size.0, job.size.1),
-            patches: Vec::new(),
             anchors: HashMap::new(),
             background: None,
             check: None,
-            seed_base: String::new(),
+            ids: HashMap::new(),
+            incoming: Vec::new(),
+            reported: BTreeSet::new(),
+            uses: identity::PositionalUses::default(),
+            seed_file: String::new(),
+            seed_key: Key::root(),
             seed_count: 0,
+            style_hits: Vec::new(),
+            accept_family: false,
+            patch_order: 0,
+            unstable_calls: BTreeSet::new(),
             time: job.frame_t,
             anim_clock: None,
             plays: Vec::new(),
-            channels: Vec::new(),
             next_play: 0,
             play_ords: HashMap::new(),
-            occurrences: HashMap::new(),
             silence: false,
-        }
-    }
-
-    fn leaf_name(&self, span: Span, base: &str, suffix: &str) -> String {
-        let n = self.occurrences.get(&span).copied().unwrap_or(1);
-        if n <= 1 {
-            format!("{base}{suffix}")
-        } else {
-            format!("{base}{n}{suffix}")
         }
     }
 
@@ -609,15 +706,76 @@ impl<'a> Evaluator<'a> {
         self.diags.push(d.in_file(file).at_node(node));
     }
 
-    fn seed_at(&mut self, base: String) {
-        self.seed_base = base;
+    fn begin_seed(&mut self, file: &str, key: Key) {
+        self.seed_file = file.to_string();
+        self.seed_key = key;
         self.seed_count = 0;
     }
 
-    /// Seed for `rand`/`pick`: the statement's file and path, plus how many draws came before.
+    fn seed_line(&mut self, sc: &Scope, span: Span) {
+        let key = sc.parent.at_line(&sc.parent_copies, span.line);
+        self.begin_seed(sc.file(), key);
+    }
+
+    fn seed_node(&mut self, file: &str, key: &Key) {
+        self.begin_seed(file, key.clone());
+    }
+
+    /// Draw-site `rand`, `pick`, and noise. The counter is how many of those this statement drew.
     pub fn next_seed(&mut self, extra: u64) -> u64 {
         self.seed_count += 1;
-        seed::node_seed(&self.seed_base, &self.seed_count.to_string(), extra)
+        let key = self.seed_key.draw(self.seed_count);
+        identity::seed(&self.seed_file, &key, extra, &mut self.uses)
+    }
+
+    pub(crate) fn seeded(&self) -> &BTreeSet<String> {
+        self.uses.seeded()
+    }
+
+    pub(crate) fn positional(&self) -> &identity::PositionalUses {
+        &self.uses
+    }
+
+    fn snap_seed(&self) -> SeedSnap {
+        SeedSnap {
+            file: self.seed_file.clone(),
+            key: self.seed_key.clone(),
+            count: self.seed_count,
+        }
+    }
+
+    fn restore_seed(&mut self, snap: SeedSnap) {
+        self.seed_file = snap.file;
+        self.seed_key = snap.key;
+        self.seed_count = snap.count;
+    }
+
+    fn next_order(&mut self) -> u32 {
+        let order = self.patch_order;
+        self.patch_order += 1;
+        order
+    }
+
+    fn unstable_scope(&mut self, key: &Key, region: &identity::Region, file: &str, span: Span) {
+        if key.is_stable() || region.is_empty() {
+            return;
+        }
+        if !self
+            .unstable_calls
+            .insert((file.to_string(), span.line, span.col))
+        {
+            return;
+        }
+        self.report(
+            fail(
+                "E0312",
+                "this call has no stable name, so a name inside it has nothing stable to hang from",
+            )
+            .fix("add name:"),
+            file,
+            span,
+            &key.to_string(),
+        );
     }
 
     // ---------------------------------------------------------------- modules
@@ -675,6 +833,11 @@ impl<'a> Evaluator<'a> {
                 self.report(f, file, item.span(), "");
             }
         }
+        let components = component_names(&module);
+        let mut id_diags = Vec::new();
+        let ids = ModuleIds::build(file, &parsed, &components, &mut id_diags);
+        self.diags.extend(id_diags);
+        self.ids.insert(file.to_string(), Rc::new(ids));
         self.loading.pop();
         self.modules.insert(file.to_string(), module.clone());
         Ok(module)
@@ -688,7 +851,7 @@ impl<'a> Evaluator<'a> {
                 ..
             }) if !entry => {
                 let sc = self.module_scope(module);
-                self.seed_at(format!("{}\0{name}", module.path));
+                self.begin_seed(&module.path, Key::binding(name));
                 let v = self.expr(value, &sc)?;
                 module.define(name, v);
                 return Ok(());
@@ -890,18 +1053,24 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    pub(crate) fn module_scope(&self, module: &Rc<Module>) -> Scope {
-        let t = new_table();
+    fn scope_shell(&self, module: &Rc<Module>, ids: Rc<ModuleIds>) -> Scope {
+        let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
             module: module.clone(),
-            path: String::new(),
-            suffix: String::new(),
+            owner: Key::root(),
+            parent: Key::root(),
+            scope_copies: Vec::new(),
+            parent_copies: Vec::new(),
+            scope_loops: Vec::new(),
+            lookup: Lookup::own(names.clone()),
+            names,
+            pending: Rc::new(Pending::empty()),
+            ids,
+            depth: 0,
             frame: Rect::new_empty(),
             world: Matrix::new_identity(),
             style: Rc::new(Vec::new()),
-            register: t.clone(),
-            lookup: Rc::new(vec![t]),
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
@@ -910,12 +1079,21 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    pub(crate) fn module_scope(&self, module: &Rc<Module>) -> Scope {
+        self.scope_shell(module, Rc::new(ModuleIds::blank()))
+    }
+
     pub fn top_scope(&self, module: &Rc<Module>) -> Scope {
+        let ids = self
+            .ids
+            .get(&module.path)
+            .cloned()
+            .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
         Scope {
             frame: self.canvas,
             top: true,
             publish: true,
-            ..self.module_scope(module)
+            ..self.scope_shell(module, ids)
         }
     }
 
@@ -1005,107 +1183,9 @@ impl<'a> Evaluator<'a> {
         stmts: impl IntoIterator<Item = &'s Scene>,
         sc: &mut Scope,
     ) -> Vec<Node> {
-        let stmts: Vec<&Scene> = stmts.into_iter().collect();
-        let map = self.occurrence_map(&stmts, sc);
-        let prev = std::mem::replace(&mut self.occurrences, map);
         let mut sib = Siblings::default();
-        self.eval_block(stmts.iter().copied(), sc, &mut sib);
-        self.occurrences = prev;
+        self.eval_block(stmts, sc, &mut sib);
         sib.finish()
-    }
-
-    fn occurrence_map(&mut self, stmts: &[&Scene], sc: &Scope) -> HashMap<Span, usize> {
-        let silence = self.silence;
-        let seed_base = self.seed_base.clone();
-        let seed_count = self.seed_count;
-        self.silence = true;
-        let mut counts = HashMap::new();
-        let mut map = HashMap::new();
-        let mut scratch = sc.clone();
-        scratch.publish = false;
-        self.count_scenes(stmts, &mut scratch, &mut counts, &mut map);
-        self.silence = silence;
-        self.seed_base = seed_base;
-        self.seed_count = seed_count;
-        map
-    }
-
-    fn count_scenes(
-        &mut self,
-        scenes: &[&Scene],
-        sc: &mut Scope,
-        counts: &mut HashMap<String, usize>,
-        map: &mut HashMap<Span, usize>,
-    ) {
-        for scene in scenes {
-            match &scene.kind {
-                SceneKind::If {
-                    then, otherwise, ..
-                } => {
-                    let mut then_sc = sc.clone();
-                    then_sc.publish = false;
-                    let then_refs: Vec<&Scene> = then.iter().collect();
-                    self.count_scenes(&then_refs, &mut then_sc, counts, map);
-                    let mut else_sc = sc.clone();
-                    else_sc.publish = false;
-                    let else_refs: Vec<&Scene> = otherwise.iter().collect();
-                    self.count_scenes(&else_refs, &mut else_sc, counts, map);
-                }
-                SceneKind::Each { var, iter, body } => {
-                    let mut inner = sc.clone();
-                    inner.publish = false;
-                    self.seed_at(format!(
-                        "{}\0{}{}\0{}",
-                        sc.file(),
-                        sc.path,
-                        sc.suffix,
-                        scene.span.line
-                    ));
-                    if let Ok(items) = self.expr(iter, sc).and_then(each_items)
-                        && let Some(first) = items.into_iter().next()
-                    {
-                        inner.env.push((var.clone(), first));
-                    }
-                    let refs: Vec<&Scene> = body.iter().collect();
-                    self.count_scenes(&refs, &mut inner, counts, map);
-                }
-                SceneKind::Let { name, value } => {
-                    self.seed_at(format!(
-                        "{}\0{}{}\0{}",
-                        sc.file(),
-                        sc.path,
-                        sc.suffix,
-                        scene.span.line
-                    ));
-                    let v = self.expr(value, sc).unwrap_or(Value::None);
-                    sc.env.push((name.clone(), v));
-                }
-                SceneKind::Draw(draw) => {
-                    if let Some(base) = self.occurrence_base(draw, sc) {
-                        let n = counts.entry(base).or_insert(0);
-                        *n += 1;
-                        map.insert(scene.span, *n);
-                    }
-                }
-                SceneKind::Slot { name, .. } => {
-                    let n = counts.entry(name.clone()).or_insert(0);
-                    *n += 1;
-                    map.insert(scene.span, *n);
-                }
-                SceneKind::Check { .. } | SceneKind::Play { .. } => {}
-            }
-        }
-    }
-
-    fn occurrence_base(&self, draw: &Draw, sc: &Scope) -> Option<String> {
-        let syntactic = static_base(&draw.verb, &draw.args, &draw.named)?;
-        if syntactic != draw.verb {
-            return Some(syntactic);
-        }
-        if let Some(Some(comp)) = self.component_for(&draw.verb, sc) {
-            return Some(comp.name.clone());
-        }
-        Some(syntactic)
     }
 
     fn quiet_expr(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
@@ -1124,7 +1204,7 @@ impl<'a> Evaluator<'a> {
     ) {
         for st in stmts {
             if let Err(f) = self.eval_stmt(st, sc, out) {
-                let node = sc.path.clone();
+                let node = sc.node_name();
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, &node);
             }
@@ -1134,13 +1214,7 @@ impl<'a> Evaluator<'a> {
     fn eval_stmt(&mut self, st: &Scene, sc: &mut Scope, out: &mut Siblings) -> R<()> {
         match &st.kind {
             SceneKind::Let { name, value } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let v = self.expr(value, sc);
                 let v = match v {
                     Ok(v) => v,
@@ -1163,13 +1237,7 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
                 inner.publish = false;
@@ -1177,25 +1245,18 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.clone();
+                    let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
                     inner.env.push((var.clone(), v));
-                    inner.suffix = format!("{}#{i}", sc.suffix);
                     self.eval_block(body, &mut inner, out);
                 }
                 Ok(())
             }
             SceneKind::Check { .. } => {
-                sc.checks.borrow_mut().push(Pending {
+                sc.checks.borrow_mut().push(CheckPending {
                     stmt: st.clone(),
                     scope: sc.clone(),
                 });
@@ -1292,13 +1353,11 @@ impl<'a> Evaluator<'a> {
 
     /// The anim patch that wrote this `style:` word, as its file, key span, and anim name.
     fn style_site(&self, path: &str, word: &str) -> Option<(String, Span, String)> {
-        let c = self.channels.iter().rev().find(|c| {
-            c.live
-                && c.key == "style"
-                && c.value.word() == Some(word)
-                && path_match(path, &c.owner, &c.pattern)
-        })?;
-        Some((c.patch_file.clone(), c.patch_span, c.anim.clone()))
+        self.style_hits
+            .iter()
+            .rev()
+            .find(|h| h.key == path && h.word == word)
+            .map(|h| (h.file.clone(), h.span, h.anim.clone()))
     }
 
     fn transform(
@@ -1379,30 +1438,115 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    fn take_patches(&self, path: &str) -> (Vec<(String, Value)>, bool) {
-        let mut hits: Vec<(usize, usize)> = self
-            .patches
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| path_match(path, &p.owner, &p.pattern))
-            .map(|(i, p)| (p.depth, i))
-            .collect();
-        hits.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
-        let mut named = Vec::new();
-        let mut off = false;
-        for (_, i) in hits {
-            let p = &self.patches[i];
-            p.matched.set(true);
-            off |= p.off;
-            named.extend(p.named.iter().cloned());
-        }
-        (named, off)
+    fn register(
+        &self,
+        sc: &Scope,
+        decl: DeclId,
+        key: &Key,
+        mut record: Record,
+    ) -> Rc<RefCell<Record>> {
+        record.path = key.to_string();
+        record.key = key.clone();
+        record.home = Some(sc.names.clone());
+        record.decl = Some(decl);
+        let rec = Rc::new(RefCell::new(record));
+        let name = sc.names.borrow().region().decl(decl).name.clone();
+        sc.names.borrow_mut().register(
+            decl,
+            &sc.scope_copies,
+            Entry {
+                name,
+                record: rec.clone(),
+            },
+        );
+        rec
     }
 
-    fn register(&self, sc: &Scope, name: &str, record: Record) -> Rc<RefCell<Record>> {
-        let r = Rc::new(RefCell::new(record));
-        sc.register.borrow_mut().push((name.to_string(), r.clone()));
-        r
+    #[allow(clippy::too_many_arguments)]
+    fn place(
+        &self,
+        sc: &Scope,
+        decl: DeclId,
+        key: &Key,
+        parent_world: Matrix,
+        node: Option<Node>,
+        anchor: Option<Point>,
+        at: (f64, f64),
+        inner: Option<Rc<RefCell<Names>>>,
+    ) -> Rc<RefCell<Record>> {
+        let name = sc.names.borrow().region().decl(decl).name.to_string();
+        self.register(
+            sc,
+            decl,
+            key,
+            Record {
+                name,
+                path: String::new(),
+                key: key.clone(),
+                parent_world,
+                node,
+                anchor,
+                at,
+                home: None,
+                decl: None,
+                inner,
+            },
+        )
+    }
+
+    fn land(
+        &mut self,
+        a: &mut Args,
+        own: &[PendingPatch],
+        default_at: (f64, f64),
+        frame: Rect,
+        sc: &Scope,
+        path: &str,
+    ) -> bool {
+        let win = |a: &&PendingPatch, b: &&PendingPatch| {
+            b.origin_depth
+                .cmp(&a.origin_depth)
+                .then(a.order.cmp(&b.order))
+        };
+        let mut statics: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_none()).collect();
+        statics.sort_by(win);
+        for p in statics {
+            a.named.extend(p.named.iter().cloned());
+        }
+        let mut chans: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_some()).collect();
+        chans.sort_by(win);
+        let mut hide = false;
+        for p in chans {
+            let Some(ch) = &p.channel else { continue };
+            if !ch.live {
+                continue;
+            }
+            if p.off {
+                hide = true;
+                continue;
+            }
+            if ch.key.is_empty() {
+                continue;
+            }
+            if ch.key == "style" && let Some(word) = ch.value.word() {
+                self.style_hits.push(StyleHit {
+                    key: path.to_string(),
+                    word: word.to_string(),
+                    file: ch.patch_file.clone(),
+                    span: ch.patch_span,
+                    anim: ch.anim.clone(),
+                });
+            }
+            if let Err(f) = blend_arg(a, &ch.key, ch.absolute, &ch.value, default_at, frame, sc) {
+                self.report(
+                    f.note(format!("in anim `{}`", ch.anim)),
+                    &ch.patch_file,
+                    ch.patch_span,
+                    path,
+                );
+            }
+        }
+        hide
     }
 
     fn eval_node(&mut self, st: &Scene, draw: &Draw, sc: &mut Scope, out: &mut Siblings) -> R<()> {
@@ -1414,7 +1558,7 @@ impl<'a> Evaluator<'a> {
         } = draw;
         let verb = verb.as_str();
         match verb {
-            "anchor" => return self.anchor(args, sc),
+            "anchor" => return self.anchor(st.span, args, sc),
             "canvas" if sc.top => {
                 let a = self.eval_args(args, named, sc, 0)?;
                 if let Some(v) = a.get("fill") {
@@ -1475,40 +1619,37 @@ impl<'a> Evaluator<'a> {
             return Err(fail("E0339", "`finish:` is not a node key")
                 .fix(format!("write `fx {name}` under the node")));
         }
-        let explicit = named
-            .iter()
-            .find(|n| n.key == "name")
-            .and_then(|n| ident_of(&n.value))
-            .map(str::to_string);
         let positional_name = matches!(verb, "layer" | "group")
             .then(|| args.first().and_then(ident_of).map(str::to_string))
             .flatten();
         let comp = comp.flatten();
-        let base = explicit
-            .clone()
-            .or(positional_name.clone())
-            .or_else(|| comp.as_ref().map(|c| c.name.clone()))
-            .unwrap_or_else(|| verb.to_string());
-        let registered = explicit.is_some() || positional_name.is_some() || comp.is_some();
-        let leaf = self.leaf_name(st.span, &base, &sc.suffix);
-        let path = if sc.path.is_empty() {
-            leaf.clone()
-        } else {
-            format!("{}.{leaf}", sc.path)
+        let key = sc.node_key(st.span);
+        let path = key.to_string();
+        let decl = sc.decl_at(st.span);
+        let region = sc.names.borrow().region();
+        let arrival = match decl {
+            Some(id) => sc.pending.arrive(id, &region, &sc.scope_copies),
+            None => Arrival {
+                own: Vec::new(),
+                forward: Vec::new(),
+            },
         };
-        let (patch_named, off) = self.take_patches(&path);
-        let patch_stroke = patch_named.iter().any(|(k, _)| k == "stroke");
-        if off {
-            self.mark_hidden(&path);
+        if arrival
+            .own
+            .iter()
+            .any(|p| p.channel.is_none() && p.off)
+        {
+            if let Some(comp) = &comp {
+                self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
+            }
             return Ok(());
         }
-        self.seed_at(format!("{}\0{path}", sc.file()));
+        let patch_stroke = arrival.own.iter().filter(|p| p.channel.is_none()).any(|p| {
+            p.named.iter().any(|(k, _)| k == "stroke")
+        });
+        self.seed_node(sc.file(), &key);
         let skip = usize::from(positional_name.is_some());
-        let raw_flags: Vec<String> = args
-            .iter()
-            .filter_map(ident_of)
-            .map(str::to_string)
-            .collect();
+        let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
         let pos_exprs: Vec<Expr> = args
             .iter()
@@ -1520,23 +1661,41 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
-        a.named.extend(patch_named);
-        if comp.is_some() {
-            if self.hide_motion(&path, &mut a, (0.0, 0.0), sc.frame, sc) {
-                return Ok(());
+        let centered = CENTERED.contains(&verb);
+        let group_like = matches!(
+            verb,
+            "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid"
+        );
+        let frame = sc.frame;
+        let default_at = if comp.is_some() {
+            (0.0, 0.0)
+        } else if centered {
+            (frame.center_x() as f64, frame.center_y() as f64)
+        } else {
+            (0.0, 0.0)
+        };
+        if self.land(&mut a, &arrival.own, default_at, frame, sc, &path) {
+            if let Some(comp) = &comp {
+                self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
-            self.expand_style(&mut a, sc, &path)?;
+            return Ok(());
         }
+        self.expand_style(&mut a, sc, &path)?;
         let origin = format!("{}:{}", sc.file(), st.span.line);
-        let name = registered.then(|| {
-            explicit
-                .clone()
-                .or(positional_name.clone())
-                .unwrap_or(base.clone())
-        });
-
         if let Some(comp) = comp {
-            return self.instance(&comp, a, body, sc, out, path, origin, name);
+            return self.instance(
+                &comp,
+                a,
+                body,
+                sc,
+                out,
+                key,
+                origin,
+                decl,
+                arrival.forward,
+                st.span,
+                named.iter().any(|n| n.key == "name" && !is_name(&n.value)),
+            );
         }
         for item in body.items() {
             let err = match item {
@@ -1567,21 +1726,6 @@ impl<'a> Evaluator<'a> {
             let file = sc.file().to_string();
             self.report(err.1, &file, err.0, &path);
         }
-        let centered = CENTERED.contains(&verb);
-        let group_like = matches!(
-            verb,
-            "layer" | "group" | "inside" | "outside" | "mirror" | "repeat" | "grid"
-        );
-        let frame = sc.frame;
-        let default_at = if centered {
-            (frame.center_x() as f64, frame.center_y() as f64)
-        } else {
-            (0.0, 0.0)
-        };
-        if self.hide_motion(&path, &mut a, default_at, frame, sc) {
-            return Ok(());
-        }
-        self.expand_style(&mut a, sc, &path)?;
         let expanded_style = a.word("style");
         let child_style = match &expanded_style {
             Some(_) => {
@@ -1597,7 +1741,7 @@ impl<'a> Evaluator<'a> {
         let mut record = None;
         if group_like {
             let local_frame = inverse(&m).map_rect(frame).0;
-            let mut inner = sc.child(&path, local_frame, world);
+            let mut inner = sc.child(key.clone(), local_frame, world);
             inner.style = child_style;
             let mut clip = None;
             if matches!(verb, "inside" | "outside") {
@@ -1626,18 +1770,16 @@ impl<'a> Evaluator<'a> {
                     children: vec![],
                 },
             );
-            if let Some(n) = &name {
-                record = Some(self.register(
+            if let Some(id) = decl {
+                record = Some(self.place(
                     sc,
-                    n,
-                    Record {
-                        name: n.clone(),
-                        path: path.clone(),
-                        parent_world: sc.world,
-                        node: Some(placeholder),
-                        anchor: None,
-                        at,
-                    },
+                    id,
+                    &key,
+                    sc.world,
+                    Some(placeholder),
+                    None,
+                    at,
+                    None,
                 ));
             }
             let children = match verb {
@@ -1646,8 +1788,8 @@ impl<'a> Evaluator<'a> {
                     &mut inner,
                     if flag("y") { (1.0, -1.0) } else { (-1.0, 1.0) },
                 ),
-                "repeat" => self.repeat(body, &mut inner, &a)?,
-                "grid" => self.grid(body, &mut inner, &a)?,
+                "repeat" => self.repeat(body, &mut inner, &a, st.span)?,
+                "grid" => self.grid(body, &mut inner, &a, st.span)?,
                 _ => self.eval_block_nodes(body.scenes(), &mut inner),
             };
             node = new_node(
@@ -1671,7 +1813,7 @@ impl<'a> Evaluator<'a> {
                         _ => BoolOp::Xor,
                     };
                     let local_frame = inverse(&m).map_rect(frame).0;
-                    let mut inner = sc.child(&path, local_frame, inner_world);
+                    let mut inner = sc.child(key.clone(), local_frame, inner_world);
                     let operands = self.eval_block_nodes(body.scenes(), &mut inner);
                     let sils: Vec<Path> = operands
                         .iter()
@@ -1716,8 +1858,8 @@ impl<'a> Evaluator<'a> {
                             .fix("write `jitter:1.5,60`"));
                     }
                     let extra = a.num("seed").unwrap_or(0.0) as u64;
-                    let mut rng =
-                        Rng::new(seed::node_seed(sc.file(), &format!("{path}#jitter"), extra));
+                    let jitter = identity::seed(sc.file(), &key.jitter(), extra, &mut self.uses);
+                    let mut rng = Rng::new(jitter);
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
             }
@@ -1738,18 +1880,16 @@ impl<'a> Evaluator<'a> {
                 stroke_src.as_ref(),
             )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
-            if let Some(n) = &name {
-                record = Some(self.register(
+            if let Some(id) = decl {
+                record = Some(self.place(
                     sc,
-                    n,
-                    Record {
-                        name: n.clone(),
-                        path: path.clone(),
-                        parent_world: sc.world,
-                        node: Some(node.clone()),
-                        anchor: None,
-                        at,
-                    },
+                    id,
+                    &key,
+                    sc.world,
+                    Some(node.clone()),
+                    None,
+                    at,
+                    None,
                 ));
             }
             if !matches!(verb, "subtract" | "union" | "intersect" | "xor")
@@ -1759,7 +1899,7 @@ impl<'a> Evaluator<'a> {
                     NodeKind::Shape(s) => geom::bounds(&s.geometry),
                     _ => Rect::new_empty(),
                 };
-                let mut inner = sc.child(&path, gb, inner_world);
+                let mut inner = sc.child(key.clone(), gb, inner_world);
                 inner.style = child_style;
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
                 if let NodeKind::Shape(s) = &mut node.kind {
@@ -1768,7 +1908,7 @@ impl<'a> Evaluator<'a> {
             }
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
-        let fx_scope = sc.child(&path, sc.frame, world);
+        let fx_scope = sc.child(key.clone(), sc.frame, world);
         let sites: Vec<FxSite> = body
             .fx()
             .map(|line| FxSite {
@@ -1776,8 +1916,8 @@ impl<'a> Evaluator<'a> {
                 scope: &fx_scope,
             })
             .collect();
-        node.effects = self.lower_fx(&sites, &path, fill_key);
-        self.mask(&mut node, &a, body.mask(), sc, world)?;
+        node.effects = self.lower_fx(&sites, &key, fill_key);
+        self.mask(&mut node, &a, body.mask(), sc, world, &key)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
@@ -1801,6 +1941,18 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    /// A bound component is a call even when its name is also a built-in shape.
+    fn verb_is_call(&self, verb: &str, sc: &Scope) -> bool {
+        let bound = sc
+            .env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == verb)
+            .map(|(_, v)| v.clone())
+            .or_else(|| sc.module.global(verb));
+        matches!(bound, Some(Value::Component(_))) || identity::calls_def(verb)
+    }
+
     fn mask(
         &mut self,
         node: &mut Node,
@@ -1808,12 +1960,14 @@ impl<'a> Evaluator<'a> {
         mask: Option<&ast::Mask>,
         sc: &Scope,
         world: Matrix,
+        key: &Key,
     ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
+        let mask_key = key.mask();
         let source = match mask {
             None => None,
             Some(ast::Mask::Block(body)) => {
-                let mut inner = sc.child(&format!("{}.mask", node.path), sc.frame, world);
+                let mut inner = sc.child(mask_key.clone(), sc.frame, world);
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
             Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
@@ -1836,7 +1990,7 @@ impl<'a> Evaluator<'a> {
                         children: vec![],
                     };
                     let n = new_node(
-                        format!("{}.mask", node.path),
+                        mask_key.to_string(),
                         node.origin.clone(),
                         Matrix::new_identity(),
                         NodeKind::Shape(Box::new(shape)),
@@ -1874,8 +2028,8 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn anchor(&mut self, args: &[Expr], sc: &Scope) -> R<()> {
-        let name = args.first().and_then(ident_of).ok_or_else(|| {
+    fn anchor(&mut self, span: Span, args: &[Expr], sc: &Scope) -> R<()> {
+        args.first().and_then(ident_of).ok_or_else(|| {
             fail("E0320", "`anchor` needs a name").fix("write `anchor neck 0,-4`")
         })?;
         let at = match args.get(1) {
@@ -1883,24 +2037,21 @@ impl<'a> Evaluator<'a> {
             None => (0.0, 0.0),
         };
         let p = sc.world.map_point(Point::new(at.0 as f32, at.1 as f32));
-        let path = if sc.path.is_empty() {
-            name.to_string()
-        } else {
-            format!("{}.{name}", sc.path)
-        };
-        self.anchors.insert(path.clone(), p);
-        self.register(
-            sc,
-            name,
-            Record {
-                name: name.to_string(),
-                path,
-                parent_world: sc.world,
-                node: None,
-                anchor: Some(p),
-                at,
-            },
-        );
+        let key = sc.node_key(span);
+        self.anchors.insert(key.to_string(), p);
+        if let Some(id) = sc.decl_at(span) {
+            let region = sc.names.borrow().region();
+            let own = sc.pending.arrive(id, &region, &sc.scope_copies).own;
+            for patch in &own {
+                identity::reject_anchor_patch(
+                    patch,
+                    &sc.node_name(),
+                    &mut self.reported,
+                    &mut self.diags,
+                );
+            }
+            self.place(sc, id, &key, sc.world, None, Some(p), at, None);
+        }
         Ok(())
     }
 
@@ -1909,31 +2060,20 @@ impl<'a> Evaluator<'a> {
         let mut out = originals.clone();
         for n in originals {
             let mut m = n.clone();
-            let from = n.path.clone();
-            let to = format!("{from}_m");
-            rename(&mut m, &from, &to);
+            identity::reflect(&mut m);
             m.transform = Matrix::scale(flip) * n.transform;
-            let name = to.rsplit('.').next().unwrap_or(&to).to_string();
-            if table_get(&sc.register, from.rsplit('.').next().unwrap_or(&from)).is_some() {
-                self.register(
-                    sc,
-                    &name,
-                    Record {
-                        name: name.clone(),
-                        path: to.clone(),
-                        parent_world: sc.world,
-                        node: Some(m.clone()),
-                        anchor: None,
-                        at: (0.0, 0.0),
-                    },
-                );
-            }
             out.push(m);
         }
         out
     }
 
-    fn repeat(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn repeat(
+        &mut self,
+        body: &DrawBody,
+        sc: &mut Scope,
+        a: &Args,
+        span: Span,
+    ) -> R<Vec<Node>> {
         let n = a.pos.first().and_then(Value::num).ok_or_else(|| {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
@@ -1944,9 +2084,8 @@ impl<'a> Evaluator<'a> {
             let fi = i as f64;
             let copy_m = Matrix::translate(((step.0 * fi) as f32, (step.1 * fi) as f32))
                 * Matrix::rotate_deg((rot * fi) as f32);
-            let mut inner = sc.clone();
+            let mut inner = sc.iteration(span, i as u32);
             inner.env.push(("i".into(), Value::Num(fi)));
-            inner.suffix = format!("{}#{i}", sc.suffix);
             inner.world = sc.world * copy_m;
             for mut node in self.eval_block_nodes(body.scenes(), &mut inner) {
                 node.transform = copy_m * node.transform;
@@ -1956,7 +2095,13 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn grid(&mut self, body: &DrawBody, sc: &mut Scope, a: &Args) -> R<Vec<Node>> {
+    fn grid(
+        &mut self,
+        body: &DrawBody,
+        sc: &mut Scope,
+        a: &Args,
+        span: Span,
+    ) -> R<Vec<Node>> {
         let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| {
             fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`")
         })?;
@@ -1966,12 +2111,14 @@ impl<'a> Evaluator<'a> {
         for row in 0..rows {
             for col in 0..cols {
                 let i = row * cols + col;
-                let mut inner = sc.clone();
+                let mut inner = sc.iteration(span, i as u32);
                 inner.env.push(("i".into(), Value::Num(i as f64)));
                 inner.env.push(("row".into(), Value::Num(row as f64)));
                 inner.env.push(("col".into(), Value::Num(col as f64)));
-                inner.suffix = format!("{}#{i}", sc.suffix);
-                copies.push(((row, col), self.eval_block_nodes(body.scenes(), &mut inner)));
+                let seen = record_ids(&sc.names);
+                let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
+                let fresh = records_after(&sc.names, &seen);
+                copies.push(((row, col), nodes, fresh));
             }
         }
         let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
@@ -1979,7 +2126,7 @@ impl<'a> Evaluator<'a> {
             None => {
                 let b = copies
                     .first()
-                    .and_then(|(_, ns)| artscript_ir::union_bounds(ns))
+                    .and_then(|(_, ns, _)| artscript_ir::union_bounds(ns))
                     .unwrap_or(Rect::new_empty());
                 (b.width() as f64, b.height() as f64)
             }
@@ -1987,13 +2134,14 @@ impl<'a> Evaluator<'a> {
         let (sx, sy) = (cw + gap, ch + gap);
         let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
         let mut out = Vec::new();
-        for ((row, col), nodes) in copies {
+        for ((row, col), nodes, fresh) in copies {
             let t =
                 Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32));
             for mut n in nodes {
                 n.transform = t * n.transform;
                 out.push(n);
             }
+            shift_placed(&fresh, &sc.world, &t);
         }
         Ok(out)
     }
@@ -2117,7 +2265,9 @@ impl<'a> Evaluator<'a> {
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
                 let extra = a.num("seed").unwrap_or(0.0) as u64;
-                let mut rng = Rng::new(seed::node_seed(&self.seed_base, "blob", extra));
+                let blob =
+                    identity::seed(sc.file(), &self.seed_key.blob(), extra, &mut self.uses);
+                let mut rng = Rng::new(blob);
                 let points = a.num("points").unwrap_or(7.0) as usize;
                 (
                     geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng),
@@ -2347,10 +2497,14 @@ impl<'a> Evaluator<'a> {
         block: &DrawBody,
         sc: &mut Scope,
         out: &mut Siblings,
-        path: String,
+        key: Key,
         origin: String,
-        name: Option<String>,
+        decl: Option<DeclId>,
+        forward: Vec<PendingPatch>,
+        span: Span,
+        name_rejected: bool,
     ) -> R<()> {
+        let path = key.to_string();
         let module = self
             .modules
             .get(&comp.module)
@@ -2440,61 +2594,105 @@ impl<'a> Evaluator<'a> {
             };
             env.push((p.key.clone(), value));
         }
+        let def_ids = self
+            .ids
+            .get(&comp.module)
+            .cloned()
+            .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
+        let region = def_ids
+            .region(comp.span)
+            .unwrap_or_else(|| def_ids.file());
+        if !name_rejected {
+            self.unstable_scope(&key, &region, sc.file(), span);
+        }
+        if let Some(err) = self.needs_of(comp, sc) {
+            return Err(err);
+        }
+        let mut imports = Vec::new();
         if let Some(host) = &sc.host {
             for need in &comp.needs {
-                if table_get(&host.table, need).is_none() {
-                    let parts = table_names(&host.table);
-                    let mut f = fail(
-                        "E0311",
-                        format!(
-                            "{} needs @{need}, but the host `{}` has no part named {need}",
-                            comp.name, host.def_name
-                        ),
-                    )
-                    .note(format!("parts available: {}", parts.join(", ")));
-                    f = match parts.first() {
-                        Some(first) => f.fix(format!("rename {}'s `{first}` to `{need}`, or fill a slot on a host that has `{need}`", host.def_name)),
-                        None => f.fix(format!("give `{}` a part named `{need}`", host.def_name)),
-                    };
-                    return Err(f);
+                if let Some((name, names)) = identity::host_import(&host.names, need) {
+                    imports.push(identity::Import {
+                        name,
+                        names,
+                        copies: host.copies.clone(),
+                        loops: host.loops.clone(),
+                    });
                 }
             }
         }
         let world = sc.world * m;
-        let table = new_table();
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
+        let mut call_patches = Vec::new();
         for b in block.items() {
-            self.absorb_item(b, &mut call_sc, &path, &comp.name, &mut fills)?;
+            self.absorb_item(b, &mut call_sc, &key, &comp.name, &mut fills, &mut call_patches)?;
         }
+        let names = Rc::new(RefCell::new(Names::new(region.clone())));
         let inst = Rc::new(Instance {
             def_name: comp.name.clone(),
             fills,
-            table: table.clone(),
+            names: names.clone(),
             used_fills: RefCell::new(Vec::new()),
             record: RefCell::new(None),
         });
-        let mut lookup = vec![table.clone()];
-        lookup.extend(sc.lookup.iter().cloned());
+        let mut incoming = forward;
+        incoming.extend(call_patches);
+        let pending = self.admit(&region, incoming, &path);
+        let lookup = Lookup::with_imports(names.clone(), imports);
         let checks = Rc::new(RefCell::new(Vec::new()));
-        let mut body_scope = Scope {
-            env,
-            module,
-            path: path.clone(),
-            suffix: String::new(),
-            frame: box_frame,
+        let mut body_scope = sc.enter(
+            key.clone(),
+            names.clone(),
+            lookup,
+            pending,
+            box_frame,
             world,
-            style: sc.style.clone(),
-            register: table,
-            lookup: Rc::new(lookup),
-            inst: Some(inst.clone()),
-            host: None,
-            checks: checks.clone(),
-            top: false,
-            publish: false,
+            sc.depth + 1,
+        );
+        body_scope.env = env;
+        body_scope.module = module;
+        body_scope.ids = def_ids;
+        body_scope.inst = Some(inst.clone());
+        body_scope.host = None;
+        body_scope.checks = checks.clone();
+        body_scope.style = sc.style.clone();
+        let placeholder = new_node(
+            path.clone(),
+            origin.clone(),
+            m,
+            NodeKind::Group {
+                isolate: false,
+                children: vec![],
+            },
+        );
+        let rec = match decl {
+            Some(id) => self.place(
+                sc,
+                id,
+                &key,
+                sc.world,
+                Some(placeholder),
+                None,
+                at,
+                Some(names.clone()),
+            ),
+            None => Rc::new(RefCell::new(Record {
+                name: String::new(),
+                path: path.clone(),
+                key: key.clone(),
+                parent_world: sc.world,
+                node: Some(placeholder),
+                anchor: None,
+                at,
+                home: None,
+                decl: None,
+                inner: Some(names.clone()),
+            })),
         };
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
+        self.report_unlanded(&body_scope);
         let mut node = new_node(
             path.clone(),
             origin,
@@ -2505,7 +2703,7 @@ impl<'a> Evaluator<'a> {
             },
         );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
-        let fx_scope = body_scope.child(&path, body_scope.frame, world);
+        let fx_scope = body_scope.child(key.clone(), body_scope.frame, world);
         let sites: Vec<FxSite> = comp
             .body
             .iter()
@@ -2519,23 +2717,11 @@ impl<'a> Evaluator<'a> {
                 scope: &call_sc,
             }))
             .collect();
-        node.effects = self.lower_fx(&sites, &path, f);
-        self.mask(&mut node, &node_args, block.mask(), &call_sc, world)?;
+        node.effects = self.lower_fx(&sites, &key, f);
+        self.mask(&mut node, &node_args, block.mask(), &call_sc, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
-        let reg_name = name.unwrap_or(comp.name.clone());
-        let rec = self.register(
-            sc,
-            &reg_name,
-            Record {
-                name: reg_name.clone(),
-                path: path.clone(),
-                parent_world: sc.world,
-                node: Some(node.clone()),
-                anchor: None,
-                at,
-            },
-        );
-        *inst.record.borrow_mut() = Some(rec);
+        rec.borrow_mut().node = Some(node.clone());
+        *inst.record.borrow_mut() = Some(rec.clone());
         self.run_checks(&checks);
         for fill in &inst.fills {
             if !inst.used_fills.borrow().contains(&fill.name) {
@@ -2552,31 +2738,263 @@ impl<'a> Evaluator<'a> {
                 );
             }
         }
-        let unmatched: Vec<(String, Span, String)> = self
-            .patches
-            .iter()
-            .filter(|p| p.owner == path && !p.matched.get())
-            .map(|p| (p.rel.clone(), p.span, p.file.clone()))
-            .collect();
-        if !unmatched.is_empty() {
-            let parts = part_names(&node);
-            for (rel, span, file) in unmatched {
-                self.report(
-                    fail(
-                        "E0340",
-                        format!("patch `.{rel}` matches no part of `{}`", comp.name),
-                    )
-                    .note(format!("parts: {}", parts.join(", ")))
-                    .fix("use one of the listed part paths"),
-                    &file,
-                    span,
-                    &path,
-                );
-            }
-        }
-        self.finish_channels(&path);
         out.items.push((node, z));
         Ok(())
+    }
+
+    fn needs_of(&self, comp: &Component, sc: &Scope) -> Option<Fail> {
+        if comp.needs.is_empty() {
+            return None;
+        }
+        let Some(host) = &sc.host else {
+            let need = &comp.needs[0];
+            return Some(
+                fail(
+                    "E0311",
+                    format!(
+                        "{} needs @{need}, but it is not slot content",
+                        comp.name
+                    ),
+                )
+                .fix("fill a slot on a host that has the part"),
+            );
+        };
+        for need in &comp.needs {
+            if let Err(parts) = identity::host_part(&host.names.borrow(), need) {
+                let mut f = fail(
+                    "E0311",
+                    format!(
+                        "{} needs @{need}, but the host `{}` has no part named {need}",
+                        comp.name, host.def_name
+                    ),
+                )
+                .note(format!("parts available: {}", parts.join(", ")));
+                f = match parts.first() {
+                    Some(first) => f.fix(format!(
+                        "rename {}'s `{first}` to `{need}`, or fill a slot on a host that has `{need}`",
+                        host.def_name
+                    )),
+                    None => f.fix(format!("give `{}` a part named `{need}`", host.def_name)),
+                };
+                return Some(f);
+            }
+        }
+        None
+    }
+
+    /// Checks patches that hop through `comp` against that def's names, and keeps
+    /// checking the tail after each instance or slot. An off instance never reaches
+    /// `instance`, so a one-hop check would accept `.hero.head.typo`.
+    fn admit_forward(
+        &mut self,
+        comp: &Component,
+        forward: &[PendingPatch],
+        path: &str,
+        call: &DrawBody,
+        caller_ids: &Rc<ModuleIds>,
+    ) {
+        if forward.is_empty() {
+            return;
+        }
+        let ids = self
+            .ids
+            .get(&comp.module)
+            .cloned()
+            .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
+        let region = ids
+            .region(comp.span)
+            .unwrap_or_else(|| ModuleIds::blank().file());
+        let scenes: Vec<Scene> = comp.body.iter().filter_map(DefItem::scene).cloned().collect();
+        let scope = PatchScope {
+            ids,
+            region,
+            scenes,
+            fills: fills_in(call, caller_ids),
+        };
+        self.admit_scope(&scope, forward.to_vec(), path);
+    }
+
+    fn admit_scope(&mut self, scope: &PatchScope, patches: Vec<PendingPatch>, path: &str) {
+        let pending = self.admit(&scope.region, patches, path);
+        let kept: Vec<PendingPatch> = pending.items().to_vec();
+        for patch in kept {
+            self.follow_scope(scope, &patch, path);
+        }
+    }
+
+    /// Follows a patch that still has hops after a scope-opening name.
+    /// An arm whose component is not known statically is left unchecked.
+    /// Exclusive arms report E0340 only when every known arm rejects the tail.
+    fn follow_scope(&mut self, scope: &PatchScope, patch: &PendingPatch, path: &str) {
+        let Some(identity::Hop::Name(name)) = patch.rest.first() else {
+            return;
+        };
+        let decl_ids: Vec<DeclId> = scope.region.lookup(name.as_str()).to_vec();
+        let mut children = Vec::new();
+        let mut unresolved = false;
+        for id in decl_ids {
+            let decl = scope.region.decl(id);
+            let tail = tail_after(decl, &patch.rest);
+            if tail.is_empty() || !decl.kind.opens_scope() {
+                continue;
+            }
+            match self.child_scope(scope, decl) {
+                Some(child) => children.push((child, tail)),
+                None => unresolved = true,
+            }
+        }
+        if unresolved || children.is_empty() {
+            return;
+        }
+        if children.len() == 1 {
+            let (child, tail) = children.pop().unwrap();
+            let mut next = patch.clone();
+            next.rest = tail;
+            self.admit_scope(&child, vec![next], path);
+            return;
+        }
+        let saved_diags = self.diags.clone();
+        let saved_reported = self.reported.clone();
+        let mut failure = None;
+        for (child, tail) in children {
+            self.diags.clone_from(&saved_diags);
+            self.reported.clone_from(&saved_reported);
+            let before = self.diags.len();
+            let mut next = patch.clone();
+            next.rest = tail;
+            self.admit_scope(&child, vec![next], path);
+            if self.diags.len() == before {
+                return;
+            }
+            if failure.is_none() {
+                failure = Some((self.diags.clone(), self.reported.clone()));
+            }
+        }
+        if let Some((diags, reported)) = failure {
+            self.diags = diags;
+            self.reported = reported;
+        }
+    }
+
+    fn child_scope(&self, scope: &PatchScope, decl: &identity::NameDecl) -> Option<PatchScope> {
+        match decl.kind {
+            identity::NameKind::Slot => {
+                if let Some(fill) = scope.fills.iter().find(|f| f.name == decl.name.as_str()) {
+                    let region = fill
+                        .ids
+                        .region(fill.span)
+                        .unwrap_or_else(|| ModuleIds::blank().file());
+                    return Some(PatchScope {
+                        ids: fill.ids.clone(),
+                        region,
+                        scenes: fill.body.clone(),
+                        fills: Vec::new(),
+                    });
+                }
+                let ids = self
+                    .ids
+                    .get(&*decl.site.file)
+                    .cloned()
+                    .unwrap_or_else(|| scope.ids.clone());
+                let region = ids
+                    .region(decl.site.span)
+                    .unwrap_or_else(|| ModuleIds::blank().file());
+                let scenes = slot_fallback(&scope.scenes, decl.site.span);
+                Some(PatchScope {
+                    ids,
+                    region,
+                    scenes,
+                    fills: Vec::new(),
+                })
+            }
+            identity::NameKind::Instance => {
+                let verb = decl.call.as_deref()?;
+                let module = self.modules.get(&*decl.site.file)?;
+                let comp = match module.global(verb)? {
+                    Value::Component(c) => c,
+                    _ => return None,
+                };
+                let ids = self.ids.get(&comp.module)?.clone();
+                let region = ids
+                    .region(comp.span)
+                    .unwrap_or_else(|| ModuleIds::blank().file());
+                let scenes: Vec<Scene> =
+                    comp.body.iter().filter_map(DefItem::scene).cloned().collect();
+                let fills = find_draw(&scope.scenes, decl.site.span)
+                    .map(|d| fills_in(&d.body, &scope.ids))
+                    .unwrap_or_default();
+                Some(PatchScope {
+                    ids,
+                    region,
+                    scenes,
+                    fills,
+                })
+            }
+            identity::NameKind::Draw | identity::NameKind::Anchor => None,
+        }
+    }
+
+    /// The region a hidden slot would have drawn, fill first, then the fallback.
+    fn slot_scope(
+        &self,
+        inst: &Instance,
+        name: &str,
+        span: Span,
+        fallback: &[Scene],
+        sc: &Scope,
+    ) -> PatchScope {
+        if let Some(fill) = inst.fills.iter().find(|f| f.name == name) {
+            let ids = fill.scope.ids.clone();
+            let region = ids
+                .region(fill.span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
+            return PatchScope {
+                ids,
+                region,
+                scenes: fill.body.clone(),
+                fills: Vec::new(),
+            };
+        }
+        let ids = sc.ids.clone();
+        let region = ids
+            .region(span)
+            .unwrap_or_else(|| ModuleIds::blank().file());
+        PatchScope {
+            ids,
+            region,
+            scenes: fallback.to_vec(),
+            fills: Vec::new(),
+        }
+    }
+
+    fn admit(
+        &mut self,
+        region: &identity::Region,
+        incoming: Vec<PendingPatch>,
+        at: &str,
+    ) -> Pending {
+        Pending::enter(
+            region,
+            incoming,
+            at,
+            &mut self.reported,
+            &mut self.diags,
+        )
+    }
+
+    pub(crate) fn report_unlanded(&mut self, sc: &Scope) {
+        let pending = Rc::clone(&sc.pending);
+        let owner = sc.owner().clone();
+        let at = sc.node_name();
+        let names = sc.names.borrow();
+        identity::report_misses(
+            &pending,
+            &names,
+            &owner,
+            &at,
+            &mut self.reported,
+            &mut self.diags,
+        );
     }
 
     fn slot(
@@ -2591,19 +3009,38 @@ impl<'a> Evaluator<'a> {
         let inst = sc.inst.clone().ok_or_else(|| {
             fail("E0334", "`slot` is only valid inside a `def`").fix("move it into a def body")
         })?;
-        let leaf = self.leaf_name(st.span, name, &sc.suffix);
-        let path = format!("{}.{leaf}", sc.path);
-        let (patch_named, off) = self.take_patches(&path);
-        if off {
-            self.mark_hidden(&path);
+        let key = sc.node_key(st.span);
+        let path = key.to_string();
+        let decl = sc.decl_at(st.span);
+        let host_region = sc.names.borrow().region();
+        let arrival = match decl {
+            Some(id) => sc.pending.arrive(id, &host_region, &sc.scope_copies),
+            None => Arrival {
+                own: Vec::new(),
+                forward: Vec::new(),
+            },
+        };
+        let mark_used = |inst: &Instance| {
             if inst.fills.iter().any(|f| f.name == name) {
                 inst.used_fills.borrow_mut().push(name.to_string());
             }
+        };
+        if arrival
+            .own
+            .iter()
+            .any(|p| p.channel.is_none() && p.off)
+        {
+            mark_used(&inst);
+            let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
+            self.admit_scope(&scope, arrival.forward.clone(), &path);
             return Ok(());
         }
+        self.seed_node(sc.file(), &key);
         let mut a = self.eval_args(&[], named, sc, 0)?;
-        a.named.extend(patch_named);
-        if self.hide_motion(&path, &mut a, (0.0, 0.0), sc.frame, sc) {
+        if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path) {
+            mark_used(&inst);
+            let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
+            self.admit_scope(&scope, arrival.forward.clone(), &path);
             return Ok(());
         }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
@@ -2611,24 +3048,75 @@ impl<'a> Evaluator<'a> {
         let mapped = inverse(&m).map_rect(sc.frame).0;
         // Centered on the slot origin, because content with no `at:` defaults to the frame center.
         let local_frame = size_box(mapped.width() as f64, mapped.height() as f64);
-        let children = match inst.fills.iter().find(|f| f.name == name) {
-            Some(fill) => {
-                inst.used_fills.borrow_mut().push(name.to_string());
-                let mut fsc = fill.scope.child(&path, local_frame, world);
-                let mut lookup = vec![inst.table.clone()];
-                lookup.extend(fill.scope.lookup.iter().cloned());
-                fsc.lookup = Rc::new(lookup);
-                fsc.host = Some(Rc::new(Host {
-                    def_name: inst.def_name.clone(),
-                    table: inst.table.clone(),
-                }));
-                self.eval_block_nodes(&fill.body, &mut fsc)
-            }
-            None => {
-                let mut inner = sc.child(&path, local_frame, world);
-                self.eval_block_nodes(fallback, &mut inner)
-            }
+        let filled = inst
+            .fills
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| (f.body.clone(), f.scope.clone(), f.span));
+        let (ids, region, base) = if let Some((_, scope, span)) = &filled {
+            mark_used(&inst);
+            let ids = scope.ids.clone();
+            let region = ids
+                .region(*span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
+            (ids, region, scope.clone())
+        } else {
+            let ids = sc.ids.clone();
+            let region = ids
+                .region(st.span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
+            (ids, region, sc.clone())
         };
+        let names = Rc::new(RefCell::new(Names::new(region.clone())));
+        let lookup = if filled.is_some() {
+            Lookup::slot(
+                names.clone(),
+                inst.names.clone(),
+                &sc.scope_copies,
+                &sc.scope_loops,
+                &base.lookup,
+                &base.scope_copies,
+                &base.scope_loops,
+            )
+        } else {
+            Lookup::under(names.clone(), &sc.lookup, &sc.scope_copies, &sc.scope_loops)
+        };
+        let pending = self.admit(&region, arrival.forward, &path);
+        let mut inner = base.enter(
+            key.clone(),
+            names.clone(),
+            lookup,
+            pending,
+            local_frame,
+            world,
+            sc.depth + 1,
+        );
+        inner.ids = ids;
+        if filled.is_some() {
+            inner.host = Some(Rc::new(Host {
+                def_name: inst.def_name.clone(),
+                names: inst.names.clone(),
+                copies: sc.scope_copies.clone(),
+                loops: sc.scope_loops.clone(),
+            }));
+        }
+        let placed = decl.map(|id| {
+            self.place(
+                sc,
+                id,
+                &key,
+                sc.world,
+                None,
+                None,
+                (0.0, 0.0),
+                Some(names),
+            )
+        });
+        let children = match &filled {
+            Some((body, _, _)) => self.eval_block_nodes(body, &mut inner),
+            None => self.eval_block_nodes(fallback, &mut inner),
+        };
+        self.report_unlanded(&inner);
         let mut node = new_node(
             path,
             format!("{}:{}", sc.file(), st.span.line),
@@ -2639,41 +3127,41 @@ impl<'a> Evaluator<'a> {
             },
         );
         let z = self.finish_node(&mut node, &a)?;
+        if let Some(rec) = placed {
+            rec.borrow_mut().node = Some(node.clone());
+        }
         out.items.push((node, z));
         Ok(())
     }
 
-    // ---------------------------------------------------------------- expressions
-
-    pub fn collect_entry(&mut self, scenes: &[Scene], sc: &Scope) {
+    pub fn collect_entry(&mut self, scenes: &[Scene], sc: &mut Scope) {
         let saved = sc.module.globals.borrow().clone();
         let mut scratch = sc.clone();
-        let table = new_table();
-        scratch.register = table.clone();
-        scratch.lookup = Rc::new(vec![table]);
-        self.collect_surface(scenes, &mut scratch, "");
+        let names = Rc::new(RefCell::new(Names::new(sc.ids.file())));
+        scratch.names = names.clone();
+        scratch.lookup = Lookup::own(names);
+        self.collect_surface(scenes, &mut scratch, true);
         *sc.module.globals.borrow_mut() = saved;
+        let region = sc.names.borrow().region();
+        let incoming = std::mem::take(&mut self.incoming);
+        let pending = self.admit(&region, incoming, "");
+        sc.pending = Rc::new(pending);
     }
 
-    fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, owner: &str) {
+    fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, schedule: bool) {
         for st in scenes {
-            if let Err(f) = self.collect_one(st, sc, owner) {
+            if let Err(f) = self.collect_one(st, sc, schedule) {
                 let file = sc.file().to_string();
-                self.report(f, &file, st.span, owner);
+                let node = sc.node_name();
+                self.report(f, &file, st.span, &node);
             }
         }
     }
 
-    fn collect_one(&mut self, st: &Scene, sc: &mut Scope, owner: &str) -> R<()> {
+    fn collect_one(&mut self, st: &Scene, sc: &mut Scope, schedule: bool) -> R<()> {
         match &st.kind {
             SceneKind::Let { name, value } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
                 if sc.top && sc.publish {
                     sc.module
@@ -2689,48 +3177,40 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let Ok(c) = self.quiet_expr(cond, sc) else {
                     return Ok(());
                 };
                 let mut inner = sc.clone();
                 inner.publish = false;
                 let branch = if c.truthy() { then } else { otherwise };
-                self.collect_surface(branch, &mut inner, owner);
+                self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
                     return Ok(());
                 };
                 for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.clone();
+                    let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
                     inner.env.push((var.clone(), v));
-                    inner.suffix = format!("{}#{i}", sc.suffix);
-                    self.collect_surface(body, &mut inner, owner);
+                    self.collect_surface(body, &mut inner, schedule);
                 }
                 Ok(())
             }
-            SceneKind::Play { name, start } => {
-                self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
+            SceneKind::Play { name, start } if schedule => {
+                let patches = self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, &sc.owner);
+                self.incoming.extend(patches);
+                Ok(())
+            }
+            SceneKind::Play { .. } => {
+                self.reserve_play(st.span);
                 Ok(())
             }
             SceneKind::Draw(draw) => {
-                self.collect_draw(draw, sc);
+                self.collect_draw(draw, sc, st.span);
                 Ok(())
             }
             SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
@@ -2739,53 +3219,95 @@ impl<'a> Evaluator<'a> {
 
     /// A name the real pass will register, recorded so a later `if @name` can take its branch.
     /// The stub has no geometry: `@name` is visible, `@name.w` is not.
-    fn collect_draw(&mut self, draw: &Draw, sc: &Scope) {
+    fn collect_draw(&mut self, draw: &Draw, sc: &Scope, span: Span) {
         let verb = draw.verb.as_str();
-        if matches!(verb, "canvas" | "fill" | "stroke" | "mask" | "fx") {
+        if verb == "canvas" {
             return;
         }
-        let explicit = draw
-            .named
-            .iter()
-            .find(|n| n.key == "name")
-            .and_then(|n| ident_of(&n.value))
-            .map(str::to_string);
-        let positional = if matches!(verb, "anchor" | "layer" | "group") {
-            draw.args.first().and_then(ident_of).map(str::to_string)
-        } else {
-            None
-        };
-        let comp = self.component_for(verb, sc).and_then(|c| c);
-        self.reserve_call_block(draw, sc);
-        let name = explicit
-            .or(positional)
-            .or_else(|| comp.as_ref().map(|c| c.name.clone()));
-        let Some(name) = name else { return };
-        let path = if sc.path.is_empty() {
-            name.clone()
-        } else {
-            format!("{}.{name}", sc.path)
-        };
-        self.register(
-            sc,
-            &name,
-            Record {
-                name: name.clone(),
-                path,
-                parent_world: sc.world,
-                node: None,
-                anchor: None,
-                at: (0.0, 0.0),
-            },
-        );
+        let key = sc.node_key(span);
+        if let Some(id) = sc.decl_at(span) {
+            self.place(sc, id, &key, sc.world, None, None, (0.0, 0.0), None);
+        }
+        if self.verb_is_call(verb, sc) {
+            self.reserve_call_block(draw, sc);
+            return;
+        }
+        if verb == "repeat" || verb == "grid" {
+            self.collect_loop(draw, sc, span, &key);
+            return;
+        }
+        self.collect_body(draw, sc, &key);
     }
 
-    /// Remember source order for plays under this draw, including calls nested in a structural draw.
-    /// `absorb_scene` schedules them later, after file-level plays that follow the call, and the
-    /// reserved order puts those later plays last.
+    fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
+        let mut inner = sc.child(key.clone(), sc.frame, sc.world);
+        for item in draw.body.items() {
+            match item {
+                DrawItem::Scene(st) => {
+                    let _ = self.collect_one(st, &mut inner, false);
+                }
+                DrawItem::Mask {
+                    mask: ast::Mask::Block(body),
+                    ..
+                } => {
+                    let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
+                    self.collect_surface(body, &mut mask_sc, false);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Registers each `repeat` or `grid` copy the draw pass will register.
+    /// A count that cannot be read registers none, so a later `if @name.0` does not see a stub.
+    fn collect_loop(&mut self, draw: &Draw, sc: &Scope, span: Span, key: &Key) {
+        self.seed_node(sc.file(), key);
+        let n = self.loop_copies(draw, sc);
+        if n == 0 {
+            return;
+        }
+        for item in draw.body.items() {
+            if let DrawItem::Mask {
+                mask: ast::Mask::Block(body),
+                ..
+            } = item
+            {
+                let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
+                self.collect_surface(body, &mut mask_sc, false);
+            }
+        }
+        for i in 0..n {
+            let mut inner = sc.iteration(span, i as u32);
+            for item in draw.body.items() {
+                if let DrawItem::Scene(st) = item {
+                    let _ = self.collect_one(st, &mut inner, false);
+                }
+            }
+        }
+    }
+
+    fn loop_copies(&mut self, draw: &Draw, sc: &Scope) -> usize {
+        let Some(expr) = draw.args.first() else {
+            return 0;
+        };
+        let Ok(v) = self.quiet_expr(expr, sc) else {
+            return 0;
+        };
+        match draw.verb.as_str() {
+            "repeat" => v
+                .num()
+                .map(|n| (n.max(0.0) as usize).min(10_000))
+                .unwrap_or(0),
+            "grid" => v
+                .vec2()
+                .map(|(cols, rows)| cols.max(1.0) as usize * rows.max(1.0) as usize)
+                .unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
-        let seed_base = self.seed_base.clone();
-        let seed_count = self.seed_count;
+        let snap = self.snap_seed();
         let mut inner = sc.clone();
         inner.publish = false;
         for item in draw.body.items() {
@@ -2793,20 +3315,13 @@ impl<'a> Evaluator<'a> {
                 self.reserve_call_scene(st, &mut inner);
             }
         }
-        self.seed_base = seed_base;
-        self.seed_count = seed_count;
+        self.restore_seed(snap);
     }
 
     fn reserve_call_scene(&mut self, st: &Scene, sc: &mut Scope) {
         match &st.kind {
             SceneKind::Let { name, value } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
                 sc.env.push((name.clone(), v));
             }
@@ -2815,13 +3330,7 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let branches: Vec<&[Scene]> = match self.quiet_expr(cond, sc) {
                     Ok(c) => vec![if c.truthy() { then } else { otherwise }],
                     Err(_) => vec![then, otherwise],
@@ -2834,13 +3343,7 @@ impl<'a> Evaluator<'a> {
                 }
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
                     let mut inner = sc.clone();
                     for child in body {
@@ -2849,16 +3352,19 @@ impl<'a> Evaluator<'a> {
                     return;
                 };
                 for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.clone();
+                    let mut inner = sc.iteration(st.span, i as u32);
                     inner.env.push((var.clone(), v));
-                    inner.suffix = format!("{}#{i}", sc.suffix);
                     for child in body {
                         self.reserve_call_scene(child, &mut inner);
                     }
                 }
             }
             SceneKind::Play { .. } => self.reserve_play(st.span),
-            SceneKind::Draw(draw) => self.reserve_call_block(draw, sc),
+            SceneKind::Draw(draw) => {
+                let key = sc.node_key(st.span);
+                let inner = sc.child(key, sc.frame, sc.world);
+                self.reserve_call_block(draw, &inner);
+            }
             SceneKind::Check { .. } | SceneKind::Slot { .. } => {}
         }
     }
@@ -2878,18 +3384,14 @@ impl<'a> Evaluator<'a> {
         ord
     }
 
-    fn push_channel(&mut self, channel: Channel) {
-        let i = self.channels.partition_point(|c| c.ord <= channel.ord);
-        self.channels.insert(i, channel);
-    }
-
     fn absorb_item(
         &mut self,
         item: &DrawItem,
         sc: &mut Scope,
-        owner: &str,
+        owner: &Key,
         def_name: &str,
         fills: &mut Vec<Fill>,
+        dest: &mut Vec<PendingPatch>,
     ) -> R<()> {
         match item {
             DrawItem::SlotFill(fill) => {
@@ -2902,11 +3404,11 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             DrawItem::Patch(patch) => {
-                self.push_patch(&patch.path, &patch.named, patch.off, sc, owner, patch.span)?;
+                self.push_patch(&patch.path, &patch.named, patch.off, sc, patch.span, None, None, dest)?;
                 Ok(())
             }
             DrawItem::Fx(_) | DrawItem::Mask { .. } => Ok(()),
-            DrawItem::Scene(st) => self.absorb_scene(st, sc, owner, def_name, false),
+            DrawItem::Scene(st) => self.absorb_scene(st, sc, owner, def_name, false, dest),
         }
     }
 
@@ -2914,68 +3416,51 @@ impl<'a> Evaluator<'a> {
         &mut self,
         st: &Scene,
         sc: &mut Scope,
-        owner: &str,
+        owner: &Key,
         def_name: &str,
         nested: bool,
+        dest: &mut Vec<PendingPatch>,
     ) -> R<()> {
+        let node = owner.to_string();
         match &st.kind {
             SceneKind::If {
                 cond,
                 then,
                 otherwise,
             } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
                 let branch = if c.truthy() { then } else { otherwise };
                 for child in branch {
-                    self.absorb_scene(child, &mut inner, owner, def_name, true)?;
+                    self.absorb_scene(child, &mut inner, owner, def_name, true, dest)?;
                 }
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.clone();
+                    let mut inner = sc.iteration(st.span, i as u32);
                     inner.env.push((var.clone(), v));
-                    inner.suffix = format!("{}#{i}", sc.suffix);
                     for child in body {
-                        self.absorb_scene(child, &mut inner, owner, def_name, true)?;
+                        self.absorb_scene(child, &mut inner, owner, def_name, true, dest)?;
                     }
                 }
                 Ok(())
             }
             SceneKind::Play { name, start } => {
-                self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner);
+                dest.extend(self.schedule_play(name.as_deref(), start.as_ref(), sc, st.span, owner));
                 Ok(())
             }
             SceneKind::Let { name, value } => {
-                self.seed_at(format!(
-                    "{}\0{}{}\0{}",
-                    sc.file(),
-                    sc.path,
-                    sc.suffix,
-                    st.span.line
-                ));
+                self.seed_line(sc, st.span);
                 let v = self.expr(value, sc)?;
                 sc.env.push((name.clone(), v));
                 Ok(())
             }
             SceneKind::Check { .. } if !nested => {
-                sc.checks.borrow_mut().push(Pending {
+                sc.checks.borrow_mut().push(CheckPending {
                     stmt: st.clone(),
                     scope: sc.clone(),
                 });
@@ -2987,7 +3472,7 @@ impl<'a> Evaluator<'a> {
                         .fix("keep slot fills, fx and checks as direct lines under the instance"),
                     sc.file(),
                     st.span,
-                    owner,
+                    &node,
                 );
                 Ok(())
             }
@@ -2997,46 +3482,70 @@ impl<'a> Evaluator<'a> {
                         .fix("wrap the content in a slot fill such as `head:`, or dedent it"),
                     sc.file(),
                     st.span,
-                    owner,
+                    &node,
                 );
                 Ok(())
             }
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_patch(
         &mut self,
         segs: &[String],
         named: &[Named],
         off: bool,
         sc: &Scope,
-        owner: &str,
         span: Span,
+        anim: Option<String>,
+        play: Option<Site>,
+        dest: &mut Vec<PendingPatch>,
     ) -> R<()> {
         let mut vals = Vec::new();
         for n in named {
             if n.key == "name" {
-                self.report(
-                    fail("E0320", "`name:` is the node's identity")
-                        .fix("set `name:` on the draw; a patch cannot rename it"),
-                    sc.file(),
-                    n.span,
-                    owner,
-                );
+                let note = anim
+                    .as_ref()
+                    .map(|a| format!("in anim `{a}`"))
+                    .unwrap_or_default();
+                let mut f = fail("E0320", "`name:` is the node's identity")
+                    .fix("set `name:` on the draw; a patch cannot rename it");
+                if !note.is_empty() {
+                    f = f.note(note);
+                }
+                self.report(f, sc.file(), n.span, &sc.node_name());
                 continue;
             }
             vals.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
-        self.patches.push(PatchRec {
-            pattern: segs.to_vec(),
+        let Some(rest) = identity::hops_from(segs) else {
+            self.report(
+                fail(
+                    "E0340",
+                    format!("patch `.{}` is not an address", segs.join(".")),
+                )
+                .fix("write names and whole-number copy indices, as in `.eye.0`"),
+                sc.file(),
+                span,
+                &sc.node_name(),
+            );
+            return Ok(());
+        };
+        if rest.is_empty() {
+            return Ok(());
+        }
+        let report = play.clone().unwrap_or_else(|| Site::new(sc.file(), span));
+        dest.push(PendingPatch {
+            written: rest.clone(),
+            rest,
+            origin_depth: sc.depth,
+            order: self.next_order(),
             named: vals,
             off,
-            owner: owner.to_string(),
-            depth: owner.matches('.').count(),
-            rel: segs.join("."),
-            span,
-            file: sc.file().to_string(),
-            matched: Cell::new(false),
+            channel: None,
+            report,
+            anim,
+            play,
         });
         Ok(())
     }
@@ -3047,10 +3556,13 @@ impl<'a> Evaluator<'a> {
         start: Option<&Expr>,
         sc: &Scope,
         span: Span,
-        owner: &str,
-    ) {
-        let Some(name) = name else { return };
+        owner: &Key,
+    ) -> Vec<PendingPatch> {
+        let Some(name) = name else {
+            return Vec::new();
+        };
         let ord = self.take_ord(span);
+        let node = owner.to_string();
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
             None => {
@@ -3059,22 +3571,20 @@ impl<'a> Evaluator<'a> {
                         .fix(format!("declare `anim {name}` or import it")),
                     sc.file(),
                     span,
-                    owner,
+                    &node,
                 );
-                return;
+                return Vec::new();
             }
         };
-        let start_base = self.seed_base.clone();
-        let start_count = self.seed_count;
-        self.seed_at(format!("{}\0{owner}\0{}", sc.file(), span.line));
+        let snap = self.snap_seed();
+        self.begin_seed(sc.file(), owner.at_line(&[], span.line));
         let start_v = match start {
             Some(e) => match self.time_secs(e, sc) {
                 Ok(n) => n,
                 Err(f) => {
-                    self.seed_base = start_base;
-                    self.seed_count = start_count;
-                    self.report(f, sc.file(), span, owner);
-                    return;
+                    self.restore_seed(snap);
+                    self.report(f, sc.file(), span, &node);
+                    return Vec::new();
                 }
             },
             None => 0.0,
@@ -3084,10 +3594,9 @@ impl<'a> Evaluator<'a> {
             Some(m) => self.module_scope(m),
             None => sc.clone(),
         };
-        self.seed_at(format!("{}\0{owner}\0{}", anim.module, anim.span.line));
+        self.begin_seed(&anim.module, owner.at_line(&[], anim.span.line));
         let dur = self.time_secs(&anim.dur, &dur_scope);
-        self.seed_base = start_base;
-        self.seed_count = start_count;
+        self.restore_seed(snap);
         let dur = match dur {
             Ok(n) if n > 0.0 => n,
             Ok(_) => {
@@ -3100,9 +3609,9 @@ impl<'a> Evaluator<'a> {
                     .fix("write `dur:1s`"),
                     &anim.module,
                     anim.span,
-                    owner,
+                    &node,
                 );
-                return;
+                return Vec::new();
             }
             Err(f) => {
                 self.report(
@@ -3113,9 +3622,9 @@ impl<'a> Evaluator<'a> {
                     )),
                     &anim.module,
                     anim.span,
-                    owner,
+                    &node,
                 );
-                return;
+                return Vec::new();
             }
         };
         self.plays.push(PlayMark {
@@ -3134,28 +3643,50 @@ impl<'a> Evaluator<'a> {
             raw.clamp(0.0, dur)
         };
         let saved = self.anim_clock.replace(AnimClock { local, dur });
-        let saved_base = self.seed_base.clone();
-        let saved_count = self.seed_count;
-        let file = sc.file().to_string();
+        let snap = self.snap_seed();
+        let play = Site::new(sc.file(), span);
+        let mut out = Vec::new();
         for patch in &anim.body {
-            self.seed_at(format!("{}\0{owner}\0{}", anim.module, patch.span.line));
-            if patch.off || patch.named.is_empty() {
-                // A path-only patch applies nothing, so it is never live and only records a match.
-                self.push_channel(Channel {
-                    pattern: patch.path.clone(),
-                    owner: owner.to_string(),
-                    key: String::new(),
-                    absolute: true,
-                    value: Value::None,
-                    off: patch.off,
-                    live: live && patch.off,
-                    anim: name.to_string(),
+            self.begin_seed(&anim.module, owner.at_line(&[], patch.span.line));
+            let Some(rest) = identity::hops_from(&patch.path) else {
+                self.report(
+                    fail(
+                        "E0340",
+                        format!(
+                            "`{name}` patch `.{}` is not an address",
+                            patch.path.join(".")
+                        ),
+                    )
+                    .fix("write names and whole-number copy indices"),
+                    sc.file(),
                     span,
-                    file: file.clone(),
-                    patch_span: patch.span,
-                    patch_file: anim.module.clone(),
-                    matched: Cell::new(false),
-                    ord,
+                    &node,
+                );
+                continue;
+            };
+            if rest.is_empty() {
+                continue;
+            }
+            if patch.off || patch.named.is_empty() {
+                out.push(PendingPatch {
+                    written: rest.clone(),
+                    rest,
+                    origin_depth: sc.depth,
+                    order: ord,
+                    named: Vec::new(),
+                    off: patch.off,
+                    channel: Some(ChannelPatch {
+                        key: String::new(),
+                        absolute: true,
+                        value: Value::None,
+                        live: live && patch.off,
+                        anim: name.to_string(),
+                        patch_span: patch.span,
+                        patch_file: anim.module.clone(),
+                    }),
+                    report: play.clone(),
+                    anim: Some(name.to_string()),
+                    play: Some(play.clone()),
                 });
                 continue;
             }
@@ -3167,7 +3698,7 @@ impl<'a> Evaluator<'a> {
                             .fix("set `name:` on the draw; an anim cannot rename it"),
                         &anim.module,
                         n.span,
-                        owner,
+                        &node,
                     );
                     continue;
                 }
@@ -3176,34 +3707,38 @@ impl<'a> Evaluator<'a> {
                     None => (!offset_channel(&n.key), &n.value),
                 };
                 match self.expr(expr, &dur_scope) {
-                    Ok(value) => self.push_channel(Channel {
-                        pattern: patch.path.clone(),
-                        owner: owner.to_string(),
-                        key: n.key.clone(),
-                        absolute,
-                        value,
+                    Ok(value) => out.push(PendingPatch {
+                        written: rest.clone(),
+                        rest: rest.clone(),
+                        origin_depth: sc.depth,
+                        order: ord,
+                        named: Vec::new(),
                         off: false,
-                        live,
-                        anim: name.to_string(),
-                        span,
-                        file: file.clone(),
-                        patch_span: n.span,
-                        patch_file: anim.module.clone(),
-                        matched: Cell::new(false),
-                        ord,
+                        channel: Some(ChannelPatch {
+                            key: n.key.clone(),
+                            absolute,
+                            value,
+                            live,
+                            anim: name.to_string(),
+                            patch_span: n.span,
+                            patch_file: anim.module.clone(),
+                        }),
+                        report: play.clone(),
+                        anim: Some(name.to_string()),
+                        play: Some(play.clone()),
                     }),
                     Err(f) => self.report(
                         f.note(format!("in anim `{name}`")),
                         &anim.module,
                         n.span,
-                        owner,
+                        &node,
                     ),
                 }
             }
         }
-        self.seed_base = saved_base;
-        self.seed_count = saved_count;
+        self.restore_seed(snap);
         self.anim_clock = saved;
+        out
     }
 
     fn time_secs(&mut self, e: &Expr, sc: &Scope) -> R<f64> {
@@ -3306,78 +3841,11 @@ impl<'a> Evaluator<'a> {
         crate::key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
     }
 
-    fn mark_hidden(&self, path: &str) {
-        for ch in &self.channels {
-            if path_covers(path, &ch.owner, &ch.pattern) {
-                ch.matched.set(true);
-            }
-        }
-    }
-
     fn local_time(&self) -> f64 {
         self.anim_clock
             .as_ref()
             .map(|c| c.local)
             .unwrap_or(self.time)
-    }
-
-    fn hide_motion(
-        &mut self,
-        path: &str,
-        a: &mut Args,
-        default_at: (f64, f64),
-        frame: Rect,
-        sc: &Scope,
-    ) -> bool {
-        let mut hide = false;
-        for i in 0..self.channels.len() {
-            if !path_match(path, &self.channels[i].owner, &self.channels[i].pattern) {
-                continue;
-            }
-            self.channels[i].matched.set(true);
-            if !self.channels[i].live {
-                continue;
-            }
-            if self.channels[i].off {
-                hide = true;
-                continue;
-            }
-            let key = self.channels[i].key.clone();
-            let absolute = self.channels[i].absolute;
-            let value = self.channels[i].value.clone();
-            let span = self.channels[i].patch_span;
-            let file = self.channels[i].patch_file.clone();
-            let anim = self.channels[i].anim.clone();
-            if let Err(f) = blend_arg(a, &key, absolute, &value, default_at, frame, sc) {
-                self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
-            }
-        }
-        if hide {
-            self.mark_hidden(path);
-        }
-        hide
-    }
-
-    pub fn finish_channels(&mut self, owner: &str) {
-        let pending: Vec<(String, String, Span, String)> = self
-            .channels
-            .iter()
-            .filter(|c| c.owner == owner && !c.matched.get())
-            .map(|c| (c.anim.clone(), c.pattern.join("."), c.span, c.file.clone()))
-            .collect();
-        let mut seen = HashSet::new();
-        for (anim, rel, span, file) in pending {
-            if !seen.insert((anim.clone(), rel.clone(), file.clone(), span)) {
-                continue;
-            }
-            self.report(
-                fail("E0340", format!("`{anim}` patch `.{rel}` matches nothing"))
-                    .fix("use a path that reaches a node, or remove the line"),
-                &file,
-                span,
-                owner,
-            );
-        }
     }
 
     pub fn lookup_ident(&self, name: &str, sc: &Scope) -> Option<Value> {
@@ -3423,10 +3891,14 @@ impl<'a> Evaluator<'a> {
                 record: Record {
                     name: "canvas".into(),
                     path: "canvas".into(),
+                    key: Key::root(),
                     parent_world: Matrix::new_identity(),
                     node: None,
                     anchor: None,
                     at: (0.0, 0.0),
+                    home: None,
+                    decl: None,
+                    inner: None,
                 },
                 canvas: Some(self.canvas),
             }))),
@@ -3742,7 +4214,7 @@ impl<'a> Evaluator<'a> {
 
     fn reference(&mut self, segs: &[String], sc: &Scope) -> R<Value> {
         let first = &segs[0];
-        let mut cur = if first == "self" {
+        if first == "self" {
             let inst = sc
                 .inst
                 .clone()
@@ -3752,107 +4224,321 @@ impl<'a> Evaluator<'a> {
                 .borrow()
                 .clone()
                 .ok_or_else(|| fail("E0350", "`@self` is only available in checks"))?;
-            let rec = rec.borrow().clone();
-            RefVal {
+            let cur = RefVal {
                 label: "self".into(),
-                record: rec,
+                record: rec.borrow().clone(),
                 canvas: None,
+            };
+            return self.walk_ref(vec![cur], segs, 1, "self".into(), sc, 0);
+        }
+        if first == "canvas" {
+            let Some(Value::Ref(r)) = self.lookup_ident("canvas", sc) else {
+                unreachable!("canvas is a reference");
+            };
+            return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
+        }
+        let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
+        let (cur, depth) = self.refs_of(resolved, first)?;
+        self.walk_ref(cur, segs, 1, first.clone(), sc, depth)
+    }
+
+    fn refs_of(&self, resolved: Resolved, label: &str) -> R<(Vec<RefVal>, usize)> {
+        match resolved {
+            Resolved::One(e, depth) => Ok((vec![ref_from(&e, label)], depth)),
+            Resolved::Many(es, depth) => {
+                Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
             }
-        } else if first == "canvas" {
-            match self.lookup_ident("canvas", sc) {
-                Some(Value::Ref(r)) => (*r).clone(),
-                _ => unreachable!(),
+            Resolved::Undrawn(site) => Err(fail(
+                "E0350",
+                format!(
+                    "`{label}` is declared at {}:{} and not drawn",
+                    site.file, site.span.line
+                ),
+            )
+            .fix("draw it, or remove the reference")),
+            Resolved::Missing(names) => Err(missing_part(label, &names)),
+            Resolved::Ambiguous(notes) => {
+                let mut f = fail(
+                    "E0343",
+                    format!("`{label}` is a name in more than one scope"),
+                );
+                for n in notes {
+                    f = f.note(n);
+                }
+                Err(f.fix("rename one of them"))
             }
-        } else {
-            let rec = sc
-                .lookup
-                .iter()
-                .find_map(|t| table_get(t, first))
-                .ok_or_else(|| {
-                    let mut names: Vec<String> = Vec::new();
-                    for t in sc.lookup.iter() {
-                        for n in table_names(t) {
-                            if !names.contains(&n) {
-                                names.push(n);
-                            }
-                        }
-                    }
-                    fail("E0350", format!("no part named `{first}` here"))
-                        .note(format!(
-                            "named so far: {}",
-                            if names.is_empty() {
-                                "(none)".into()
-                            } else {
-                                names.join(", ")
-                            }
-                        ))
-                        .fix("name the node with `name:` before this line, or fix the spelling")
-                })?;
-            let rec = rec.borrow().clone();
-            RefVal {
-                label: first.clone(),
-                record: rec,
-                canvas: None,
-            }
-        };
-        let mut i = 1;
+        }
+    }
+
+    fn walk_ref(
+        &mut self,
+        mut cur: Vec<RefVal>,
+        segs: &[String],
+        mut i: usize,
+        mut label: String,
+        sc: &Scope,
+        mut index_depth: usize,
+    ) -> R<Value> {
         while i < segs.len() {
             let seg = segs[i].as_str();
-            let last = i == segs.len() - 1;
+            let last = i + 1 == segs.len();
             if seg == "*" {
+                if !last {
+                    return Err(fail("E0343", "`*` is only a final hop").fix("move `*` to the end"));
+                }
+                if cur.is_empty() {
+                    return Err(missing_part(&label, &[]));
+                }
+                let kids: Vec<RefVal> = cur.iter().flat_map(|r| r.children()).collect();
                 return Ok(Value::List(Rc::new(
-                    cur.children()
-                        .into_iter()
-                        .map(|c| Value::Ref(Rc::new(c)))
-                        .collect(),
+                    kids.into_iter().map(|c| Value::Ref(Rc::new(c))).collect(),
                 )));
             }
+            if !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()) {
+                let Ok(ix) = seg.parse::<u32>() else {
+                    return Err(fail(
+                        "E0350",
+                        format!("`@{label}.{seg}` is not a copy index"),
+                    )
+                    .fix("write a whole number that fits"));
+                };
+                cur.retain(|r| r.record.key.copy_at(index_depth) == Some(ix));
+                index_depth += 1;
+                label = format!("{label}.{seg}");
+                i += 1;
+                continue;
+            }
             if seg == "geom" && i + 1 < segs.len() {
+                let one = self.one_ref(&cur, &label, sc)?;
                 let m = segs[i + 1].as_str();
-                let b = cur
+                let b = one
                     .geom_bounds()
-                    .ok_or_else(|| fail("E0351", format!("@{} has no geometry", cur.label)))?;
+                    .ok_or_else(|| fail("E0351", format!("@{label} has no geometry")))?;
                 let v = measure_rect(b, m)
                     .ok_or_else(|| fail("E0350", format!("unknown measurement `.geom.{m}`")))?;
-                self.note(format!("{}.geom.{m} = {}", cur.label, num(v)));
+                self.note(format!("{label}.geom.{m} = {}", num(v)));
                 return Ok(Value::Num(v));
             }
-            if last
-                && MEASURES.contains(&seg)
-                && !cur.children().iter().any(|c| c.record.name == seg)
-            {
-                return self.measure(&cur, seg);
-            }
-            let child_path = format!("{}.{seg}", cur.record.path);
-            if let Some(p) = self.anchors.get(&child_path) {
-                cur = RefVal {
-                    label: format!("{}.{seg}", cur.label),
-                    record: Record {
-                        name: seg.into(),
-                        path: child_path,
-                        parent_world: Matrix::new_identity(),
-                        node: None,
-                        anchor: Some(*p),
-                        at: (0.0, 0.0),
-                    },
-                    canvas: None,
-                };
-            } else {
-                let kids = cur.children();
+            let one = self.one_ref(&cur, &label, sc)?;
+            let kids = one.children();
+            let matched: Vec<RefVal> = kids
+                .iter()
+                .filter(|c| c.record.name == seg)
+                .cloned()
+                .collect();
+            if matched.is_empty() {
+                if last && MEASURES.contains(&seg) {
+                    return self.measure(&one, seg);
+                }
                 let names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
-                cur = kids
-                    .into_iter()
-                    .find(|c| c.record.name == seg)
-                    .ok_or_else(|| {
-                        fail("E0350", format!("@{} has no part `{seg}`", cur.label))
-                            .note(format!("parts: {}", names.join(", ")))
-                            .fix("use one of the listed parts")
-                    })?;
+                return Err(fail("E0350", format!("@{label} has no part `{seg}`"))
+                    .note(format!(
+                        "parts: {}",
+                        if names.is_empty() {
+                            "(none)".into()
+                        } else {
+                            names.join(", ")
+                        }
+                    ))
+                    .fix("use one of the listed parts"));
             }
+            cur = matched;
+            label = format!("{label}.{seg}");
+            index_depth = if one.record.inner.is_some() {
+                0
+            } else {
+                one.record.key.trailing_copies().len()
+            };
             i += 1;
         }
-        Ok(Value::Ref(Rc::new(cur)))
+        match cur.len() {
+            0 => Err(missing_part(&label, &[])),
+            1 => Ok(Value::Ref(Rc::new(cur.pop().unwrap()))),
+            _ if self.accept_family => Ok(Value::List(Rc::new(
+                cur.into_iter().map(|c| Value::Ref(Rc::new(c))).collect(),
+            ))),
+            _ => Err(family_error(&label, &cur, &sc.owner)),
+        }
     }
+
+    fn one_ref(&self, cur: &[RefVal], label: &str, sc: &Scope) -> R<RefVal> {
+        match cur {
+            [one] => Ok(one.clone()),
+            [] => Err(missing_part(label, &[])),
+            many => Err(family_error(label, many, &sc.owner)),
+        }
+    }
+}
+
+struct FillHop {
+    name: String,
+    span: Span,
+    ids: Rc<ModuleIds>,
+    body: Vec<Scene>,
+}
+
+struct PatchScope {
+    ids: Rc<ModuleIds>,
+    region: Rc<identity::Region>,
+    scenes: Vec<Scene>,
+    fills: Vec<FillHop>,
+}
+
+fn fills_in(body: &DrawBody, ids: &Rc<ModuleIds>) -> Vec<FillHop> {
+    body.items()
+        .iter()
+        .filter_map(|item| {
+            let DrawItem::SlotFill(fill) = item else {
+                return None;
+            };
+            Some(FillHop {
+                name: fill.name.clone(),
+                span: fill.span,
+                ids: ids.clone(),
+                body: fill.body.clone(),
+            })
+        })
+        .collect()
+}
+
+fn tail_after(decl: &identity::NameDecl, rest: &[identity::Hop]) -> Vec<identity::Hop> {
+    let mut i = 1;
+    let mut seen = 0;
+    while i < rest.len() && matches!(rest[i], identity::Hop::Index(_)) && seen < decl.loops.len() {
+        seen += 1;
+        i += 1;
+    }
+    rest[i..].to_vec()
+}
+
+fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
+    for scene in scenes {
+        if scene.span == span {
+            return match &scene.kind {
+                SceneKind::Draw(draw) => Some(draw),
+                _ => None,
+            };
+        }
+        match &scene.kind {
+            SceneKind::If { then, otherwise, .. } => {
+                if let Some(draw) = find_draw(then, span).or_else(|| find_draw(otherwise, span)) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Each { body, .. } | SceneKind::Slot { fallback: body, .. } => {
+                if let Some(draw) = find_draw(body, span) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Draw(draw) => {
+                for item in draw.body.items() {
+                    let nested = match item {
+                        DrawItem::Scene(child) => std::slice::from_ref(child),
+                        DrawItem::SlotFill(fill) => fill.body.as_slice(),
+                        DrawItem::Mask {
+                            mask: ast::Mask::Block(body),
+                            ..
+                        } => body.as_slice(),
+                        _ => continue,
+                    };
+                    if let Some(draw) = find_draw(nested, span) {
+                        return Some(draw);
+                    }
+                }
+            }
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+        }
+    }
+    None
+}
+
+fn slot_fallback(scenes: &[Scene], span: Span) -> Vec<Scene> {
+    scenes
+        .iter()
+        .find_map(|scene| slot_fallback_one(scene, span))
+        .unwrap_or_default()
+}
+
+fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
+    if scene.span == span {
+        return match &scene.kind {
+            SceneKind::Slot { fallback, .. } => Some(fallback.clone()),
+            _ => Some(Vec::new()),
+        };
+    }
+    match &scene.kind {
+        SceneKind::If { then, otherwise, .. } => slot_fallback_in(then, span)
+            .or_else(|| slot_fallback_in(otherwise, span)),
+        SceneKind::Each { body, .. } | SceneKind::Slot { fallback: body, .. } => {
+            slot_fallback_in(body, span)
+        }
+        SceneKind::Draw(draw) => {
+            for item in draw.body.items() {
+                let nested = match item {
+                    DrawItem::Scene(child) => std::slice::from_ref(child),
+                    DrawItem::SlotFill(fill) => fill.body.as_slice(),
+                    DrawItem::Mask {
+                        mask: ast::Mask::Block(body),
+                        ..
+                    } => body.as_slice(),
+                    _ => continue,
+                };
+                if let Some(found) = slot_fallback_in(nested, span) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
+    }
+}
+
+fn slot_fallback_in(scenes: &[Scene], span: Span) -> Option<Vec<Scene>> {
+    scenes.iter().find_map(|scene| slot_fallback_one(scene, span))
+}
+
+fn component_names(module: &Module) -> BTreeSet<String> {
+    module
+        .globals
+        .borrow()
+        .iter()
+        .filter(|(_, v)| matches!(v, Value::Component(_)))
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
+fn missing_part(label: &str, names: &[String]) -> Fail {
+    fail("E0350", format!("no part named `{label}` here"))
+        .note(format!(
+            "named so far: {}",
+            if names.is_empty() {
+                "(none)".into()
+            } else {
+                names.join(", ")
+            }
+        ))
+        .fix("name the node with `name:` before this line, or fix the spelling")
+}
+
+fn family_error(label: &str, entries: &[RefVal], owner: &Key) -> Fail {
+    let mut notes = Vec::new();
+    for r in entries {
+        notes.push(
+            r.record
+                .key
+                .address_from(owner)
+                .unwrap_or_else(|| r.record.path.clone()),
+        );
+    }
+    let first = notes
+        .first()
+        .cloned()
+        .unwrap_or_else(|| format!(".{label}"));
+    let mut f = fail("E0343", format!("`@{label}` is a family of copies"));
+    for n in notes {
+        f = f.note(n);
+    }
+    f.fix(format!("write {first}"))
 }
 
 fn is_paint_key(k: &str) -> bool {
@@ -3876,18 +4562,4 @@ pub fn measure_rect(b: Rect, m: &str) -> Option<f64> {
         "area" => (r - l) * (bt - t),
         _ => return None,
     })
-}
-
-fn part_names(node: &Node) -> Vec<String> {
-    let mut out = Vec::new();
-    fn walk(n: &Node, root: &str, out: &mut Vec<String>) {
-        for c in n.children() {
-            if let Some(rel) = c.path.strip_prefix(root) {
-                out.push(rel.trim_start_matches('.').to_string());
-            }
-            walk(c, root, out);
-        }
-    }
-    walk(node, &node.path, &mut out);
-    out
 }
