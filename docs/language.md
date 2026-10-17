@@ -1,4 +1,8 @@
-# artscript language card (v0.1)
+# artscript language card
+
+This card describes the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs. When you change a rule, update this card and `docs/semantics.md` in the same change.
+
+`docs/semantics.md` records the details that this card leaves out. When the two files disagree, choose the better behavior and make them agree.
 
 artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
 

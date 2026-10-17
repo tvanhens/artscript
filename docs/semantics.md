@@ -1,6 +1,8 @@
-# artscript v0.1 implementation semantics
+# artscript semantics
 
-The author-facing reference is `docs/language.md`. This file settles the details that reference leaves open. When they disagree, this file wins for v0.1.
+These notes describe the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs. When you change a rule, update this file and `docs/language.md` in the same change.
+
+`docs/language.md` is the author-facing card for the same draft. This file records details that the card leaves out. When the two files disagree, choose the better behavior and make them agree.
 
 ## 1. Lexing
 
@@ -307,9 +309,9 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `fx bevel` and every other Phase 2 effect report E0391.
 - Rendered checks (`contrast`, `visible`) report E0392.
 
-## 13. Clarifications from implementation
+## 13. Details the other sections leave out
 
-These pin down points the sections above leave open. Earlier sections still govern.
+These record behavior the sections above do not mention. When this section disagrees with another one, choose the better behavior and make them agree. Follow the opening of this file when you resolve it.
 
 - **Imports.**
   - A plain `use x` binds every export of `x` by name. `use x { a b }` binds only those names. `use x as m` binds only `m`.
