@@ -54,7 +54,7 @@ def _stone cx:334
     curve cx-78,814 cx-62,784 cx-30,768 stroke:stone.4,[3 6 3] a:.75 blur:1
     ellipse 92,8 at:cx,850 fill:stone.0 a:.5 blur:5
     each i in 0..22
-      circle rand(1 2.2) at:cx+rand(-82 82),rand(782 842) fill:stone.0 a:.4
+      circle rand(1 2.2) at:cx+rand(-82 82),rand(782 842) fill:stone.0 a:.4 name:fleck
     curve cx+40,798 cx+52,814 cx+46,832 stroke:stone.line,1.8 a:.45
     fx rim 4 dir:1,1 color:p.rim a:.5
     fx grain .06 scale:2
@@ -128,10 +128,10 @@ layer ground_shadow
     ellipse 96,13 at:cx,848 fill:p.shadow a:.32 blur:6
 layer footings pivot:512,840
   layer pillars pivot:512,800 z:behind
-    _pillar 334
-    _pillar 690
+    _pillar 334 name:pillar_l
+    _pillar 690 name:pillar_r
     layer nuki pivot:512,373
-      group name:beam
+      group name:nuki_parts
         curve 484,226 540,226 543,356 481,356 closed tension:0 round:6 fill:grad(right verm.3 verm,.5 verm.1) name:strut
           ellipse 46,18 at:512,268 fill:verm.0 a:.7 blur:7
         curve 186,344 838,344 830,404 194,404 closed tension:0 round:8 fill:grad(down verm.3 verm,.45 verm.1) name:beam
@@ -162,13 +162,13 @@ layer footings pivot:512,840
           fx outline 4 color:char.line
       layer shimenawa pivot:512,440
         layer shide_l pivot:424,475.24 z:-2
-          _shide at:424,475.24
+          _shide at:424,475.24 name:paper_l
         layer shide_c pivot:512,480 z:-2
-          _shide at:512,480
+          _shide at:512,480 name:paper_c
         layer shide_r pivot:600,475.24 z:-2
-          _shide at:600,475.24
+          _shide at:600,475.24 name:paper_r
         layer shide_c_flutter pivot:512,480 a:0 z:-2
-          _shide flutter:.6 at:512,480
+          _shide flutter:.6 at:512,480 name:paper_flutter
         group name:bundle
           curve 270,436 390,462 512,472 634,462 754,436 stroke:straw,[34 54 68 54 34] taper:0 name:rope
             copy @rope fill:grad(down straw.3 straw,.5 straw.1)
@@ -176,7 +176,7 @@ layer footings pivot:512,840
               copy @rope
               copy @rope at:0,-18
             each x in [262 280.77 300.08 319.95 340.4 361.43 383.08 405.35 428.26 451.84 476.1 501.06 526.74 552.32 577.15 601.27 624.69 647.43 669.51 690.95 711.78 732 751.63]
-              _groove x
+              _groove x name:groove
             fx _surface a:.4 strength:.05 scale:1.8
           _tassel 467 name:tas_l z:behind
           _tassel 557 name:tas_r z:behind
@@ -227,7 +227,7 @@ layer footings pivot:512,840
     copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 z:behind
     inside @tuft_l
       each i in 0..14
-        circle rand(1 1.8 seed:i) at:rand(248 294 seed:i),rand(766 814 seed:i) fill:moss.4 a:.6
+        circle rand(1 1.8 seed:i) at:rand(248 294 seed:i),rand(766 814 seed:i) fill:moss.4 a:.6 name:moss_dot_l
     copy @tuft_l fill:fade(moss 0) stroke:moss.line,1.4 a:.45 blur:.55
   curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4 fill:none name:src_r
   copy @src_r at:3,4 fill:stone.0 a:.45 blur:3
@@ -236,15 +236,15 @@ layer footings pivot:512,840
     copy @stone_r.rock
   inside @tuft_r
     each i in 0..14
-      circle rand(1 1.8) at:rand(750 786),rand(770 806) fill:moss.4 a:.6
+      circle rand(1 1.8) at:rand(750 786),rand(770 806) fill:moss.4 a:.6 name:moss_dot_r
   copy @tuft_r fill:fade(moss 0) stroke:moss.line,1.2 a:.35 blur:.6
   _peb 806 850
   _peb 820 854 r:4.5
   _peb 572 852 r:5.5
 layer leaf_a pivot:150,566
-  _leaf 150 566
+  _leaf 150 566 name:maple_a
 layer leaf_b pivot:870,474
-  _leaf 870 474 r:36 rot:28 tint:.35
+  _leaf 870 474 r:36 rot:28 tint:.35 name:maple_b
 layer leaf_c pivot:836,690
-  _leaf 836 690 r:30 rot:64 tint:.15
+  _leaf 836 690 r:30 rot:64 tint:.15 name:maple_c
 assert inside(@cap canvas margin:24)

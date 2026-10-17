@@ -361,7 +361,13 @@ fn manifest_entry(o: &Outcome, path: &str, hash: &str) -> Json {
         .diagnostics
         .iter()
         .filter(|d| d.code.starts_with('C'))
-        .map(|d| format!("{}: {}", d.code, d.message))
+        .map(|d| {
+            if d.node.is_empty() {
+                format!("{}: {}", d.code, d.message)
+            } else {
+                format!("{}: {} ({})", d.code, d.message, d.node)
+            }
+        })
         .collect();
     json!({
         "path": path,

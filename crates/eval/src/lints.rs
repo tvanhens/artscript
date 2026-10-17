@@ -1,5 +1,3 @@
-//! Taste lints: raw-color (L0101), off-canvas (L0102) and unused (L0103).
-
 use std::collections::HashSet;
 
 use artscript_ir::{Matrix, Node, NodeKind, Rect};
@@ -9,6 +7,7 @@ use artscript_syntax::ast::{
 };
 use artscript_syntax::{Diagnostic, Severity};
 
+use crate::identity::PositionalUses;
 use crate::project::{LintLevel, Manifest};
 
 fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnostic> {
@@ -425,6 +424,31 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
                     ),
             );
         }
+    }
+    out
+}
+
+/// One warning per unnamed statement whose key fed a draw-site seed.
+pub fn positional_seed(uses: &PositionalUses, manifest: &Manifest) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("positional-seed", LintLevel::Warn);
+    let mut out = Vec::new();
+    for (site, pos) in uses.sites() {
+        let Some(d) = diag(
+            level,
+            "L0104",
+            site.span,
+            format!(
+                "this `{}` has no name, and randomness is drawn from its position",
+                pos.verb
+            ),
+        ) else {
+            continue;
+        };
+        out.push(
+            d.in_file(site.file.as_ref())
+                .at_node(&pos.statement)
+                .with_fix("add name:"),
+        );
     }
     out
 }

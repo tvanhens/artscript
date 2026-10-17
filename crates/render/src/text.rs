@@ -25,7 +25,9 @@ pub fn xml_id(path: &str) -> String {
     let mut s: String = path
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            if c == '~' {
+                '-'
+            } else if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
                 c
             } else {
                 '_'

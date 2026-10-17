@@ -9,8 +9,8 @@ use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of};
+use crate::identity::{self, Key};
 use crate::scope::{FinishDef, Module};
-use crate::seed;
 use crate::value::Value;
 
 const EFFECTS: &[&str] = &["blur", "shadow", "inner", "glow", "rim", "adjust", "outline", "grain", "merge"];
@@ -60,17 +60,18 @@ impl Evaluator<'_> {
     /// Every effect of the node at `path`, in source order. A finish line puts its lines in its
     /// place. `fill` is the node's first fill, the source of default colors. A failing line is
     /// reported at the span of the line written under the node and skipped.
-    pub(crate) fn lower_fx(&mut self, sites: &[FxSite<'_>], path: &str, fill: Rgba) -> Vec<Effect> {
+    pub(crate) fn lower_fx(&mut self, sites: &[FxSite<'_>], key: &Key, fill: Rgba) -> Vec<Effect> {
+        let path = key.to_string();
         let mut out = Vec::new();
         for site in sites {
             let file = site.scope.file().to_string();
             let op = site.line.op.as_str();
             let finish = if is_effect_name(op) { None } else { site.scope.module.finishes.borrow().get(op).cloned() };
             match finish {
-                Some(def) => self.expand(&def, site, &file, fill, path, &mut out),
-                None => match self.builtin(site.line, site.scope, &file, fill, path) {
+                Some(def) => self.expand(&def, site, &file, fill, key, &mut out),
+                None => match self.builtin(site.line, site.scope, &file, fill, key) {
                     Ok(e) => out.push(e),
-                    Err(e) => self.report(e, &file, site.line.span, path),
+                    Err(e) => self.report(e, &file, site.line.span, &path),
                 },
             }
         }
@@ -79,17 +80,18 @@ impl Evaluator<'_> {
 
     /// The finish's lines, in order, evaluated in its module with its params bound. The params'
     /// values evaluate where the `fx` line is written, and grain seeds from that file.
-    fn expand(&mut self, def: &FinishDef, site: &FxSite<'_>, file: &str, fill: Rgba, path: &str, out: &mut Vec<Effect>) {
+    fn expand(&mut self, def: &FinishDef, site: &FxSite<'_>, file: &str, fill: Rgba, key: &Key, out: &mut Vec<Effect>) {
+        let path = key.to_string();
         let fsc = match self.bind_finish(def, site) {
             Ok(s) => s,
-            Err(e) => return self.report(e, file, site.line.span, path),
+            Err(e) => return self.report(e, file, site.line.span, &path),
         };
         for line in &def.lines {
-            match self.builtin(line, &fsc, file, fill, path) {
+            match self.builtin(line, &fsc, file, fill, key) {
                 Ok(e) => out.push(e),
                 Err(e) => {
                     let e = e.note(format!("in finish `{}` ({}:{})", def.name, def.module, line.span.line));
-                    self.report(e, file, site.line.span, path);
+                    self.report(e, file, site.line.span, &path);
                 }
             }
         }
@@ -144,7 +146,7 @@ impl Evaluator<'_> {
 
     /// One built-in effect. Arguments evaluate in `sc`. Grain seeds from `seed_file`, the file the
     /// `fx` line is written in.
-    fn builtin(&mut self, line: &FxLine, sc: &Scope, seed_file: &str, f: Rgba, path: &str) -> R<Effect> {
+    fn builtin(&mut self, line: &FxLine, sc: &Scope, seed_file: &str, f: Rgba, key: &Key) -> R<Effect> {
         let FxLine { op: op_name, args, named, .. } = line;
         let op_name = op_name.as_str();
         let input_of = |e: &Expr, ev: &mut Self| -> R<EffectInput> {
@@ -203,7 +205,7 @@ impl Evaluator<'_> {
                 EffectOp::Grain {
                     strength: n0.unwrap_or(0.05) as f32,
                     scale: a.num("scale").unwrap_or(1.5) as f32,
-                    seed: seed::node_seed(seed_file, &format!("{path}#grain"), extra) as u32,
+                    seed: identity::seed(seed_file, &key.grain(), extra, &mut self.uses) as u32,
                 }
             }
             "merge" => {
