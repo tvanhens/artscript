@@ -267,3 +267,34 @@ fn outer_radius(png: &[u8], cx: f32, cy: f32, ux: f32, uy: f32) -> f32 {
     }
     last
 }
+
+#[test]
+fn svg_path_data_follows_each_segment() {
+    let mut b = skia_safe::PathBuilder::new();
+    b.move_to((0.0, 0.0));
+    b.line_to((30.0, 0.0));
+    b.quad_to((30.0, 30.0), (0.0, 30.0));
+    b.close();
+    b.move_to((50.0, 0.0));
+    b.cubic_to((60.0, -20.0), (80.0, -20.0), (90.0, 0.0));
+    b.close();
+    let scene = scene(100.0, 100.0, vec![solid("mark", b.detach(), red())]);
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("d=\"M 0 0L 30 0C 30 20 20 30 0 30ZM 50 0C 60 -20 80 -20 90 0Z\""), "{svg}");
+}
+
+#[test]
+fn svg_circle_stays_on_its_radius() {
+    let scene = scene(100.0, 100.0, vec![solid("dot", circle_at(50.0, 50.0, 40.0), red())]);
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let d = svg.split("<path d=\"").nth(1).and_then(|s| s.split('"').next()).expect(&svg);
+    let mut ends = 0;
+    for segment in d.split(['M', 'C', 'Z']).filter(|s| !s.trim().is_empty()) {
+        let nums: Vec<f32> = segment.split_whitespace().map(|n| n.parse().expect(d)).collect();
+        let (x, y) = (nums[nums.len() - 2], nums[nums.len() - 1]);
+        let r = ((x - 50.0).powi(2) + (y - 50.0).powi(2)).sqrt();
+        assert!((r - 40.0).abs() < 0.01, "end {x},{y} is {r} from the center in {d}");
+        ends += 1;
+    }
+    assert!(ends > 4, "{d}");
+}
