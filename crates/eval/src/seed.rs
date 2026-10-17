@@ -1,5 +1,3 @@
-//! Deterministic randomness: FNV-1a seeds from file and node paths, and a small seeded generator.
-
 pub fn fnv1a(bytes: &[u8]) -> u64 {
     let mut h: u64 = 0xcbf29ce484222325;
     for b in bytes {

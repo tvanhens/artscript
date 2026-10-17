@@ -2,7 +2,7 @@
 
 use std::fmt;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 pub struct Span {
     /// 1-based line.
     pub line: u32,

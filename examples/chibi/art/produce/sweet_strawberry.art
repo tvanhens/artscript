@@ -54,7 +54,7 @@ def _dew x:418 y:772 r:15
   curve d closed tension:.6 fill:none stroke:fade(red.line .4),1.4
   ellipse r*.22,r*.4 at:x-r*.35,y-r*.2 rot:20 fill:glint a:.95
 def _eye x:436 side:-1 lid:.18 w:72 h:86
-  eye w,h iris:berry.iris side:side look:-.3,.35 lid:lid at:x,592
+  eye w,h iris:berry.iris side:side look:-.3,.35 lid:lid at:x,592 name:gaze
 layer ground_shadow
   ellipse 250,34 at:512,878 fill:berry.plum a:.36 blur:16
   ellipse 150,18 at:500,872 fill:berry.plum a:.25 blur:8
@@ -90,10 +90,10 @@ layer body pivot:506,846
     _eye 588 side:1 name:eye_r
     assert level(@eye_l @eye_r) tol:.5
   layer eyes_closed pivot:512,592 a:0
-    _eye lid:1 w:70 h:84
-    _eye 588 side:1 lid:1 w:70 h:84
+    _eye lid:1 w:70 h:84 name:shut_l
+    _eye 588 side:1 lid:1 w:70 h:84 name:shut_r
   layer mouth
-    open_mouth at:512,642 color:berry.lip
+    open_mouth at:512,642 color:berry.lip name:bite
   layer calyx pivot:512,338
     group name:crown
       _sepals
