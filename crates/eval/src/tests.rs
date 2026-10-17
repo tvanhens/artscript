@@ -2650,3 +2650,22 @@ fn manifest_backend_defaults_to_auto_and_rejects_unknown_values() {
         assert_eq!(err.span.line, 3, "the error points at the backend line");
     }
 }
+
+#[test]
+fn manifest_errors_point_at_the_bad_line() {
+    use crate::{LintLevel, Manifest};
+
+    let manifest = Manifest::parse("[lint]\nraw-color = \"off\"\nunused = \"error\"\n").unwrap();
+    assert_eq!(manifest.lint_level("raw-color", LintLevel::Warn), LintLevel::Off);
+    assert_eq!(manifest.lint_level("unused", LintLevel::Warn), LintLevel::Error);
+    for (src, line, col) in [
+        ("[project]\nname = \"x\"\n\n[lint]\nraw-color = \"loud\"\n", 5, 13),
+        ("[project]\n\n[lint]\nunused = 1\n", 4, 10),
+        ("name = \"x\"\nlint = 1\n", 2, 8),
+        ("[project]\nname = \"x\"\n\n[lint\nraw-color = \"warn\"\n", 4, 6),
+    ] {
+        let err = Manifest::parse(src).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert_eq!((err.span.line, err.span.col), (line, col), "{src:?}: {}", err.message);
+    }
+}
