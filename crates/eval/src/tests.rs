@@ -2469,15 +2469,6 @@ fn a_gif_scale_list_does_not_refine_a_tapered_stroke() {
 }
 
 #[test]
-fn parallel_gif_samples_share_one_scene_cap() {
-    let cap = crate::GIF_CLIP_BUDGET;
-    assert!(super::scene_slot_open(0, cap));
-    assert!(!super::scene_slot_open(cap, 1));
-    assert!(super::scene_slot_open(cap / 2, cap / 2));
-    assert!(!super::scene_slot_open(cap / 2, cap / 2 + 1));
-}
-
-#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

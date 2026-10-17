@@ -21,7 +21,6 @@ pub mod targets;
 mod value;
 
 use std::collections::BTreeSet;
-use std::sync::{Condvar, Mutex};
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
@@ -60,7 +59,6 @@ pub struct Sample {
     pub loops: bool,
     pub dur: f64,
     pub fps: f64,
-    _hold: SceneHold,
 }
 
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
@@ -149,7 +147,6 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
                 loops,
                 dur,
                 fps,
-                _hold: SceneHold { bytes: 0 },
             };
         }
     };
@@ -158,7 +155,6 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let mut kept = 0u64;
     let mut peak = 0u64;
     let mut retained_error = None;
-    let mut hold = SceneHold { bytes: 0 };
     if n == 0 {
         acc.fold(0.0, &probe.diagnostics);
     } else if let Some(err) = probe
@@ -169,9 +165,6 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         retained_error = Some(err);
         acc.fold(0.0, &probe.diagnostics);
     } else {
-        if gif_job(job) {
-            hold_to(&mut hold, peak.saturating_mul(n as u64));
-        }
         if let Some(scene) = probe.scene {
             frames.push(Frame { t: 0.0, scene });
         }
@@ -190,12 +183,8 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             {
                 retained_error = Some(err);
                 frames.clear();
-                hold = SceneHold { bytes: 0 };
                 acc.fold(t, &ev.diagnostics);
                 break;
-            }
-            if gif_job(job) {
-                hold_to(&mut hold, peak.saturating_mul(n as u64));
             }
             if let Some(scene) = ev.scene {
                 frames.push(Frame { t, scene });
@@ -220,7 +209,6 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         loops,
         dur,
         fps,
-        _hold: hold,
     }
 }
 
@@ -327,53 +315,6 @@ fn gif_retained_error(
 
 fn projected_retention(kept: u64, peak: u64, frames_left: usize) -> u64 {
     kept.saturating_add(peak.saturating_mul(frames_left as u64))
-}
-
-fn gif_job(job: &TargetJob) -> bool {
-    job.outputs.iter().any(|o| o.format == Format::Gif)
-}
-
-static SCENE_HELD: Mutex<u64> = Mutex::new(0);
-static SCENE_SLOT: Condvar = Condvar::new();
-
-fn scene_slot_open(held: u64, bytes: u64) -> bool {
-    held == 0 || held.saturating_add(bytes) <= GIF_CLIP_BUDGET
-}
-
-struct SceneHold {
-    bytes: u64,
-}
-
-impl Drop for SceneHold {
-    fn drop(&mut self) {
-        if self.bytes == 0 {
-            return;
-        }
-        let mut held = SCENE_HELD.lock().unwrap_or_else(|e| e.into_inner());
-        *held = held.saturating_sub(self.bytes);
-        SCENE_SLOT.notify_all();
-    }
-}
-
-fn reserve_scenes(bytes: u64) -> SceneHold {
-    if bytes == 0 {
-        return SceneHold { bytes: 0 };
-    }
-    let mut held = SCENE_HELD.lock().unwrap_or_else(|e| e.into_inner());
-    while !scene_slot_open(*held, bytes) {
-        held = SCENE_SLOT.wait(held).unwrap_or_else(|e| e.into_inner());
-    }
-    *held = held.saturating_add(bytes);
-    SceneHold { bytes }
-}
-
-fn hold_to(hold: &mut SceneHold, bytes: u64) {
-    if bytes <= hold.bytes {
-        return;
-    }
-    let mut more = reserve_scenes(bytes - hold.bytes);
-    hold.bytes = hold.bytes.saturating_add(more.bytes);
-    more.bytes = 0;
 }
 
 /// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
