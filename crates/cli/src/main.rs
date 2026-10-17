@@ -1,4 +1,4 @@
-//! `artscript` command line: build, check, fmt, explain, init.
+//! `artscript` command line: build, check, fmt, explain, init, docs.
 
 mod build;
 
@@ -19,6 +19,7 @@ commands:
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
+  docs                                     print the language card
 
 exit codes: 0 ok, 1 compile error, 2 assert or lint error, 3 warnings only";
 
@@ -44,6 +45,13 @@ fn main() -> ExitCode {
         },
         Some("init") => match flag_set(&args[1..], &[]) {
             Ok(_) => init(&cwd),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("docs") => match flag_set(&args[1..], &[]) {
+            Ok(_) => {
+                print!("{}", include_str!("../../../docs/language.md"));
+                0
+            }
             Err(msg) => usage_error(&msg),
         },
         Some("--version" | "-V") => {
