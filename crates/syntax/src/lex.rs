@@ -302,11 +302,7 @@ impl<'a> Scanner<'a> {
             return None;
         }
         let after = rest[hex.len()..].chars().next();
-        let delim = matches!(
-            after,
-            None | Some(' ' | '\t' | '\n' | '\r' | ',' | ')' | ']')
-        );
-        if delim {
+        if !after.is_some_and(|c| c.is_alphanumeric() || c == '_') {
             Some(hex.to_ascii_lowercase())
         } else {
             None

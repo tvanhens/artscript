@@ -1132,3 +1132,14 @@ fn calling_a_member_at_the_end_of_a_line_is_e0101() {
         assert_eq!(errs[0].span.line, 1);
     }
 }
+
+#[test]
+fn a_color_glued_to_an_operator_round_trips() {
+    let src = "let p = (#ff0000)+(1,0)\nlet q = #ff0000*2\n";
+    round_trip_source(src);
+    round_trip_ast(&must_parse(src));
+    assert_eq!(
+        format_source(src).unwrap(),
+        "let p = #ff0000+(1,0)\nlet q = #ff0000*2\n"
+    );
+}

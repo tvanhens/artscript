@@ -7,7 +7,7 @@
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | time | `200ms`, `2s`, a bare number in a time position is seconds |
 | vector / size | `14,0` (no spaces around the comma), `256x256`. A vector is a size, so `rect w,h` sizes from variables. `rect w x h` is E0321 |
-| color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
+| color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base). A hex color of 3, 4, 6 or 8 digits ends at the first character that cannot continue a name, so `#ff0000+v` is an expression; any other `#` starts a comment |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
 | reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas`. After an instance, a name finds the part under any group in it, so write `@hero.eye_l`, not `@hero.face.eye_l` for a `group face`. A hop through a group, a layer, or a shape to a part that is not an anchor is E0350, and the fix names the part's key |
 
