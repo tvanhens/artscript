@@ -41,11 +41,18 @@ impl std::str::FromStr for BackendChoice {
 }
 
 #[derive(serde::Deserialize)]
-struct BuildDoc {
-    build: Option<BuildSection>,
+struct ManifestDoc {
+    #[serde(default)]
+    project: toml::Table,
+    #[serde(default)]
+    defaults: toml::Table,
+    #[serde(default)]
+    lint: BTreeMap<String, toml::Spanned<toml::Value>>,
+    #[serde(default)]
+    build: BuildSection,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Default, serde::Deserialize)]
 struct BuildSection {
     backend: Option<toml::Spanned<toml::Value>>,
 }
@@ -73,16 +80,14 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn parse(src: &str) -> Result<Manifest, Diagnostic> {
-        let bad_at = |span: Span, msg: String| {
-            Diagnostic::error("E0200", span, msg)
+        let bad_at = |offset: usize, msg: String| {
+            Diagnostic::error("E0200", span_at(src, offset), msg)
                 .in_file(MANIFEST)
                 .with_fix("see `artscript init` for a valid manifest")
         };
-        let bad = |msg: String| bad_at(Span { line: 1, col: 1 }, msg);
-        let doc: toml::Table = src.parse().map_err(|e: toml::de::Error| bad(format!("invalid manifest: {e}")))?;
-        let section = |name: &str| doc.get(name).and_then(|v| v.as_table()).cloned().unwrap_or_default();
-        let project = section("project");
-        let defaults = section("defaults");
+        let ManifestDoc { project, defaults, lint: levels, build } = toml::from_str(src).map_err(|e: toml::de::Error| {
+            bad_at(e.span().map_or(0, |r| r.start), format!("invalid manifest: {}", e.message().trim().replace('\n', "; ")))
+        })?;
         let s = |t: &toml::Table, k: &str| t.get(k).and_then(|v| v.as_str()).map(str::to_string);
         let lib = match project.get("lib") {
             Some(toml::Value::Array(xs)) => xs.iter().filter_map(|v| v.as_str().map(str::to_string)).collect(),
@@ -99,24 +104,27 @@ impl Manifest {
             None => vec![1.0],
         };
         let mut lint = BTreeMap::new();
-        for (k, v) in section("lint") {
-            let level = match v.as_str() {
+        for (k, v) in levels {
+            let level = match v.get_ref().as_str() {
                 Some("off") => LintLevel::Off,
                 Some("info") => LintLevel::Info,
                 Some("warn") => LintLevel::Warn,
                 Some("error") => LintLevel::Error,
-                other => return Err(bad(format!("lint `{k}` has level {other:?}; use off, info, warn or error"))),
+                _ => {
+                    let msg = format!("lint `{k}` has level {}; use off, info, warn or error", v.get_ref());
+                    return Err(bad_at(v.span().start, msg));
+                }
             };
             lint.insert(k, level);
         }
-        let backend = match toml::from_str::<BuildDoc>(src).ok().and_then(|d| d.build?.backend) {
+        let backend = match build.backend {
             None => BackendChoice::default(),
             Some(v) => v
                 .get_ref()
                 .as_str()
                 .ok_or_else(|| "backend must be a string".to_string())
                 .and_then(str::parse)
-                .map_err(|e| bad_at(span_at(src, v.span().start), format!("[build] {e}")))?,
+                .map_err(|e| bad_at(v.span().start, format!("[build] {e}")))?,
         };
         Ok(Manifest {
             name: s(&project, "name").unwrap_or_default(),

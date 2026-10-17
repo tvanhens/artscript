@@ -345,8 +345,9 @@ These record behavior the sections above do not mention. When this section disag
   - `raw-color` only scans statements. `@target` keys such as `bg:` are exempt.
   - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. A `play` name counts as a use of that import. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
+  - A lint level in `[lint]` other than `off`, `info`, `warn` or `error` is E0200 at that line.
 - **Codes added in this version.**
-  - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
+  - E0200: the manifest is missing or invalid, or a CLI argument is invalid. A manifest error points at the line and column of the bad value or of the TOML syntax error. A `project`, `defaults`, `lint` or `build` key that is not a table is E0200.
   - E0206: a bad `@target` size, scale, extension, profile, matrix axis, `fps`, `dur`, or `t`. Also a GIF with no duration, a GIF whose background is missing or not opaque (`a gif needs an opaque bg:`), a GIF with more frames than centiseconds (`a gif has more frames than centiseconds`), a GIF frame longer than 65535cs (`a gif frame is longer than 65535cs`), a GIF whose frames would exceed 256MiB of RGBA (`a gif raster is larger than 256MiB`), a GIF whose retained scenes would exceed 256MiB (`a gif retains more than 256MiB`), or a clip with more than 100000 frames (`a clip has more than 100000 frames`). The zero-delay fix says to lower `fps` or lengthen `dur`. The long-frame fix says to raise `fps` or shorten `dur`. The raster fix says to lower `fps`, shorten `dur`, or shrink the canvas. The retained-scene fix says to lower `fps`, shorten `dur`, or draw less in each frame.
   - E0308: `play` names an anim that is not in scope.
   - E0320 also covers a value that cannot be animated, a bad `key` (`dur`, `at`, `ease`), a non-positive duration, and a `key` outside an anim with no `dur:`. The message is `cannot animate <kind> yet` when the kind has no interpolation.
