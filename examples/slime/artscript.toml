@@ -1,0 +1,13 @@
+[project]
+name = "slime"
+out  = "assets"
+lib  = []
+std  = "0.1"
+
+[defaults]
+scale   = [1]
+bg      = "none"
+profile = "auto"
+
+[lint]
+raw-color = "warn"
