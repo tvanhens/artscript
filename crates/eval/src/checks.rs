@@ -8,7 +8,7 @@ use artscript_ir::Rect;
 use skia_safe::Vector;
 use artscript_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, Span};
 
-use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect, unseen};
 use crate::scope::{RefVal, RuleDef};
 use crate::value::{Value, num};
 
@@ -172,6 +172,9 @@ impl Evaluator<'_> {
         ];
         if !known.contains(&func) {
             return None;
+        }
+        if self.prepass {
+            return Some(Err(unseen(&format!("{func}(...)"))));
         }
         Some(self.check_fn_inner(func, a, nm, sc.owner()))
     }
