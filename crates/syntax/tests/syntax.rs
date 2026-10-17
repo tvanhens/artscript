@@ -1167,9 +1167,10 @@ fn a_braced_name_keeps_its_braces_when_formatted() {
 
 #[test]
 fn a_directive_without_a_path_keeps_its_positionals_out_of_the_path() {
-    let src = "@target r:4 .3\n";
-    let file = must_parse(src);
-    assert_eq!(file.directives[0].path, None);
-    assert_eq!(format(&file), src);
-    assert_eq!(must_parse(&format(&file)), file);
+    for src in ["@target r:4 .3\n", "@target a:d/v \"\"\n"] {
+        let file = must_parse(src);
+        assert_eq!(file.directives[0].path, None, "{src}");
+        assert_eq!(format(&file), src);
+        assert_eq!(must_parse(&format(&file)), file);
+    }
 }
