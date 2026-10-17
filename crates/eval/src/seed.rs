@@ -36,7 +36,7 @@ impl Rng {
 
     /// Uniform in `[0, 1)`.
     pub fn unit(&mut self) -> f64 {
-        (self.next_u64() >> 10) as f64 / (1u64 << 53) as f64
+        (self.next_u64() >> 11) as f64 / (1u64 << 53) as f64
     }
 
     pub fn uniform(&mut self, lo: f64, hi: f64) -> f64 {
