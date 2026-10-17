@@ -196,6 +196,16 @@ fn adjust_keeps_soft_edges_dark() {
 }
 
 #[test]
+fn adjust_leaves_black_black() {
+    for (sat, light) in [(-0.2, 0.0), (0.0, -0.12), (-0.35, -0.12), (0.5, 0.0)] {
+        let mut node = solid("black", circle_at(40.0, 40.0, 24.0), color(0, 0, 0, 255));
+        node.effects.push(effect(EffectOp::Adjust { hue: 30.0, sat, light }));
+        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        assert_eq!(pixel(&png, 40, 40), [0, 0, 0, 255], "sat {sat} light {light}");
+    }
+}
+
+#[test]
 fn png_bytes_are_deterministic() {
     let scene = scene(80.0, 80.0, vec![solid("dot", circle_at(40.0, 40.0, 20.0), red())]);
     let a = render_png(&scene, 1.0, Backend::Cpu).unwrap();
