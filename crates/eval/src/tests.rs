@@ -4030,3 +4030,14 @@ fn a_reference_inside_an_offset_group_reads_in_the_group_s_frame() {
          assert @g.b.cy == @g.a.cy\n",
     );
 }
+
+#[test]
+fn canvas_inside_a_transformed_group_reads_in_the_group_s_frame() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:10,6 scale:.5 name:g\n  circle canvas.w/4 at:canvas.cx,canvas.cy fill:#000000 name:c\n\
+         assert @g.c.cx == canvas.cx\n\
+         assert @g.c.cy == canvas.cy\n\
+         assert @g.c.w == canvas.w/2\n",
+    );
+}

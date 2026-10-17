@@ -266,7 +266,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - The same name in more than one of those frames is E0343. The note lists each frame. The current copy of a family is one match, not a second declaration. A slot, and a `needs:` name used from that slot, keep the host loop's current copy.
   - Later segments hop through instances and slots the way patches do, or name an anchor. The segments after that are measurements.
   - A family is every copy, except inside the loop that makes it, where it is the current copy. A consumer that needs one node and gets the family is E0343.
-  - Ref geometry and bounds are stored in canvas coordinates and mapped into the current local coordinates by the inverse of the current transform. A measurement such as `@a.top.y` or `@body.w` outside a check is the local bounding box of the target in the current def body or group, so `at:@a.top.x,@a.top.y` places a part on the anchor under any `at:`, `rot:`, or `scale:` on the instance. A check measures in canvas coordinates (section 10).
+  - Ref geometry and bounds are stored in canvas coordinates and mapped into the current local coordinates by the inverse of the current transform. A measurement such as `@a.top.y` or `@body.w` outside a check is the local bounding box of the target in the current def body or group, so `at:@a.top.x,@a.top.y` places a part on the anchor under any `at:`, `rot:`, or `scale:` on the instance. `canvas` follows the same rule, so inside `group rot:90` `canvas.w` is the canvas height, and inside `scale:.5` it is twice the canvas width. A check measures in canvas coordinates (section 10).
 
 ## 10. Checks
 
