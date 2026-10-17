@@ -2459,8 +2459,9 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let table = new_table();
         let mut fills = Vec::new();
+        let mut call_sc = sc.clone();
         for b in block.items() {
-            self.absorb_item(b, sc, &path, &comp.name, &mut fills)?;
+            self.absorb_item(b, &mut call_sc, &path, &comp.name, &mut fills)?;
         }
         let inst = Rc::new(Instance {
             def_name: comp.name.clone(),
@@ -2509,10 +2510,13 @@ impl<'a> Evaluator<'a> {
                 line,
                 scope: &fx_scope,
             })
-            .chain(block.fx().map(|line| FxSite { line, scope: &*sc }))
+            .chain(block.fx().map(|line| FxSite {
+                line,
+                scope: &call_sc,
+            }))
             .collect();
         node.effects = self.lower_fx(&sites, &path, f);
-        self.mask(&mut node, &node_args, block.mask(), sc, world)?;
+        self.mask(&mut node, &node_args, block.mask(), &call_sc, world)?;
         let z = self.finish_node(&mut node, &node_args)?;
         let reg_name = name.unwrap_or(comp.name.clone());
         let rec = self.register(
@@ -3071,14 +3075,16 @@ impl<'a> Evaluator<'a> {
             },
             None => 0.0,
         };
-        self.seed_base = start_base;
-        self.seed_count = start_count;
         let module = self.modules.get(&anim.module).cloned();
         let dur_scope = match &module {
             Some(m) => self.module_scope(m),
             None => sc.clone(),
         };
-        let dur = match self.time_secs(&anim.dur, &dur_scope) {
+        self.seed_at(format!("{}\0{owner}\0{}", anim.module, anim.span.line));
+        let dur = self.time_secs(&anim.dur, &dur_scope);
+        self.seed_base = start_base;
+        self.seed_count = start_count;
+        let dur = match dur {
             Ok(n) if n > 0.0 => n,
             Ok(_) => {
                 self.report(
@@ -3086,16 +3092,25 @@ impl<'a> Evaluator<'a> {
                         "E0320",
                         format!("`{}` duration must be positive", anim.name),
                     )
-                    .note(format!("declared at {}:{}", anim.module, anim.span.line))
+                    .note(format!("played at {}:{}", sc.file(), span.line))
                     .fix("write `dur:1s`"),
-                    sc.file(),
-                    span,
+                    &anim.module,
+                    anim.span,
                     owner,
                 );
                 return;
             }
             Err(f) => {
-                self.report(f, sc.file(), span, owner);
+                self.report(
+                    f.note(format!("in anim `{}`", anim.name)).note(format!(
+                        "played at {}:{}",
+                        sc.file(),
+                        span.line
+                    )),
+                    &anim.module,
+                    anim.span,
+                    owner,
+                );
                 return;
             }
         };

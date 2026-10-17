@@ -2473,3 +2473,58 @@ fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();
 }
+
+#[test]
+fn a_duration_error_is_reported_on_the_anim() {
+    let ev = run_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:missing\n  .c a:.5\n")],
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.code.starts_with('E'))
+        .unwrap_or_else(|| panic!("no error in {}", show(&ev.diagnostics)));
+    assert_eq!(d.file, "lib/motion.art", "{d}");
+    assert_eq!(d.span.line, 1, "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("played at art/t.art:4")), "{d}");
+}
+
+#[test]
+fn an_anim_duration_rand_ignores_a_toggling_let() {
+    let body = |guard: &str| {
+        format!(
+            "@target t.gif 40x40 bg:#ffffff dur:1s fps:4\nanim idle dur:rand(1 2)\n  .c at:key(0,0 10,0)\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle\n"
+        )
+    };
+    let xs = |src: &str| {
+        let p = project(&[("art/t.art", src)]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        let sampled = crate::sample(&p, &plan.jobs[0]);
+        assert!(
+            sampled.diagnostics.iter().all(|d| !d.code.starts_with('E')),
+            "{}",
+            show(&sampled.diagnostics)
+        );
+        sampled
+            .frames
+            .iter()
+            .map(|f| at(node(&f.scene, "c")).0)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(xs(&body("false")), xs(&body("t > 0")));
+}
+
+#[test]
+fn a_direct_instance_let_stays_in_the_call() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef hero size:40x40\n  circle 4 name:eye\nhero\n  let delay = 1\ncircle 4 at:delay,0 name:x\n",
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().any(|d| d.code.starts_with('E') && d.span.line == 6),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
