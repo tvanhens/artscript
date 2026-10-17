@@ -1,0 +1,42 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "blocking", "resolve_thread_ids", "nonblocking_count"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "One to three sentences on the state of the PR."
+    },
+    "blocking": {
+      "type": "array",
+      "description": "Every blocking finding that is open at HEAD. The check passes if and only if this is empty.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "line", "title", "failure_scenario", "thread_id"],
+        "properties": {
+          "path": { "type": "string" },
+          "line": { "type": "integer" },
+          "title": { "type": "string", "description": "One line, no newlines." },
+          "failure_scenario": {
+            "type": "string",
+            "description": "The specific input or state and the wrong result it produces."
+          },
+          "thread_id": {
+            "type": ["string", "null"],
+            "description": "Id of the existing unresolved thread this finding lives in. Null when this run posted its inline comment."
+          }
+        }
+      }
+    },
+    "resolve_thread_ids": {
+      "type": "array",
+      "description": "Prior bot threads now fixed at HEAD, or answered by a reply you accept.",
+      "items": { "type": "string" }
+    },
+    "nonblocking_count": {
+      "type": "integer",
+      "description": "Number of non-blocking observations, posted or not."
+    }
+  }
+}
