@@ -30,3 +30,12 @@ When the two docs disagree, choose the better behavior and make them agree. A ro
 ### Diagnostics
 
 - Flag a failure that is lost, reported twice, or reported at the wrong file or line. Do not flag the wording of a fix hint, or which frame's notes a diagnostic that spans several frames keeps. A change to either of those is not a drift finding. The docs may keep the old wording.
+
+## When `claude-review` fails
+
+- Find the findings with `gh run view <run-id> --log-failed` and the unresolved review threads on the PR.
+- Fix the code, or reply on the thread with a concrete reason: the input or state that makes the finding wrong. Then push.
+- Each push is re-reviewed. The reviewer resolves a thread when the code is fixed or it accepts your reply.
+- To have a reply re-evaluated with no code change, run `gh run rerun <run-id> --failed`.
+- The check says "did not run" when the review crashed or was skipped. Rerun it the same way.
+- Do not resolve threads by hand or edit `.github/claude-review/` to get a pass.
