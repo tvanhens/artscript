@@ -1031,7 +1031,7 @@ impl<'a> Evaluator<'a> {
     }
 
     fn scope_shell(&self, module: &Rc<Module>, ids: Rc<ModuleIds>) -> Scope {
-        let names = Rc::new(RefCell::new(Names::new(Key::root(), ids.file())));
+        let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
             module: module.clone(),
@@ -1428,18 +1428,12 @@ impl<'a> Evaluator<'a> {
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
         let name = sc.names.borrow().region().decl(decl).name.clone();
-        let inner = rec.borrow().inner.clone();
         sc.names.borrow_mut().register(
             decl,
             &sc.scope_copies,
             Entry {
                 name,
-                key: key.clone(),
                 record: rec.clone(),
-                decl,
-                home: sc.names.clone(),
-                copies: sc.scope_copies.clone(),
-                inner,
             },
         );
         rec
@@ -2584,7 +2578,7 @@ impl<'a> Evaluator<'a> {
         for b in block.items() {
             self.absorb_item(b, &mut call_sc, &key, &comp.name, &mut fills, &mut call_patches)?;
         }
-        let names = Rc::new(RefCell::new(Names::new(key.clone(), region.clone())));
+        let names = Rc::new(RefCell::new(Names::new(region.clone())));
         let inst = Rc::new(Instance {
             def_name: comp.name.clone(),
             fills,
@@ -2804,7 +2798,7 @@ impl<'a> Evaluator<'a> {
             let region = ids.region(st.span).unwrap_or_else(|| ids.file());
             (ids, region, sc.clone())
         };
-        let names = Rc::new(RefCell::new(Names::new(key.clone(), region.clone())));
+        let names = Rc::new(RefCell::new(Names::new(region.clone())));
         let lookup = if filled.is_some() {
             Lookup::slot(names.clone(), inst.names.clone(), &base.lookup)
         } else {
@@ -2863,7 +2857,7 @@ impl<'a> Evaluator<'a> {
     pub fn collect_entry(&mut self, scenes: &[Scene], sc: &mut Scope) {
         let saved = sc.module.globals.borrow().clone();
         let mut scratch = sc.clone();
-        let names = Rc::new(RefCell::new(Names::new(Key::root(), sc.ids.file())));
+        let names = Rc::new(RefCell::new(Names::new(sc.ids.file())));
         scratch.names = names.clone();
         scratch.lookup = Lookup::own(names);
         self.collect_surface(scenes, &mut scratch, true);

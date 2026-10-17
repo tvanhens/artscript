@@ -972,22 +972,11 @@ pub fn hops_from(segs: &[String]) -> Option<Vec<Hop>> {
     Some(hops)
 }
 
-/// One drawn node a name reaches.
+/// One drawn node a name reaches. Children and the opened scope live on `record`.
 #[derive(Clone)]
 pub struct Entry {
     pub name: Name,
-    #[allow(dead_code)]
-    pub key: Key,
     pub record: Rc<RefCell<Record>>,
-    #[allow(dead_code)]
-    pub decl: DeclId,
-    #[allow(dead_code)]
-    pub home: Rc<RefCell<Names>>,
-    #[allow(dead_code)]
-    pub copies: Vec<u32>,
-    /// The scope this node opens. Set for an instance and a slot.
-    #[allow(dead_code)]
-    pub inner: Option<Rc<RefCell<Names>>>,
 }
 
 enum Row {
@@ -998,25 +987,17 @@ enum Row {
 
 /// One scope instance: the file, one def body, or one slot fill.
 pub struct Names {
-    #[allow(dead_code)]
-    key: Key,
     region: Rc<Region>,
     rows: Vec<Row>,
 }
 
 impl Names {
-    pub fn new(key: Key, region: Rc<Region>) -> Names {
+    pub fn new(region: Rc<Region>) -> Names {
         let n = region.decls.len();
         Names {
-            key,
             region,
             rows: (0..n).map(|_| Row::Undrawn).collect(),
         }
-    }
-
-    #[allow(dead_code)]
-    pub fn key(&self) -> &Key {
-        &self.key
     }
 
     pub fn region(&self) -> Rc<Region> {
@@ -1235,50 +1216,6 @@ fn select(
             }
         }
     }
-}
-
-/// The next name after `entry`. An instance or slot looks in the scope it opens.
-/// Anything else looks at its named direct tree children.
-#[allow(dead_code)]
-pub fn hop_name(entry: &Entry, name: &str) -> Resolved {
-    if let Some(inner) = &entry.inner {
-        let names = inner.borrow();
-        return resolve_in(&names, name, &[], &[]);
-    }
-    let home = entry.home.borrow();
-    let kids: Vec<Entry> = home
-        .children_of(Some(entry.decl))
-        .into_iter()
-        .filter(|e| e.name.as_str() == name)
-        .collect();
-    match kids.len() {
-        0 => {
-            let names = home
-                .children_of(Some(entry.decl))
-                .iter()
-                .map(|e| e.name.to_string())
-                .collect();
-            Resolved::Missing(names)
-        }
-        1 => Resolved::One(kids.into_iter().next().unwrap()),
-        _ => Resolved::Many(kids),
-    }
-}
-
-#[allow(dead_code)]
-pub fn hop_index(entries: Vec<Entry>, depth: usize, index: u32) -> Vec<Entry> {
-    entries
-        .into_iter()
-        .filter(|e| e.copies.get(depth) == Some(&index))
-        .collect()
-}
-
-#[allow(dead_code)]
-pub fn star_children(entry: &Entry) -> Vec<Entry> {
-    if let Some(inner) = &entry.inner {
-        return inner.borrow().children_of(None);
-    }
-    entry.home.borrow().children_of(Some(entry.decl))
 }
 
 /// A patch or anim channel waiting to land.
