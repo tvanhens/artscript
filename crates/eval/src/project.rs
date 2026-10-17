@@ -45,7 +45,7 @@ struct ManifestDoc {
     #[serde(default)]
     project: toml::Table,
     #[serde(default)]
-    defaults: toml::Table,
+    defaults: BTreeMap<String, toml::Spanned<toml::Value>>,
     #[serde(default)]
     lint: BTreeMap<String, toml::Spanned<toml::Value>>,
     #[serde(default)]
@@ -94,7 +94,8 @@ impl Manifest {
             Some(toml::Value::String(one)) => vec![one.clone()],
             _ => vec!["lib".into()],
         };
-        let scale = match defaults.get("scale") {
+        let d = |k: &str| defaults.get(k).and_then(|v| v.get_ref().as_str()).map(str::to_string);
+        let scale = match defaults.get("scale").map(toml::Spanned::get_ref) {
             Some(toml::Value::Array(xs)) => xs
                 .iter()
                 .filter_map(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
@@ -126,14 +127,24 @@ impl Manifest {
                 .and_then(str::parse)
                 .map_err(|e| bad_at(v.span().start, format!("[build] {e}")))?,
         };
+        let profile = match defaults.get("profile") {
+            None => "auto".to_string(),
+            Some(v) => match v.get_ref().as_str() {
+                Some(p @ ("vector" | "svg" | "raster" | "auto")) => p.to_string(),
+                _ => {
+                    let msg = format!("[defaults] profile {} is not one of vector, svg, raster or auto", v.get_ref());
+                    return Err(bad_at(v.span().start, msg));
+                }
+            },
+        };
         Ok(Manifest {
             name: s(&project, "name").unwrap_or_default(),
             out: s(&project, "out").unwrap_or_else(|| "assets".into()),
             lib,
-            palette: s(&defaults, "palette"),
+            palette: d("palette"),
             scale: if scale.is_empty() { vec![1.0] } else { scale },
-            bg: s(&defaults, "bg").filter(|b| b != "none"),
-            profile: s(&defaults, "profile").unwrap_or_else(|| "auto".into()),
+            bg: d("bg").filter(|b| b != "none"),
+            profile,
             backend,
             lint,
         })
