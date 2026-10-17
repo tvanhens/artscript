@@ -127,6 +127,7 @@ impl Evaluator<'_> {
                 Some(Value::Field(f)) => {
                     Value::Field(Rc::new(Field::Unary(FieldFn::Abs, Box::new((**f).clone()))))
                 }
+                Some(Value::Num(x)) => Value::Num(x.abs()),
                 Some(v) if v.vec2().is_some() => {
                     let (x, y) = v.vec2().unwrap();
                     Value::Vec2(Coord::Num(x.abs()), Coord::Num(y.abs()))
