@@ -577,6 +577,35 @@ fn statement_if_then_says_to_remove_then() {
 }
 
 #[test]
+fn if_branches_take_a_tight_tuple() {
+    let file = must_parse("let v = if k < 2 then 3,4 else 5,6\n");
+    assert_eq!(
+        node(&file),
+        &SceneKind::Let {
+            name: "v".into(),
+            value: Expr::If {
+                cond: Box::new(bin(BinOp::Lt, ident("k"), num(2.0))),
+                then: Box::new(Expr::Tuple(vec![num(3.0), num(4.0)])),
+                otherwise: Box::new(Expr::Tuple(vec![num(5.0), num(6.0)])),
+            },
+        }
+    );
+    let src = "curve [each k in 0..4 -> if k < 2 then k*32,200 else 576,300]\n";
+    match node(&must_parse(src)) {
+        SceneKind::Draw(Draw { args, .. }) => match &args[0] {
+            Expr::Each { body, .. } => assert!(matches!(
+                body.as_ref(),
+                Expr::If { then, otherwise, .. }
+                    if matches!(then.as_ref(), Expr::Tuple(_))
+                        && matches!(otherwise.as_ref(), Expr::Tuple(_))
+            )),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
 fn each_expr_is_one_list_and_formats_tight() {
     let src = "curve [each k in 0..70 -> cx+r*cos(k*.3),cy+r*sin(k*.3)]\n";
     let file = must_parse(src);
