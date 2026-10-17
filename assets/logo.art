@@ -29,9 +29,9 @@ if avatar
   layer seal
     circle 214 at:256,256 fill:if mono then brand.ink else radial(brand.ink.3 brand.ink.1 at:.35,.3 r:420) stroke:if mono then brand.ink else brand.ink.3,3 name:tile
     if mono
-      brush_a ink:brand.ink bar:brand.ink bw:1.15 at:253,255 scale:.685 blend:erase
+      brush_a ink:brand.ink bar:brand.ink bw:1.15 at:253,255 scale:.685 blend:erase name:letter
     else
-      brush_a ink:brand.paper bar:brand.coral bw:1.15 at:253,255 scale:.685
+      brush_a ink:brand.paper bar:brand.coral bw:1.15 at:253,255 scale:.685 name:letter
 else
   let fg = if target == dark then brand.paper else brand.ink
-  brush_a ink:fg bar:if mono then fg else brand.coral at:251,255 scale:1.066
+  brush_a ink:fg bar:if mono then fg else brand.coral at:251,255 scale:1.066 name:letter

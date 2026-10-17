@@ -2,7 +2,7 @@
   "outputs": [
     {
       "checks": [],
-      "hash": "2c73e7dee7908c3f",
+      "hash": "52ed0d5af8141e14",
       "line": 4,
       "matrix": {},
       "path": "avatar-dark.png",
@@ -13,7 +13,7 @@
     },
     {
       "checks": [],
-      "hash": "7410e95d5e260c20",
+      "hash": "6c096bbfb0f9fc9e",
       "line": 6,
       "matrix": {},
       "path": "avatar-mono.png",
@@ -24,7 +24,7 @@
     },
     {
       "checks": [],
-      "hash": "63dd15e7583e87b6",
+      "hash": "5dcd3cbde17e7e32",
       "line": 5,
       "matrix": {},
       "path": "avatar-paper.png",
@@ -35,7 +35,7 @@
     },
     {
       "checks": [],
-      "hash": "8855f5c8108b03bb",
+      "hash": "6d025f29433f54a2",
       "line": 1,
       "matrix": {},
       "path": "logo-dark.png",
@@ -46,7 +46,7 @@
     },
     {
       "checks": [],
-      "hash": "088e53bbb89a660d",
+      "hash": "9b11d67f97207941",
       "line": 3,
       "matrix": {},
       "path": "logo-mono.png",
@@ -57,7 +57,7 @@
     },
     {
       "checks": [],
-      "hash": "99c37ad2d6e55b32",
+      "hash": "f06be30c297520e8",
       "line": 2,
       "matrix": {},
       "path": "logo-paper.png",
