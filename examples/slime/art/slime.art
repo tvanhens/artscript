@@ -1,17 +1,21 @@
-@target slime.png 512x512
-@target slime.gif 320x320 bg:#fbf6ee fps:24
+@target slime_{flavor}.png 512x512 each flavor:[mint grape peach]
+@target slime_{flavor}.gif 240x240 bg:#fbf6ee fps:24 each flavor:[mint grape peach]
 
 palette goo
-  ramp jelly #7fd4a8 5
+  ramp mint #7fd4a8 5
+  ramp grape #b49cf0 5
+  ramp peach #f7a98c 5
   color ink #2b2440
   color shine #ffffff
+
+let jelly = if flavor == grape then goo.grape else if flavor == peach then goo.peach else goo.mint
 
 layer slime scale:canvas.w/512
   ellipse 160,22 at:256,392 fill:goo.ink a:.2 blur:10
   group at:256,380 name:squash
-    curve -150,0 -140,-120 -60,-220 60,-220 140,-120 150,0 closed tension:.5 fill:grad(down goo.jelly.3 goo.jelly.1) name:body
-      ellipse 50,30 at:-60,-170 rot:-30 fill:goo.jelly.4 a:.8 blur:8
-      subtract fill:goo.jelly.0 a:.4 blur:3
+    curve -150,0 -140,-120 -60,-220 60,-220 140,-120 150,0 closed tension:.5 fill:grad(down jelly.3 jelly.1) name:body
+      ellipse 50,30 at:-60,-170 rot:-30 fill:jelly.4 a:.8 blur:8
+      subtract fill:jelly.0 a:.4 blur:3
         copy @body
         copy @body at:-24,-20
       each s in [-1 1]
@@ -19,7 +23,7 @@ layer slime scale:canvas.w/512
           circle 6 at:-6,-6 fill:goo.shine
       curve -22,-70 0,-56 22,-70 stroke:goo.ink,[3 6 3] taper:.3
       fx rim 6 dir:1,1 color:goo.shine a:.4
-      fx outline 6 color:goo.jelly.line
+      fx outline 6 color:jelly.line
 
 anim wobble dur:1.2s loop
   .squash scale:key(1,1 1.08,.92 .96,1.04 1,1)

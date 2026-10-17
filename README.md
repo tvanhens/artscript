@@ -8,12 +8,12 @@
 <h1 align="center">artscript</h1>
 
 <p align="center">
-  <b>Illustration you can diff.</b><br>
-  Write vector art as plain text. Build it to PNG, SVG, and GIF.
+  <b>Art assets your LLM can write, read, and fix.</b><br>
+  A compact language for vector illustration, and a CLI that builds it to PNG, SVG, and GIF.
 </p>
 
 <p align="center">
-  <img src="examples/chibi/assets/character/moss_monk_idle.gif" alt="A chibi monk with a leaf sprouting from its head, bobbing gently" width="300">
+  <img src="examples/chibi/assets/character/moss_monk_idle.gif" alt="A chibi monk with a leaf sprouting from its head, bobbing gently" width="280">
 </p>
 
 <p align="center">
@@ -24,33 +24,80 @@
   <img src="examples/chibi/assets/monument/vermilion_torii.png" alt="A vermilion torii gate" width="132">
 </p>
 
-<p align="center"><sub>Every pixel above is built from an <code>.art</code> file in <a href="examples/chibi"><code>examples/chibi</code></a>. No editor, no binary project file, no hand-exported frames.</sub></p>
+<p align="center"><sub>Coding agents wrote every piece above, porting each one from a Python drawing toolkit, one agent per file.<br>The sources are in <a href="examples/chibi"><code>examples/chibi</code></a>. The run is logged in <a href="docs/decisions.tsv"><code>docs/decisions.tsv</code></a>.</sub></p>
 
 ---
 
-artscript is a small declarative language and a CLI. You describe shapes, palettes, shading, and motion in an indented text file. `artscript build` renders every target the file declares, the same bytes every time.
+A game or an app needs hundreds of icons, characters, props, and their variants. A model can draw one of them in SVG. It struggles to draw the hundredth in the same style, to change one detail without regenerating the file, or to tell whether its own output is right.
 
-Because the art is text, everything you already do with code works on it. You review a pull request that changes a character's eye color. You `git bisect` the commit that made the leaf droop. You loop over seeds, reuse components across files, and put an assertion on the composition so that nobody breaks it by accident.
+artscript is a language designed for that loop. A finished, shaded character is a few thousand tokens. An edit is one line. The compiler tells the model what went wrong, where, and how to fix it, in JSON. And the same source always builds the same bytes, so a large project stays reviewable.
 
-## A slime in 30 lines
+## Built for the model's side of the loop
 
-This is the whole of [`examples/slime/art/slime.art`](examples/slime/art/slime.art):
+**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger, even with embedded textures removed. The whole language card, [`docs/language.md`](docs/language.md), is 4,608 tokens, so it fits in a system prompt.
+
+| Piece | `.art` tokens | Built `.svg` tokens |
+|---|---:|---:|
+| `character/moss_monk` | 4,638 | 128,721 |
+| `monument/stone_lantern` | 6,521 | 40,257 |
+| `monument/vermilion_torii` | 5,034 | 106,462 |
+| `produce/momo_peach` | 3,540 | 624,507 |
+| `produce/sweet_strawberry` | 2,529 | 84,302 |
+| `prop/matcha_teacup` | 2,549 | 91,884 |
+
+<sub>Counted with `o200k_base`. Rerun with `uv run --with tiktoken python scripts/svg_tokens.py`.</sub>
+
+**Edits stay local.** Style lives in palettes, components, and named parts, not in baked coordinates. To give the monk blue eyes, a model changes one line:
+
+```diff
+-  color iris #9a6a3a
++  color iris #4f7fc0
+```
+
+Rebuilt, the monk changes only inside a 301 by 69 pixel box around the eyes. Every other pixel is identical, because noise and random scatter are seeded from each node's name, not from the order things were drawn. `artscript fmt` prints one canonical form, so diffs carry only what changed.
+
+**Feedback a model can act on.** `artscript check` evaluates a whole project without rendering. The chibi project, with GIF frames sampled, checks in about a second. Each diagnostic names the file, the line, the node, and a concrete fix. `--json` hands that straight back to the agent:
+
+```json
+{
+  "code": "C0101",
+  "file": "art/slime.art",
+  "fix": "set .eye.1 at:50,-114",
+  "message": "assert level(@eye.0 @eye.1)",
+  "node": "",
+  "notes": ["eye.cy = 266   eye.cy = 274   difference 8 > tol 0.5"],
+  "severity": "error",
+  "span": { "col": 1, "line": 33 }
+}
+```
+
+**Eyes optional.** A model doesn't need to look at a render to know where things are. `assert` and `expect` lines encode the composition rules: eyes level, the body inside the canvas with a margin, the head as wide as the body. `artscript explain` prints every node with its bounds and resolved colors as text.
+
+**Made for big projects.** Shared palettes and component libraries (`use face/parts { eye blush }`) keep a house style across files. One `@target` line fans out every variant in a matrix. `build --only 'character/*'` lets each agent render just the files it owns. Builds are deterministic, and `art-manifest.json` records a hash per output, so a reviewer sees exactly which assets changed.
+
+## One file, three slimes
+
+This is all of [`examples/slime/art/slime.art`](examples/slime/art/slime.art). It builds three PNGs and three animated GIFs:
 
 ```
-@target slime.png 512x512
-@target slime.gif 320x320 bg:#fbf6ee fps:24
+@target slime_{flavor}.png 512x512 each flavor:[mint grape peach]
+@target slime_{flavor}.gif 240x240 bg:#fbf6ee fps:24 each flavor:[mint grape peach]
 
 palette goo
-  ramp jelly #7fd4a8 5
+  ramp mint #7fd4a8 5
+  ramp grape #b49cf0 5
+  ramp peach #f7a98c 5
   color ink #2b2440
   color shine #ffffff
+
+let jelly = if flavor == grape then goo.grape else if flavor == peach then goo.peach else goo.mint
 
 layer slime scale:canvas.w/512
   ellipse 160,22 at:256,392 fill:goo.ink a:.2 blur:10
   group at:256,380 name:squash
-    curve -150,0 -140,-120 -60,-220 60,-220 140,-120 150,0 closed tension:.5 fill:grad(down goo.jelly.3 goo.jelly.1) name:body
-      ellipse 50,30 at:-60,-170 rot:-30 fill:goo.jelly.4 a:.8 blur:8
-      subtract fill:goo.jelly.0 a:.4 blur:3
+    curve -150,0 -140,-120 -60,-220 60,-220 140,-120 150,0 closed tension:.5 fill:grad(down jelly.3 jelly.1) name:body
+      ellipse 50,30 at:-60,-170 rot:-30 fill:jelly.4 a:.8 blur:8
+      subtract fill:jelly.0 a:.4 blur:3
         copy @body
         copy @body at:-24,-20
       each s in [-1 1]
@@ -58,7 +105,7 @@ layer slime scale:canvas.w/512
           circle 6 at:-6,-6 fill:goo.shine
       curve -22,-70 0,-56 22,-70 stroke:goo.ink,[3 6 3] taper:.3
       fx rim 6 dir:1,1 color:goo.shine a:.4
-      fx outline 6 color:goo.jelly.line
+      fx outline 6 color:jelly.line
 
 anim wobble dur:1.2s loop
   .squash scale:key(1,1 1.08,.92 .96,1.04 1,1)
@@ -70,56 +117,28 @@ assert inside(@body canvas margin:24)
 ```
 
 <p align="center">
-  <img src="examples/slime/assets/slime.gif" alt="A green jelly slime with two dot eyes, squashing and stretching in a loop" width="320">
+  <img src="examples/slime/assets/slime_mint.gif" alt="A mint-green jelly slime squashing and stretching" width="200">
+  <img src="examples/slime/assets/slime_grape.gif" alt="A grape-purple jelly slime squashing and stretching" width="200">
+  <img src="examples/slime/assets/slime_peach.gif" alt="A peach-orange jelly slime squashing and stretching" width="200">
 </p>
 
-A lot happens in those lines:
+That is 435 tokens. Here is what they buy:
 
-- **One color in, a full ramp out.** `ramp jelly #7fd4a8 5` makes five stops. The shadows shift toward cool teal and the lights toward warm yellow, so `jelly.0` and `jelly.4` look painted, not just darker and lighter. `jelly.line` is a matching outline color.
-- **Children clip to their parent.** The highlight, the cel shadow, and the eyes are indented under `body`, so none of them can spill outside it.
-- **Shapes are values.** The cel shadow is the body minus a copy of the body nudged up and left. Move the body and the shadow follows.
-- **Loops and names.** `each s in [-1 1]` draws both eyes. The checks address them as `@eye.0` and `@eye.1`.
+- **One color in, a painted ramp out.** `ramp mint #7fd4a8 5` makes five stops whose shadows shift cool and whose lights shift warm. `jelly.line` is a matching outline color. A new flavor is one palette row.
+- **Children clip to their parent.** The highlight, the shadow, and the eyes sit under `body`, so none of them can spill outside it, whatever the model gets wrong about coordinates.
+- **Shapes are values.** The shadow is the body minus a nudged copy of itself. Reshape the body and the shadow follows.
 - **Motion is a patch.** `anim wobble` scales the `squash` group over time. The PNG draws the rest pose, and the GIF plays the loop.
+- **The rules travel with the art.** Tilt the eyes with `at:50*s,-110+4*s` and `check` exits 2 with the diagnostic shown above. It checks every GIF frame too, and it reports the worst moment.
 
-## Art that checks itself
+## The agent loop
 
-An `assert` measures the finished scene. Tilt the face by changing the eye line to `at:50*s,-110+4*s`, and the check fails:
+1. Give the model [`docs/language.md`](docs/language.md) and the project's palette and component libraries.
+2. The model writes or edits an `.art` file.
+3. Run `artscript check --json`. Feed any diagnostics back, and repeat until it exits 0.
+4. Run `artscript build --only '<its files>'` to render.
+5. Review the source diff and the changed hashes in `art-manifest.json`, like any other code.
 
-```
-$ artscript check
-error[C0101] art/slime.art:29:1
-  assert level(@eye.0 @eye.1)
-  eye.cy = 266   eye.cy = 274   difference 8 > tol 0.5
-  fix: set .eye.1 at:50,-114
-
-error[C0101] art/slime.art:29:1
-  assert level(@eye.0 @eye.1)
-  eye.cy = 171.97   eye.cy = 176.57   difference 4.6 > tol 0.5
-  first at 0s
-  worst at 0.375s
-  fix: set .eye.1 at:50,-114
-```
-
-The first error is the PNG. The second is the GIF, where the check runs on every sampled frame and reports the worst moment. `check` exits 2, so CI can gate on it. Lints work the same way. They warn when a shape falls off the canvas or a raw hex color skips the palette, and they name the file, the line, and a fix.
-
-## When you want to see the tree
-
-`artscript explain` prints what the file evaluated to: each node, its bounds, its resolved colors, and the line that drew it.
-
-```
-$ artscript explain art/slime.art
-canvas 512x512
-slime  layer  95.37,148.1 321.26x265.9  (art/slime.art:9)
-  slime.ellipse~1  shape  96,370 320x44  fill:#2b2440  blur:10  a:0.2  (art/slime.art:10)
-  squash  group  95.37,148.1 321.26x260.89  (art/slime.art:11)
-    body  shape  95.37,148.1 321.26x260.89  fill:linear(#aae8b7..#49ac95)  [fx rim 6 #ffffff66]  [fx outline 6 #004f48]  (art/slime.art:12)
-      body.ellipse~1  shape  137.7,159.02 116.6x101.96  fill:#d2fcca  blur:8  a:0.8  (art/slime.art:13)
-      body.subtract~1  shape  100.27,164.6 316.36x244.39  fill:#0a847f  blur:3  a:0.4  (art/slime.art:14)
-      eye.0  shape  188,252 36x36  fill:#2b2440  (art/slime.art:18)
-  ...
-```
-
-## What's in the box
+## What the language covers
 
 | | |
 |---|---|
@@ -129,9 +148,9 @@ slime  layer  95.37,148.1 321.26x265.9  (art/slime.art:9)
 | **Texture** | `simplex`, `perlin`, `worley`, and `fbm` noise fields, as fills or as masks |
 | **Effects** | `rim`, `outline`, `glow`, `shadow`, `inner`, `grain`, `blur`, `adjust`, and named `finish` stacks you reuse |
 | **Components** | `def` with typed parameters, slots, anchors, and `.part` overrides, shared across files with `use` |
-| **Motion** | `anim` clips with keyframes and easing. One target line fans out a GIF per clip |
-| **Output** | PNG at any `@2x` scale, SVG, GIF, and an `art-manifest.json` with a hash for each file |
-| **Checks** | `assert` and `expect` on positions, sizes, alignment, symmetry, and overlap |
+| **Motion** | `anim` clips with keyframes and easing, played into GIFs |
+| **Output** | PNG at any `@2x` scale, SVG, GIF, and `art-manifest.json` |
+| **Checks** | `assert` and `expect` on position, size, alignment, symmetry, overlap, and stroke width |
 
 ## Get started
 
@@ -151,19 +170,19 @@ artscript init
 artscript build
 ```
 
-`init` writes a manifest, a starter palette, and `art/hello.art`. `build` writes `assets/hello.png`, `assets/hello@2x.png`, and `assets/art-manifest.json`. Open `art/hello.art` and start drawing.
+`init` writes a manifest, a starter palette, and `art/hello.art`. `build` writes `assets/hello.png`, `assets/hello@2x.png`, and `assets/art-manifest.json`.
 
 | Command | What it does |
 |---|---|
 | `artscript build [--only GLOB]` | Render every `@target` and write the manifest |
 | `artscript check [--json]` | Evaluate every target and run its checks, without rendering |
-| `artscript fmt [--check]` | Rewrite `.art` files in the one canonical style |
+| `artscript fmt [--check]` | Rewrite `.art` files in the canonical style |
 | `artscript explain <file>` | Print the evaluated node tree |
 | `artscript init` | Create a starter project |
 
-## Learn the language
+## Learn more
 
-- [`docs/language.md`](docs/language.md) is the one-page language card. Read it first.
+- [`docs/language.md`](docs/language.md) is the one-page language card, for you and for the model.
 - [`docs/semantics.md`](docs/semantics.md) holds the details the card leaves out.
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
 
