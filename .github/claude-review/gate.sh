@@ -49,6 +49,12 @@ while IFS= read -r id; do
     echo "::warning::not resolving $id: it is also a blocking finding"
     continue
   fi
+  opener=$(jq -r --arg id "$id" '[.[] | select(.id == $id)][0].comments[0].author // empty' \
+    "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
+  if [[ "$opener" != "github-actions" ]]; then
+    echo "::warning::not resolving $id: the reviewer did not open it"
+    continue
+  fi
   # shellcheck disable=SC2016 # $id is a GraphQL variable
   if ! gh api graphql \
     -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }' \
