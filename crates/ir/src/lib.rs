@@ -80,8 +80,9 @@ pub struct Shape {
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
-    /// Drawn after the shape and composited source-atop onto the shape's own pixels,
-    /// so they never change its silhouette or alpha (the "clip by nesting" rule).
+    /// Drawn after the shape, clipped to `geometry` whatever the shape's fill or alpha (the
+    /// "clip by nesting" rule). The shape and its children form one isolated group, so a
+    /// child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
 }
 

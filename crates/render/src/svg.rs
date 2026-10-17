@@ -393,7 +393,8 @@ impl Writer {
         if let Some(mode) = css_blend(node.blend) {
             parts.push(format!("mix-blend-mode:{mode}"));
         }
-        if matches!(node.kind, NodeKind::Group { isolate: true, .. }) {
+        let nests = matches!(&node.kind, NodeKind::Shape(shape) if !shape.children.is_empty());
+        if nests || matches!(node.kind, NodeKind::Group { isolate: true, .. }) {
             parts.push("isolation:isolate".into());
         }
         if !parts.is_empty() {

@@ -78,7 +78,7 @@ Paint keys:
 ## Structure
 
 - `layer name` is an isolated group, and so is each instance of a `def`. A `blend:` inside it composites only with what that layer or instance drew, so a def draws the same pixels wherever it is called. A `blend:` on the call composites the finished instance onto the caller. `group` is a plain group, and its children blend with what is below it.
-- **Nesting under a shape clips the children to that shape.** This is how every highlight, shadow and texture stays inside its form:
+- **Nesting under a shape clips the children to that shape.** The clip is the shape's geometry whatever its fill, so a `fill:none` shape is a plain clip frame and a translucent shape keeps opaque details opaque. This is how every highlight, shadow and texture stays inside its form:
 
 ```
 curve 0,-60 50,-10 30,50 -30,50 -50,-10 closed fill:p.peach name:body

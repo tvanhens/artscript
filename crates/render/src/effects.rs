@@ -602,7 +602,22 @@ fn gather(
     };
     let mut local = Vec::new();
     match &node.kind {
-        NodeKind::Shape(shape) => push_shape(shape, &mut local)?,
+        NodeKind::Shape(shape) => {
+            push_shape(shape, &mut local)?;
+            // An opaque fill already covers every child, and stroking each child's clipped
+            // area again would thicken the antialiased rim the shared edges trace.
+            let opaque = shape.fill.as_ref().is_some_and(|fill| coverage_alpha(fill) >= 1.0);
+            let children = if opaque { &[][..] } else { &shape.children[..] };
+            for child in children {
+                let mut nested = Vec::new();
+                gather(child, &Matrix::new_identity(), 1.0, false, &mut nested)?;
+                local.extend(nested.into_iter().filter_map(|region| {
+                    skia_safe::op(&region.path, &shape.geometry, PathOp::Intersect)
+                        .filter(|p| !p.is_empty())
+                        .map(|path| Region { path, alpha: region.alpha })
+                }));
+            }
+        }
         NodeKind::Group { children, .. } => {
             for child in children {
                 gather(child, &Matrix::new_identity(), 1.0, false, &mut local)?;
@@ -629,8 +644,9 @@ fn gather(
     Ok(())
 }
 
-/// Fill path, plus the stroke's own filled outline. Shape children are source-atop, so they
-/// leave this alpha alone and are not part of the silhouette.
+/// Fill path, plus the stroke's own filled outline. `gather` adds the shape's children,
+/// clipped to its geometry, because they paint inside it whatever its own fill. It skips
+/// them under an opaque fill, which already covers them.
 fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
     if let Some(fill) = &shape.fill {
         let alpha = coverage_alpha(fill);

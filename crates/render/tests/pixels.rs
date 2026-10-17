@@ -78,6 +78,18 @@ fn outline_traces_the_children_a_fill_none_parent_shows() {
 }
 
 #[test]
+fn svg_isolates_a_shape_with_children() {
+    let mut parent = solid("body", circle_at(40.0, 40.0, 20.0), red());
+    let child = solid("ink", circle_at(40.0, 40.0, 8.0), color(0, 0, 255, 255));
+    match &mut parent.kind {
+        NodeKind::Shape(shape) => shape.children.push(child),
+        _ => unreachable!(),
+    }
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<g id=\"body\" style=\"isolation:isolate\""), "{svg}");
+}
+
+#[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
