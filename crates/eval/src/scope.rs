@@ -160,22 +160,28 @@ pub struct RefVal {
 
 impl RefVal {
     pub fn bounds(&self) -> Option<Rect> {
+        self.bounds_in(&Matrix::new_identity())
+    }
+
+    /// Bounds in the coordinates that `view` maps canvas coordinates into.
+    pub fn bounds_in(&self, view: &Matrix) -> Option<Rect> {
         if let Some(c) = self.canvas {
-            return Some(c);
+            return Some(view.map_rect(c).0);
         }
         if let Some(p) = self.record.anchor {
+            let p = view.map_point(p);
             return Some(Rect::from_xywh(p.x, p.y, 0.0, 0.0));
         }
         let local = self.record.node.as_ref()?.bounds()?;
-        Some(self.record.parent_world.map_rect(local).0)
+        Some((*view * self.record.parent_world).map_rect(local).0)
     }
 
-    pub fn geom_bounds(&self) -> Option<Rect> {
+    pub fn geom_bounds_in(&self, view: &Matrix) -> Option<Rect> {
         if self.canvas.is_some() || self.record.anchor.is_some() {
-            return self.bounds();
+            return self.bounds_in(view);
         }
         let node = self.record.node.as_ref()?;
-        geom_bounds(node, &self.record.parent_world)
+        geom_bounds(node, &(*view * self.record.parent_world))
     }
 
     /// Union of the node's shape geometries in canvas coordinates.
