@@ -6,7 +6,7 @@ use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use artscript_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
-use crate::eval::{Evaluator, R, Scope, fail};
+use crate::eval::{Evaluator, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
@@ -30,8 +30,10 @@ impl Evaluator<'_> {
         if func == "key" {
             return self.key_call(args, named, sc);
         }
-        if let Some(Value::Rule(rule)) = sc.module.global(func) {
-            return self.call_rule(&rule, args, named, sc);
+        match sc.module.global(func) {
+            Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
+            Some(Value::Unseen) => return Err(unseen(func)),
+            _ => {}
         }
         let saved_family = self.accept_family;
         if func == "same_size" {
