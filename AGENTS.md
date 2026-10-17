@@ -25,7 +25,7 @@ When the two docs disagree, choose the better behavior and make them agree. A ro
 
 ### Builds are deterministic
 
-- The same source and manifest must produce byte-identical outputs on every build. A language change may change those bytes. After that change, two builds of the same source and manifest still have to match each other. Flag anything that breaks this, such as a `rand` or `pick` evaluated without its site seed, iteration over an unordered collection, or an option for one output format that changes another format's bytes.
+- The same source, manifest, and resolved backend (`cpu` or `gpu`) must produce byte-identical outputs on every build on one machine. GPU output may differ from CPU output and between machines. A language change may change those bytes. After that change, two builds of the same source, manifest, and backend still have to match each other. Flag anything that breaks this, such as a `rand` or `pick` evaluated without its site seed, iteration over an unordered collection, or an option for one output format that changes another format's bytes.
 
 ### Diagnostics
 
