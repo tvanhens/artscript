@@ -13,8 +13,20 @@ These are never blocking: style, naming, structure preferences, speculative perf
 ## Inline comments
 
 - Post every inline comment with `confirmed=true`.
-- A blocking comment starts with `**blocking:**`, then the failure scenario, then the fix.
-- A non-blocking comment starts with `**nit (non-blocking):**`. Post at most 3 per run. Post none when `last_sha` is set.
+- Format a blocking comment exactly like this. Add the suggestion block only when it is a complete drop-in replacement for the commented lines.
+
+  ````
+  **🔴 Blocking: <one-line title>**
+
+  <the failure scenario: the input or state, and the wrong result it produces>
+
+  **Fix:** <what to change>
+
+  ```suggestion
+  <replacement lines>
+  ```
+  ````
+- Format a non-blocking comment as `**🟡 Nit (non-blocking): <one-line title>**`, then one or two sentences. Post at most 3 per run. Post none when `last_sha` is set.
 - Never post a comment that repeats an existing thread, resolved or not. Check `threads.json` first.
 - A blocking finding that is still open in an existing thread goes in `blocking` with that `thread_id` and gets no new comment.
 - A blocking finding you post this run goes in `blocking` with `thread_id` null.
@@ -28,7 +40,7 @@ Review the full diff against the base: `git diff <base_sha>...HEAD`. Read the su
 
 Do these in order.
 
-1. Existing threads. For each unresolved thread in `threads.json` whose first comment was opened by `github-actions`, read the code at HEAD.
+1. Existing threads. For each unresolved thread in `threads.json` whose first comment was opened by `reviewer_login`, read the code at HEAD.
    - If the problem is fixed, add the thread id to `resolve_thread_ids`.
    - If the PR author or an agent replied with a reason, accept the reason and add the thread id to `resolve_thread_ids`. The exception is when you can name a concrete input the reply does not address. Keep the finding in `blocking` with its `thread_id`, and put the counter-example in `failure_scenario`. The gate posts it as the reply on the thread, so address the reply directly.
    - If nothing changed and nobody replied, keep it in `blocking` with its `thread_id`.

@@ -28,10 +28,20 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
+      # A repo-owned GitHub App gives the comments their own name and avatar. Without it, they post as github-actions.
+      - name: reviewer token
+        id: app
+        if: vars.CLAUDE_REVIEW_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.CLAUDE_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CLAUDE_REVIEW_APP_PRIVATE_KEY }}
+
       - name: context
         id: context
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          REVIEWER_LOGIN: ${{ steps.app.outputs.app-slug || 'github-actions' }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -65,7 +75,7 @@ jobs:
           # The sticky comment is the only record of what the last completed review covered.
           # A cancelled or crashed run never updates it, so the next run re-reviews that range.
           last_sha=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.user.login == "github-actions[bot]") | .body' |
+            --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]")) | .body' |
             grep -oE '<!-- claude-review:sha=[0-9a-f]{40} -->' | tail -n1 |
             grep -oE '[0-9a-f]{40}' || true)
           if [ -n "$last_sha" ] && ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
@@ -86,6 +96,7 @@ jobs:
             echo "- head_sha: $HEAD_SHA (checked out as HEAD)"
             echo "- base_sha: $BASE_SHA"
             echo "- last_sha: $last_sha"
+            echo "- reviewer_login: $REVIEWER_LOGIN (your comments carry this author login in threads.json)"
             echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above)"
             echo
             cat .github/claude-review/prompt.md
@@ -97,7 +108,7 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           # Supplying a token skips the Claude App OIDC exchange and its default-branch workflow check.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Buffered comments would post after the session, past the point the gate reads threads.
@@ -111,7 +122,8 @@ jobs:
       - name: gate
         if: always()
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          REVIEWER_LOGIN: ${{ steps.app.outputs.app-slug || 'github-actions' }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}

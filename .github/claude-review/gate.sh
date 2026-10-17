@@ -4,6 +4,7 @@
 set -euo pipefail
 
 : "${REPO:?}" "${PR_NUMBER:?}" "${HEAD_SHA:?}"
+export REVIEWER_LOGIN="${REVIEWER_LOGIN:-github-actions}"
 OUT="${STRUCTURED_OUTPUT:-}"
 CONTEXT_DIR="${CONTEXT_DIR:-.claude-review}"
 SUMMARY_FILE="${GITHUB_STEP_SUMMARY:-/dev/null}"
@@ -49,6 +50,12 @@ while IFS= read -r id; do
     echo "::warning::not resolving $id: it is also a blocking finding"
     continue
   fi
+  opener=$(jq -r --arg id "$id" '[.[] | select(.id == $id)][0].comments[0].author // empty' \
+    "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
+  if [[ "$opener" != "$REVIEWER_LOGIN" ]]; then
+    echo "::warning::not resolving $id: the reviewer did not open it"
+    continue
+  fi
   # shellcheck disable=SC2016 # $id is a GraphQL variable
   if ! gh api graphql \
     -f query='mutation($id: ID!) { resolveReviewThread(input: {threadId: $id}) { thread { id } } }' \
@@ -66,14 +73,14 @@ thread_url() {
 body=$(mktemp)
 {
   echo "<!-- claude-review:sha=$HEAD_SHA -->"
-  echo "### Claude review of \`${HEAD_SHA:0:7}\`"
+  echo "### 🤖 Claude review of \`${HEAD_SHA:0:7}\`"
   echo
   jq -r '.summary' <<<"$OUT"
   echo
   if ((blocking_count == 0)); then
-    echo "No blocking findings."
+    echo "✅ No blocking findings."
   else
-    echo "**$blocking_count blocking finding(s).** Fix the code, or reply on the thread with a concrete reason, then push. To re-evaluate a reply without a code change, run \`gh run rerun <run-id> --failed\`."
+    echo "🔴 **$blocking_count blocking finding(s).** Fix the code, or reply on the thread with a concrete reason, then push. To re-evaluate a reply without a code change, run \`gh run rerun <run-id> --failed\`."
     echo
     for ((i = 0; i < blocking_count; i++)); do
       path=$(jq -r ".blocking[$i].path" <<<"$OUT")
@@ -100,7 +107,7 @@ cat "$body" >>"$SUMMARY_FILE"
 
 # A comment failure must not change the verdict, so it only warns.
 existing=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-  --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("<!-- claude-review:sha="))) | .id' \
+  --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]") and (.body | contains("<!-- claude-review:sha="))) | .id' \
   | tail -n1) || existing=""
 if [[ -n "$existing" ]]; then
   gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$body" >/dev/null \
@@ -115,11 +122,11 @@ fi
 while IFS=$'\t' read -r tid scenario; do
   last_author=$(jq -r --arg id "$tid" '[.[] | select(.id == $id)][0].comments[-1].author // empty' \
     "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
-  [[ -z "$last_author" || "$last_author" == "github-actions" ]] && continue
+  [[ -z "$last_author" || "$last_author" == "$REVIEWER_LOGIN" ]] && continue
   # shellcheck disable=SC2016 # $id and $body are GraphQL variables
   gh api graphql \
     -f query='mutation($id: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $id, body: $body}) { comment { id } } }' \
-    -f id="$tid" -f body="**still blocking:** $scenario" >/dev/null \
+    -f id="$tid" -f body="$(printf '**🔴 Still blocking**\n\n%s' "$scenario")" >/dev/null \
     || echo "::warning::could not reply on thread $tid"
 done < <(jq -r '.blocking[] | select(.thread_id != null) | [.thread_id, (.failure_scenario | gsub("[\t\n]"; " "))] | @tsv' <<<"$OUT")
 
