@@ -1,0 +1,37 @@
+@target logo-dark.png 512x512 bg:#14121f as:dark
+@target logo-paper.png 512x512 bg:#fbf6ee as:paper
+@target logo-mono.png 512x512 as:mono
+@target avatar-dark.png 512x512 bg:#14121f as:avatar_dark
+@target avatar-paper.png 512x512 bg:#fbf6ee as:avatar_paper
+@target avatar-mono.png 512x512 as:avatar_mono
+
+# The artscript logo: a brush capital A with a coral crossbar. The `logo` targets draw the
+# letter alone. The `avatar` targets set it on an ink disc, with the letter knocked out in mono.
+
+palette brand
+  ramp ink #1d1b2e 5
+  ramp coral #ff6b5b 5
+  color paper #fbf6ee
+
+# The brush A, centered on its origin, about 390 units tall. The left stroke enters
+# hairline-thin inside the right stroke's head, so the counter closes in one clean V.
+# The coral bar is the last stroke: pressed in on the left leg, lifting away past the right.
+def brush_a ink:brand.ink bar:brand.coral bw:1
+  curve -21,-195 -32,-151 -50,-99 -74,-37 -100,27 -122,87 -140,135 -154,167 -168,184 -184,191 stroke:ink,[3 16 26 33 36 38 34 26 15 5] taper:0,0 name:left
+  curve -22,-197 4,-139 34,-69 64,3 92,71 118,131 142,171 166,187 186,192 stroke:ink,[6 40 54 62 66 62 48 26 6] taper:.04,0 name:right
+  curve -136,97 -116,92 -68,82 -4,65 64,49 130,35 stroke:bar,[each v in [26 36 36 31 22 10] -> v*bw] taper:.14,.08 name:bar
+
+let mono = target == mono or target == avatar_mono
+let avatar = target == avatar_dark or target == avatar_paper or target == avatar_mono
+
+if avatar
+  # The bar is 15% heavier than in the full-size mark so the coral survives at 16px.
+  layer seal
+    circle 214 at:256,256 fill:if mono then brand.ink else radial(brand.ink.3 brand.ink.1 at:.35,.3 r:420) stroke:if mono then brand.ink else brand.ink.3,3 name:tile
+    if mono
+      brush_a ink:brand.ink bar:brand.ink bw:1.15 at:253,255 scale:.685 blend:erase name:letter
+    else
+      brush_a ink:brand.paper bar:brand.coral bw:1.15 at:253,255 scale:.685 name:letter
+else
+  let fg = if target == dark then brand.paper else brand.ink
+  brush_a ink:fg bar:if mono then fg else brand.coral at:251,255 scale:1.066 name:letter
