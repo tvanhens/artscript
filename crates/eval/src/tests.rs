@@ -3478,3 +3478,106 @@ fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
     assert!(fix.contains("host.eye"), "{d}");
     assert!(!fix.contains("add name:"), "{d}");
 }
+
+#[test]
+fn a_bad_call_name_is_one_e0312() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef hero\n  circle 4 name:eye\nhero name:x+1\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0312").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 4);
+    assert!(hits[0].message.contains("identifier"), "{}", hits[0]);
+    assert!(
+        paths(ev.scene.as_ref().unwrap()).iter().any(|p| p.contains("eye")),
+        "{:?}",
+        paths(ev.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn a_star_with_no_declared_part_is_e0340() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef hero\n  circle 4\nhero name:hero\n  .* fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 5);
+    assert!(hits[0].message.contains('*'), "{}", hits[0]);
+    assert_eq!(hits[0].fix.as_deref(), Some("name a part in this scope"));
+
+    let hit = scene(
+        "@target t.png 40x40\ndef hero\n  circle 4 fill:#ffffff name:eye\nhero name:hero\n  .* fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&hit, "hero.eye")), "#ff0000");
+}
+
+#[test]
+fn an_anim_reports_each_path_that_misses() {
+    let ev = run_with(
+        "@target t.png 80x40\nanim idle dur:1s\n  .hero.left.typo at:1,0\n  .hero.right.typo at:1,0\ndef side\n  circle 4 name:eye\ndef hero\n  side name:left\n  side name:right\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 2, "{}", show(&ev.diagnostics));
+    assert!(hits.iter().all(|d| d.span.line == 11), "{hits:?}");
+    assert!(
+        hits.iter().any(|d| d.message.contains("hero.left.typo")),
+        "{hits:?}"
+    );
+    assert!(
+        hits.iter().any(|d| d.message.contains("hero.right.typo")),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn self_is_hidden_until_checks() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef dot\n  copy @self\n  circle 4\n  assert centered(@self in:canvas) tol:1\ndot at:20,20\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0350").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 3);
+    assert!(hits[0].message.contains("checks"), "{}", hits[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "C0101"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    assert!(
+        paths(ev.scene.as_ref().unwrap()).iter().any(|p| p.contains("circle")),
+        "{:?}",
+        paths(ev.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn a_shared_outer_loop_keeps_the_current_copy() {
+    let s = scene(
+        "@target t.png 120x40\neach row in 0..2\n  each col in 0..2\n    circle (8 + row * 10) at:(row * 30 + col * 8),0 name:dot\n  assert @dot.0.cx ~= row * 30\n  each side in 0..1\n    assert same_size(@dot)\n    assert @dot.1.cx ~= row * 30 + 8\n",
+    );
+    assert!(paths(&s).contains(&"dot.0.0".to_string()));
+    assert!(paths(&s).contains(&"dot.1.1".to_string()));
+}
+
+#[test]
+fn a_slot_keeps_the_host_copy() {
+    let filled = scene(
+        "@target t.png 80x40\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\nhost name:host\n  hole:\n    circle 3 at:@dot.cx,12 name:mark\nassert @host.hole.0.mark.cx ~= 0\nassert @host.hole.1.mark.cx ~= 16\n",
+    );
+    assert!(paths(&filled).contains(&"host.hole.0.mark".to_string()));
+
+    let fallback = scene(
+        "@target t.png 80x40\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\n      circle 3 at:@dot.cx,12 name:mark\nhost name:host\nassert @host.hole.0.mark.cx ~= 0\nassert @host.hole.1.mark.cx ~= 16\n",
+    );
+    assert!(paths(&fallback).contains(&"host.hole.1.mark".to_string()));
+
+    let imported = scene(
+        "@target t.png 80x40\ndef gem needs:@dot\n  circle 3 at:@dot.cx,12 name:mark\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\nhost name:host\n  hole:\n    gem name:gem\nassert @host.hole.0.gem.mark.cx ~= 0\nassert @host.hole.1.gem.mark.cx ~= 16\n",
+    );
+    assert!(paths(&imported).contains(&"host.hole.1.gem.mark".to_string()));
+}

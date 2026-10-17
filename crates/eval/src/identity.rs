@@ -1026,35 +1026,77 @@ impl Names {
     }
 }
 
+/// One scope a reference can see. Inherited frames keep the copies of the loop they were
+/// captured in. The innermost frame uses the copies at the reference.
+#[derive(Clone)]
+struct LookFrame {
+    names: Rc<RefCell<Names>>,
+    copies: Vec<u32>,
+    loops: Vec<Span>,
+}
+
+impl LookFrame {
+    fn live(names: Rc<RefCell<Names>>) -> LookFrame {
+        LookFrame {
+            names,
+            copies: Vec::new(),
+            loops: Vec::new(),
+        }
+    }
+
+    fn at(names: Rc<RefCell<Names>>, copies: &[u32], loops: &[Span]) -> LookFrame {
+        LookFrame {
+            names,
+            copies: copies.to_vec(),
+            loops: loops.to_vec(),
+        }
+    }
+}
+
+/// A `needs:` name, resolved in the host with the copies current at the slot.
+#[derive(Clone)]
+pub struct Import {
+    pub name: Name,
+    pub names: Rc<RefCell<Names>>,
+    pub copies: Vec<u32>,
+    pub loops: Vec<Span>,
+}
+
 /// Where `@name` looks, innermost frame first. `imports` re-resolve in the host that granted them.
 #[derive(Clone)]
 pub struct Lookup {
-    frames: Vec<Rc<RefCell<Names>>>,
-    imports: Vec<(Name, Rc<RefCell<Names>>)>,
+    frames: Vec<LookFrame>,
+    imports: Vec<Import>,
 }
 
 impl Lookup {
     pub fn own(names: Rc<RefCell<Names>>) -> Lookup {
         Lookup {
-            frames: vec![names],
+            frames: vec![LookFrame::live(names)],
             imports: Vec::new(),
         }
     }
 
-    pub fn with_imports(
-        names: Rc<RefCell<Names>>,
-        imports: Vec<(Name, Rc<RefCell<Names>>)>,
-    ) -> Lookup {
+    pub fn with_imports(names: Rc<RefCell<Names>>, imports: Vec<Import>) -> Lookup {
         Lookup {
-            frames: vec![names],
+            frames: vec![LookFrame::live(names)],
             imports,
         }
     }
 
     /// `inner` is a nested scope. It sees its own names, then every frame `outer` already could.
-    pub fn under(inner: Rc<RefCell<Names>>, outer: &Lookup) -> Lookup {
-        let mut frames = vec![inner];
-        frames.extend(outer.frames.iter().cloned());
+    /// `copies` is the outer scope's current loops, kept on the frame that was live there.
+    pub fn under(
+        inner: Rc<RefCell<Names>>,
+        outer: &Lookup,
+        copies: &[u32],
+        loops: &[Span],
+    ) -> Lookup {
+        let mut frames = vec![LookFrame::live(inner)];
+        if let Some((first, rest)) = outer.frames.split_first() {
+            frames.push(LookFrame::at(first.names.clone(), copies, loops));
+            frames.extend(rest.iter().cloned());
+        }
         Lookup {
             frames,
             imports: outer.imports.clone(),
@@ -1062,25 +1104,36 @@ impl Lookup {
     }
 
     /// Slot content: the fill, then the host, then whatever the caller could see.
+    /// The host and the caller each keep the copies of the loop they were in.
     pub fn slot(
         fill: Rc<RefCell<Names>>,
         host: Rc<RefCell<Names>>,
+        host_copies: &[u32],
+        host_loops: &[Span],
         caller: &Lookup,
+        caller_copies: &[u32],
+        caller_loops: &[Span],
     ) -> Lookup {
-        let mut frames = vec![fill, host];
-        frames.extend(caller.frames.iter().cloned());
+        let mut frames = vec![
+            LookFrame::live(fill),
+            LookFrame::at(host, host_copies, host_loops),
+        ];
+        if let Some((first, rest)) = caller.frames.split_first() {
+            frames.push(LookFrame::at(first.names.clone(), caller_copies, caller_loops));
+            frames.extend(rest.iter().cloned());
+        }
         Lookup {
             frames,
             imports: caller.imports.clone(),
         }
     }
-
 }
 
 /// What a name reached.
 pub enum Resolved {
     One(Entry),
-    Many(Vec<Entry>),
+    /// `usize` is how many leading copy indices the loop context already chose.
+    Many(Vec<Entry>, usize),
     /// Declared, and not drawn on this pass.
     Undrawn(Site),
     /// No frame declares it. `names` is the innermost region's list.
@@ -1098,22 +1151,32 @@ pub fn resolve(
     here_loops: &[Span],
 ) -> Resolved {
     let mut hits: Vec<(String, Resolved)> = Vec::new();
-    for frame in &lookup.frames {
-        let names = frame.borrow();
+    for (i, frame) in lookup.frames.iter().enumerate() {
+        let names = frame.names.borrow();
         if names.region.lookup(name).is_empty() {
             continue;
         }
         let label = names.region.label.clone();
-        let resolved = resolve_in(&names, name, here_copies, here_loops);
+        let (copies, loops) = if i == 0 {
+            (here_copies, here_loops)
+        } else {
+            (frame.copies.as_slice(), frame.loops.as_slice())
+        };
+        let resolved = resolve_in(&names, name, copies, loops);
         hits.push((label, resolved));
     }
-    if let Some((_, host)) = lookup
+    if let Some(import) = lookup
         .imports
         .iter()
         .rev()
-        .find(|(n, _)| n.as_str() == name)
+        .find(|import| import.name.as_str() == name)
     {
-        let resolved = resolve_in(&host.borrow(), name, &[], &[]);
+        let resolved = resolve_in(
+            &import.names.borrow(),
+            name,
+            &import.copies,
+            &import.loops,
+        );
         hits.push(("a `needs:` import".into(), resolved));
     }
     match hits.len() {
@@ -1122,7 +1185,8 @@ pub fn resolve(
                 .frames
                 .first()
                 .map(|f| {
-                    f.borrow()
+                    f.names
+                        .borrow()
                         .region
                         .names()
                         .iter()
@@ -1144,13 +1208,17 @@ pub fn resolve(
 fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span]) -> Resolved {
     let mut drawn = Vec::new();
     let mut undrawn = None;
+    let mut skipped = usize::MAX;
     for &id in names.region.lookup(name) {
         let decl = names.region.decl(id);
         match select(&names.rows[id.0], decl, here_copies, here_loops) {
-            Some(entries) if entries.is_empty() => {
+            Some((entries, _)) if entries.is_empty() => {
                 undrawn.get_or_insert_with(|| decl.site.clone());
             }
-            Some(entries) => drawn.extend(entries),
+            Some((entries, depth)) => {
+                skipped = skipped.min(depth);
+                drawn.extend(entries);
+            }
             None => {
                 undrawn.get_or_insert_with(|| decl.site.clone());
             }
@@ -1162,16 +1230,17 @@ fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span
             None => Resolved::Missing(Vec::new()),
         },
         1 => Resolved::One(drawn.pop().unwrap()),
-        _ => Resolved::Many(drawn),
+        _ => Resolved::Many(drawn, skipped),
     }
 }
 
+/// The `usize` is the number of copy indices already fixed by the shared loop prefix.
 fn select(
     row: &Row,
     decl: &NameDecl,
     here_copies: &[u32],
     here_loops: &[Span],
-) -> Option<Vec<Entry>> {
+) -> Option<(Vec<Entry>, usize)> {
     let loops = &decl.loops;
     let mut n = 0;
     while n < loops.len() && n < here_loops.len() && loops[n] == here_loops[n] {
@@ -1180,21 +1249,22 @@ fn select(
     let inside = n == loops.len();
     match row {
         Row::Undrawn => None,
-        Row::One(entry) => Some(vec![entry.clone()]),
+        Row::One(entry) => Some((vec![entry.clone()], 0)),
         Row::Copies(map) => {
             if inside {
                 let key = here_copies.get(..loops.len()).unwrap_or(&[]);
-                Some(map.get(key).cloned().into_iter().collect())
-            } else if n > 0 && n == here_loops.len() {
+                Some((map.get(key).cloned().into_iter().collect(), loops.len()))
+            } else if n > 0 {
                 let prefix = &here_copies[..n];
-                Some(
+                Some((
                     map.iter()
                         .filter(|(k, _)| k.starts_with(prefix))
                         .map(|(_, e)| e.clone())
                         .collect(),
-                )
+                    n,
+                ))
             } else {
-                Some(map.values().cloned().collect())
+                Some((map.values().cloned().collect(), 0))
             }
         }
     }
@@ -1203,6 +1273,9 @@ fn select(
 #[derive(Clone)]
 pub struct PendingPatch {
     pub rest: Vec<Hop>,
+    /// The path the author wrote. Forwarding shortens `rest` and leaves this, so two anim
+    /// paths that fail on the same last segment stay two diagnostics.
+    pub written: Vec<Hop>,
     pub origin_depth: u32,
     pub order: u32,
     pub named: Vec<(String, Value)>,
@@ -1357,6 +1430,7 @@ fn validate(
             "write a name, as in `.eye`".into(),
         );
     };
+    let shown = hop_text(&patch.written);
     match first {
         Hop::Star => {
             if patch.rest.len() != 1 {
@@ -1366,16 +1440,35 @@ fn validate(
                     "move `*` to the end".into(),
                 );
             }
-            true
+            if region.decls.iter().any(|d| d.tree_parent.is_none()) {
+                return true;
+            }
+            let names = region
+                .names()
+                .iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>();
+            let notes = vec![format!(
+                "names: {}",
+                if names.is_empty() {
+                    "(none)".into()
+                } else {
+                    names.join(", ")
+                }
+            )];
+            let msg = match &patch.anim {
+                Some(anim) => format!("`{anim}` patch `.{shown}` matches nothing"),
+                None => format!("patch `.{shown}` matches nothing in {}", region.label),
+            };
+            fail(msg, notes, "name a part in this scope".into())
         }
         Hop::Index(_) => fail(
-            format!("patch `.{}` does not start with a name", hop_text(&patch.rest)),
+            format!("patch `.{shown}` does not start with a name"),
             Vec::new(),
             "write a name before the copy index".into(),
         ),
         Hop::Name(name) => {
             let ids = region.lookup(name.as_str());
-            let shown = hop_text(&patch.rest);
             if ids.is_empty() {
                 let (notes, fix) = if let Some(site) = region.anon_hint(name.as_str()) {
                     let verb = region
@@ -1569,7 +1662,7 @@ pub fn report_misses(
         if !reported.insert(report_key(patch)) {
             continue;
         }
-        let hops = hop_text(&patch.rest);
+        let hops = hop_text(&patch.written);
         let msg = match &patch.anim {
             Some(anim) => format!("`{anim}` patch `.{hops}` matches no drawn copy"),
             None => format!("patch `.{hops}` matches no drawn copy"),
@@ -1593,7 +1686,7 @@ pub fn reject_anchor_patch(
     if !reported.insert(report_key(patch)) {
         return;
     }
-    let shown = hop_text(&patch.rest);
+    let shown = hop_text(&patch.written);
     let name = match patch.rest.first() {
         Some(Hop::Name(n)) => n.to_string(),
         _ => shown.clone(),
@@ -1623,7 +1716,7 @@ fn report_key(patch: &PendingPatch) -> ReportKey {
         play_line,
         play_col,
         anim: patch.anim.clone().unwrap_or_default(),
-        path: hop_text(&patch.rest),
+        path: hop_text(&patch.written),
     }
 }
 

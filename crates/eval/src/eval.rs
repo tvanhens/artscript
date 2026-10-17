@@ -98,6 +98,8 @@ struct Fill {
 pub(crate) struct Host {
     def_name: String,
     names: Rc<RefCell<Names>>,
+    copies: Vec<u32>,
+    loops: Vec<Span>,
 }
 
 /// Everything a block of statements is evaluated against.
@@ -386,6 +388,10 @@ pub(crate) fn ident_of(e: &Expr) -> Option<&str> {
         Expr::Ident(s) => Some(s),
         _ => None,
     }
+}
+
+fn is_name(e: &Expr) -> bool {
+    ident_of(e).is_some_and(|s| identity::Name::parse(s).is_some())
 }
 
 fn mat_trs(
@@ -1646,6 +1652,7 @@ impl<'a> Evaluator<'a> {
                 decl,
                 arrival.forward,
                 st.span,
+                named.iter().any(|n| n.key == "name" && !is_name(&n.value)),
             );
         }
         for item in body.items() {
@@ -2449,6 +2456,7 @@ impl<'a> Evaluator<'a> {
         decl: Option<DeclId>,
         forward: Vec<PendingPatch>,
         span: Span,
+        name_rejected: bool,
     ) -> R<()> {
         let path = key.to_string();
         let module = self
@@ -2548,15 +2556,22 @@ impl<'a> Evaluator<'a> {
         let region = def_ids
             .region(comp.span)
             .unwrap_or_else(|| def_ids.file());
-        self.unstable_scope(&key, &region, sc.file(), span);
+        if !name_rejected {
+            self.unstable_scope(&key, &region, sc.file(), span);
+        }
         if let Some(err) = self.needs_of(comp, sc) {
             return Err(err);
         }
         let mut imports = Vec::new();
         if let Some(host) = &sc.host {
             for need in &comp.needs {
-                if let Some(pair) = identity::host_import(&host.names, need) {
-                    imports.push(pair);
+                if let Some((name, names)) = identity::host_import(&host.names, need) {
+                    imports.push(identity::Import {
+                        name,
+                        names,
+                        copies: host.copies.clone(),
+                        loops: host.loops.clone(),
+                    });
                 }
             }
         }
@@ -2629,7 +2644,6 @@ impl<'a> Evaluator<'a> {
                 inner: Some(names.clone()),
             })),
         };
-        *inst.record.borrow_mut() = Some(rec.clone());
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
         self.report_unlanded(&body_scope);
@@ -2661,6 +2675,7 @@ impl<'a> Evaluator<'a> {
         self.mask(&mut node, &node_args, block.mask(), &call_sc, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
         rec.borrow_mut().node = Some(node.clone());
+        *inst.record.borrow_mut() = Some(rec.clone());
         self.run_checks(&checks);
         for fill in &inst.fills {
             if !inst.used_fills.borrow().contains(&fill.name) {
@@ -3008,9 +3023,17 @@ impl<'a> Evaluator<'a> {
         };
         let names = Rc::new(RefCell::new(Names::new(region.clone())));
         let lookup = if filled.is_some() {
-            Lookup::slot(names.clone(), inst.names.clone(), &base.lookup)
+            Lookup::slot(
+                names.clone(),
+                inst.names.clone(),
+                &sc.scope_copies,
+                &sc.scope_loops,
+                &base.lookup,
+                &base.scope_copies,
+                &base.scope_loops,
+            )
         } else {
-            Lookup::under(names.clone(), &sc.lookup)
+            Lookup::under(names.clone(), &sc.lookup, &sc.scope_copies, &sc.scope_loops)
         };
         let pending = self.admit(&region, arrival.forward, &path);
         let mut inner = base.enter(
@@ -3027,6 +3050,8 @@ impl<'a> Evaluator<'a> {
             inner.host = Some(Rc::new(Host {
                 def_name: inst.def_name.clone(),
                 names: inst.names.clone(),
+                copies: sc.scope_copies.clone(),
+                loops: sc.scope_loops.clone(),
             }));
         }
         let placed = decl.map(|id| {
@@ -3465,6 +3490,7 @@ impl<'a> Evaluator<'a> {
         }
         let report = play.clone().unwrap_or_else(|| Site::new(sc.file(), span));
         dest.push(PendingPatch {
+            written: rest.clone(),
             rest,
             origin_depth: sc.depth,
             order: self.next_order(),
@@ -3597,6 +3623,7 @@ impl<'a> Evaluator<'a> {
             }
             if patch.off || patch.named.is_empty() {
                 out.push(PendingPatch {
+                    written: rest.clone(),
                     rest,
                     origin_depth: sc.depth,
                     order: ord,
@@ -3635,6 +3662,7 @@ impl<'a> Evaluator<'a> {
                 };
                 match self.expr(expr, &dur_scope) {
                     Ok(value) => out.push(PendingPatch {
+                        written: rest.clone(),
                         rest: rest.clone(),
                         origin_depth: sc.depth,
                         order: ord,
@@ -4155,23 +4183,25 @@ impl<'a> Evaluator<'a> {
                 record: rec.borrow().clone(),
                 canvas: None,
             };
-            return self.walk_ref(vec![cur], segs, 1, "self".into(), sc);
+            return self.walk_ref(vec![cur], segs, 1, "self".into(), sc, 0);
         }
         if first == "canvas" {
             let Some(Value::Ref(r)) = self.lookup_ident("canvas", sc) else {
                 unreachable!("canvas is a reference");
             };
-            return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc);
+            return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
-        let cur = self.refs_of(resolved, first)?;
-        self.walk_ref(cur, segs, 1, first.clone(), sc)
+        let (cur, depth) = self.refs_of(resolved, first)?;
+        self.walk_ref(cur, segs, 1, first.clone(), sc, depth)
     }
 
-    fn refs_of(&self, resolved: Resolved, label: &str) -> R<Vec<RefVal>> {
+    fn refs_of(&self, resolved: Resolved, label: &str) -> R<(Vec<RefVal>, usize)> {
         match resolved {
-            Resolved::One(e) => Ok(vec![ref_from(&e, label)]),
-            Resolved::Many(es) => Ok(es.iter().map(|e| ref_from(e, label)).collect()),
+            Resolved::One(e) => Ok((vec![ref_from(&e, label)], 0)),
+            Resolved::Many(es, depth) => {
+                Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
+            }
             Resolved::Undrawn(site) => Err(fail(
                 "E0350",
                 format!(
@@ -4201,8 +4231,8 @@ impl<'a> Evaluator<'a> {
         mut i: usize,
         mut label: String,
         sc: &Scope,
+        mut index_depth: usize,
     ) -> R<Value> {
-        let mut index_depth = 0usize;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i + 1 == segs.len();
