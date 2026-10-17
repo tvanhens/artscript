@@ -49,7 +49,6 @@ jobs:
         run: |
           mkdir -p .claude-review
           # shellcheck disable=SC2016 # $owner and friends are GraphQL variables
-
           gh api graphql --paginate --slurp -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F number="$PR_NUMBER" -f query='
             query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
               repository(owner: $owner, name: $repo) {

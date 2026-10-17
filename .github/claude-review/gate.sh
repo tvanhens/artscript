@@ -22,20 +22,9 @@ if [[ -z "${OUT//[[:space:]]/}" ]]; then
   fail_not_run "the action produced no structured output (skipped or crashed). Rerun with: gh run rerun <run-id> --failed"
 fi
 
-# The schema constrains Claude, but a crashed or skipped action can still hand us anything.
-VALID='type == "object"
-  and (.summary | type == "string")
-  and (.nonblocking_count | type == "number")
-  and (.resolve_thread_ids | type == "array" and all(.[]; type == "string"))
-  and (.blocking | type == "array" and all(.[];
-        type == "object"
-        and (.path | type == "string")
-        and (.line | type == "number")
-        and (.title | type == "string")
-        and (.failure_scenario | type == "string")
-        and (.thread_id == null or (.thread_id | type == "string"))))'
-if ! jq -e "$VALID" >/dev/null 2>&1 <<<"$OUT"; then
-  fail_not_run "the structured output is not valid JSON of the expected shape."
+# The action validates the output against schema.json, so only parseability is in doubt.
+if ! jq -e '.blocking | type == "array"' >/dev/null 2>&1 <<<"$OUT"; then
+  fail_not_run "the structured output is not valid JSON."
 fi
 
 # Workflow-command values need % and newlines escaped, and property values also : and ,.
@@ -51,7 +40,7 @@ while IFS= read -r id; do
     continue
   fi
   opener=$(jq -r --arg id "$id" '[.[] | select(.id == $id)][0].comments[0].author // empty' \
-    "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
+    "$CONTEXT_DIR/threads.json")
   if [[ "$opener" != "$REVIEWER_LOGIN" ]]; then
     echo "::warning::not resolving $id: the reviewer did not open it"
     continue
@@ -66,11 +55,11 @@ done < <(jq -r '.resolve_thread_ids[]' <<<"$OUT")
 
 blocking_count=$(jq '.blocking | length' <<<"$OUT")
 thread_url() {
-  jq -r --arg id "$1" '[.[] | select(.id == $id)][0].comments[0].url // empty' \
-    "$CONTEXT_DIR/threads.json" 2>/dev/null || true
+  jq -r --arg id "$1" '[.[] | select(.id == $id)][0].comments[0].url // empty' "$CONTEXT_DIR/threads.json"
 }
 
 body=$(mktemp)
+errors=()
 {
   echo "<!-- claude-review:sha=$HEAD_SHA -->"
   echo "### 🤖 Claude review of \`${HEAD_SHA:0:7}\`"
@@ -97,6 +86,7 @@ body=$(mktemp)
         echo "- \`$path:$line\` $title"
       fi
       echo "  - $scenario"
+      errors+=("::error file=$(esc_prop "$path"),line=$line::$(esc_data "$title")")
     done
   fi
   echo
@@ -121,7 +111,7 @@ fi
 # so the agent reading the thread sees why its reply did not resolve it.
 while IFS=$'\t' read -r tid scenario; do
   last_author=$(jq -r --arg id "$tid" '[.[] | select(.id == $id)][0].comments[-1].author // empty' \
-    "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
+    "$CONTEXT_DIR/threads.json")
   [[ -z "$last_author" || "$last_author" == "$REVIEWER_LOGIN" ]] && continue
   # shellcheck disable=SC2016 # $id and $body are GraphQL variables
   gh api graphql \
@@ -130,11 +120,6 @@ while IFS=$'\t' read -r tid scenario; do
     || echo "::warning::could not reply on thread $tid"
 done < <(jq -r '.blocking[] | select(.thread_id != null) | [.thread_id, (.failure_scenario | gsub("[\t\n]"; " "))] | @tsv' <<<"$OUT")
 
-for ((i = 0; i < blocking_count; i++)); do
-  path=$(jq -r ".blocking[$i].path" <<<"$OUT")
-  line=$(jq -r ".blocking[$i].line" <<<"$OUT")
-  title=$(jq -r ".blocking[$i].title" <<<"$OUT")
-  echo "::error file=$(esc_prop "$path"),line=$line::$(esc_data "$title")"
-done
+[[ ${#errors[@]} -eq 0 ]] || printf '%s\n' "${errors[@]}"
 
 ((blocking_count == 0))
