@@ -3273,6 +3273,107 @@ fn a_play_guard_sees_the_same_copies_as_the_draw() {
 }
 
 #[test]
+fn a_final_star_lists_every_copy() {
+    let even = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 8 name:a\n    circle 8 name:b\nassert same_size(@row.*)\n",
+    );
+    assert!(paths(&even).contains(&"a.0".to_string()));
+    assert!(paths(&even).contains(&"b.1".to_string()));
+
+    let uneven = run_with(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.*)\n",
+        &[],
+    );
+    assert!(
+        uneven.diagnostics.iter().all(|d| d.code != "E0343"),
+        "{}",
+        show(&uneven.diagnostics)
+    );
+    let d = diag(&uneven, "C0101");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+
+    let indexed = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.0.*)\n",
+    );
+    assert!(paths(&indexed).contains(&"a.1".to_string()));
+}
+
+#[test]
+fn a_def_that_reuses_a_shape_word_is_the_component() {
+    let painted = scene(
+        "@target t.png 40x40\ndef circle\n  rect 8 fill:#ffffff name:child\ncircle name:c\n  .child fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&painted, "c.child")), "#ff0000");
+
+    let hopped = scene(
+        "@target t.png 40x40\ndef wrap\n  circle name:c\ndef circle\n  rect 8 fill:#ffffff name:child\nwrap name:wrap\n  .c.child fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&hopped, "wrap.c.child")), "#ff0000");
+
+    let slotted = scene(
+        "@target t.png 40x40\ndef circle\n  slot hole\ncircle name:c\n  hole:\n    rect 6 fill:#00ff00 name:gem\n",
+    );
+    assert_eq!(fill_hex(node(&slotted, "c.hole.gem")), "#00ff00");
+
+    let through = scene(
+        "@target t.png 40x40\ndef wrap\n  circle name:c\ndef circle\n  slot hole\n    rect 4 fill:#ffffff name:gem\nwrap name:wrap\n  .c.hole.gem fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&through, "wrap.c.hole.gem")), "#ff0000");
+}
+
+#[test]
+fn an_unnamed_call_still_has_self() {
+    let s = scene(
+        "@target t.png 40x40\ndef dot\n  circle 4\n  assert centered(@self in:canvas) tol:1\ndot at:20,20\n",
+    );
+    assert!(
+        paths(&s).iter().any(|p| p.starts_with("dot~")),
+        "{:?}",
+        paths(&s)
+    );
+}
+
+#[test]
+fn an_off_instance_still_checks_a_hop_through_it() {
+    let anim = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.typo at:1,0\ndef hero\n  circle 4 name:eye\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = anim.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&anim.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 8);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(anim.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(anim.scene.as_ref().unwrap())
+    );
+
+    let static_off = run_with(
+        "@target t.png 40x40\ndef wrap\n  hero name:hero\ndef hero\n  circle 4 name:eye\nwrap name:wrap\n  .hero off\n  .hero.typo at:1,0\n",
+        &[],
+    );
+    let hits: Vec<_> = static_off
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0340")
+        .collect();
+    assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 8);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(static_off.scene.as_ref().unwrap())
+            .iter()
+            .all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(static_off.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
 fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
     let ev = run_with(
         "@target t.png 80x80\ndef host\n  circle 4 at:0,0 name:eye\n  slot hole\nhost name:host at:40,40\n  hole:\n    circle 4 at:0,12 name:b\n    assert level(@b @eye) tol:.5\n",

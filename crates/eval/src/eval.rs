@@ -764,10 +764,6 @@ impl<'a> Evaluator<'a> {
                 .fix("move the shared declarations into a third library both can import"));
         }
         let parsed = self.parse(file)?;
-        let mut id_diags = Vec::new();
-        let ids = ModuleIds::build(file, &parsed, &mut id_diags);
-        self.diags.extend(id_diags);
-        self.ids.insert(file.to_string(), Rc::new(ids));
         self.loading.push(file.to_string());
         let module = Rc::new(Module::new(file));
         if let Some(pal) = self.project.manifest.palette.clone()
@@ -789,6 +785,11 @@ impl<'a> Evaluator<'a> {
                 self.report(f, file, item.span(), "");
             }
         }
+        let components = component_names(&module);
+        let mut id_diags = Vec::new();
+        let ids = ModuleIds::build(file, &parsed, &components, &mut id_diags);
+        self.diags.extend(id_diags);
+        self.ids.insert(file.to_string(), Rc::new(ids));
         self.loading.pop();
         self.modules.insert(file.to_string(), module.clone());
         Ok(module)
@@ -1590,6 +1591,9 @@ impl<'a> Evaluator<'a> {
             .iter()
             .any(|p| p.channel.is_none() && p.off)
         {
+            if let Some(comp) = &comp {
+                self.admit_forward(comp, &arrival.forward, &path);
+            }
             return Ok(());
         }
         let patch_stroke = arrival.own.iter().filter(|p| p.channel.is_none()).any(|p| {
@@ -1623,6 +1627,9 @@ impl<'a> Evaluator<'a> {
             (0.0, 0.0)
         };
         if self.land(&mut a, &arrival.own, default_at, frame, sc, &path) {
+            if let Some(comp) = &comp {
+                self.admit_forward(comp, &arrival.forward, &path);
+            }
             return Ok(());
         }
         self.expand_style(&mut a, sc, &path)?;
@@ -1883,6 +1890,18 @@ impl<'a> Evaluator<'a> {
             Value::None => Some(None),
             _ => None,
         }
+    }
+
+    /// A bound component is a call even when its name is also a built-in shape.
+    fn verb_is_call(&self, verb: &str, sc: &Scope) -> bool {
+        let bound = sc
+            .env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == verb)
+            .map(|(_, v)| v.clone())
+            .or_else(|| sc.module.global(verb));
+        matches!(bound, Some(Value::Component(_))) || identity::calls_def(verb)
     }
 
     fn mask(
@@ -2577,28 +2596,40 @@ impl<'a> Evaluator<'a> {
         body_scope.host = None;
         body_scope.checks = checks.clone();
         body_scope.style = sc.style.clone();
-        let placed = decl.map(|id| {
-            let rec = self.place(
+        let placeholder = new_node(
+            path.clone(),
+            origin.clone(),
+            m,
+            NodeKind::Group {
+                isolate: false,
+                children: vec![],
+            },
+        );
+        let rec = match decl {
+            Some(id) => self.place(
                 sc,
                 id,
                 &key,
                 sc.world,
-                Some(new_node(
-                    path.clone(),
-                    origin.clone(),
-                    m,
-                    NodeKind::Group {
-                        isolate: false,
-                        children: vec![],
-                    },
-                )),
+                Some(placeholder),
                 None,
                 at,
                 Some(names.clone()),
-            );
-            *inst.record.borrow_mut() = Some(rec.clone());
-            rec
-        });
+            ),
+            None => Rc::new(RefCell::new(Record {
+                name: String::new(),
+                path: path.clone(),
+                key: key.clone(),
+                parent_world: sc.world,
+                node: Some(placeholder),
+                anchor: None,
+                at,
+                home: None,
+                decl: None,
+                inner: Some(names.clone()),
+            })),
+        };
+        *inst.record.borrow_mut() = Some(rec.clone());
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
         self.report_unlanded(&body_scope);
@@ -2629,9 +2660,7 @@ impl<'a> Evaluator<'a> {
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
-        if let Some(rec) = &placed {
-            rec.borrow_mut().node = Some(node.clone());
-        }
+        rec.borrow_mut().node = Some(node.clone());
         self.run_checks(&checks);
         for fill in &inst.fills {
             if !inst.used_fills.borrow().contains(&fill.name) {
@@ -2690,6 +2719,23 @@ impl<'a> Evaluator<'a> {
             }
         }
         None
+    }
+
+    /// Checks patches that hop through `comp` against that def's names.
+    /// An instance that is off never reaches `instance`, so this runs before that return.
+    fn admit_forward(&mut self, comp: &Component, forward: &[PendingPatch], path: &str) {
+        if forward.is_empty() {
+            return;
+        }
+        let def_ids = self
+            .ids
+            .get(&comp.module)
+            .cloned()
+            .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
+        let region = def_ids
+            .region(comp.span)
+            .unwrap_or_else(|| def_ids.file());
+        let _ = self.admit(&region, forward.to_vec(), path);
     }
 
     fn admit(
@@ -2934,7 +2980,7 @@ impl<'a> Evaluator<'a> {
         if let Some(id) = sc.decl_at(span) {
             self.place(sc, id, &key, sc.world, None, None, (0.0, 0.0), None);
         }
-        if identity::calls_def(verb) {
+        if self.verb_is_call(verb, sc) {
             self.reserve_call_block(draw, sc);
             return;
         }
@@ -3987,8 +4033,10 @@ impl<'a> Evaluator<'a> {
                 if !last {
                     return Err(fail("E0343", "`*` is only a final hop").fix("move `*` to the end"));
                 }
-                let one = self.one_ref(&cur, &label, sc)?;
-                let kids = one.children();
+                if cur.is_empty() {
+                    return Err(missing_part(&label, &[]));
+                }
+                let kids: Vec<RefVal> = cur.iter().flat_map(|r| r.children()).collect();
                 return Ok(Value::List(Rc::new(
                     kids.into_iter().map(|c| Value::Ref(Rc::new(c))).collect(),
                 )));
@@ -4067,6 +4115,16 @@ impl<'a> Evaluator<'a> {
             many => Err(family_error(label, many, &sc.owner)),
         }
     }
+}
+
+fn component_names(module: &Module) -> BTreeSet<String> {
+    module
+        .globals
+        .borrow()
+        .iter()
+        .filter(|(_, v)| matches!(v, Value::Component(_)))
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 fn missing_part(label: &str, names: &[String]) -> Fail {

@@ -493,7 +493,10 @@ fn exclusive(a: &[(Span, bool)], b: &[(Span, bool)]) -> bool {
         .any(|(s, arm)| b.iter().any(|(t, other)| s == t && arm != other))
 }
 
-fn kind_of(verb: &str) -> NameKind {
+fn kind_of(verb: &str, components: &BTreeSet<String>) -> NameKind {
+    if components.contains(verb) {
+        return NameKind::Instance;
+    }
     match verb {
         "anchor" => NameKind::Anchor,
         v if BUILTIN.contains(&v) => NameKind::Draw,
@@ -501,9 +504,13 @@ fn kind_of(verb: &str) -> NameKind {
     }
 }
 
-/// Whether `verb` calls a def rather than naming a built-in.
+/// Whether `verb` is not a built-in draw word.
 pub fn calls_def(verb: &str) -> bool {
     !BUILTIN.contains(&verb)
+}
+
+fn calls_component(verb: &str, components: &BTreeSet<String>) -> bool {
+    components.contains(verb) || calls_def(verb)
 }
 
 struct Declarer<'a> {
@@ -512,6 +519,7 @@ struct Declarer<'a> {
     loops: Vec<Span>,
     arms: Vec<(Span, bool)>,
     parent: Option<DeclId>,
+    components: &'a BTreeSet<String>,
     nested: &'a mut BTreeMap<Span, Rc<Region>>,
     out: &'a mut Vec<Diagnostic>,
 }
@@ -526,6 +534,7 @@ pub fn declare(
     kind: RegionKind,
     label: String,
     stmts: &[&Scene],
+    components: &BTreeSet<String>,
     nested: &mut BTreeMap<Span, Rc<Region>>,
     out: &mut Vec<Diagnostic>,
 ) -> Region {
@@ -535,6 +544,7 @@ pub fn declare(
         loops: Vec::new(),
         arms: Vec::new(),
         parent: None,
+        components,
         nested,
         out,
     };
@@ -594,6 +604,7 @@ impl Declarer<'_> {
             RegionKind::Slot,
             label,
             stmts,
+            self.components,
             self.nested,
             self.out,
         );
@@ -606,7 +617,7 @@ impl Declarer<'_> {
         }
         let id = self
             .name_of(d)
-            .map(|name| self.add(name, span, kind_of(&d.verb)));
+            .map(|name| self.add(name, span, kind_of(&d.verb, self.components)));
         if id.is_none() {
             let site = Site {
                 file: self.file.clone(),
@@ -614,7 +625,7 @@ impl Declarer<'_> {
             };
             self.region.anon.push((d.verb.as_str().into(), site));
         }
-        let call = calls_def(&d.verb);
+        let call = calls_component(&d.verb, self.components);
         let looped = matches!(d.verb.as_str(), "repeat" | "grid");
         let saved = self.parent;
         if id.is_some() {
@@ -823,7 +834,12 @@ pub struct ModuleIds {
 }
 
 impl ModuleIds {
-    pub fn build(path: &str, parsed: &File, out: &mut Vec<Diagnostic>) -> ModuleIds {
+    pub fn build(
+        path: &str,
+        parsed: &File,
+        components: &BTreeSet<String>,
+        out: &mut Vec<Diagnostic>,
+    ) -> ModuleIds {
         let file: Rc<str> = path.into();
         let mut regions = BTreeMap::new();
         let mut anon = BTreeMap::new();
@@ -833,6 +849,7 @@ impl ModuleIds {
             RegionKind::File,
             "this file".into(),
             &top,
+            components,
             &mut regions,
             out,
         );
@@ -845,6 +862,7 @@ impl ModuleIds {
                     RegionKind::Def,
                     format!("`{name}`"),
                     &stmts,
+                    components,
                     &mut regions,
                     out,
                 );
@@ -1625,12 +1643,14 @@ pub fn host_import(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     fn ids(src: &str) -> (ModuleIds, Vec<Diagnostic>) {
         let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut out = Vec::new();
-        let ids = ModuleIds::build("art/t.art", &parsed, &mut out);
+        let ids = ModuleIds::build("art/t.art", &parsed, &BTreeSet::new(), &mut out);
         (ids, out)
     }
 
@@ -1684,6 +1704,28 @@ mod tests {
         assert!(ids(&src).1.is_empty());
         let src = format!("{TARGET}if 1\n  circle 4 name:lips\nif 0\n  rect 4x4 name:lips\n");
         assert_eq!(codes(&ids(&src).1), [("E0333".into(), 5)]);
+    }
+
+    #[test]
+    fn a_shape_word_in_the_component_set_opens_a_scope() {
+        let src = "@target t.png 40x40\ndef circle\n  slot hole\n    rect 4 name:gem\ncircle name:c\n  hole:\n    rect 4 name:gem\n";
+        let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut bare_out = Vec::new();
+        let bare = ModuleIds::build("art/t.art", &parsed, &BTreeSet::new(), &mut bare_out);
+        let bare_id = bare.file().lookup("c")[0];
+        assert!(!bare.file().decl(bare_id).kind.opens_scope());
+        assert!(bare.region(Span { line: 6, col: 3 }).is_none());
+
+        let mut out = Vec::new();
+        let mut components = BTreeSet::new();
+        components.insert("circle".to_string());
+        let ids = ModuleIds::build("art/t.art", &parsed, &components, &mut out);
+        assert!(out.is_empty(), "{out:?}");
+        let id = ids.file().lookup("c")[0];
+        assert!(ids.file().decl(id).kind.opens_scope());
+        let fill = ids.region(Span { line: 6, col: 3 }).expect("fill region");
+        assert_eq!(fill.kind, RegionKind::Slot);
+        assert_eq!(fill.names(), [&name("gem")]);
     }
 
     #[test]
