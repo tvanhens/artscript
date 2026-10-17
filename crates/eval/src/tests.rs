@@ -3374,6 +3374,98 @@ fn an_off_instance_still_checks_a_hop_through_it() {
 }
 
 #[test]
+fn a_hidden_path_checks_every_hop() {
+    let nested = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.head.typo at:1,0\ndef head\n  circle 4 name:eye\ndef hero\n  head name:head\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = nested.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&nested.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 10);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(nested.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(nested.scene.as_ref().unwrap())
+    );
+
+    let kept = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.head.eye at:10,0\ndef head\n  circle 4 name:eye\ndef hero\n  head name:head\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    assert!(
+        kept.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&kept.diagnostics)
+    );
+    assert!(
+        paths(kept.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(kept.scene.as_ref().unwrap())
+    );
+
+    let through_slot = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.hole.typo at:1,0\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = through_slot.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&through_slot.diagnostics));
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+}
+
+#[test]
+fn an_off_slot_still_checks_a_hop_through_it() {
+    let static_off = run_with(
+        "@target t.png 40x40\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\n  .hole off\n  .hole.typo at:1,0\n",
+        &[],
+    );
+    let hits: Vec<_> = static_off.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 7);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(static_off.scene.as_ref().unwrap()).iter().all(|p| !p.contains("gem")),
+        "{:?}",
+        paths(static_off.scene.as_ref().unwrap())
+    );
+
+    let anim = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero.hole off\n  .hero.hole.typo at:1,0\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = anim.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&anim.diagnostics));
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(anim.scene.as_ref().unwrap()).iter().all(|p| !p.contains("gem")),
+        "{:?}",
+        paths(anim.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn an_empty_slot_does_not_borrow_a_file_name() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 8 fill:#ffffff name:foo\ndef hero\n  slot hole\nhero name:hero\n  .hole.foo fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 6);
+    assert!(hits[0].message.contains("foo"), "{}", hits[0]);
+    assert_eq!(fill_hex(node(ev.scene.as_ref().unwrap(), "foo")), "#ffffff");
+
+    let filled = scene(
+        "@target t.png 40x40\ndef hero\n  slot hole\nhero name:hero\n  hole:\n    rect 6 fill:#ffffff name:gem\n  .hole.gem fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&filled, "hero.hole.gem")), "#ff0000");
+}
+
+#[test]
 fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
     let ev = run_with(
         "@target t.png 80x80\ndef host\n  circle 4 at:0,0 name:eye\n  slot hole\nhost name:host at:40,40\n  hole:\n    circle 4 at:0,12 name:b\n    assert level(@b @eye) tol:.5\n",

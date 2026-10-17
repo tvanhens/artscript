@@ -1592,7 +1592,7 @@ impl<'a> Evaluator<'a> {
             .any(|p| p.channel.is_none() && p.off)
         {
             if let Some(comp) = &comp {
-                self.admit_forward(comp, &arrival.forward, &path);
+                self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
             return Ok(());
         }
@@ -1628,7 +1628,7 @@ impl<'a> Evaluator<'a> {
         };
         if self.land(&mut a, &arrival.own, default_at, frame, sc, &path) {
             if let Some(comp) = &comp {
-                self.admit_forward(comp, &arrival.forward, &path);
+                self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
             return Ok(());
         }
@@ -2721,21 +2721,189 @@ impl<'a> Evaluator<'a> {
         None
     }
 
-    /// Checks patches that hop through `comp` against that def's names.
-    /// An instance that is off never reaches `instance`, so this runs before that return.
-    fn admit_forward(&mut self, comp: &Component, forward: &[PendingPatch], path: &str) {
+    /// Checks patches that hop through `comp` against that def's names, and keeps
+    /// checking the tail after each instance or slot. An off instance never reaches
+    /// `instance`, so a one-hop check would accept `.hero.head.typo`.
+    fn admit_forward(
+        &mut self,
+        comp: &Component,
+        forward: &[PendingPatch],
+        path: &str,
+        call: &DrawBody,
+        caller_ids: &Rc<ModuleIds>,
+    ) {
         if forward.is_empty() {
             return;
         }
-        let def_ids = self
+        let ids = self
             .ids
             .get(&comp.module)
             .cloned()
             .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
-        let region = def_ids
+        let region = ids
             .region(comp.span)
-            .unwrap_or_else(|| def_ids.file());
-        let _ = self.admit(&region, forward.to_vec(), path);
+            .unwrap_or_else(|| ModuleIds::blank().file());
+        let scenes: Vec<Scene> = comp.body.iter().filter_map(DefItem::scene).cloned().collect();
+        let scope = PatchScope {
+            ids,
+            region,
+            scenes,
+            fills: fills_in(call, caller_ids),
+        };
+        self.admit_scope(&scope, forward.to_vec(), path);
+    }
+
+    fn admit_scope(&mut self, scope: &PatchScope, patches: Vec<PendingPatch>, path: &str) {
+        let pending = self.admit(&scope.region, patches, path);
+        let kept: Vec<PendingPatch> = pending.items().to_vec();
+        for patch in kept {
+            self.follow_scope(scope, &patch, path);
+        }
+    }
+
+    /// Follows a patch that still has hops after a scope-opening name.
+    /// An arm whose component is not known statically is left unchecked.
+    /// Exclusive arms report E0340 only when every known arm rejects the tail.
+    fn follow_scope(&mut self, scope: &PatchScope, patch: &PendingPatch, path: &str) {
+        let Some(identity::Hop::Name(name)) = patch.rest.first() else {
+            return;
+        };
+        let decl_ids: Vec<DeclId> = scope.region.lookup(name.as_str()).to_vec();
+        let mut children = Vec::new();
+        let mut unresolved = false;
+        for id in decl_ids {
+            let decl = scope.region.decl(id);
+            let tail = tail_after(decl, &patch.rest);
+            if tail.is_empty() || !decl.kind.opens_scope() {
+                continue;
+            }
+            match self.child_scope(scope, decl) {
+                Some(child) => children.push((child, tail)),
+                None => unresolved = true,
+            }
+        }
+        if unresolved || children.is_empty() {
+            return;
+        }
+        if children.len() == 1 {
+            let (child, tail) = children.pop().unwrap();
+            let mut next = patch.clone();
+            next.rest = tail;
+            self.admit_scope(&child, vec![next], path);
+            return;
+        }
+        let saved_diags = self.diags.clone();
+        let saved_reported = self.reported.clone();
+        let mut failure = None;
+        for (child, tail) in children {
+            self.diags.clone_from(&saved_diags);
+            self.reported.clone_from(&saved_reported);
+            let before = self.diags.len();
+            let mut next = patch.clone();
+            next.rest = tail;
+            self.admit_scope(&child, vec![next], path);
+            if self.diags.len() == before {
+                return;
+            }
+            if failure.is_none() {
+                failure = Some((self.diags.clone(), self.reported.clone()));
+            }
+        }
+        if let Some((diags, reported)) = failure {
+            self.diags = diags;
+            self.reported = reported;
+        }
+    }
+
+    fn child_scope(&self, scope: &PatchScope, decl: &identity::NameDecl) -> Option<PatchScope> {
+        match decl.kind {
+            identity::NameKind::Slot => {
+                if let Some(fill) = scope.fills.iter().find(|f| f.name == decl.name.as_str()) {
+                    let region = fill
+                        .ids
+                        .region(fill.span)
+                        .unwrap_or_else(|| ModuleIds::blank().file());
+                    return Some(PatchScope {
+                        ids: fill.ids.clone(),
+                        region,
+                        scenes: fill.body.clone(),
+                        fills: Vec::new(),
+                    });
+                }
+                let ids = self
+                    .ids
+                    .get(&*decl.site.file)
+                    .cloned()
+                    .unwrap_or_else(|| scope.ids.clone());
+                let region = ids
+                    .region(decl.site.span)
+                    .unwrap_or_else(|| ModuleIds::blank().file());
+                let scenes = slot_fallback(&scope.scenes, decl.site.span);
+                Some(PatchScope {
+                    ids,
+                    region,
+                    scenes,
+                    fills: Vec::new(),
+                })
+            }
+            identity::NameKind::Instance => {
+                let verb = decl.call.as_deref()?;
+                let module = self.modules.get(&*decl.site.file)?;
+                let comp = match module.global(verb)? {
+                    Value::Component(c) => c,
+                    _ => return None,
+                };
+                let ids = self.ids.get(&comp.module)?.clone();
+                let region = ids
+                    .region(comp.span)
+                    .unwrap_or_else(|| ModuleIds::blank().file());
+                let scenes: Vec<Scene> =
+                    comp.body.iter().filter_map(DefItem::scene).cloned().collect();
+                let fills = find_draw(&scope.scenes, decl.site.span)
+                    .map(|d| fills_in(&d.body, &scope.ids))
+                    .unwrap_or_default();
+                Some(PatchScope {
+                    ids,
+                    region,
+                    scenes,
+                    fills,
+                })
+            }
+            identity::NameKind::Draw | identity::NameKind::Anchor => None,
+        }
+    }
+
+    /// The region a hidden slot would have drawn, fill first, then the fallback.
+    fn slot_scope(
+        &self,
+        inst: &Instance,
+        name: &str,
+        span: Span,
+        fallback: &[Scene],
+        sc: &Scope,
+    ) -> PatchScope {
+        if let Some(fill) = inst.fills.iter().find(|f| f.name == name) {
+            let ids = fill.scope.ids.clone();
+            let region = ids
+                .region(fill.span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
+            return PatchScope {
+                ids,
+                region,
+                scenes: fill.body.clone(),
+                fills: Vec::new(),
+            };
+        }
+        let ids = sc.ids.clone();
+        let region = ids
+            .region(span)
+            .unwrap_or_else(|| ModuleIds::blank().file());
+        PatchScope {
+            ids,
+            region,
+            scenes: fallback.to_vec(),
+            fills: Vec::new(),
+        }
     }
 
     fn admit(
@@ -2802,11 +2970,16 @@ impl<'a> Evaluator<'a> {
             .any(|p| p.channel.is_none() && p.off)
         {
             mark_used(&inst);
+            let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
+            self.admit_scope(&scope, arrival.forward.clone(), &path);
             return Ok(());
         }
         self.seed_node(sc.file(), &key);
         let mut a = self.eval_args(&[], named, sc, 0)?;
         if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path) {
+            mark_used(&inst);
+            let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
+            self.admit_scope(&scope, arrival.forward.clone(), &path);
             return Ok(());
         }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
@@ -2822,11 +2995,15 @@ impl<'a> Evaluator<'a> {
         let (ids, region, base) = if let Some((_, scope, span)) = &filled {
             mark_used(&inst);
             let ids = scope.ids.clone();
-            let region = ids.region(*span).unwrap_or_else(|| ids.file());
+            let region = ids
+                .region(*span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
             (ids, region, scope.clone())
         } else {
             let ids = sc.ids.clone();
-            let region = ids.region(st.span).unwrap_or_else(|| ids.file());
+            let region = ids
+                .region(st.span)
+                .unwrap_or_else(|| ModuleIds::blank().file());
             (ids, region, sc.clone())
         };
         let names = Rc::new(RefCell::new(Names::new(region.clone())));
@@ -4115,6 +4292,133 @@ impl<'a> Evaluator<'a> {
             many => Err(family_error(label, many, &sc.owner)),
         }
     }
+}
+
+struct FillHop {
+    name: String,
+    span: Span,
+    ids: Rc<ModuleIds>,
+    body: Vec<Scene>,
+}
+
+struct PatchScope {
+    ids: Rc<ModuleIds>,
+    region: Rc<identity::Region>,
+    scenes: Vec<Scene>,
+    fills: Vec<FillHop>,
+}
+
+fn fills_in(body: &DrawBody, ids: &Rc<ModuleIds>) -> Vec<FillHop> {
+    body.items()
+        .iter()
+        .filter_map(|item| {
+            let DrawItem::SlotFill(fill) = item else {
+                return None;
+            };
+            Some(FillHop {
+                name: fill.name.clone(),
+                span: fill.span,
+                ids: ids.clone(),
+                body: fill.body.clone(),
+            })
+        })
+        .collect()
+}
+
+fn tail_after(decl: &identity::NameDecl, rest: &[identity::Hop]) -> Vec<identity::Hop> {
+    let mut i = 1;
+    let mut seen = 0;
+    while i < rest.len() && matches!(rest[i], identity::Hop::Index(_)) && seen < decl.loops.len() {
+        seen += 1;
+        i += 1;
+    }
+    rest[i..].to_vec()
+}
+
+fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
+    for scene in scenes {
+        if scene.span == span {
+            return match &scene.kind {
+                SceneKind::Draw(draw) => Some(draw),
+                _ => None,
+            };
+        }
+        match &scene.kind {
+            SceneKind::If { then, otherwise, .. } => {
+                if let Some(draw) = find_draw(then, span).or_else(|| find_draw(otherwise, span)) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Each { body, .. } | SceneKind::Slot { fallback: body, .. } => {
+                if let Some(draw) = find_draw(body, span) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Draw(draw) => {
+                for item in draw.body.items() {
+                    let nested = match item {
+                        DrawItem::Scene(child) => std::slice::from_ref(child),
+                        DrawItem::SlotFill(fill) => fill.body.as_slice(),
+                        DrawItem::Mask {
+                            mask: ast::Mask::Block(body),
+                            ..
+                        } => body.as_slice(),
+                        _ => continue,
+                    };
+                    if let Some(draw) = find_draw(nested, span) {
+                        return Some(draw);
+                    }
+                }
+            }
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+        }
+    }
+    None
+}
+
+fn slot_fallback(scenes: &[Scene], span: Span) -> Vec<Scene> {
+    scenes
+        .iter()
+        .find_map(|scene| slot_fallback_one(scene, span))
+        .unwrap_or_default()
+}
+
+fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
+    if scene.span == span {
+        return match &scene.kind {
+            SceneKind::Slot { fallback, .. } => Some(fallback.clone()),
+            _ => Some(Vec::new()),
+        };
+    }
+    match &scene.kind {
+        SceneKind::If { then, otherwise, .. } => slot_fallback_in(then, span)
+            .or_else(|| slot_fallback_in(otherwise, span)),
+        SceneKind::Each { body, .. } | SceneKind::Slot { fallback: body, .. } => {
+            slot_fallback_in(body, span)
+        }
+        SceneKind::Draw(draw) => {
+            for item in draw.body.items() {
+                let nested = match item {
+                    DrawItem::Scene(child) => std::slice::from_ref(child),
+                    DrawItem::SlotFill(fill) => fill.body.as_slice(),
+                    DrawItem::Mask {
+                        mask: ast::Mask::Block(body),
+                        ..
+                    } => body.as_slice(),
+                    _ => continue,
+                };
+                if let Some(found) = slot_fallback_in(nested, span) {
+                    return Some(found);
+                }
+            }
+            None
+        }
+        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
+    }
+}
+
+fn slot_fallback_in(scenes: &[Scene], span: Span) -> Option<Vec<Scene>> {
+    scenes.iter().find_map(|scene| slot_fallback_one(scene, span))
 }
 
 fn component_names(module: &Module) -> BTreeSet<String> {

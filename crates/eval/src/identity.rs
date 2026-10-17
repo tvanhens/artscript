@@ -396,6 +396,9 @@ pub struct NameDecl {
     arms: Vec<(Span, bool)>,
     /// The nearest named draw above this one in the region. A final `*` matches on it.
     pub tree_parent: Option<DeclId>,
+    /// The component verb, when this decl is a call. A patch that hops through it
+    /// while the call is off uses this to find the def's region.
+    pub call: Option<Rc<str>>,
 }
 
 /// One naming scope's static shape: every name it declares at any depth, in source order.
@@ -585,13 +588,11 @@ impl Declarer<'_> {
                     self.two_names(n.span, "slot", name);
                 }
                 if let Some(n) = Name::parse(name) {
-                    self.add(n, s.span, NameKind::Slot);
+                    self.add(n, s.span, NameKind::Slot, None);
                 }
-                if !fallback.is_empty() {
-                    let stmts: Vec<&Scene> = fallback.iter().collect();
-                    let label = format!("the `{name}` fallback");
-                    self.sub(s.span, label, &stmts);
-                }
+                let stmts: Vec<&Scene> = fallback.iter().collect();
+                let label = format!("the `{name}` fallback");
+                self.sub(s.span, label, &stmts);
             }
             SceneKind::Draw(d) => self.draw(s.span, d),
             SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
@@ -615,9 +616,11 @@ impl Declarer<'_> {
         if d.verb == "canvas" {
             return;
         }
+        let kind = kind_of(&d.verb, self.components);
+        let target = matches!(kind, NameKind::Instance).then(|| Rc::<str>::from(d.verb.as_str()));
         let id = self
             .name_of(d)
-            .map(|name| self.add(name, span, kind_of(&d.verb, self.components)));
+            .map(|name| self.add(name, span, kind, target.clone()));
         if id.is_none() {
             let site = Site {
                 file: self.file.clone(),
@@ -707,7 +710,7 @@ impl Declarer<'_> {
         );
     }
 
-    fn add(&mut self, name: Name, span: Span, kind: NameKind) -> DeclId {
+    fn add(&mut self, name: Name, span: Span, kind: NameKind, call: Option<Rc<str>>) -> DeclId {
         let site = Site {
             file: self.file.clone(),
             span,
@@ -739,6 +742,7 @@ impl Declarer<'_> {
             loops: self.loops.clone(),
             arms: self.arms.clone(),
             tree_parent: self.parent,
+            call,
         });
         self.region.by_name.entry(name).or_default().push(id);
         self.region.by_span.insert(span, id);
@@ -1726,6 +1730,18 @@ mod tests {
         let fill = ids.region(Span { line: 6, col: 3 }).expect("fill region");
         assert_eq!(fill.kind, RegionKind::Slot);
         assert_eq!(fill.names(), [&name("gem")]);
+    }
+
+    #[test]
+    fn an_empty_slot_fallback_is_an_empty_region() {
+        let src = format!("{TARGET}def box\n  slot hole\nbox name:box\n");
+        let (ids, ds) = ids(&src);
+        assert!(ds.is_empty(), "{ds:?}");
+        let region = ids
+            .region(Span { line: 3, col: 3 })
+            .expect("empty fallback region");
+        assert!(region.is_empty());
+        assert_eq!(region.kind, RegionKind::Slot);
     }
 
     #[test]
