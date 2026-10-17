@@ -1575,8 +1575,6 @@ impl<'a> Parser<'a> {
                 "only a name can be called",
                 "call a name, or add a space before `(` to group",
             );
-            self.bump();
-            self.skip_until(&Tok::RParen);
             return func;
         };
         self.bump();
@@ -1807,15 +1805,6 @@ impl<'a> Parser<'a> {
             self.fail_here("unclosed `(`", "close the group with `)`");
         }
         expr
-    }
-
-    fn skip_until(&mut self, kind: &Tok) {
-        while !self.eol() && !self.same_kind(kind) {
-            self.ti += 1;
-        }
-        if self.same_kind(kind) {
-            self.ti += 1;
-        }
     }
 
     fn slot_name(&mut self) -> String {
@@ -2056,10 +2045,6 @@ impl<'a> Parser<'a> {
     fn at_kw(&self, kw: Word) -> bool {
         self.cur()
             .is_some_and(|t| matches!(t.kind, Tok::Kw(k) if k == kw))
-    }
-
-    fn same_kind(&self, kind: &Tok) -> bool {
-        self.cur().is_some_and(|t| tok_eq(&t.kind, kind))
     }
 
     fn eat(&mut self, kind: &Tok) -> bool {
