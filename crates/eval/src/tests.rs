@@ -2487,7 +2487,10 @@ fn a_duration_error_is_reported_on_the_anim() {
         .unwrap_or_else(|| panic!("no error in {}", show(&ev.diagnostics)));
     assert_eq!(d.file, "lib/motion.art", "{d}");
     assert_eq!(d.span.line, 1, "{d}");
-    assert!(d.notes.iter().any(|n| n.contains("played at art/t.art:4")), "{d}");
+    assert!(
+        d.notes.iter().any(|n| n.contains("played at art/t.art:4")),
+        "{d}"
+    );
 }
 
 #[test]
@@ -2517,13 +2520,61 @@ fn an_anim_duration_rand_ignores_a_toggling_let() {
 }
 
 #[test]
+fn a_path_only_anim_patch_that_matches_nothing_is_e0340() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .missing\ncircle 4 name:c\nplay idle\n",
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().any(|d| d.code == "E0340"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    let hit = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .c\ncircle 4 name:c\nplay idle\n",
+        &[],
+    );
+    assert!(hit.diagnostics.is_empty(), "{}", show(&hit.diagnostics));
+}
+
+#[test]
+fn an_animated_style_error_is_reported_on_the_anim() {
+    let ev = run_with(
+        "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
+        &[("lib/motion.art", "anim idle dur:1s\n  .c style:blue\n")],
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.code.starts_with('E'))
+        .unwrap_or_else(|| panic!("no error in {}", show(&ev.diagnostics)));
+    assert_eq!(d.file, "lib/motion.art", "{d}");
+    assert_eq!(d.span.line, 2, "{d}");
+}
+
+#[test]
+fn a_boolean_key_position_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 4 at:key(0,0 10,0 dur:1s at:[false true]) name:c\n",
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().any(|d| d.code == "E0320"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn a_direct_instance_let_stays_in_the_call() {
     let ev = run_with(
         "@target t.png 40x40\ndef hero size:40x40\n  circle 4 name:eye\nhero\n  let delay = 1\ncircle 4 at:delay,0 name:x\n",
         &[],
     );
     assert!(
-        ev.diagnostics.iter().any(|d| d.code.starts_with('E') && d.span.line == 6),
+        ev.diagnostics
+            .iter()
+            .any(|d| d.code.starts_with('E') && d.span.line == 6),
         "{}",
         show(&ev.diagnostics)
     );

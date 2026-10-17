@@ -1272,29 +1272,33 @@ impl<'a> Evaluator<'a> {
         let Some(sname) = a.word("style") else {
             return Ok(());
         };
-        let home = self
-            .style_home(path, &sname)
+        let site = self.style_site(path, &sname);
+        let home = site
+            .as_ref()
+            .and_then(|(file, _, _)| self.modules.get(file).cloned())
             .unwrap_or_else(|| sc.module.clone());
-        let mut styled = self.style_named(&sname, &home)?;
+        let mut styled = match (self.style_named(&sname, &home), site) {
+            (Ok(styled), _) => styled,
+            (Err(f), Some((file, span, anim))) => {
+                self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
+                return Ok(());
+            }
+            (Err(f), None) => return Err(f),
+        };
         styled.append(&mut a.named);
         a.named = styled;
         Ok(())
     }
 
-    fn style_home(&self, path: &str, word: &str) -> Option<Rc<Module>> {
-        let file = self
-            .channels
-            .iter()
-            .rev()
-            .find(|c| {
-                c.live
-                    && c.key == "style"
-                    && c.value.word() == Some(word)
-                    && path_match(path, &c.owner, &c.pattern)
-            })?
-            .patch_file
-            .clone();
-        self.modules.get(&file).cloned()
+    /// The anim patch that wrote this `style:` word, as its file, key span, and anim name.
+    fn style_site(&self, path: &str, word: &str) -> Option<(String, Span, String)> {
+        let c = self.channels.iter().rev().find(|c| {
+            c.live
+                && c.key == "style"
+                && c.value.word() == Some(word)
+                && path_match(path, &c.owner, &c.pattern)
+        })?;
+        Some((c.patch_file.clone(), c.patch_span, c.anim.clone()))
     }
 
     fn transform(
@@ -3135,15 +3139,16 @@ impl<'a> Evaluator<'a> {
         let file = sc.file().to_string();
         for patch in &anim.body {
             self.seed_at(format!("{}\0{owner}\0{}", anim.module, patch.span.line));
-            if patch.off {
+            if patch.off || patch.named.is_empty() {
+                // A path-only patch applies nothing, so it is never live and only records a match.
                 self.push_channel(Channel {
                     pattern: patch.path.clone(),
                     owner: owner.to_string(),
                     key: String::new(),
                     absolute: true,
                     value: Value::None,
-                    off: true,
-                    live,
+                    off: patch.off,
+                    live: live && patch.off,
                     anim: name.to_string(),
                     span,
                     file: file.clone(),
@@ -3255,9 +3260,9 @@ impl<'a> Evaluator<'a> {
                 })?;
                 items
                     .iter()
-                    .map(|x| {
-                        x.num()
-                            .ok_or_else(|| fail("E0320", "`at:` values are numbers"))
+                    .map(|x| match x {
+                        Value::Num(n) => Ok(*n),
+                        _ => Err(fail("E0320", "`at:` values are numbers")),
                     })
                     .collect::<R<Vec<_>>>()?
             }
