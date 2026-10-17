@@ -215,8 +215,25 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
     let compile_error = diagnostics
         .iter()
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
-    if let (Some(scene), false) = (&ev.scene, compile_error) {
+    if let (Some(scene), false) = (ev.scene, compile_error) {
+        let mut scenes = vec![(job.bake_scale, scene)];
         for out in &job.outputs {
+            if out.format == Format::Png && scenes.iter().all(|(s, _)| *s != out.scale) {
+                let at = TargetJob {
+                    bake_scale: out.scale,
+                    ..job.clone()
+                };
+                scenes.extend(evaluate(project, &at).scene.map(|sc| (out.scale, sc)));
+            }
+        }
+        for out in &job.outputs {
+            let sample = match out.format {
+                Format::Png => out.scale,
+                Format::Svg | Format::Gif => job.bake_scale,
+            };
+            let Some((_, scene)) = scenes.iter().find(|(s, _)| *s == sample) else {
+                continue;
+            };
             let bytes = match out.format {
                 Format::Png => artscript_render::render_png(scene, out.scale, backend),
                 Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale, backend)

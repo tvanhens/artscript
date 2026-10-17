@@ -189,7 +189,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - `stroke:w` alone uses `line(fill)` (or `line(#8a8a8a)`).
   - `cap:` and `join:` override, and `dash:4,2` dashes.
 - **Tapered ink.** A stroke whose width is a list, or a stroke with `taper:` set, becomes a filled outline (`Shape.fill = stroke paint`, no stroke). Use the `brush` algorithm from chibi `paths.py`:
-  1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the target's highest `scale:`, so `@2x` stays as smooth as `scale:1`. A GIF uses scale 1 for that step, including when `scale:` or the manifest lists a higher number. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
+  1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the output's own scale for a PNG, so `name.png` has the same bytes with or without `@2x`, and `@2x` stays as smooth as `scale:1`. An SVG uses the target's highest `scale:`. A GIF uses scale 1, including when `scale:` or the manifest lists a higher number. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
   2. Interpolate the per-point widths by chord fraction.
   3. Taper each end with the floor `.12` and ease `sin(x*pi/2)^.8`.
   4. Add round caps.
