@@ -404,7 +404,6 @@ pub struct NameDecl {
 /// One naming scope's static shape: every name it declares at any depth, in source order.
 #[derive(Debug)]
 pub struct Region {
-    #[allow(dead_code)]
     pub kind: RegionKind,
     /// `this file`, `` `eye` ``, or `` the `form:` fill ``, for messages.
     pub label: String,
@@ -457,6 +456,26 @@ impl Region {
             }
         }
         out
+    }
+
+    /// A `_` name in a def body or slot content is private to it. The entry file has no caller.
+    fn is_private(&self, name: &str) -> bool {
+        self.kind != RegionKind::File && name.starts_with('_')
+    }
+
+    /// The E0340 note that lists the names a patch can reach.
+    fn names_note(&self) -> String {
+        let names: Vec<String> = self
+            .names()
+            .into_iter()
+            .filter(|n| !self.is_private(n.as_str()))
+            .map(|n| n.to_string())
+            .collect();
+        if names.is_empty() {
+            "names: (none)".into()
+        } else {
+            format!("names: {}", names.join(", "))
+        }
     }
 
     /// The first unnamed statement whose verb `seg` spells, alone or with a count after it.
@@ -1411,6 +1430,9 @@ impl Pending {
         let mut own = Vec::new();
         let mut forward = Vec::new();
         for patch in &self.items {
+            if matches!(patch.rest.first(), Some(Hop::Star)) && region.is_private(d.name.as_str()) {
+                continue;
+            }
             let Some(rest) = take(patch, &d.name, d.tree_parent, &d.loops, copies) else {
                 continue;
             };
@@ -1497,22 +1519,14 @@ fn validate(
                     "move `*` to the end".into(),
                 );
             }
-            if region.decls.iter().any(|d| d.tree_parent.is_none()) {
+            if region
+                .decls
+                .iter()
+                .any(|d| d.tree_parent.is_none() && !region.is_private(d.name.as_str()))
+            {
                 return true;
             }
-            let names = region
-                .names()
-                .iter()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>();
-            let notes = vec![format!(
-                "names: {}",
-                if names.is_empty() {
-                    "(none)".into()
-                } else {
-                    names.join(", ")
-                }
-            )];
+            let notes = vec![region.names_note()];
             let msg = match &patch.anim {
                 Some(anim) => format!("`{anim}` patch `.{shown}` matches nothing"),
                 None => format!("patch `.{shown}` matches nothing in {}", region.label),
@@ -1542,20 +1556,8 @@ fn validate(
                         format!("add name: at {}:{}", site.file, site.span.line),
                     )
                 } else {
-                    let names = region
-                        .names()
-                        .iter()
-                        .map(|n| n.to_string())
-                        .collect::<Vec<_>>();
                     (
-                        vec![format!(
-                            "names: {}",
-                            if names.is_empty() {
-                                "(none)".into()
-                            } else {
-                                names.join(", ")
-                            }
-                        )],
+                        vec![region.names_note()],
                         "use one of the listed names".into(),
                     )
                 };
@@ -1564,6 +1566,24 @@ fn validate(
                     None => format!("patch `.{shown}` matches nothing in {}", region.label),
                 };
                 return fail(msg, notes, fix);
+            }
+            if region.is_private(name.as_str()) {
+                let notes = vec![region.names_note()];
+                let msg = match &patch.anim {
+                    Some(anim) => format!(
+                        "`{anim}` patch `.{shown}` names `{name}`, which is private to {}",
+                        region.label
+                    ),
+                    None => format!(
+                        "patch `.{shown}` names `{name}`, which is private to {}",
+                        region.label
+                    ),
+                };
+                return fail(
+                    msg,
+                    notes,
+                    format!("drop the `_` from `{name}` in {} to make it public", region.label),
+                );
             }
             let loops = ids
                 .iter()
