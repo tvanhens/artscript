@@ -22,14 +22,13 @@ pub(crate) fn format_file_with_comments(
     };
     for d in &file.directives {
         let mut parts = vec![format!("@{}", d.name)];
+        let args = d.args.iter().map(fmt_expr);
+        let named = d.named.iter().filter(|n| n.key != "clip").map(fmt_named);
         if let Some(path) = &d.path {
             parts.push(path.clone());
-        }
-        for arg in &d.args {
-            parts.push(fmt_expr(arg));
-        }
-        for named in d.named.iter().filter(|n| n.key != "clip") {
-            parts.push(fmt_named(named));
+            parts.extend(args.chain(named));
+        } else {
+            parts.extend(named.chain(args));
         }
         if !d.each.is_empty() {
             parts.push("each".into());
