@@ -41,13 +41,19 @@ impl std::str::FromStr for BackendChoice {
 }
 
 #[derive(serde::Deserialize)]
-struct BuildDoc {
+struct SpannedDoc {
     build: Option<BuildSection>,
+    defaults: Option<DefaultsSection>,
 }
 
 #[derive(serde::Deserialize)]
 struct BuildSection {
     backend: Option<toml::Spanned<toml::Value>>,
+}
+
+#[derive(serde::Deserialize)]
+struct DefaultsSection {
+    profile: Option<toml::Spanned<toml::Value>>,
 }
 
 fn span_at(src: &str, offset: usize) -> Span {
@@ -109,7 +115,8 @@ impl Manifest {
             };
             lint.insert(k, level);
         }
-        let backend = match toml::from_str::<BuildDoc>(src).ok().and_then(|d| d.build?.backend) {
+        let spanned = toml::from_str::<SpannedDoc>(src).ok();
+        let backend = match spanned.as_ref().and_then(|d| d.build.as_ref()?.backend.as_ref()) {
             None => BackendChoice::default(),
             Some(v) => v
                 .get_ref()
@@ -118,6 +125,18 @@ impl Manifest {
                 .and_then(str::parse)
                 .map_err(|e| bad_at(span_at(src, v.span().start), format!("[build] {e}")))?,
         };
+        let profile = match spanned.as_ref().and_then(|d| d.defaults.as_ref()?.profile.as_ref()) {
+            None => "auto".to_string(),
+            Some(v) => match v.get_ref().as_str() {
+                Some(p @ ("vector" | "svg" | "raster" | "auto")) => p.to_string(),
+                _ => {
+                    return Err(bad_at(
+                        span_at(src, v.span().start),
+                        format!("[defaults] profile {} is not one of vector, svg, raster or auto", v.get_ref()),
+                    ));
+                }
+            },
+        };
         Ok(Manifest {
             name: s(&project, "name").unwrap_or_default(),
             out: s(&project, "out").unwrap_or_else(|| "assets".into()),
@@ -125,7 +144,7 @@ impl Manifest {
             palette: s(&defaults, "palette"),
             scale: if scale.is_empty() { vec![1.0] } else { scale },
             bg: s(&defaults, "bg").filter(|b| b != "none"),
-            profile: s(&defaults, "profile").unwrap_or_else(|| "auto".into()),
+            profile,
             backend,
             lint,
         })
