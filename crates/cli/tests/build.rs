@@ -550,5 +550,82 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
         builds[0] == builds[1],
         "taper.png changed when scale:1,2 was added"
     );
+}
+
+#[test]
+fn a_bad_target_profile_is_e0206_on_every_format() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-profile-{}", std::process::id()));
+    let cases = [
+        ("broken.png", "bogus", "unknown profile `bogus`"),
+        ("broken.gif", "bogus", "unknown profile `bogus`"),
+        ("broken.svg", "bogus", "unknown profile `bogus`"),
+        ("broken.svg", "#fff", "unknown profile"),
+        ("broken.png", "vector", "`profile:vector` needs an .svg target"),
+        ("broken.gif", "svg", "`profile:svg` needs an .svg target"),
+    ];
+    for (path, profile, message) in cases {
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("art")).unwrap();
+        fs::write(
+            dir.join("artscript.toml"),
+            "[project]\nname = \"profile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("art/main.art"),
+            format!("@target {path} 8x8 bg:#ffffff dur:1s profile:{profile}\nrect 0 0 4 4\n"),
+        )
+        .unwrap();
+        let out = artscript(&dir, &["build"]);
+        let err = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{path} profile:{profile}: {err}");
+        assert!(err.contains("E0206") && err.contains(message), "{path} profile:{profile}: {err}");
+        assert!(!dir.join("assets").join(path).exists(), "{err}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_manifest_profile_still_applies_to_raster_targets() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-mprofile-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"mprofile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = \"vector\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("art/a.art"), "@target ok.png 8x8\nrect 0 0 4 4\n").unwrap();
+    fs::write(dir.join("art/b.art"), "@target ok.svg 8x8\nrect 0 0 4 4\n").unwrap();
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert!(dir.join("assets/ok.png").exists() && dir.join("assets/ok.svg").exists());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-badmprofile-{}", std::process::id()));
+    for (value, shown) in [("\"bogus\"", "\"bogus\""), ("3", "3")] {
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("art")).unwrap();
+        fs::write(
+            dir.join("artscript.toml"),
+            format!("[project]\nname = \"m\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = {value}\n"),
+        )
+        .unwrap();
+        fs::write(dir.join("art/a.art"), "@target a.png 8x8\nrect 0 0 4 4\n").unwrap();
+        fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect 0 0 4 4\n").unwrap();
+        let out = artscript(&dir, &["build"]);
+        let err = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{err}");
+        assert_eq!(err.matches("error[").count(), 1, "{err}");
+        assert!(
+            err.contains("E0200")
+                && err.contains("artscript.toml:8:11")
+                && err.contains(&format!("[defaults] profile {shown} is not one of")),
+            "{err}"
+        );
+    }
     let _ = fs::remove_dir_all(&dir);
 }
