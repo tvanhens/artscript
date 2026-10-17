@@ -3722,3 +3722,42 @@ fn a_geometry_guard_without_a_play_is_not_e0344() {
     near(at(node(&s, "marker")), (30.0, 20.0));
     node(&s, "dot");
 }
+
+#[test]
+fn a_top_level_play_input_that_reads_the_drawn_scene_is_e0344() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for (tail, line) in [
+        ("let w = @marker.w\nplay bob start:w\n", 7),
+        ("let w = @marker.w\nplay bob start:(if w == none then 0 else w)\n", 7),
+        ("play bob start:@marker.w\n", 6),
+        ("play bob start:gap(@marker @c)\n", 6),
+        ("let w = @marker.w\neach x in [if w == none then 0 else 5]\n  play bob start:x\n", 7),
+        ("group g\n  circle 4 name:a\nlet n = [each k in @g.* -> 1]\nanim fade dur:1s\n  .c a:(if n == [] then .25 else .9)\nplay fade\n", 10),
+        ("each i in 0..3\n  if @marker.w > 0\n    play bob\n", 7),
+    ] {
+        let ev = run_with(&format!("{head}{tail}"), &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{tail}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{tail}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line, line, "{tail}\n{}", errors[0]);
+    }
+}
+
+#[test]
+fn a_shadowed_geometry_let_does_not_block_a_top_level_play() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for tail in [
+        "let w = @marker.w\ncircle 2 at:w,0 name:d\nplay bob\n",
+        "let w = @marker.w\nlet w = 0\nplay bob start:w\n",
+        "let w = 0\nif true\n  let w = @marker.w\nplay bob start:w\n",
+        "play bob start:-canvas.w/400\n",
+    ] {
+        let s = scene(&format!("{head}{tail}"));
+        let c = node(&s, "c").opacity;
+        assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
+    }
+}
