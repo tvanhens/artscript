@@ -283,14 +283,27 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
         )
         .with_fix("end the path with .png, .svg or .gif"));
     };
-    let profile_word = match named("profile") {
-        Some(Expr::Ident(s)) => s.clone(),
-        _ => project.manifest.profile.clone(),
+    let (profile_word, explicit) = match named("profile") {
+        None => (project.manifest.profile.as_str(), false),
+        Some(Expr::Ident(s)) => (s.as_str(), true),
+        Some(_) => {
+            return Err(Diagnostic::error("E0206", d.span, "unknown profile")
+                .with_fix("use profile:vector, profile:svg or profile:raster"));
+        }
     };
-    let profile = match (format, profile_word.as_str()) {
-        (Format::Png | Format::Gif, _) | (_, "raster") => Profile::Raster,
+    let profile = match (format, profile_word) {
+        (_, "raster") | (Format::Png | Format::Gif, "auto") => Profile::Raster,
         (Format::Svg, "vector") => Profile::Vector,
         (Format::Svg, "svg" | "auto") => Profile::Svg,
+        (Format::Png | Format::Gif, "vector" | "svg") if !explicit => Profile::Raster,
+        (Format::Png | Format::Gif, word @ ("vector" | "svg")) => {
+            return Err(Diagnostic::error(
+                "E0206",
+                d.span,
+                format!("`profile:{word}` needs an .svg target"),
+            )
+            .with_fix("remove `profile:`, or end the path with .svg"));
+        }
         (_, other) => {
             return Err(
                 Diagnostic::error("E0206", d.span, format!("unknown profile `{other}`"))
