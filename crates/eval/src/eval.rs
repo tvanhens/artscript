@@ -335,7 +335,7 @@ fn is_copy_index(seg: &str) -> bool {
 
 fn holds_play(scenes: &[Scene]) -> bool {
     scenes.iter().any(|st| match &st.kind {
-        SceneKind::Play { .. } => true,
+        SceneKind::Play { name, .. } => name.is_some(),
         SceneKind::If {
             then, otherwise, ..
         } => holds_play(then) || holds_play(otherwise),
@@ -1970,15 +1970,17 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
-        let v = sc
-            .env
+    fn binding(&self, name: &str, sc: &Scope) -> Option<Value> {
+        sc.env
             .iter()
             .rev()
-            .find(|(k, _)| k == verb)
+            .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
-            .or_else(|| sc.module.global(verb))?;
-        match v {
+            .or_else(|| sc.module.global(name))
+    }
+
+    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
+        match self.binding(verb, sc)? {
             Value::Component(c) => Some(Some(c)),
             Value::None => Some(None),
             _ => None,
@@ -1987,14 +1989,7 @@ impl<'a> Evaluator<'a> {
 
     /// A bound component is a call even when its name is also a built-in shape.
     fn verb_is_call(&self, verb: &str, sc: &Scope) -> bool {
-        let bound = sc
-            .env
-            .iter()
-            .rev()
-            .find(|(k, _)| k == verb)
-            .map(|(_, v)| v.clone())
-            .or_else(|| sc.module.global(verb));
-        matches!(bound, Some(Value::Component(_))) || identity::calls_def(verb)
+        matches!(self.binding(verb, sc), Some(Value::Component(_))) || identity::calls_def(verb)
     }
 
     fn mask(
@@ -3277,7 +3272,7 @@ impl<'a> Evaluator<'a> {
     /// The stub has no geometry: `@name` is visible, `@name.w` is not. The skips match `eval_node`.
     fn collect_draw(&mut self, draw: &Draw, sc: &Scope, span: Span) {
         let verb = draw.verb.as_str();
-        if verb == "canvas" || matches!(self.component_for(verb, sc), Some(None)) {
+        if verb == "canvas" || matches!(self.binding(verb, sc), Some(Value::None | Value::Unseen)) {
             return;
         }
         let key = sc.node_key(span);
