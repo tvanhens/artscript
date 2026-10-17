@@ -2,7 +2,7 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -754,8 +754,9 @@ impl<'a> Evaluator<'a> {
         self.seed_count = 0;
     }
 
-    fn seed_line(&mut self, sc: &Scope, span: Span) {
-        let key = sc.parent.at_line(&sc.parent_copies, span.line);
+    fn seed_stmt(&mut self, sc: &Scope, span: Span) {
+        let tag = sc.ids.tag(span).unwrap_or_default();
+        let key = sc.parent.at_stmt(&sc.parent_copies, tag);
         self.begin_seed(sc.file(), key);
     }
 
@@ -1256,7 +1257,7 @@ impl<'a> Evaluator<'a> {
     fn eval_stmt(&mut self, st: &Scene, sc: &mut Scope, out: &mut Siblings) -> R<()> {
         match &st.kind {
             SceneKind::Let { name, value } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let v = self.expr(value, sc);
                 let v = match v {
                     Ok(v) => v,
@@ -1279,7 +1280,7 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let c = self.expr(cond, sc)?;
                 self.confirm_guard(st, "if", usize::from(c.truthy()), sc);
                 let mut inner = sc.clone();
@@ -1288,7 +1289,7 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
@@ -3202,7 +3203,7 @@ impl<'a> Evaluator<'a> {
     fn collect_one(&mut self, st: &Scene, sc: &mut Scope, schedule: bool) -> R<()> {
         match &st.kind {
             SceneKind::Let { name, value } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let v = match self.quiet_expr(value, sc) {
                     Ok(v) => v,
                     Err(f) if f.code == "E0344" => Value::Unseen,
@@ -3222,7 +3223,7 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let taken = self.quiet_expr(cond, sc).map(|c| c.truthy());
                 if schedule && (holds_play(then) || holds_play(otherwise)) {
                     let decided = taken.as_ref().ok().map(|&b| usize::from(b));
@@ -3238,7 +3239,7 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let items = self.quiet_expr(iter, sc).and_then(each_items);
                 if schedule && holds_play(body) {
                     let decided = items.as_ref().ok().map(Vec::len);
@@ -3430,7 +3431,7 @@ impl<'a> Evaluator<'a> {
                 then,
                 otherwise,
             } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let c = self.expr(cond, sc)?;
                 let mut inner = sc.clone();
                 let branch = if c.truthy() { then } else { otherwise };
@@ -3440,7 +3441,7 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
@@ -3456,7 +3457,7 @@ impl<'a> Evaluator<'a> {
                 Ok(())
             }
             SceneKind::Let { name, value } => {
-                self.seed_line(sc, st.span);
+                self.seed_stmt(sc, st.span);
                 let v = self.expr(value, sc)?;
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -3582,7 +3583,8 @@ impl<'a> Evaluator<'a> {
             }
         };
         let snap = self.snap_seed();
-        self.begin_seed(sc.file(), owner.at_line(&[], span.line));
+        let tag = sc.ids.tag(span).unwrap_or_default();
+        self.begin_seed(sc.file(), owner.at_stmt(&[], tag));
         let start_v = match start {
             Some(e) => match self.time_secs(e, sc) {
                 Ok(n) => n,
@@ -3599,7 +3601,7 @@ impl<'a> Evaluator<'a> {
             Some(m) => self.module_scope(m),
             None => sc.clone(),
         };
-        self.begin_seed(&anim.module, owner.at_line(&[], anim.span.line));
+        self.begin_seed(&anim.module, owner.at_stmt(&[], &format!("anim {}", anim.name)));
         let dur = self.time_secs(&anim.dur, &dur_scope);
         self.restore_seed(snap);
         let dur = match dur {
@@ -3651,8 +3653,13 @@ impl<'a> Evaluator<'a> {
         let snap = self.snap_seed();
         let play = Site::new(sc.file(), span);
         let mut out = Vec::new();
+        let mut counts = BTreeMap::new();
         for patch in &anim.body {
-            self.begin_seed(&anim.module, owner.at_line(&[], patch.span.line));
+            let path = patch.path.join(".");
+            let n = counts.entry(path.clone()).or_insert(0);
+            *n += 1;
+            let tag = format!("anim {} .{path}~{n}", anim.name);
+            self.begin_seed(&anim.module, owner.at_stmt(&[], &tag));
             let Some(rest) = identity::hops_from(&patch.path) else {
                 self.report(
                     fail(

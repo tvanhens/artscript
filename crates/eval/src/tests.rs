@@ -3649,6 +3649,34 @@ fn manifest_errors_point_at_the_bad_line() {
 }
 
 #[test]
+fn comments_and_blank_lines_keep_statement_seeds() {
+    let src = |pad: &str| {
+        format!(
+            "@target t.png 100x100 t:.5s
+{pad}def blip
+{pad}  let d = rand(0 30)
+  circle 2 at:d,0 name:dot
+{pad}anim bob dur:1s
+{pad}  .box at:key(0 rand(1 9)),0
+{pad}let y = rand(20 80)
+{pad}if rand(0 1) > 2
+  circle 1
+{pad}each i in [rand(0 9) 1]
+  circle 1 at:i,0
+{pad}play bob start:rand(0 .4) * 1s
+blip name:b
+rect 4 at:0,y name:box
+"
+        )
+    };
+    let plain = scene(&src(""));
+    let padded = scene(&src("\n# note\n"));
+    for p in paths(&plain) {
+        assert_eq!(at(node(&plain, &p)), at(node(&padded, &p)), "{p}");
+    }
+}
+
+#[test]
 fn every_play_of_an_instance_each_stays_ahead_of_a_later_play() {
     let s = scene(
         "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero name:hero\n  each x in [@marker.w 1]\n    play inner\nplay outer\n",
