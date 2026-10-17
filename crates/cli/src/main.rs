@@ -13,7 +13,8 @@ use artscript_syntax::{Diagnostic, Severity};
 const USAGE: &str = "usage: artscript <command>
 
 commands:
-  build [--only GLOB] [--allow-warnings]   render every @target, write art-manifest.json
+  build [--only GLOB] [--allow-warnings] [--backend auto|gpu|cpu]
+                                           render every @target, write art-manifest.json
   check [--json]                           evaluate stills and sample GIFs, without rendering
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
@@ -86,6 +87,13 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
             "--allow-warnings" => opts.allow_warnings = true,
             "--only" => opts.only = it.next().cloned(),
             s if s.starts_with("--only=") => opts.only = Some(s["--only=".len()..].to_string()),
+            "--backend" => {
+                let value = it.next().ok_or("`--backend` needs auto, gpu or cpu")?;
+                opts.backend = Some(value.parse()?);
+            }
+            s if s.starts_with("--backend=") => {
+                opts.backend = Some(s["--backend=".len()..].parse()?);
+            }
             other => return Err(format!("unknown build flag `{other}`")),
         }
     }

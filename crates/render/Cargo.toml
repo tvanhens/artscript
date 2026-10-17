@@ -8,3 +8,8 @@ skia-safe.workspace = true
 artscript-ir.workspace = true
 gif = "0.13"
 color_quant = "1.1"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+skia-safe = { workspace = true, features = ["metal", "ganesh"] }
+objc2 = "0.6.3"
+objc2-metal = { version = "0.3.2", features = ["MTLDevice", "MTLCommandQueue", "std"] }

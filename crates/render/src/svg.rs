@@ -9,17 +9,23 @@ use skia_safe::path::{Iter as PathIter, Verb};
 use skia_safe::PathFillType;
 
 use crate::draw::bake_node;
+use crate::gpu::Backend;
 use crate::features::{self, bakes};
 use crate::paint::css_blend;
 use crate::text::{base64, fmt_num, xml_id};
 use crate::RenderError;
 
-pub fn render_svg(scene: &Scene, profile: Profile, bake_scale: f32) -> Result<String, RenderError> {
+pub fn render_svg(
+    scene: &Scene,
+    profile: Profile,
+    bake_scale: f32,
+    backend: Backend,
+) -> Result<String, RenderError> {
     let hits = features::raster_only_features(scene);
     if profile == Profile::Vector && !hits.is_empty() {
         return Err(RenderError::NotVector(hits));
     }
-    let mut w = Writer { defs: String::new(), body: String::new() };
+    let mut w = Writer { defs: String::new(), body: String::new(), backend };
     if let Some(bg) = scene.background {
         w.body.push_str("  <rect width=\"");
         w.body.push_str(&fmt_num(scene.width));
@@ -61,6 +67,7 @@ pub fn render_svg(scene: &Scene, profile: Profile, bake_scale: f32) -> Result<St
 struct Writer {
     defs: String,
     body: String,
+    backend: Backend,
 }
 
 impl Writer {
@@ -68,7 +75,7 @@ impl Writer {
         let pad = "  ".repeat(depth);
         let id = xml_id(&node.path);
         if bakes(node) {
-            let baked = bake_node(scene, node, bake_scale)?;
+            let baked = bake_node(scene, node, bake_scale, self.backend)?;
             self.body.push_str(&pad);
             self.body.push_str("<g id=\"");
             self.body.push_str(&id);
@@ -478,7 +485,7 @@ impl Writer {
         self.defs.push_str(if mask.luminance { "luminance" } else { "alpha" });
         self.defs.push_str("\">\n");
         if let MaskSource::Nodes(nodes) = &mask.source {
-            let mut inner = Writer { defs: String::new(), body: String::new() };
+            let mut inner = Writer { defs: String::new(), body: String::new(), backend: self.backend };
             for node in nodes {
                 inner.node(scene, node, bake_scale, 3)?;
             }

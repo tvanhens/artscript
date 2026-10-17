@@ -18,6 +18,28 @@ pub enum LintLevel {
     Error,
 }
 
+/// The backend a build asks for. `Auto` resolves to the GPU when one is available, else the CPU.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum BackendChoice {
+    #[default]
+    Auto,
+    Gpu,
+    Cpu,
+}
+
+impl std::str::FromStr for BackendChoice {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "auto" => Ok(Self::Auto),
+            "gpu" => Ok(Self::Gpu),
+            "cpu" => Ok(Self::Cpu),
+            other => Err(format!("backend `{other}` is not one of auto, gpu or cpu")),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Manifest {
     pub name: String,
@@ -28,6 +50,7 @@ pub struct Manifest {
     pub bg: Option<String>,
     /// `vector | svg | raster | auto`.
     pub profile: String,
+    pub backend: BackendChoice,
     pub lint: BTreeMap<String, LintLevel>,
 }
 
@@ -68,6 +91,14 @@ impl Manifest {
             };
             lint.insert(k, level);
         }
+        let backend = match section("build").get("backend") {
+            None => BackendChoice::default(),
+            Some(v) => v
+                .as_str()
+                .ok_or_else(|| "backend must be a string".to_string())
+                .and_then(str::parse)
+                .map_err(|e| bad(format!("[build] {e}")))?,
+        };
         Ok(Manifest {
             name: s(&project, "name").unwrap_or_default(),
             out: s(&project, "out").unwrap_or_else(|| "assets".into()),
@@ -76,6 +107,7 @@ impl Manifest {
             scale: if scale.is_empty() { vec![1.0] } else { scale },
             bg: s(&defaults, "bg").filter(|b| b != "none"),
             profile: s(&defaults, "profile").unwrap_or_else(|| "auto".into()),
+            backend,
             lint,
         })
     }

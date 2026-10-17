@@ -8,9 +8,10 @@ use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene,
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Canvas, ClipOp, ColorFilter, ColorMatrix, EncodedImageFormat, Image, ImageFilter,
-    Paint, Rect, TileMode, image_filters, surfaces,
+    Paint, Rect, TileMode, image_filters,
 };
 
+use crate::gpu::{self, Backend};
 use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
@@ -59,13 +60,15 @@ impl<'a> SceneIndex<'a> {
 
 pub struct DrawCtx<'a> {
     pub index: SceneIndex<'a>,
+    pub backend: Backend,
     visiting: RefCell<HashSet<String>>,
 }
 
 impl<'a> DrawCtx<'a> {
-    pub fn new(scene: &'a Scene) -> Self {
+    pub fn new(scene: &'a Scene, backend: Backend) -> Self {
         Self {
             index: SceneIndex::build(scene),
+            backend,
             visiting: RefCell::new(HashSet::new()),
         }
     }
@@ -82,45 +85,45 @@ impl Drop for Visit<'_> {
     }
 }
 
-pub fn render_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, RenderError> {
+pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>, RenderError> {
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
     let w = (scene.width * scale).ceil().max(1.0) as i32;
     let h = (scene.height * scale).ceil().max(1.0) as i32;
     let mut surface =
-        surfaces::raster_n32_premul((w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
+        gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((scale, scale));
     if let Some(bg) = scene.background {
         canvas.clear(color4(bg));
     }
-    let ctx = DrawCtx::new(scene);
+    let ctx = DrawCtx::new(scene, backend);
     for child in &scene.children {
         draw_node(canvas, child, &ctx, Matrix::new_identity())?;
     }
-    let image = surface.image_snapshot();
+    let image = gpu::finish(backend, &mut surface)?;
     png_bytes(&image)
 }
 
-pub fn render_rgba(scene: &Scene, scale: f32) -> Result<(u32, u32, Vec<u8>), RenderError> {
+pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, u32, Vec<u8>), RenderError> {
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
     let w = (scene.width * scale).ceil().max(1.0) as i32;
     let h = (scene.height * scale).ceil().max(1.0) as i32;
     let mut surface =
-        surfaces::raster_n32_premul((w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
+        gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((scale, scale));
     if let Some(bg) = scene.background {
         canvas.clear(color4(bg));
     }
-    let ctx = DrawCtx::new(scene);
+    let ctx = DrawCtx::new(scene, backend);
     for child in &scene.children {
         draw_node(canvas, child, &ctx, Matrix::new_identity())?;
     }
-    let image = surface.image_snapshot();
+    let image = gpu::finish(backend, &mut surface)?;
     let info = skia_safe::ImageInfo::new(
         (w, h),
         skia_safe::ColorType::RGBA8888,
@@ -151,11 +154,16 @@ pub struct Baked {
 
 /// Renders `node` on transparent, in its parent's coordinates, including its transform.
 /// Blend is left to the SVG element so the tile is the node's own pixels.
-pub fn bake_node(scene: &Scene, node: &Node, bake_scale: f32) -> Result<Baked, RenderError> {
+pub fn bake_node(
+    scene: &Scene,
+    node: &Node,
+    bake_scale: f32,
+    backend: Backend,
+) -> Result<Baked, RenderError> {
     if !(bake_scale.is_finite() && bake_scale > 0.0) {
         return Err(RenderError::Skia("bake scale must be positive".into()));
     }
-    let ctx = DrawCtx::new(scene);
+    let ctx = DrawCtx::new(scene, backend);
     let mut bounds = node
         .bounds()
         .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
@@ -169,7 +177,7 @@ pub fn bake_node(scene: &Scene, node: &Node, bake_scale: f32) -> Result<Baked, R
     }
     let pw = (bounds.width() * bake_scale).ceil().max(1.0) as i32;
     let ph = (bounds.height() * bake_scale).ceil().max(1.0) as i32;
-    let mut surface = surfaces::raster_n32_premul((pw, ph))
+    let mut surface = gpu::surface(backend, (pw, ph))
         .ok_or_else(|| RenderError::Skia("bake surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((bake_scale, bake_scale));
@@ -178,7 +186,7 @@ pub fn bake_node(scene: &Scene, node: &Node, bake_scale: f32) -> Result<Baked, R
     drawn.blend = Blend::Normal;
     let parent = ctx.index.parent_world(&node.path);
     draw_node(canvas, &drawn, &ctx, parent)?;
-    let image = surface.image_snapshot();
+    let image = gpu::finish(backend, &mut surface)?;
     Ok(Baked {
         png: png_bytes(&image)?,
         x: bounds.left,
@@ -254,16 +262,16 @@ fn paint_layer_steps(
         },
         _ => None,
     };
-    let mut image = rasterize_layer(bounds, &local_to_px, lead, |off| {
+    let mut image = rasterize_layer(ctx.backend, bounds, &local_to_px, lead, |off| {
         draw_clipped(off, node, ctx, world)
     })?;
     for step in steps {
         image = match step {
             effects::LayerStep::Filter(filter) => {
-                effects::apply_image_filter(image, &local_to_px, filter)?
+                effects::apply_image_filter(ctx.backend, image, &local_to_px, filter)?
             }
             effects::LayerStep::Outline { width, color } => {
-                effects::outline_geometry(image, &local_to_px, node, width, color)?
+                effects::outline_geometry(ctx.backend, image, &local_to_px, node, width, color)?
             }
         };
     }
@@ -284,12 +292,13 @@ fn paint_layer_steps(
 }
 
 fn rasterize_layer(
+    backend: Backend,
     bounds: skia_safe::IRect,
     local_to_px: &Matrix,
     filter: Option<ImageFilter>,
     draw: impl FnOnce(&Canvas) -> Result<(), RenderError>,
 ) -> Result<Image, RenderError> {
-    let mut surface = surfaces::raster_n32_premul((bounds.width(), bounds.height()))
+    let mut surface = gpu::surface(backend, (bounds.width(), bounds.height()))
         .ok_or_else(|| RenderError::Skia("layer surface".into()))?;
     let canvas = surface.canvas();
     canvas.concat(local_to_px);
