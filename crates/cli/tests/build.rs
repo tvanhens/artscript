@@ -573,7 +573,7 @@ fn a_bad_target_profile_is_e0206_on_every_format() {
         .unwrap();
         fs::write(
             dir.join("art/main.art"),
-            format!("@target {path} 8x8 bg:#ffffff dur:1s profile:{profile}\nrect 0 0 4 4\n"),
+            format!("@target {path} 8x8 bg:#ffffff dur:1s profile:{profile}\nrect 4x4\n"),
         )
         .unwrap();
         let out = artscript(&dir, &["build"]);
@@ -595,8 +595,8 @@ fn a_manifest_profile_still_applies_to_raster_targets() {
         "[project]\nname = \"mprofile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = \"vector\"\n",
     )
     .unwrap();
-    fs::write(dir.join("art/a.art"), "@target ok.png 8x8\nrect 0 0 4 4\n").unwrap();
-    fs::write(dir.join("art/b.art"), "@target ok.svg 8x8\nrect 0 0 4 4\n").unwrap();
+    fs::write(dir.join("art/a.art"), "@target ok.png 8x8\nrect 4x4\n").unwrap();
+    fs::write(dir.join("art/b.art"), "@target ok.svg 8x8\nrect 4x4\n").unwrap();
     let out = artscript(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert!(dir.join("assets/ok.png").exists() && dir.join("assets/ok.svg").exists());
@@ -614,8 +614,8 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
             format!("[project]\nname = \"m\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = {value}\n"),
         )
         .unwrap();
-        fs::write(dir.join("art/a.art"), "@target a.png 8x8\nrect 0 0 4 4\n").unwrap();
-        fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect 0 0 4 4\n").unwrap();
+        fs::write(dir.join("art/a.art"), "@target a.png 8x8\nrect 4x4\n").unwrap();
+        fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect 4x4\n").unwrap();
         let out = artscript(&dir, &["build"]);
         let err = text(&out);
         assert_eq!(out.status.code(), Some(1), "{err}");

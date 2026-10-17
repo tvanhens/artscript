@@ -196,6 +196,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   4. Add round caps.
   - A single width with `taper:` is that width everywhere.
 - **Curve.** Use centripetal Catmull-Rom with tension (default .5), exactly as `_spline` in chibi `paths.py`. `closed` closes the curve. Points are the positional arguments. When the only positional argument is a list, its items are the points (`curve pts`, `curve [each k in 0..n -> x,y]`). A list beside other points is E0320. There is no separate polygon-of-points verb: a closed curve is that polygon.
+- **Positional items on a built-in verb.** `rect`, `circle`, `ellipse`, `poly`, `star`, `path`, `blob`, `copy`, `inside`, `outside`, `repeat`, and `grid` take one positional item. `layer` and `group` take none after their name, `mirror` takes none after `x` or `y`, and `subtract`, `union`, `intersect`, and `xor` take none. `curve` takes any number of points. `closed` is a flag, not an item. One more item is E0321 at the statement, and the message names the first extra item as written. A size is one item, `rect 40x20` or the vector `rect w,h`. When `rect`, `grid`, or `ellipse` gets a number and then extra items, the fix writes the vector, as in `rect w,h`. Otherwise the fix removes the item or passes it as `key:value`.
 - **Blob.**
   - Use `points:` (default 7) points on a circle of radius r.
   - Each radius is scaled by `1 + wobble * u` with `u` in -1..1 from the seed, and each angle is jittered by `±wobble * 0.5 * step`.
