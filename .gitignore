@@ -2,3 +2,5 @@
 .artscript/
 .DS_Store
 .claude-review/
+/bench/out
+/bench/comment.md
