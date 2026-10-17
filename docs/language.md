@@ -164,4 +164,4 @@ Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functi
 
 ## CLI
 
-`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
+`artscript build [--only 'glob'] [--allow-warnings] [--backend auto|gpu|cpu]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.

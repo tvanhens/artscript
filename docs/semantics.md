@@ -287,6 +287,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`, and `anim`.
 - The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`. A `.gif` is one file at scale 1. `scale:` does not add `@2x` copies.
 - `bg:` defaults to the manifest `[defaults] bg`, which defaults to `none` (transparent).
+- **Backend.** A build draws on the GPU (Skia Ganesh on Metal) or on the CPU raster backend. `[build] backend = "auto" | "gpu" | "cpu"` in `artscript.toml` picks it, and `auto` is the default. `artscript build --backend auto|gpu|cpu` overrides the manifest. A build resolves the choice once. `auto` is the GPU when this machine has one and the CPU otherwise. `gpu` with no GPU is E0400 and nothing is built, with no fallback to the CPU. Only macOS has a GPU backend today. Any other value in the manifest is E0200 at that line. Any other value for `--backend` prints usage and exits 1, like any unknown flag. SVG elements do not use the backend. A baked PNG tile, a PNG, and a GIF frame do. A surface the GPU cannot create, such as one past the maximum texture size, is E0400.
 - `art-manifest.json` sits in `out`. It holds `{ "version": 1, "outputs": [ { "path", "source", "line", "target", "matrix", "scale", "hash", "status": "pass|warn|fail", "checks": [..] } ] }`, sorted by path.
   - Hashes are FNV-1a 64 of the output bytes, as hex.
 - **Rebuild.** Delete files listed in the old manifest that the new build no longer produces. Never touch unlisted files.
@@ -294,11 +295,13 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - the entry source
   - every transitively imported library source
   - the manifest
+  - the resolved backend, so switching backends, or `auto` resolving differently, re-renders
   - the hash of the `artscript` executable, so a renderer change re-renders every target
   - the target's matrix values, `fps`, `dur` (or `auto`), `clip` (or `none`), and `t`
   
   When the key matches and the outputs on disk match their hashes, skip the target.
-- **Determinism.**
+- **Determinism.** The same source, manifest, and resolved backend produce byte-identical outputs on the same machine.
+  - GPU output can differ from CPU output and between machines. `backend = "cpu"` keeps every build on the CPU renderer, which avoids GPU differences between machines.
   - Seeds come from FNV-1a over the project-relative file path, `\0`, and the node path, plus `seed:`.
   - Floats in SVG print with at most 3 decimals and no trailing zeros.
   - There are no timestamps.

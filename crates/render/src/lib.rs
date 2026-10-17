@@ -1,10 +1,11 @@
-//! Scene IR backends: Skia CPU raster (PNG) and artscript's own SVG writer.
+//! Scene IR backends: Skia on CPU raster or GPU (PNG, GIF) and artscript's own SVG writer.
 
 mod draw;
 mod effects;
 mod features;
 mod field;
 mod gif;
+mod gpu;
 mod paint;
 mod svg;
 mod text;
@@ -12,6 +13,7 @@ mod text;
 use artscript_ir::{Profile, Scene};
 
 pub use features::raster_only_features;
+pub use gpu::{Backend, gpu_available};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Unsupported {
@@ -36,20 +38,29 @@ pub enum RenderError {
 pub const RASTER_BUDGET: u64 = 256 * 1024 * 1024;
 
 /// Renders the scene at `scale` (1 = one pixel per canvas unit) and encodes it as PNG.
-/// Deterministic: the same scene produces the same bytes.
-pub fn render_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, RenderError> {
-    draw::render_png(scene, scale)
+/// Deterministic per backend on one machine. `Backend::Gpu` may differ from `Cpu` and across machines.
+pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>, RenderError> {
+    draw::render_png(scene, scale, backend)
 }
 
 /// Writes SVG. Under `Profile::Svg`, subtrees using raster-only features are baked to
 /// embedded PNG tiles rendered at `bake_scale`. Under `Profile::Vector` they are an error.
-pub fn render_svg(scene: &Scene, profile: Profile, bake_scale: f32) -> Result<String, RenderError> {
-    svg::render_svg(scene, profile, bake_scale)
+pub fn render_svg(
+    scene: &Scene,
+    profile: Profile,
+    bake_scale: f32,
+    backend: Backend,
+) -> Result<String, RenderError> {
+    svg::render_svg(scene, profile, bake_scale, backend)
 }
 
 /// Unpremultiplied RGBA8888 bytes, row-major, length `width * height * 4` at `scale`.
-pub fn render_rgba(scene: &Scene, scale: f32) -> Result<(u32, u32, Vec<u8>), RenderError> {
-    draw::render_rgba(scene, scale)
+pub fn render_rgba(
+    scene: &Scene,
+    scale: f32,
+    backend: Backend,
+) -> Result<(u32, u32, Vec<u8>), RenderError> {
+    draw::render_rgba(scene, scale, backend)
 }
 
 /// One global palette, deterministic NeuQuant, delays already in centiseconds.
@@ -58,6 +69,7 @@ pub fn render_gif(
     scale: f32,
     delays: &[u16],
     loop_forever: bool,
+    backend: Backend,
 ) -> Result<Vec<u8>, RenderError> {
-    gif::encode(scenes, scale, delays, loop_forever)
+    gif::encode(scenes, scale, delays, loop_forever, backend)
 }

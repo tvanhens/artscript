@@ -792,7 +792,11 @@ fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
 fn png(src: &str) -> Vec<u8> {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
-    artscript_render::render_png(&ev.scene.unwrap(), ev_scale(src)).unwrap()
+    artscript_render::render_png(
+        &ev.scene.unwrap(),
+        ev_scale(src),
+        artscript_render::Backend::Cpu,
+    ).unwrap()
 }
 
 fn ev_scale(src: &str) -> f32 {
@@ -2624,4 +2628,25 @@ fn a_direct_instance_let_stays_in_the_call() {
         "{}",
         show(&ev.diagnostics)
     );
+}
+
+#[test]
+fn manifest_backend_defaults_to_auto_and_rejects_unknown_values() {
+    use crate::{BackendChoice, Manifest};
+
+    assert_eq!(Manifest::parse("").unwrap().backend, BackendChoice::Auto);
+    for (value, want) in [
+        ("auto", BackendChoice::Auto),
+        ("gpu", BackendChoice::Gpu),
+        ("cpu", BackendChoice::Cpu),
+    ] {
+        let manifest = Manifest::parse(&format!("[build]\nbackend = \"{value}\"\n")).unwrap();
+        assert_eq!(manifest.backend, want);
+    }
+    for bad in ["backend = \"metal\"", "backend = 1"] {
+        let err = Manifest::parse(&format!("[project]\n[build]\n{bad}\n")).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert!(err.message.contains("[build]"), "{}", err.message);
+        assert_eq!(err.span.line, 3, "the error points at the backend line");
+    }
 }
