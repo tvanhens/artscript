@@ -1323,7 +1323,7 @@ pub struct PendingPatch {
     /// paths that fail on the same last segment stay two diagnostics.
     pub written: Vec<Hop>,
     pub origin_depth: u32,
-    pub order: u32,
+    pub order: Order,
     pub named: Vec<(String, Value)>,
     pub off: bool,
     pub channel: Option<ChannelPatch>,
@@ -1331,6 +1331,17 @@ pub struct PendingPatch {
     pub report: Site,
     pub anim: Option<String>,
     pub play: Option<Site>,
+}
+
+/// Where a patch applies among the others from one depth. The prepass schedules entry-file
+/// plays before anything is drawn, so those are ordered by position, not by when they were
+/// scheduled.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Order {
+    /// A play in the entry file: the line and copy index of each enclosing loop, then its line.
+    Position(Vec<u32>),
+    /// A static patch, or a play in a `def` body, in evaluation order.
+    Evaluated(u32),
 }
 
 #[derive(Clone)]

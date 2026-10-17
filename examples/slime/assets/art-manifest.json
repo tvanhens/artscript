@@ -1,0 +1,83 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "0a75f1b682c5cc6d",
+      "line": 2,
+      "matrix": {
+        "flavor": "grape"
+      },
+      "path": "slime_grape.gif",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "5fb7014ec7130b07",
+      "line": 1,
+      "matrix": {
+        "flavor": "grape"
+      },
+      "path": "slime_grape.png",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "fef5da614bbe5f95",
+      "line": 2,
+      "matrix": {
+        "flavor": "mint"
+      },
+      "path": "slime_mint.gif",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "693dd7667d34d986",
+      "line": 1,
+      "matrix": {
+        "flavor": "mint"
+      },
+      "path": "slime_mint.png",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "63d14049d7a83a2e",
+      "line": 2,
+      "matrix": {
+        "flavor": "peach"
+      },
+      "path": "slime_peach.gif",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "1799d31d9e475948",
+      "line": 1,
+      "matrix": {
+        "flavor": "peach"
+      },
+      "path": "slime_peach.png",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

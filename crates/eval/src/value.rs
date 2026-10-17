@@ -73,6 +73,9 @@ pub enum Value {
     Module(Rc<Module>),
     Ref(Rc<RefVal>),
     Rule(Rc<RuleDef>),
+    /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
+    /// play never runs on a value the drawing pass would compute differently.
+    Unseen,
 }
 
 /// Kind used for parameter type checks (E0320) and messages.
@@ -93,6 +96,7 @@ pub enum Kind {
     Module,
     Ref,
     Rule,
+    Unseen,
 }
 
 impl fmt::Display for Kind {
@@ -113,6 +117,7 @@ impl fmt::Display for Kind {
             Kind::Module => "a module",
             Kind::Ref => "a node reference",
             Kind::Rule => "a rule",
+            Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
     }
@@ -138,6 +143,7 @@ impl Value {
             Value::Module(_) => Kind::Module,
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
+            Value::Unseen => Kind::Unseen,
         }
     }
 
@@ -255,6 +261,7 @@ impl Value {
             Value::Module(m) => m.path.clone(),
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
+            Value::Unseen => "unseen".into(),
         }
     }
 }

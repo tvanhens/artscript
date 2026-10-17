@@ -3675,3 +3675,219 @@ rect 4 at:0,y name:box
         assert_eq!(at(node(&plain, &p)), at(node(&padded, &p)), "{p}");
     }
 }
+
+#[test]
+fn every_play_of_an_instance_each_stays_ahead_of_a_later_play() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero name:hero\n  each x in [@marker.w 1]\n    play inner\nplay outer\n",
+    );
+    let eye = node(&s, "hero.eye");
+    assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
+}
+
+#[test]
+fn plays_in_a_file_each_apply_in_iteration_order() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\neach i in 0..2\n  hero name:hero\n    play inner\n  if i == 0\n    play outer\n",
+    );
+    let first = node(&s, "hero.0.eye").opacity;
+    let second = node(&s, "hero.1.eye").opacity;
+    assert!((first - 0.2).abs() < 1e-4, "{first}");
+    assert!((second - 0.8).abs() < 1e-4, "{second}");
+}
+
+#[test]
+fn an_entry_play_beats_a_play_in_a_def_body() {
+    let s = scene_with(
+        "@target t.png 40x40\nuse knight { knight }\nanim outer dur:1s\n  .knight.helmet.eye a:.2\nknight name:knight\nplay outer\n",
+        &[(
+            "lib/knight.art",
+            "anim inner dur:1s\n  .eye a:.8\ndef helmet size:40x40\n  circle 4 name:eye\ndef knight size:40x40\n  helmet name:helmet\n    play inner\n",
+        )],
+    );
+    let eye = node(&s, "knight.helmet.eye").opacity;
+    assert!((eye - 0.2).abs() < 1e-4, "{eye}");
+}
+
+#[test]
+fn a_file_play_guard_that_reads_the_drawn_scene_is_e0344() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\n";
+    for (guard, line) in [
+        ("if @marker.w > 0\n  play bob\n", 5),
+        ("each x in [@marker.w]\n  play bob\n", 5),
+        ("let w = @marker.w\nif w > 0\n  play bob\n", 6),
+        ("if true\n  each x in 0..@marker.w\n    play bob\n", 6),
+    ] {
+        let ev = run_with(&format!("{head}{guard}"), &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{guard}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{guard}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line, line, "{guard}\n{}", errors[0]);
+    }
+    let s = scene(&format!("{head}group g\n  circle 4 name:dot\nif @dot\n  play bob\n"));
+    near(at(node(&s, "marker")), (30.0, 20.0));
+}
+
+#[test]
+fn a_file_play_guard_that_fails_in_both_passes_is_reported_once() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\nif @missing.w > 0\n  play bob\n",
+        &[],
+    );
+    let codes: Vec<_> = ev.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E0350"], "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_geometry_guard_without_a_play_is_not_e0344() {
+    let s = scene(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\nif @marker.w > 0\n  circle 2 name:dot\nif true\n  play bob\n",
+    );
+    near(at(node(&s, "marker")), (30.0, 20.0));
+    node(&s, "dot");
+}
+
+#[test]
+fn a_play_none_under_a_geometry_guard_is_not_e0344() {
+    let s = scene(
+        "@target t.png 40x40\ncircle 4 name:marker\nif @marker.w > 0\n  play none\neach x in [@marker.w]\n  play none\n",
+    );
+    node(&s, "marker");
+}
+
+#[test]
+fn a_top_level_play_input_that_reads_the_drawn_scene_is_e0344() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for (tail, line) in [
+        ("let w = @marker.w\nplay bob start:w\n", 7),
+        ("let w = @marker.w\nplay bob start:(if w == none then 0 else w)\n", 7),
+        ("play bob start:@marker.w\n", 6),
+        ("play bob start:gap(@marker @c)\n", 6),
+        ("let w = @marker.w\neach x in [if w == none then 0 else 5]\n  play bob start:x\n", 7),
+        ("group g\n  circle 4 name:a\nlet n = [each k in @g.* -> 1]\nanim fade dur:1s\n  .c a:(if n == [] then .25 else .9)\nplay fade\n", 10),
+        ("each i in 0..3\n  if @marker.w > 0\n    play bob\n", 7),
+        ("rule r\n  check true\nlet floor = if @marker.w > 0 then r else r\nplay bob start:floor(1)\n", 9),
+        ("def hero size:8x8\n  circle 4\nlet k = if @marker.w > 100 then hero else none\nk name:x\nplay bob start:(if @x then 0 else 1)\n", 10),
+    ] {
+        let ev = run_with(&format!("{head}{tail}"), &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{tail}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{tail}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line, line, "{tail}\n{}", errors[0]);
+    }
+}
+
+#[test]
+fn a_misspelled_name_in_a_top_level_play_is_e0350_not_e0344() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nplay bob start:@tpyo.x\n",
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].code, "E0350", "{}", errors[0]);
+    assert_eq!(errors[0].span.line, 5, "{}", errors[0]);
+    assert!(errors[0].notes.iter().any(|n| n.contains('c')), "{}", errors[0]);
+
+    let later = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\nplay bob start:@c.x\ncircle 4 name:c\n",
+        &[],
+    );
+    let codes: Vec<_> = later.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E0344"], "{}", show(&later.diagnostics));
+}
+
+#[test]
+fn a_shadowed_geometry_let_does_not_block_a_top_level_play() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for tail in [
+        "let w = @marker.w\ncircle 2 at:w,0 name:d\nplay bob\n",
+        "let w = @marker.w\nlet w = 0\nplay bob start:w\n",
+        "let w = 0\nif true\n  let w = @marker.w\nplay bob start:w\n",
+        "play bob start:-canvas.w/400\n",
+    ] {
+        let s = scene(&format!("{head}{tail}"));
+        let c = node(&s, "c").opacity;
+        assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
+    }
+}
+
+#[test]
+fn every_read_of_an_unseen_let_is_e0344() {
+    let head = "@target t.png 40x40\npalette p\n  ramp ink #102030 #f0e0d0 11\nanim bob dur:1s\n  .c a:.2\nrect 8x4 name:marker\ncircle 4 name:c fill:#000000\n";
+    for (tail, at) in [
+        ("let w = @marker.w\nplay bob start:canvas.{w}\n", "play bob"),
+        ("anim tint dur:1s\n  .c fill:p.ink.{line}\nlet line = @marker.w\nplay tint\n", ".c fill"),
+        ("anim fade dur:1s\n  .c a:(if n == 0 then .25 else .9)\nlet seg = @marker.w\nlet color = p.ink.{seg}\nlet n = if color == none then 0 else 1\nplay fade\n", ".c a:(if"),
+        ("if @marker.w > 0\n  circle 4 name:dot\nlet r = @dot\nplay bob start:(if r == none then 0 else 1)\n", "play bob"),
+    ] {
+        let src = format!("{head}{tail}");
+        let line = src.lines().position(|l| l.contains(at)).unwrap() + 1;
+        let ev = run_with(&src, &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{tail}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{tail}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line as usize, line, "{tail}\n{}", errors[0]);
+    }
+}
+
+#[test]
+fn a_new_binding_of_an_unseen_name_is_seen() {
+    let head = "@target t.png 40x40\nrule width w:0\n  expect w >= 0\nanim bob dur:1s\n  .c a:.2\nrect 8x4 name:marker\ncircle 4 name:c\nlet w = @marker.w\n";
+    for tail in [
+        "each w in [0]\n  play bob start:w\n",
+        "let xs = [each w in [0] -> w]\nlet n = xs.0\nplay bob start:n\n",
+        "let n = if width(0) then 0 else 1\nplay bob start:n\n",
+        "if width(0)\n  play bob\n",
+    ] {
+        let s = scene(&format!("{head}{tail}"));
+        let c = node(&s, "c").opacity;
+        assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
+    }
+}
+
+#[test]
+fn a_rule_that_reads_the_drawn_scene_is_unseen_in_the_prepass() {
+    let head = "@target t.png 40x40\nrule big\n  expect @marker.w > 10\nrule close\n  expect 3 ~= 5 tol:@marker.w\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for tail in [
+        "let ok = big()\nplay bob start:(if ok then 0 else 5)\n",
+        "play bob start:(if close() then 0 else 5)\n",
+    ] {
+        let src = format!("{head}{tail}");
+        let line = src.lines().position(|l| l.starts_with("play bob")).unwrap() + 1;
+        let ev = run_with(&src, &[]);
+        let codes: Vec<_> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line as usize)).collect();
+        assert_eq!(codes, [("E0344", line)], "{tail}\n{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn the_prepass_records_the_names_the_drawing_pass_registers() {
+    let s = scene(
+        "@target t.png 40x40\ndef fill size:10x10\n  circle 4 name:dot\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nfill name:fill\nif @fill\n  play bob\n",
+    );
+    let c = node(&s, "c").opacity;
+    assert!((c - 0.2).abs() < 1e-4, "{c}");
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nlet k = none\nk name:x\nplay bob start:(if @x then 0 else 5)\n",
+        &[],
+    );
+    let codes: Vec<_> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
+    assert_eq!(codes, [("E0344", 7)], "{}", show(&ev.diagnostics));
+}

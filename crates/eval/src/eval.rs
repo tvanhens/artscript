@@ -2,7 +2,7 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -20,7 +20,7 @@ use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
 use crate::identity::{
-    self, Arrival, ChannelPatch, DeclId, Entry, Key, Lookup, ModuleIds, Names, Pending,
+    self, Arrival, ChannelPatch, DeclId, Entry, Key, Lookup, ModuleIds, Names, Order, Pending,
     PendingPatch, ReportKey, Resolved, Site,
 };
 use crate::key::Ease;
@@ -275,8 +275,11 @@ pub(crate) struct Evaluator<'a> {
     pub time: f64,
     anim_clock: Option<AnimClock>,
     pub plays: Vec<PlayMark>,
-    next_play: u32,
-    play_ords: HashMap<Span, VecDeque<u32>>,
+    /// What the prepass decided at each `if` and `each` that holds an entry-file play, keyed by
+    /// position: the branch or item count, or `None` when it could not evaluate the guard.
+    guards: HashMap<Vec<u32>, Option<usize>>,
+    /// True while `collect_entry` runs, before anything is drawn.
+    pub(crate) prepass: bool,
     silence: bool,
 }
 
@@ -303,6 +306,45 @@ struct SeedSnap {
     file: String,
     key: Key,
     count: u64,
+}
+
+/// A prepass read of the drawn scene. The `let`s and guards that hit it are checked again while
+/// drawing, so only a top-level play's own inputs report it.
+pub(crate) fn unseen(what: &str) -> Fail {
+    fail("E0344", format!("`{what}` reads the drawn scene"))
+        .note("top-level plays are scheduled before anything is drawn")
+        .fix("compute it from `let`s, `t`, or `clip`, or move the `play` under the instance it drives")
+}
+
+/// A statement's place in evaluation order: each enclosing loop's line and copy index, then its
+/// own line. Every statement is one line, so the line is unique in its file.
+fn position(sc: &Scope, span: Span) -> Vec<u32> {
+    let mut at: Vec<u32> = sc
+        .scope_loops
+        .iter()
+        .zip(&sc.scope_copies)
+        .flat_map(|(l, &i)| [l.line, i])
+        .collect();
+    at.push(span.line);
+    at
+}
+
+fn is_copy_index(seg: &str) -> bool {
+    !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit())
+}
+
+fn holds_play(scenes: &[Scene]) -> bool {
+    scenes.iter().any(|st| match &st.kind {
+        SceneKind::Play { name, .. } => name.is_some(),
+        SceneKind::If {
+            then, otherwise, ..
+        } => holds_play(then) || holds_play(otherwise),
+        SceneKind::Each { body, .. } => holds_play(body),
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Slot { .. }
+        | SceneKind::Draw(_) => false,
+    })
 }
 
 /// A percent rest and a numeric offset are different units. Resolve only the percent
@@ -686,8 +728,8 @@ impl<'a> Evaluator<'a> {
             time: job.frame_t,
             anim_clock: None,
             plays: Vec::new(),
-            next_play: 0,
-            play_ords: HashMap::new(),
+            guards: HashMap::new(),
+            prepass: false,
             silence: false,
         }
     }
@@ -1240,6 +1282,7 @@ impl<'a> Evaluator<'a> {
             } => {
                 self.seed_stmt(sc, st.span);
                 let c = self.expr(cond, sc)?;
+                self.confirm_guard(st, "if", usize::from(c.truthy()), sc);
                 let mut inner = sc.clone();
                 inner.publish = false;
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
@@ -1248,6 +1291,7 @@ impl<'a> Evaluator<'a> {
             SceneKind::Each { var, iter, body } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
+                self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
@@ -1927,15 +1971,17 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
-        let v = sc
-            .env
+    fn binding(&self, name: &str, sc: &Scope) -> Option<Value> {
+        sc.env
             .iter()
             .rev()
-            .find(|(k, _)| k == verb)
+            .find(|(k, _)| k == name)
             .map(|(_, v)| v.clone())
-            .or_else(|| sc.module.global(verb))?;
-        match v {
+            .or_else(|| sc.module.global(name))
+    }
+
+    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
+        match self.binding(verb, sc)? {
             Value::Component(c) => Some(Some(c)),
             Value::None => Some(None),
             _ => None,
@@ -1944,14 +1990,7 @@ impl<'a> Evaluator<'a> {
 
     /// A bound component is a call even when its name is also a built-in shape.
     fn verb_is_call(&self, verb: &str, sc: &Scope) -> bool {
-        let bound = sc
-            .env
-            .iter()
-            .rev()
-            .find(|(k, _)| k == verb)
-            .map(|(_, v)| v.clone())
-            .or_else(|| sc.module.global(verb));
-        matches!(bound, Some(Value::Component(_))) || identity::calls_def(verb)
+        matches!(self.binding(verb, sc), Some(Value::Component(_))) || identity::calls_def(verb)
     }
 
     fn mask(
@@ -3141,7 +3180,9 @@ impl<'a> Evaluator<'a> {
         let names = Rc::new(RefCell::new(Names::new(sc.ids.file())));
         scratch.names = names.clone();
         scratch.lookup = Lookup::own(names);
+        self.prepass = true;
         self.collect_surface(scenes, &mut scratch, true);
+        self.prepass = false;
         *sc.module.globals.borrow_mut() = saved;
         let region = sc.names.borrow().region();
         let incoming = std::mem::take(&mut self.incoming);
@@ -3163,7 +3204,11 @@ impl<'a> Evaluator<'a> {
         match &st.kind {
             SceneKind::Let { name, value } => {
                 self.seed_stmt(sc, st.span);
-                let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
+                let v = match self.quiet_expr(value, sc) {
+                    Ok(v) => v,
+                    Err(f) if f.code == "E0344" => Value::Unseen,
+                    Err(_) => Value::None,
+                };
                 if sc.top && sc.publish {
                     sc.module
                         .globals
@@ -3179,18 +3224,28 @@ impl<'a> Evaluator<'a> {
                 otherwise,
             } => {
                 self.seed_stmt(sc, st.span);
-                let Ok(c) = self.quiet_expr(cond, sc) else {
+                let taken = self.quiet_expr(cond, sc).map(|c| c.truthy());
+                if schedule && (holds_play(then) || holds_play(otherwise)) {
+                    let decided = taken.as_ref().ok().map(|&b| usize::from(b));
+                    self.guards.insert(position(sc, st.span), decided);
+                }
+                let Ok(taken) = taken else {
                     return Ok(());
                 };
                 let mut inner = sc.clone();
                 inner.publish = false;
-                let branch = if c.truthy() { then } else { otherwise };
+                let branch = if taken { then } else { otherwise };
                 self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
                 self.seed_stmt(sc, st.span);
-                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
+                let items = self.quiet_expr(iter, sc).and_then(each_items);
+                if schedule && holds_play(body) {
+                    let decided = items.as_ref().ok().map(Vec::len);
+                    self.guards.insert(position(sc, st.span), decided);
+                }
+                let Ok(items) = items else {
                     return Ok(());
                 };
                 for (i, v) in items.into_iter().enumerate() {
@@ -3206,23 +3261,19 @@ impl<'a> Evaluator<'a> {
                 self.incoming.extend(patches);
                 Ok(())
             }
-            SceneKind::Play { .. } => {
-                self.reserve_play(st.span);
-                Ok(())
-            }
             SceneKind::Draw(draw) => {
                 self.collect_draw(draw, sc, st.span);
                 Ok(())
             }
-            SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
+            SceneKind::Play { .. } | SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
         }
     }
 
     /// A name the real pass will register, recorded so a later `if @name` can take its branch.
-    /// The stub has no geometry: `@name` is visible, `@name.w` is not.
+    /// The stub has no geometry: `@name` is visible, `@name.w` is not. The skips match `eval_node`.
     fn collect_draw(&mut self, draw: &Draw, sc: &Scope, span: Span) {
         let verb = draw.verb.as_str();
-        if verb == "canvas" {
+        if verb == "canvas" || matches!(self.binding(verb, sc), Some(Value::None | Value::Unseen)) {
             return;
         }
         let key = sc.node_key(span);
@@ -3230,7 +3281,6 @@ impl<'a> Evaluator<'a> {
             self.place(sc, id, &key, sc.world, None, None, (0.0, 0.0), None);
         }
         if self.verb_is_call(verb, sc) {
-            self.reserve_call_block(draw, sc);
             return;
         }
         if verb == "repeat" || verb == "grid" {
@@ -3307,82 +3357,34 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
-        let snap = self.snap_seed();
-        let mut inner = sc.clone();
-        inner.publish = false;
-        for item in draw.body.items() {
-            if let DrawItem::Scene(st) = item {
-                self.reserve_call_scene(st, &mut inner);
-            }
+    /// The real pass checks the prepass's answer at a guard around an entry-file play. Those
+    /// plays were scheduled from that answer, so a different one would play the wrong anims.
+    fn confirm_guard(&mut self, st: &Scene, word: &str, decided: usize, sc: &Scope) {
+        if !sc.top {
+            return;
         }
-        self.restore_seed(snap);
-    }
-
-    fn reserve_call_scene(&mut self, st: &Scene, sc: &mut Scope) {
-        match &st.kind {
-            SceneKind::Let { name, value } => {
-                self.seed_stmt(sc, st.span);
-                let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
-                sc.env.push((name.clone(), v));
-            }
-            SceneKind::If {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.seed_stmt(sc, st.span);
-                let branches: Vec<&[Scene]> = match self.quiet_expr(cond, sc) {
-                    Ok(c) => vec![if c.truthy() { then } else { otherwise }],
-                    Err(_) => vec![then, otherwise],
-                };
-                for branch in branches {
-                    let mut inner = sc.clone();
-                    for child in branch {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                }
-            }
-            SceneKind::Each { var, iter, body } => {
-                self.seed_stmt(sc, st.span);
-                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
-                    let mut inner = sc.clone();
-                    for child in body {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                    return;
-                };
-                for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.iteration(st.span, i as u32);
-                    inner.env.push((var.clone(), v));
-                    for child in body {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                }
-            }
-            SceneKind::Play { .. } => self.reserve_play(st.span),
-            SceneKind::Draw(draw) => {
-                let key = sc.node_key(st.span);
-                let inner = sc.child(key, sc.frame, sc.world);
-                self.reserve_call_block(draw, &inner);
-            }
-            SceneKind::Check { .. } | SceneKind::Slot { .. } => {}
+        let Some(&planned) = self.guards.get(&position(sc, st.span)) else {
+            return;
+        };
+        let file = sc.file().to_string();
+        let reported = self
+            .diags
+            .iter()
+            .any(|d| d.code == "E0344" && d.file == file && d.span == st.span);
+        if planned == Some(decided) || reported {
+            return;
         }
-    }
-
-    fn reserve_play(&mut self, span: Span) {
-        let ord = self.next_play;
-        self.next_play += 1;
-        self.play_ords.entry(span).or_default().push_back(ord);
-    }
-
-    fn take_ord(&mut self, span: Span) -> u32 {
-        if let Some(ord) = self.play_ords.get_mut(&span).and_then(VecDeque::pop_front) {
-            return ord;
-        }
-        let ord = self.next_play;
-        self.next_play += 1;
-        ord
+        self.report(
+            fail(
+                "E0344",
+                format!("this `{word}` decides a top-level `play` and reads the drawn scene"),
+            )
+            .note("top-level plays are scheduled before anything is drawn, so `@name.w` and names inside other draws are not known yet")
+            .fix("guard the play with `let`s, `t`, `clip`, or `@name` of an earlier top-level draw, or move it under the instance it drives"),
+            &file,
+            st.span,
+            &sc.node_name(),
+        );
     }
 
     fn absorb_item(
@@ -3540,7 +3542,7 @@ impl<'a> Evaluator<'a> {
             written: rest.clone(),
             rest,
             origin_depth: sc.depth,
-            order: self.next_order(),
+            order: Order::Evaluated(self.next_order()),
             named: vals,
             off,
             channel: None,
@@ -3562,7 +3564,10 @@ impl<'a> Evaluator<'a> {
         let Some(name) = name else {
             return Vec::new();
         };
-        let ord = self.take_ord(span);
+        let ord = match sc.inst {
+            None => Order::Position(position(sc, span)),
+            Some(_) => Order::Evaluated(self.next_order()),
+        };
         let node = owner.to_string();
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
@@ -3679,7 +3684,7 @@ impl<'a> Evaluator<'a> {
                     written: rest.clone(),
                     rest,
                     origin_depth: sc.depth,
-                    order: ord,
+                    order: ord.clone(),
                     named: Vec::new(),
                     off: patch.off,
                     channel: Some(ChannelPatch {
@@ -3718,7 +3723,7 @@ impl<'a> Evaluator<'a> {
                         written: rest.clone(),
                         rest: rest.clone(),
                         origin_depth: sc.depth,
-                        order: ord,
+                        order: ord.clone(),
                         named: Vec::new(),
                         off: false,
                         channel: Some(ChannelPatch {
@@ -3930,9 +3935,11 @@ impl<'a> Evaluator<'a> {
                 Rgba::hex(h).ok_or_else(|| fail("E0320", format!("bad color #{h}")))?,
             )),
             Expr::Str(s) => Value::Str(s.clone()),
-            Expr::Ident(name) => self
-                .lookup_ident(name, sc)
-                .unwrap_or_else(|| Value::Ident(name.clone())),
+            Expr::Ident(name) => match self.lookup_ident(name, sc) {
+                Some(Value::Unseen) => return Err(unseen(name)),
+                Some(v) => v,
+                None => Value::Ident(name.clone()),
+            },
             Expr::Ref(segs) => self.reference(segs, sc)?,
             Expr::Member(base, seg) => {
                 let b = self.expr(base, sc)?;
@@ -4123,10 +4130,12 @@ impl<'a> Evaluator<'a> {
 
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
         let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => self
-                .lookup_ident(var, sc)
-                .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
-                .unwrap_or(var.to_string()),
+            Some(var) => match self.lookup_ident(var, sc) {
+                Some(Value::Unseen) => return Err(unseen(var)),
+                v => v
+                    .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
+                    .unwrap_or(var.to_string()),
+            },
             None => seg.to_string(),
         };
         let seg = seg.as_str();
@@ -4176,6 +4185,9 @@ impl<'a> Evaluator<'a> {
                     Coord::Num(v) => Value::Num(v),
                     Coord::Pct(p) => Value::Percent(p),
                 }
+            }
+            Value::Ref(r) if self.prepass && r.canvas.is_none() => {
+                return Err(unseen(&format!("@{}.{seg}", r.label)));
             }
             Value::Ref(r) => self.measure(r, seg)?,
             Value::Tuple(xs) => {
@@ -4245,7 +4257,13 @@ impl<'a> Evaluator<'a> {
             return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
+        if self.prepass && matches!(resolved, Resolved::Undrawn(_)) {
+            return Err(unseen(&format!("@{first}")));
+        }
         let (cur, depth) = self.refs_of(resolved, first)?;
+        if self.prepass && segs[1..].iter().any(|s| !is_copy_index(s)) {
+            return Err(unseen(&format!("@{}", segs.join("."))));
+        }
         self.walk_ref(cur, segs, 1, first.clone(), sc, depth)
     }
 
@@ -4301,7 +4319,7 @@ impl<'a> Evaluator<'a> {
                     kids.into_iter().map(|c| Value::Ref(Rc::new(c))).collect(),
                 )));
             }
-            if !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()) {
+            if is_copy_index(seg) {
                 let Ok(ix) = seg.parse::<u32>() else {
                     return Err(fail(
                         "E0350",
