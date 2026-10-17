@@ -29,6 +29,55 @@ fn nested_child_never_paints_outside_parent() {
 }
 
 #[test]
+fn a_fill_none_parent_still_clips_and_shows_its_children() {
+    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), red());
+    let child = solid("dot", circle_at(32.0, 32.0, 30.0), color(0, 0, 255, 255));
+    match &mut frame.kind {
+        NodeKind::Shape(shape) => {
+            shape.fill = None;
+            shape.children.push(child);
+        }
+        _ => unreachable!(),
+    }
+    let png = render_png(&scene(64.0, 64.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 32, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 14, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 32, 6), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 6, 32), [0, 0, 0, 0]);
+}
+
+#[test]
+fn an_opaque_child_of_a_translucent_parent_stays_opaque() {
+    let mut glass = solid("glass", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), color(0, 0, 255, 77));
+    let dot = solid("dot", circle_at(32.0, 32.0, 6.0), color(0, 0, 0, 255));
+    match &mut glass.kind {
+        NodeKind::Shape(shape) => shape.children.push(dot),
+        _ => unreachable!(),
+    }
+    let png = render_png(&scene(64.0, 64.0, vec![glass]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 32, 32), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 16, 16), [0, 0, 255, 77]);
+}
+
+#[test]
+fn outline_traces_the_children_a_fill_none_parent_shows() {
+    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0), None), red());
+    let child = solid("dot", circle_at(40.0, 40.0, 30.0), color(0, 0, 255, 255));
+    match &mut frame.kind {
+        NodeKind::Shape(shape) => {
+            shape.fill = None;
+            shape.children.push(child);
+        }
+        _ => unreachable!(),
+    }
+    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255) }));
+    let png = render_png(&scene(80.0, 80.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 0]);
+}
+
+#[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
