@@ -10,7 +10,7 @@ A line that does not draw says so with its first word: `use palette style finish
 
 Hold these before you draw:
 
-- Shapes are centered on their local origin, and `at:` places that origin in the parent.
+- The canvas origin is top-left, with y down, so `at:256,256` is the center of a 512x512 canvas. Shapes are centered on their local origin, and `at:` places that origin in the parent.
 - **Nesting under a shape clips the children to that shape.** Highlights, shadows, and textures go inside the form they belong to.
 - Paint with palette ramps, not raw hex. `p` is the manifest's default palette, and `p.skin.3` picks a ramp stop.
 - Name the nodes that matter with `name:`. A named node is addressable from checks, patches, and anims, and it keeps its seed when other nodes change.
