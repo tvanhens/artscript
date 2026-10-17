@@ -4189,7 +4189,7 @@ impl<'a> Evaluator<'a> {
             Value::Ref(r) if self.prepass && r.canvas.is_none() => {
                 return Err(unseen(&format!("@{}.{seg}", r.label)));
             }
-            Value::Ref(r) => self.measure(r, seg)?,
+            Value::Ref(r) => self.measure(r, seg, sc)?,
             Value::Tuple(xs) => {
                 let i: usize = seg
                     .parse()
@@ -4219,9 +4219,14 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    pub fn measure(&mut self, r: &RefVal, m: &str) -> R<Value> {
+    /// Checks measure in canvas coordinates. Everything else reads a ref in the current local frame.
+    fn view(&self, sc: &Scope) -> Matrix {
+        if self.check.is_some() { Matrix::new_identity() } else { inverse(&sc.world) }
+    }
+
+    pub fn measure(&mut self, r: &RefVal, m: &str, sc: &Scope) -> R<Value> {
         let b = r
-            .bounds()
+            .bounds_in(&self.view(sc))
             .ok_or_else(|| fail("E0351", format!("@{} has no geometry", r.label)))?;
         let v = measure_rect(b, m).ok_or_else(|| {
             fail("E0350", format!("unknown measurement `.{m}`"))
@@ -4337,7 +4342,7 @@ impl<'a> Evaluator<'a> {
                 let one = self.one_ref(&cur, &label, sc)?;
                 let m = segs[i + 1].as_str();
                 let b = one
-                    .geom_bounds()
+                    .geom_bounds_in(&self.view(sc))
                     .ok_or_else(|| fail("E0351", format!("@{label} has no geometry")))?;
                 let v = measure_rect(b, m)
                     .ok_or_else(|| fail("E0350", format!("unknown measurement `.geom.{m}`")))?;
@@ -4353,7 +4358,7 @@ impl<'a> Evaluator<'a> {
                 .collect();
             if matched.is_empty() {
                 if last && MEASURES.contains(&seg) {
-                    return self.measure(&one, seg);
+                    return self.measure(&one, seg, sc);
                 }
                 let names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
                 return Err(fail("E0350", format!("@{label} has no part `{seg}`"))
