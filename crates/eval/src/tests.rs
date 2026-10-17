@@ -2538,6 +2538,21 @@ fn a_path_only_anim_patch_that_matches_nothing_is_e0340() {
 }
 
 #[test]
+fn two_plays_of_an_unmatched_patch_are_two_e0340s() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .missing a:.5 x:2\ncircle 4 name:c\nplay idle\nplay idle start:1s\n",
+        &[],
+    );
+    let lines: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0340")
+        .map(|d| d.span.line)
+        .collect();
+    assert_eq!(lines, [5, 6], "{}", show(&ev.diagnostics));
+}
+
+#[test]
 fn an_animated_style_error_is_reported_on_the_anim() {
     let ev = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",

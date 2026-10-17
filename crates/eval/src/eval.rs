@@ -3367,7 +3367,7 @@ impl<'a> Evaluator<'a> {
             .collect();
         let mut seen = HashSet::new();
         for (anim, rel, span, file) in pending {
-            if !seen.insert((anim.clone(), rel.clone())) {
+            if !seen.insert((anim.clone(), rel.clone(), file.clone(), span)) {
                 continue;
             }
             self.report(
