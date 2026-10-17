@@ -1,0 +1,130 @@
+name: claude-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  # resolveReviewThread rejects GITHUB_TOKEN without contents: write.
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    name: claude-review
+    # Fork PRs get no secrets. Drafts are reviewed on ready_for_review.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      # A repo-owned GitHub App gives the comments their own name and avatar. Without it, they post as github-actions.
+      - name: reviewer token
+        id: app
+        if: vars.CLAUDE_REVIEW_APP_ID != ''
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.CLAUDE_REVIEW_APP_ID }}
+          private-key: ${{ secrets.CLAUDE_REVIEW_APP_PRIVATE_KEY }}
+
+      - name: context
+        id: context
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          REVIEWER_LOGIN: ${{ steps.app.outputs.app-slug || 'github-actions' }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          mkdir -p .claude-review
+          # shellcheck disable=SC2016 # $owner and friends are GraphQL variables
+          gh api graphql --paginate --slurp -F owner="${REPO%/*}" -F repo="${REPO#*/}" -F number="$PR_NUMBER" -f query='
+            query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100, after: $endCursor) {
+                    pageInfo { hasNextPage endCursor }
+                    nodes {
+                      id isResolved isOutdated path line
+                      comments(first: 100) {
+                        nodes { url body createdAt author { login } }
+                      }
+                    }
+                  }
+                }
+              }
+            }' |
+            jq '[.[].data.repository.pullRequest.reviewThreads.nodes[]
+                 | {id, isResolved, isOutdated, path, line,
+                    comments: [.comments.nodes[]
+                      | {url, body, createdAt, author: (.author.login // null)}]}]' \
+              >.claude-review/threads.json
+
+          # The sticky comment is the only record of what the last completed review covered.
+          # A cancelled or crashed run never updates it, so the next run re-reviews that range.
+          last_sha=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
+            --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]")) | .body' |
+            grep -oE '<!-- claude-review:sha=[0-9a-f]{40} -->' | tail -n1 |
+            grep -oE '[0-9a-f]{40}' || true)
+          if [ -n "$last_sha" ] && ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
+            last_sha=
+          fi
+          printf '%s' "$last_sha" >.claude-review/last_sha
+
+          # claude_args is shell-quote parsed, so the schema rides in single quotes.
+          schema=$(jq -c . .github/claude-review/schema.json)
+          case "$schema" in *"'"*) echo "schema.json must not contain a single quote" >&2; exit 1 ;; esac
+          echo "schema=$schema" >>"$GITHUB_OUTPUT"
+
+          {
+            echo 'prompt<<CLAUDE_REVIEW_PROMPT_EOF'
+            echo "Run context:"
+            echo "- repo: $REPO"
+            echo "- pr: $PR_NUMBER"
+            echo "- head_sha: $HEAD_SHA (checked out as HEAD)"
+            echo "- base_sha: $BASE_SHA"
+            echo "- last_sha: $last_sha"
+            echo "- reviewer_login: $REVIEWER_LOGIN (your comments carry this author login in threads.json)"
+            echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above)"
+            echo
+            cat .github/claude-review/prompt.md
+            echo 'CLAUDE_REVIEW_PROMPT_EOF'
+          } >>"$GITHUB_OUTPUT"
+
+      - name: review
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Supplying a token skips the Claude App OIDC exchange and its default-branch workflow check.
+          github_token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # Buffered comments would post after the session, past the point the gate reads threads.
+          classify_inline_comments: false
+          prompt: ${{ steps.context.outputs.prompt }}
+          claude_args: |
+            --model claude-opus-5-5
+            --json-schema '${{ steps.context.outputs.schema }}'
+            --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(gh pr view:*),Bash(gh pr diff:*),mcp__github_inline_comment__create_inline_comment"
+
+      - name: gate
+        if: always()
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
+          REVIEWER_LOGIN: ${{ steps.app.outputs.app-slug || 'github-actions' }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          STRUCTURED_OUTPUT: ${{ steps.claude.outputs.structured_output }}
+        run: bash .github/claude-review/gate.sh

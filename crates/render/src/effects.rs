@@ -17,11 +17,12 @@ use skia_safe::paint::{Cap, Join, Style};
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
     BlendMode, Color4f, ColorMatrix, Data, Image, ImageFilter, Matrix, Paint, PathBuilder, PathOp,
-    PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, path_utils, surfaces,
+    PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, path_utils,
 };
 
 use crate::RenderError;
 use crate::draw::{DrawCtx, draw_node};
+use crate::gpu::{self, Backend};
 use crate::paint::{color4, content_paint};
 
 pub struct FxEnv<'a> {
@@ -532,6 +533,7 @@ pub(crate) struct Region {
 /// Each filled region, filled and stroked at width `2 * width` (round caps and joins).
 /// Drawn with DstOver, so it sits behind `src`.
 pub fn outline_geometry(
+    backend: Backend,
     src: Image,
     local_to_px: &Matrix,
     node: &Node,
@@ -545,7 +547,7 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
+    let mut surface = gpu::surface(backend, (src.width(), src.height()))
         .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
     let canvas = surface.canvas();
     canvas.draw_image(&src, (0.0, 0.0), None);
@@ -686,11 +688,12 @@ fn coverage_alpha(paint: &IrPaint) -> f32 {
 
 /// Runs `filter` in `local_to_px` over a device-space image of that same layer.
 pub fn apply_image_filter(
+    backend: Backend,
     src: Image,
     local_to_px: &Matrix,
     filter: ImageFilter,
 ) -> Result<Image, RenderError> {
-    let mut surface = surfaces::raster_n32_premul((src.width(), src.height()))
+    let mut surface = gpu::surface(backend, (src.width(), src.height()))
         .ok_or_else(|| RenderError::Skia("filter surface".into()))?;
     let canvas = surface.canvas();
     canvas.concat(local_to_px);

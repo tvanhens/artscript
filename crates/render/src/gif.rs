@@ -4,6 +4,7 @@ use std::sync::{Condvar, Mutex};
 use artscript_ir::Scene;
 use gif::{Encoder, Frame, Repeat};
 
+use crate::Backend;
 use crate::draw;
 use crate::{RASTER_BUDGET, RenderError};
 
@@ -41,6 +42,7 @@ pub fn encode(
     scale: f32,
     delays: &[u16],
     loop_forever: bool,
+    backend: Backend,
 ) -> Result<Vec<u8>, RenderError> {
     if scenes.is_empty() {
         return Err(RenderError::Skia("gif has no frames".into()));
@@ -78,7 +80,7 @@ pub fn encode(
     let rendered: Result<Vec<(u32, u32, Vec<u8>)>, RenderError> = scenes
         .iter()
         .map(|scene| {
-            let (fw, fh, px) = draw::render_rgba(scene, scale)?;
+            let (fw, fh, px) = draw::render_rgba(scene, scale, backend)?;
             if !opaque(&px) {
                 return Err(RenderError::TransparentGif);
             }
@@ -148,7 +150,7 @@ mod tests {
     fn a_raster_over_the_budget_is_rejected_before_render() {
         let scene = blank(4096.0);
         let frames = vec![&scene; 5];
-        let err = encode(&frames, 1.0, &[4; 5], false).unwrap_err();
+        let err = encode(&frames, 1.0, &[4; 5], false, Backend::Cpu).unwrap_err();
         assert!(matches!(err, RenderError::GifTooLarge));
     }
 
@@ -164,7 +166,7 @@ mod tests {
     #[test]
     fn a_small_gif_still_encodes() {
         let scene = blank(8.0);
-        let bytes = encode(&[&scene], 1.0, &[4], false).unwrap();
+        let bytes = encode(&[&scene], 1.0, &[4], false, Backend::Cpu).unwrap();
         assert!(bytes.starts_with(b"GIF"));
     }
 }
