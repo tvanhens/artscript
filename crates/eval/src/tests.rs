@@ -4518,3 +4518,23 @@ fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
     }
     scene("@target t.png 40x40\nrect 4x4 at:20,20 scale:2 skew:30,-45\n");
 }
+
+#[test]
+fn a_field_below_a_threshold_masks_the_complement() {
+    let alpha = |mask: &str| {
+        let s = scene(&format!(
+            "@target t.png 32x32\nrect 32x32 at:16,16 fill:#fff\n  mask {mask}\n"
+        ));
+        let (_, _, px) = artscript_render::render_rgba(&s, 1.0, artscript_render::Backend::Cpu).unwrap();
+        px.chunks(4).map(|p| p[3] as i32).collect::<Vec<_>>()
+    };
+    let (above, below, flipped) = (
+        alpha("simplex(8) > .4"),
+        alpha("simplex(8) < .4"),
+        alpha(".4 > simplex(8)"),
+    );
+    assert_eq!(below, flipped, "`.4 > f` is `f < .4`");
+    assert!(above.contains(&255) && below.contains(&255));
+    let mismatched = above.iter().zip(&below).filter(|(a, b)| (*a + *b - 255).abs() > 2).count();
+    assert!(mismatched < 16, "{mismatched} pixels are in both masks or neither");
+}
