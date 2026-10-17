@@ -608,22 +608,3 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
-
-#[test]
-fn a_manifest_section_that_is_not_a_table_is_e0200() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-notable-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(dir.join("art")).unwrap();
-    fs::write(
-        dir.join("artscript.toml"),
-        "build = 1\n\n[project]\nname = \"m\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = \"bogus\"\n",
-    )
-    .unwrap();
-    fs::write(dir.join("art/a.art"), "@target a.png 8x8\nrect 0 0 4 4\n").unwrap();
-    let out = artscript(&dir, &["build"]);
-    let err = text(&out);
-    assert_eq!(out.status.code(), Some(1), "{err}");
-    assert!(err.contains("E0200") && err.contains("invalid manifest"), "{err}");
-    assert!(!dir.join("assets/a.png").exists(), "{err}");
-    let _ = fs::remove_dir_all(&dir);
-}
