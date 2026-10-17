@@ -110,6 +110,19 @@ else
     || echo "::warning::could not post the summary comment"
 fi
 
+# A finding that outlived a reply gets the counter-example on its thread, once per reply,
+# so the agent reading the thread sees why its reply did not resolve it.
+while IFS=$'\t' read -r tid scenario; do
+  last_author=$(jq -r --arg id "$tid" '[.[] | select(.id == $id)][0].comments[-1].author // empty' \
+    "$CONTEXT_DIR/threads.json" 2>/dev/null || true)
+  [[ -z "$last_author" || "$last_author" == "github-actions" ]] && continue
+  # shellcheck disable=SC2016 # $id and $body are GraphQL variables
+  gh api graphql \
+    -f query='mutation($id: ID!, $body: String!) { addPullRequestReviewThreadReply(input: {pullRequestReviewThreadId: $id, body: $body}) { comment { id } } }' \
+    -f id="$tid" -f body="**still blocking:** $scenario" >/dev/null \
+    || echo "::warning::could not reply on thread $tid"
+done < <(jq -r '.blocking[] | select(.thread_id != null) | [.thread_id, (.failure_scenario | gsub("[\t\n]"; " "))] | @tsv' <<<"$OUT")
+
 for ((i = 0; i < blocking_count; i++)); do
   path=$(jq -r ".blocking[$i].path" <<<"$OUT")
   line=$(jq -r ".blocking[$i].line" <<<"$OUT")

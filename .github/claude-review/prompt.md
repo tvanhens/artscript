@@ -30,7 +30,7 @@ Do these in order.
 
 1. Existing threads. For each unresolved thread in `threads.json` whose first comment was opened by `github-actions`, read the code at HEAD.
    - If the problem is fixed, add the thread id to `resolve_thread_ids`.
-   - If the PR author or an agent replied with a reason, accept the reason and add the thread id to `resolve_thread_ids`. The exception is when you can name a concrete input the reply does not address. You cannot reply on a thread. Keep the finding in `blocking` with its `thread_id`, and put the counter-example in `failure_scenario`.
+   - If the PR author or an agent replied with a reason, accept the reason and add the thread id to `resolve_thread_ids`. The exception is when you can name a concrete input the reply does not address. Keep the finding in `blocking` with its `thread_id`, and put the counter-example in `failure_scenario`. The gate posts it as the reply on the thread, so address the reply directly.
    - If nothing changed and nobody replied, keep it in `blocking` with its `thread_id`.
 2. New findings. Raise new blocking findings only on lines changed in `git diff <last_sha>..HEAD`. The one exception is a defect in older code that the new commits cause to fail. Do not raise findings on code you already reviewed and passed.
 3. When `last_sha` equals HEAD, the diff is empty. Only step 1 applies.
