@@ -1,0 +1,301 @@
+{
+  "model": "claude-opus-5-5",
+  "claude_version": "2.1.302 (Claude Code)",
+  "artscript_commit": "5e2f9ef0a09ea8259d56523d5b9aa3bdece11758",
+  "auth": "oauth-token",
+  "steps": [
+    {
+      "id": "create",
+      "checks": {
+        "check": {
+          "ok": true,
+          "detail": ""
+        },
+        "build": {
+          "ok": true,
+          "detail": "built 2 target(s), 2 output(s) in assets"
+        },
+        "png-512": {
+          "ok": true,
+          "detail": "size (512, 512)"
+        },
+        "svg-exists": {
+          "ok": true,
+          "detail": "present"
+        },
+        "coverage": {
+          "ok": true,
+          "detail": "coverage 41.1%"
+        },
+        "corners-transparent": {
+          "ok": true,
+          "detail": "corner alpha [0, 0, 0, 0]"
+        },
+        "red-cap": {
+          "ok": true,
+          "detail": "red 71895, blue 0"
+        },
+        "fmt-clean": {
+          "ok": true,
+          "detail": ""
+        }
+      },
+      "judge": {
+        "score": 8,
+        "notes": "The image matches the request: a red cap with white spots, a cream stem, and a simple happy face. It reads clearly as a cute chibi mushroom. The cap is large and the stem is small, which suits the chibi style. The face is kawaii, with shiny eyes, blush and a small smile. The shapes are clean, with no visible artifacts. The cap has a gradient and a highlight, the spots are shaded, and the outlines are consistent. A soft ground shadow adds depth. Weaknesses: the stem is a bit boxy and flat, and the stem outline is thin and brown while the cap outline is thick and dark. The cap highlight is subtle, and one spot looks smudged. The gray background is the viewer's backdrop, so the transparency can't be judged.",
+        "usage": {
+          "claude-sonnet-5-5": {
+            "input": 4,
+            "cache_write_5m": 0,
+            "cache_write_1h": 17555,
+            "cache_read": 17081,
+            "output": 390
+          }
+        },
+        "cost": {
+          "input": 8e-06,
+          "cache_write": 0.07022,
+          "cache_read": 0.0017081000000000002,
+          "output": 0.0039,
+          "total": 0.0758361
+        }
+      },
+      "usage": {
+        "claude-opus-5-5": {
+          "input": 22,
+          "cache_write_5m": 0,
+          "cache_write_1h": 19675,
+          "cache_read": 281724,
+          "output": 4098
+        }
+      },
+      "cost": {
+        "input": 8.8e-05,
+        "cache_write": 0.1574,
+        "cache_read": 0.0563448,
+        "output": 0.08196,
+        "total": 0.2957928
+      },
+      "cli_cost_usd": 0.2957928,
+      "num_turns": 17,
+      "duration_s": 56.0,
+      "is_error": false,
+      "warnings": []
+    },
+    {
+      "id": "recolor",
+      "checks": {
+        "build": {
+          "ok": true,
+          "detail": "built 2 target(s), 2 output(s) in assets"
+        },
+        "blue-cap": {
+          "ok": true,
+          "detail": "red 1261, blue 70631"
+        },
+        "coverage-stable": {
+          "ok": true,
+          "detail": "coverage 41.1% vs create 41.1%"
+        },
+        "fmt-clean": {
+          "ok": true,
+          "detail": ""
+        }
+      },
+      "judge": {
+        "score": 8,
+        "notes": "Request match is strong: the cap is clearly blue, the cream spots are kept, and the stem, face and blush are unchanged. It reads as a cute chibi mushroom with big eyes, blush and a small smile. Shapes are clean with no recolor fringing. The cap has soft gradient shading and highlights on the spots, and the outline is a consistent dark navy. The cap outline is heavier than the stem's brown outline. The cap shading is a little flat and noisy, and the largest spot looks slightly smudged. The face is small relative to the body. Good, near-production quality.",
+        "usage": {
+          "claude-sonnet-5-5": {
+            "input": 4,
+            "cache_write_5m": 0,
+            "cache_write_1h": 4394,
+            "cache_read": 30098,
+            "output": 331
+          }
+        },
+        "cost": {
+          "input": 8e-06,
+          "cache_write": 0.017576,
+          "cache_read": 0.0030098,
+          "output": 0.00331,
+          "total": 0.023903800000000003
+        }
+      },
+      "usage": {
+        "claude-opus-5-5": {
+          "input": 14,
+          "cache_write_5m": 0,
+          "cache_write_1h": 14868,
+          "cache_read": 156082,
+          "output": 1212
+        }
+      },
+      "cost": {
+        "input": 5.6e-05,
+        "cache_write": 0.118944,
+        "cache_read": 0.031216400000000002,
+        "output": 0.02424,
+        "total": 0.1744564
+      },
+      "cli_cost_usd": 0.17445639999999998,
+      "num_turns": 9,
+      "duration_s": 20.5,
+      "is_error": false,
+      "warnings": []
+    },
+    {
+      "id": "background",
+      "checks": {
+        "build": {
+          "ok": true,
+          "detail": "built 2 target(s), 2 output(s) in assets"
+        },
+        "navy-corners": {
+          "ok": true,
+          "detail": "corners [(29, 43, 83, 255), (29, 43, 83, 255), (29, 43, 83, 255), (29, 43, 83, 255)]"
+        },
+        "foreground": {
+          "ok": true,
+          "detail": "non-background 42.3%"
+        },
+        "fmt-clean": {
+          "ok": true,
+          "detail": ""
+        }
+      },
+      "judge": {
+        "score": 8,
+        "notes": "Request match: the background is a solid dark navy that looks like #1d2b53, with no transparency or halo visible. I judged this by eye and didn't sample pixel values.\n\nChibi read: it's a cute mushroom with a big blue cap, a small stem, a kawaii face and blush. The proportions work.\n\nShapes: they're clean, and I saw no stray artifacts. There is a faint dark shadow under the stem, but it blends in.\n\nPolish: the shading is soft and the cap has a gradient and highlights. The dark navy cap outline is close to the background, so the cap edge has slightly low contrast. The stem outline is thinner than the cap outline. The blue cap against the navy background is also a little low-key.",
+        "usage": {
+          "claude-sonnet-5-5": {
+            "input": 4,
+            "cache_write_5m": 0,
+            "cache_write_1h": 4391,
+            "cache_read": 30097,
+            "output": 374
+          }
+        },
+        "cost": {
+          "input": 8e-06,
+          "cache_write": 0.017564,
+          "cache_read": 0.0030097,
+          "output": 0.00374,
+          "total": 0.0243217
+        }
+      },
+      "usage": {
+        "claude-opus-5-5": {
+          "input": 24,
+          "cache_write_5m": 0,
+          "cache_write_1h": 10433,
+          "cache_read": 256819,
+          "output": 2348
+        }
+      },
+      "cost": {
+        "input": 9.6e-05,
+        "cache_write": 0.083464,
+        "cache_read": 0.0513638,
+        "output": 0.04696,
+        "total": 0.18188379999999998
+      },
+      "cli_cost_usd": 0.18188379999999998,
+      "num_turns": 15,
+      "duration_s": 48.9,
+      "is_error": false,
+      "warnings": []
+    },
+    {
+      "id": "animate",
+      "checks": {
+        "build": {
+          "ok": true,
+          "detail": "built 3 target(s), 3 output(s) in assets"
+        },
+        "gif-frames": {
+          "ok": true,
+          "detail": "24 frames"
+        },
+        "gif-moves": {
+          "ok": true,
+          "detail": "13 distinct frames"
+        },
+        "png-svg-kept": {
+          "ok": true,
+          "detail": "present"
+        },
+        "fmt-clean": {
+          "ok": true,
+          "detail": ""
+        }
+      },
+      "judge": {
+        "score": 7,
+        "notes": "The image is a single static PNG frame. I can't judge the GIF's bobbing or looping from it, so the \"matches the request\" score is partly unverified. The mushroom is cute and chibi: a big blue cap with cream spots, a small stem, a kawaii face with blush and highlights in the eyes. The shapes are clean and the outlines are consistent, with no visible artifacts. Shading is soft and there's a subtle highlight on the cap, but it's fairly flat. The dark navy outline on the cap is heavy against the thin brown stem outline, and the ground shadow is barely visible. Overall it's good but not top-tier.",
+        "usage": {
+          "claude-sonnet-5-5": {
+            "input": 4,
+            "cache_write_5m": 0,
+            "cache_write_1h": 4423,
+            "cache_read": 30128,
+            "output": 348
+          }
+        },
+        "cost": {
+          "input": 8e-06,
+          "cache_write": 0.017692,
+          "cache_read": 0.0030128000000000004,
+          "output": 0.00348,
+          "total": 0.0241928
+        }
+      },
+      "usage": {
+        "claude-opus-5-5": {
+          "input": 32,
+          "cache_write_5m": 0,
+          "cache_write_1h": 23484,
+          "cache_read": 478890,
+          "output": 5256
+        }
+      },
+      "cost": {
+        "input": 0.000128,
+        "cache_write": 0.187872,
+        "cache_read": 0.095778,
+        "output": 0.10512,
+        "total": 0.38889799999999997
+      },
+      "cli_cost_usd": 0.388898,
+      "num_turns": 25,
+      "duration_s": 57.6,
+      "is_error": false,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "usage": {
+      "input": 92,
+      "cache_write_5m": 0,
+      "cache_write_1h": 68460,
+      "cache_read": 1173515,
+      "output": 12914
+    },
+    "cost": {
+      "input": 0.000368,
+      "cache_write": 0.5476800000000001,
+      "cache_read": 0.23470300000000002,
+      "output": 0.25828,
+      "total": 1.041031
+    },
+    "judge_cost_usd": 0.1482544,
+    "num_turns": 66,
+    "duration_s": 183.0
+  },
+  "warnings": [],
+  "comparison": {
+    "baseline": false,
+    "regressed": false,
+    "steps": {}
+  }
+}
