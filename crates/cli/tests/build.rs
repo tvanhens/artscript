@@ -505,3 +505,28 @@ fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
     assert!(report.contains("E0206"), "plan errors survive a missing gpu: {report}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_file_with_only_unknown_directives_is_e0208() {
+    let dir = fixture("unknown-directive");
+    fs::write(
+        dir.join("art/broken.art"),
+        "@taget broken.png 64x64\nrect 0 0 10 10\n",
+    )
+    .unwrap();
+    fs::write(dir.join("lib/bogus.art"), "@bogus\n").unwrap();
+    for cmd in ["check", "build"] {
+        let out = artscript(&dir, &[cmd]);
+        let err = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{cmd}: {err}");
+        for (file, name) in [("art/broken.art", "@taget"), ("lib/bogus.art", "@bogus")] {
+            let line = format!("error[E0208] {file}:1:1");
+            assert_eq!(err.matches(&line).count(), 1, "{cmd}: {err}");
+            assert!(
+                err.contains(&format!("unknown directive `{name}`")),
+                "{cmd}: {err}"
+            );
+        }
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

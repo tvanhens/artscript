@@ -370,7 +370,7 @@ These record behavior the sections above do not mention. When this section disag
   - E0340: a patch segment names nothing declared in its scope, a final `*` in a scope that declares no name, a segment before the last names a node that is not an instance or a slot, a copy index matches no drawn copy, an index is not a whole number, or the target is an anchor. A `play` reports it at the `play`, and the message names the anim and the full path, so `.left.typo` and `.right.typo` are both reported. A patch expression or blend failure is reported on that patch, in the anim's file. The fix is `write .leaf`, `write .leaf.0`, `add name:` at the unnamed verb, or `patch a shape or a group`.
   - E0343: a reference, patch, or check that resolves to several nodes where one is needed. The note lists the spellings.
   - E0207: an unknown `{var}` in a target path.
-  - E0208: an unknown directive.
+  - E0208: an unknown directive. Every file reports it, including a file with no `@target` and a library under a lib root.
   - E0209: a `profile:vector` target that uses raster-only features. The notes list each node.
   - E0210: a module that cannot be found.
   - E0211: an import cycle.
