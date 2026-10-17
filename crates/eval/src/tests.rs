@@ -1,6 +1,6 @@
 //! Evaluator behaviour tests over in-memory projects.
 
-use artscript_ir::{EffectOp, Node, NodeKind, Paint, Scene};
+use artscript_ir::{Blend, EffectOp, Node, NodeKind, Paint, Scene};
 use artscript_syntax::Diagnostic;
 
 use crate::{Evaluation, Project, evaluate, plan};
@@ -2878,25 +2878,13 @@ fn stable_print(scene: &Scene) -> std::collections::BTreeMap<String, Vec<String>
 }
 
 fn insert_probe(src: &str) -> String {
-    let lines: Vec<&str> = src.lines().collect();
-    let at = lines
-        .iter()
-        .position(|line| {
-            let t = line.trim();
-            !t.is_empty() && !t.starts_with("@target")
-        })
-        .unwrap_or(lines.len());
-    let mut out = String::new();
-    for (i, line) in lines.iter().enumerate() {
-        if i == at {
-            out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
-        }
-        out.push_str(line);
+    // Appended so a line-seeded `let` keeps its line. The new draws are still
+    // file scope, which is what would renumber an unnamed sibling.
+    let mut out = src.to_string();
+    if !out.ends_with('\n') {
         out.push('\n');
     }
-    if at == lines.len() {
-        out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
-    }
+    out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
     out
 }
 
@@ -3017,9 +3005,11 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
             .collect();
         stable.sort();
         stable.dedup();
-        for path in stable {
-            let key = key_of(&path);
-            assert_eq!(key.to_string(), path, "{}", job.source);
+        let mut lines = String::new();
+        let mut expect = std::collections::BTreeMap::new();
+        for path in &stable {
+            let key = key_of(path);
+            assert_eq!(key.to_string(), *path, "{}", job.source);
             let address = key
                 .address_from(&crate::identity::Key::root())
                 .unwrap_or_else(|| panic!("{path} has no address"));
@@ -3030,46 +3020,57 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
                     .split('.')
                     .collect::<Vec<_>>()
             );
-            let old = all.iter().find(|n| n.path == path).unwrap().opacity;
-            let opacity = if (old - 0.5).abs() < 1e-3 { 0.25 } else { 0.5 };
-            let mut files = project.files.clone();
-            let src = files.get(&job.source).unwrap().clone();
-            files.insert(
-                job.source.clone(),
-                format!("{src}\nanim __probe dur:1s\n  {address} a:{opacity}\nplay __probe\n"),
-            );
-            let shifted = Project {
-                files,
-                ..project.clone()
+            // `a:` is often a def parameter, so it never reaches `Node.opacity`.
+            let old = all.iter().find(|n| n.path == *path).unwrap().blend;
+            let (word, blend) = if old == Blend::Multiply {
+                ("screen", Blend::Screen)
+            } else {
+                ("multiply", Blend::Multiply)
             };
-            let planned = plan(&shifted);
-            let job2 = planned
-                .jobs
-                .iter()
-                .find(|j| {
-                    j.source == job.source
-                        && j.clip.is_none()
-                        && j.outputs.iter().any(|o| o.format == crate::Format::Png)
-                })
-                .unwrap();
-            let probed = evaluate(&shifted, job2);
-            let scene = probed.scene.as_ref().unwrap();
-            let mut found = Vec::new();
-            walk_deep(&scene.children, &mut found);
-            let hits: Vec<_> = found.iter().filter(|n| n.path == path).collect();
+            lines.push_str(&format!("  {address} blend:{word}\n"));
+            expect.insert(path.clone(), blend);
+        }
+        let mut files = project.files.clone();
+        let src = files.get(&job.source).unwrap().clone();
+        files.insert(
+            job.source.clone(),
+            format!("{src}\nanim __probe dur:1s\n{lines}play __probe\n"),
+        );
+        let shifted = Project {
+            files,
+            ..project.clone()
+        };
+        let planned = plan(&shifted);
+        let job2 = planned
+            .jobs
+            .iter()
+            .find(|j| {
+                j.source == job.source
+                    && j.clip.is_none()
+                    && j.outputs.iter().any(|o| o.format == crate::Format::Png)
+            })
+            .unwrap();
+        let probed = evaluate(&shifted, job2);
+        let scene = probed
+            .scene
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}", show(&probed.diagnostics)));
+        let mut found = Vec::new();
+        walk_deep(&scene.children, &mut found);
+        for path in &stable {
+            let hits: Vec<_> = found.iter().filter(|n| n.path == *path).collect();
             assert!(
                 !hits.is_empty(),
-                "{} lost {path} via {address}\n{}",
+                "{} lost {path}\n{}",
                 job.source,
                 show(&probed.diagnostics)
             );
+            let blend = expect[path];
             for node in hits {
-                assert!(
-                    (f64::from(node.opacity) - opacity).abs() < 1e-3,
-                    "{} {path} via {address} opacity {} expected {opacity}\n{}",
-                    job.source,
-                    node.opacity,
-                    show(&probed.diagnostics)
+                assert_eq!(
+                    node.blend, blend,
+                    "{} {path} blend {:?} expected {blend:?}\n{}",
+                    job.source, node.blend, show(&probed.diagnostics)
                 );
             }
         }

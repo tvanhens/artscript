@@ -2,7 +2,7 @@
   "outputs": [
     {
       "checks": [],
-      "hash": "374caf5f4526e833",
+      "hash": "5f16637c4654f671",
       "line": 1,
       "matrix": {},
       "path": "character/moss_monk.png",
@@ -13,7 +13,7 @@
     },
     {
       "checks": [],
-      "hash": "5584d16976cf7fa8",
+      "hash": "8c7453d75ce89f8b",
       "line": 2,
       "matrix": {},
       "path": "character/moss_monk.svg",
@@ -24,7 +24,7 @@
     },
     {
       "checks": [],
-      "hash": "f605019ed210f411",
+      "hash": "fc630ba2d79ea5a1",
       "line": 5,
       "matrix": {
         "c": "blink"
@@ -37,7 +37,7 @@
     },
     {
       "checks": [],
-      "hash": "594f8a3da97d3056",
+      "hash": "bb5ce86b7cb847b7",
       "line": 3,
       "matrix": {},
       "path": "character/moss_monk_blink.png",
@@ -48,7 +48,7 @@
     },
     {
       "checks": [],
-      "hash": "94e2eab1ac8b710f",
+      "hash": "cd3832acddfe515a",
       "line": 5,
       "matrix": {
         "c": "idle"
@@ -61,7 +61,7 @@
     },
     {
       "checks": [],
-      "hash": "398e56139726e894",
+      "hash": "0740a67e620a7517",
       "line": 5,
       "matrix": {
         "c": "yawn"
@@ -74,7 +74,7 @@
     },
     {
       "checks": [],
-      "hash": "a4c7069a38f947de",
+      "hash": "175d79bfbf6be0f1",
       "line": 4,
       "matrix": {},
       "path": "character/moss_monk_yawn.png",
@@ -85,7 +85,7 @@
     },
     {
       "checks": [],
-      "hash": "5eb12e065838fe81",
+      "hash": "154066440206ae88",
       "line": 1,
       "matrix": {},
       "path": "monument/stone_lantern.png",
@@ -96,7 +96,7 @@
     },
     {
       "checks": [],
-      "hash": "3499be3e66dcf943",
+      "hash": "617301d277f1a896",
       "line": 2,
       "matrix": {},
       "path": "monument/stone_lantern.svg",
@@ -107,7 +107,7 @@
     },
     {
       "checks": [],
-      "hash": "4de2da7814f5afbf",
+      "hash": "66aadfbe25c591e0",
       "line": 1,
       "matrix": {},
       "path": "monument/vermilion_torii.png",
@@ -118,7 +118,7 @@
     },
     {
       "checks": [],
-      "hash": "da14cd4778897e05",
+      "hash": "4634a3c7fb8a0bdf",
       "line": 2,
       "matrix": {},
       "path": "monument/vermilion_torii.svg",
@@ -129,7 +129,7 @@
     },
     {
       "checks": [],
-      "hash": "58a39215b498bd83",
+      "hash": "e2d1f00682fcec47",
       "line": 1,
       "matrix": {},
       "path": "produce/momo_peach.png",
@@ -140,7 +140,7 @@
     },
     {
       "checks": [],
-      "hash": "4269533ab63370ee",
+      "hash": "a4310f76d521c03a",
       "line": 2,
       "matrix": {},
       "path": "produce/momo_peach.svg",
@@ -151,7 +151,7 @@
     },
     {
       "checks": [],
-      "hash": "184e23f631ee298c",
+      "hash": "ac1fa243efbd3edf",
       "line": 1,
       "matrix": {},
       "path": "produce/sweet_strawberry.png",
@@ -162,7 +162,7 @@
     },
     {
       "checks": [],
-      "hash": "3ef3df5eb0568b86",
+      "hash": "46b3de25280667a0",
       "line": 2,
       "matrix": {},
       "path": "produce/sweet_strawberry.svg",
@@ -173,7 +173,7 @@
     },
     {
       "checks": [],
-      "hash": "af0e434c9436fcb2",
+      "hash": "4be0aea0ef2aa0e7",
       "line": 1,
       "matrix": {},
       "path": "prop/matcha_teacup.png",
@@ -184,7 +184,7 @@
     },
     {
       "checks": [],
-      "hash": "08aad06d280aef3a",
+      "hash": "f0aff6bd03dac91b",
       "line": 2,
       "matrix": {},
       "path": "prop/matcha_teacup.svg",

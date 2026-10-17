@@ -56,7 +56,7 @@ layer twig
   fx outline 4
 
 layer leaf_back
-  _leaf tone:peach.leaf vein:1 bend:.16 wide:.55 at:516,318 rot:210 scale:1.05,-.86
+  _leaf tone:peach.leaf vein:1 bend:.16 wide:.55 at:516,318 rot:210 scale:1.05,-.86 name:back_blade
     fx adjust light:-.06 sat:.05
 
 layer body
@@ -81,7 +81,7 @@ layer body
     each i in 0..900
       let r = sqrt(rand(0 1))
       let q = (516,598)+polar(1 rand(0 360))*(290*r,250*r)
-      curve q q+polar(rand(2.5 5) rand(-160 -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08 .2)
+      curve q q+polar(rand(2.5 5) rand(-160 -92)) stroke:p.glint,.9 taper:0,.8 a:rand(.08 .2) name:fuzz
     fx rim 22 dir:-1,-1 color:peach.cream.4 a:.5
     fx rim 6 dir:1,1 color:p.rim a:.5
     fx grain .045 scale:1.6
@@ -149,7 +149,7 @@ layer face
   assert level(@eye_l @eye_r) tol:.5
 
 layer leaf_front
-  _leaf at:530,326 rot:-27 scale:1.22,1.04
+  _leaf at:530,326 rot:-27 scale:1.22,1.04 name:front_blade
   curve 676,244 687,235 696,246 690,257 679,257 closed fill:fade(p.dew .55) stroke:fade(peach.leaf.0 .5),1.5
   ellipse 3.5,2.2 at:683,244 fill:p.glint a:.95
 

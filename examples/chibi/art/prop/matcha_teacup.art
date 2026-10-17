@@ -19,7 +19,7 @@ palette tea
   color rim #b4cbe6
   color mist #ffffff
 def _eye side:1 lid:0 look:.1,.12
-  eye 86x100 iris:tea.iris side:side lid:lid look:look
+  eye 86x100 iris:tea.iris side:side lid:lid look:look name:gaze
 def _wisp pts:[0,0] w:[1] n:5
   curve [each p in pts -> p+(7,5)] stroke:tea.haze,w taper:.35 a:.55 blur:3
   curve pts stroke:tea.steam,w taper:.35 a:.88 blur:1.2
@@ -43,7 +43,7 @@ layer saucer pivot:512,800
     curve 224,806 300,838 430,852 stroke:tea.clay.4,3 a:.6 blur:1
     each k in 0..26
       let p = polar(sqrt(rand(.3 .95 seed:k)) rand(0 360))
-      circle rand(1.2 2.4) at:512+296*p.x,800+54*p.y fill:tea.clay.0 a:.5
+      circle rand(1.2 2.4) at:512+296*p.x,800+54*p.y fill:tea.clay.0 a:.5 name:fleck
     fx rim 4 dir:1,1 color:tea.rim a:.45
     fx grain .04 scale:2.5
     fx outline 4.5 color:tea.clay.line
@@ -96,12 +96,12 @@ layer saucer pivot:512,800
       intersect fill:none name:foam_top
         ellipse 190,36 at:512,490
         ellipse 194,40 at:512,480
-      copy @foam_top fill:grad(9deg tea.matcha.4 tea.matcha.3,.35 tea.matcha,.75 tea.matcha.1)
+      copy @foam_top fill:grad(9deg tea.matcha.4 tea.matcha.3,.35 tea.matcha,.75 tea.matcha.1) name:foam_fill
         let spiral = [each k in 0..70 -> polar(158-150*k/69 k*936/69-22.918)*(1,.2)+(516,492)]
         curve [each p in spiral -> p+(2,3)] stroke:tea.matcha.1,[each k in 0..70 -> 9-k/10] taper:.1,.2 a:.6 blur:1
         curve spiral stroke:tea.matcha.4,[each k in 0..70 -> 7.6-6*k/70] taper:.1,.2 a:.9
         each k in 0..18
-          circle rand(1.5 3.5 seed:k) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55
+          circle rand(1.5 3.5 seed:k) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55 name:bubble
         ellipse 40,7 at:430,476 fill:tea.foam_hi a:.7 blur:3
         fx inner 0,9 blur:5 color:tea.matcha.0
         fx grain .06 scale:1.5
@@ -117,10 +117,10 @@ layer saucer pivot:512,800
       _eye side:1 at:604,648 name:eye_r
       assert level(@eye_l @eye_r) tol:.5
     layer eyes_closed pivot:512,648 a:0
-      _eye side:-1 lid:1 at:420,648
-      _eye side:1 lid:1 at:604,648
+      _eye side:-1 lid:1 at:420,648 name:shut_l
+      _eye side:1 lid:1 at:604,648 name:shut_r
     layer mouth
-      open_mouth 38 at:512,698 color:tea.ink
+      open_mouth 38 at:512,698 color:tea.ink name:sip
     layer sparkle
       sparkle 56 at:300,440 color:tea.twinkle
       sparkle 30 at:748,418 color:tea.twinkle

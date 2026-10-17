@@ -190,6 +190,7 @@ impl RefVal {
         }
     }
 
+    #[allow(dead_code)]
     pub fn world(&self) -> Matrix {
         match &self.record.node {
             Some(n) => self.record.parent_world * n.transform,

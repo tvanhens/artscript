@@ -155,6 +155,7 @@ impl Scope {
     }
 
     /// A new naming scope hanging from `key`. Loop indices start over.
+    #[allow(clippy::too_many_arguments)]
     fn enter(
         &self,
         key: Key,
@@ -1444,6 +1445,7 @@ impl<'a> Evaluator<'a> {
         rec
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn place(
         &self,
         sc: &Scope,
@@ -3158,6 +3160,7 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_patch(
         &mut self,
         segs: &[String],

@@ -25,7 +25,7 @@ let rock_line = mix(lantern.rock.line lantern.teal.line .4)
 def _speckle count:40 dark:lantern.stone.0 pale:lantern.stone.3 left:0 top:0 right:1 bottom:1
   each i in 0..count
     let deep = rand(0 1) < .6
-    circle rand(1 2.6) at:rand(left right),rand(top bottom) fill:if deep then dark else pale a:if deep then .35 else .45
+    circle rand(1 2.6) at:rand(left right),rand(top bottom) fill:if deep then dark else pale a:if deep then .35 else .45 name:speck
 def _moss
   slot form
   copy @form at:2,5 fill:mix(lantern.stone.0 lantern.teal.0 .3) a:.35 blur:3
@@ -35,7 +35,7 @@ def _moss
       let x = rand(@patch.left @patch.right)
       let y = rand(@patch.top @patch.bottom)
       let lit = y < (@patch.top+@patch.bottom)/2 and x < @patch.right-@patch.w*.3
-      circle rand(1.2 2.6) at:x,y fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .6 else .4
+      circle rand(1.2 2.6) at:x,y fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .6 else .4 name:dot
   copy @form fill:none stroke:fade(lantern.moss.line .55),1.6
 def _petals y0:692 y1:714 up:1
   each x in [432 472 512 552 592]
@@ -71,7 +71,7 @@ def _blade x:350 lean:-1 y:790
   curve p stroke:lantern.moss.line,[9 7.5 5] taper:0,.5
   curve p stroke:lantern.moss,[5 4.2 2.6] taper:0,.55
 def _pebble x:282 y:858 w:18 h:11 ang:31
-  ellipse w,h at:x,y jitter:1.5,14 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4
+  ellipse w,h at:x,y jitter:1.5,14 fill:grad(ang lantern.rock.4 lantern.rock,.5 rock_cel) stroke:rock_line,2.4 name:stone
     fx grain .04 scale:1.8
     fx outline 2 color:lantern.moss.line
 layer ground_shadow
@@ -84,8 +84,8 @@ layer mossy_rock pivot:512,820
     ellipse 230,14 at:512,866 fill:lantern.rock.0 a:.5 blur:8
     curve 352,846 400,856 452,858 stroke:lantern.rock.4,3 taper:.35 a:.5 blur:1
     curve 612,836 640,852 stroke:lantern.rock.line,2.2 taper:.35 a:.5
-    _speckle 140 lantern.rock.0 lantern.rock.3 @rock.left @rock.top @rock.right @rock.bottom
-    _moss
+    _speckle 140 lantern.rock.0 lantern.rock.3 @rock.left @rock.top @rock.right @rock.bottom name:rock_specks
+    _moss name:rock_moss
       form:
         curve 306,812 330,776 380,752 450,742 520,738 600,742 664,756 712,786 708,806 676,800 650,816 612,804 560,812 512,800 460,812 414,800 372,818 340,806 318,826 closed tension:.55 jitter:5,18 name:form
     fx rim 5 color:lantern.rim a:.5
@@ -97,7 +97,7 @@ layer mossy_rock pivot:512,820
       rect 46x120 at:567,650 fill:stone_cel a:.6 blur:2
       ellipse 80,16 at:512,610 fill:lantern.stone.0 a:.65 blur:8
       ellipse 10,30 at:474,656 fill:lantern.stone.4 a:.35 blur:8
-      _speckle 40 lantern.stone.0 lantern.stone.3 @post.left @post.top @post.right @post.bottom
+      _speckle 40 lantern.stone.0 lantern.stone.3 @post.left @post.top @post.right @post.bottom name:post_specks
       fx rim 5 color:lantern.rim a:.5
       fx grain .045 scale:2
     curve 392,708 632,708 648,722 646,772 378,772 376,722 closed tension:.35 fill:grad(13 lantern.stone.3 lantern.stone,.55 lantern.stone.1) name:kiso
@@ -105,11 +105,11 @@ layer mossy_rock pivot:512,820
       rect 74x90 at:623,745 fill:stone_cel a:.9 blur:1
       ellipse 140,12 at:512,712 fill:lantern.stone.0 a:.5 blur:6
       ellipse 150,10 at:512,770 fill:mix(lantern.stone.0 lantern.moss.0 .4) a:.5 blur:6
-      _speckle 70 lantern.stone.0 lantern.stone.3 @kiso.left @kiso.top @kiso.right @kiso.bottom
-      _moss
+      _speckle 70 lantern.stone.0 lantern.stone.3 @kiso.left @kiso.top @kiso.right @kiso.bottom name:kiso_specks
+      _moss name:kiso_moss_l
         form:
           curve 376,744 396,728 420,734 438,752 430,776 380,776 closed tension:.55 jitter:3,18 name:form
-      _moss
+      _moss name:kiso_moss_r
         form:
           curve 600,760 626,746 650,752 650,778 604,778 closed tension:.55 jitter:3,18 name:form
       each x in [440 586]
@@ -137,8 +137,8 @@ layer mossy_rock pivot:512,820
       curve 374,534 650,534 664,544 512,548 360,544 closed tension:.3 fill:lantern.stone.4 a:.55 blur:1.5
       ellipse 110,8 at:512,542 fill:lantern.stone.0 a:.45 blur:5
       ellipse 86,16 at:512,552 fill:lantern.amber.3 a:.35 blur:10
-      _speckle 80 lantern.stone.0 lantern.stone.3 @chudai.left @chudai.top @chudai.right @chudai.bottom
-      _moss
+      _speckle 80 lantern.stone.0 lantern.stone.3 @chudai.left @chudai.top @chudai.right @chudai.bottom name:chudai_specks
+      _moss name:chudai_moss
         form:
           curve 356,552 370,536 410,532 446,536 436,550 404,558 376,566 closed tension:.55 jitter:3,18 name:form
       each x in [430 594]
@@ -174,7 +174,7 @@ layer mossy_rock pivot:512,820
         rect 72x260 at:624,430 fill:stone_cel a:.35 blur:1
         curve 388,526 512,529 636,526 stroke:stone_line,2.2 taper:.15 a:.5
         curve 390,529 512,532 634,529 stroke:lantern.stone.4,1.6 taper:.35 a:.4 blur:.6
-        _speckle 70 lantern.stone.0 lantern.stone.3 @box.left @box.top @box.right @box.bottom
+        _speckle 70 lantern.stone.0 lantern.stone.3 @box.left @box.top @box.right @box.bottom name:box_specks
         curve 460,508 459,432 474,400 512,386 550,400 565,432 564,508 512,511 closed tension:.45 fill:radial(lantern.amber lantern.amber.1,.45 mix(lantern.amber.0 lantern.teal.0 .55) at:.5,.72 r:84) name:window
           rect 160x50 at:520,385 fill:mix(lantern.amber.0 lantern.teal.0 .6) a:.7 blur:6
           rect 17x124 at:458.5,452 fill:lantern.amber.3 a:.6 blur:2
@@ -202,9 +202,9 @@ layer mossy_rock pivot:512,820
         inside @window
           copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
       layer flame pivot:512,486
-        _flame 64 17 3
+        _flame 64 17 3 name:fire
       layer flame_low pivot:512,486 a:0
-        _flame 46 16 -7
+        _flame 46 16 -7 name:ember
       layer roof pivot:512,350
         union name:hat_src fill:none
           curve 512,202 556,207 600,226 652,254 712,280 766,292 774,310 752,322 684,342 620,358 512,362 404,358 340,342 272,322 252,310 258,292 312,280 372,254 424,226 468,207 closed
@@ -226,11 +226,11 @@ layer mossy_rock pivot:512,820
           curve [each p in L -> p+(4,1)] stroke:stone_line,2.4 taper:.2 a:.55
           curve [each p in R -> p+(-3,0)] stroke:lantern.stone.3,[2 4 4 3] taper:.2 a:.6 blur:.8
           curve [each p in R -> p+(3,1)] stroke:stone_line,2.4 taper:.2 a:.6
-          _speckle 160 lantern.stone.0 lantern.stone.3 @hat.left @hat.top @hat.right @hat.bottom
-          _moss
+          _speckle 160 lantern.stone.0 lantern.stone.3 @hat.left @hat.top @hat.right @hat.bottom name:hat_specks
+          _moss name:hat_moss_a
             form:
               curve 330,278 372,252 412,232 436,240 424,264 392,282 356,290 closed tension:.55 jitter:3,18 name:form
-          _moss
+          _moss name:hat_moss_b
             form:
               curve 470,214 500,206 520,210 506,224 480,226 closed tension:.55 jitter:2,18 name:form
           each q in [252,286,13,162,1 774,285,14,18,-1]
@@ -253,7 +253,7 @@ layer mossy_rock pivot:512,820
             ellipse 5,12 at:500,160 rot:20 fill:lantern.stone.4 a:.8 blur:1.5
             each x in [494 512 530]
               curve x-8,214 x,202 x+8,214 stroke:stone_line,1.6 taper:.2 a:.5
-            _speckle 20 lantern.stone.0 lantern.stone.3 @cap.left @cap.top @cap.right @cap.bottom
+            _speckle 20 lantern.stone.0 lantern.stone.3 @cap.left @cap.top @cap.right @cap.bottom name:cap_specks
             fx rim 4 color:lantern.rim a:.55
             fx grain .04 scale:1.8
             fx outline 5 color:stone_line
@@ -269,13 +269,13 @@ layer mossy_rock pivot:512,820
         ellipse c.w*.25,6 at:c.cx-c.w*.15,c.top+10 fill:lantern.moss.4 a:.6 blur:3
       each i in 0..90
         let lit = rand(0 1) < .6
-        circle rand(1 2.2) at:rand(350 690),rand(742 800) fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .5 else .35
+        circle rand(1 2.2) at:rand(350 690),rand(742 800) fill:if lit then lantern.moss.4 else lantern.moss.0 a:if lit then .5 else .35 name:tuft_dot
       fx rim 3 color:lantern.rim a:.4
       fx grain .04 scale:1.8
       fx outline 3 color:lantern.moss.line
-    _pebble 282 858 18 11 31
-    _pebble 744 852 14 9 33
-    _pebble 310 868 9 6 34
+    _pebble 282 858 18 11 31 name:pebble_a
+    _pebble 744 852 14 9 33 name:pebble_b
+    _pebble 310 868 9 6 34 name:pebble_c
     _blade 350 -1 790
     _blade 676 1 800
     _blade 700 1.4 800

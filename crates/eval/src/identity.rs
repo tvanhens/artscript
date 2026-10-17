@@ -186,6 +186,7 @@ impl Key {
     }
 
     /// The key of this node's twin in a mirror clone.
+    #[allow(dead_code)]
     pub fn reflected(&self) -> Key {
         Key {
             reflected: self.reflected + 1,
@@ -227,6 +228,7 @@ impl Key {
     }
 
     /// The unnamed statements in this key, outermost first.
+    #[allow(dead_code)]
     pub fn positional(&self) -> impl Iterator<Item = &Anon> {
         self.segs.iter().filter_map(|s| match s {
             Seg::Anon(a) => Some(a),
@@ -291,6 +293,7 @@ impl Key {
     }
 
     /// The node key without seed tags.
+    #[allow(dead_code)]
     pub fn node(&self) -> Key {
         Key {
             tail: None,
@@ -362,8 +365,10 @@ pub struct Positional {
     /// The statement's own key, through its `verb~N`.
     pub statement: String,
     /// The key that drew the seed.
+    #[allow(dead_code)]
     pub key: String,
     /// Where the seed was drawn.
+    #[allow(dead_code)]
     pub at: Site,
 }
 
@@ -446,6 +451,7 @@ pub struct NameDecl {
     pub name: Name,
     pub site: Site,
     pub kind: NameKind,
+    #[allow(dead_code)]
     pub verb: Rc<str>,
     /// The `each`, `repeat`, and `grid` statements between the region root and this one. More
     /// than none makes a family.
@@ -459,6 +465,7 @@ pub struct NameDecl {
 /// One naming scope's static shape: every name it declares at any depth, in source order.
 #[derive(Debug)]
 pub struct Region {
+    #[allow(dead_code)]
     pub kind: RegionKind,
     /// `this file`, `` `eye` ``, or `` the `form:` fill ``, for messages.
     pub label: String,
@@ -957,10 +964,9 @@ pub fn hops_from(segs: &[String]) -> Option<Vec<Hop>> {
             hops.push(Hop::Star);
         } else if !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()) {
             hops.push(Hop::Index(seg.parse().unwrap_or(0)));
-        } else if let Some(name) = Name::parse(seg) {
-            hops.push(Hop::Name(name));
         } else {
-            return None;
+            let name = Name::parse(seg)?;
+            hops.push(Hop::Name(name));
         }
     }
     Some(hops)
@@ -970,12 +976,17 @@ pub fn hops_from(segs: &[String]) -> Option<Vec<Hop>> {
 #[derive(Clone)]
 pub struct Entry {
     pub name: Name,
+    #[allow(dead_code)]
     pub key: Key,
     pub record: Rc<RefCell<Record>>,
+    #[allow(dead_code)]
     pub decl: DeclId,
+    #[allow(dead_code)]
     pub home: Rc<RefCell<Names>>,
+    #[allow(dead_code)]
     pub copies: Vec<u32>,
     /// The scope this node opens. Set for an instance and a slot.
+    #[allow(dead_code)]
     pub inner: Option<Rc<RefCell<Names>>>,
 }
 
@@ -987,6 +998,7 @@ enum Row {
 
 /// One scope instance: the file, one def body, or one slot fill.
 pub struct Names {
+    #[allow(dead_code)]
     key: Key,
     region: Rc<Region>,
     rows: Vec<Row>,
@@ -1002,6 +1014,7 @@ impl Names {
         }
     }
 
+    #[allow(dead_code)]
     pub fn key(&self) -> &Key {
         &self.key
     }
@@ -1094,6 +1107,7 @@ impl Lookup {
         }
     }
 
+    #[allow(dead_code)]
     pub fn frames(&self) -> &[Rc<RefCell<Names>>] {
         &self.frames
     }
@@ -1225,6 +1239,7 @@ fn select(
 
 /// The next name after `entry`. An instance or slot looks in the scope it opens.
 /// Anything else looks at its named direct tree children.
+#[allow(dead_code)]
 pub fn hop_name(entry: &Entry, name: &str) -> Resolved {
     if let Some(inner) = &entry.inner {
         let names = inner.borrow();
@@ -1250,6 +1265,7 @@ pub fn hop_name(entry: &Entry, name: &str) -> Resolved {
     }
 }
 
+#[allow(dead_code)]
 pub fn hop_index(entries: Vec<Entry>, depth: usize, index: u32) -> Vec<Entry> {
     entries
         .into_iter()
@@ -1257,6 +1273,7 @@ pub fn hop_index(entries: Vec<Entry>, depth: usize, index: u32) -> Vec<Entry> {
         .collect()
 }
 
+#[allow(dead_code)]
 pub fn star_children(entry: &Entry) -> Vec<Entry> {
     if let Some(inner) = &entry.inner {
         return inner.borrow().children_of(None);
@@ -1371,7 +1388,7 @@ fn take(
     copies: &[u32],
 ) -> Option<Vec<Hop>> {
     match patch.rest.first() {
-        Some(Hop::Star) => (tree_parent.is_none()).then(|| Vec::new()),
+        Some(Hop::Star) => (tree_parent.is_none()).then(Vec::new),
         Some(Hop::Name(n)) if n == name => {
             let mut i = 1;
             let mut c = 0;
@@ -1545,7 +1562,7 @@ fn report_key(patch: &PendingPatch) -> ReportKey {
 }
 
 /// `needs:@name` against the host region. A missing host or a missing name is the caller's E0311.
-pub fn host_part<'a>(host: &'a Names, name: &str) -> Result<(), Vec<String>> {
+pub fn host_part(host: &Names, name: &str) -> Result<(), Vec<String>> {
     if host.region.lookup(name).is_empty() {
         Err(host.region.names().iter().map(|n| n.to_string()).collect())
     } else {
@@ -1554,8 +1571,8 @@ pub fn host_part<'a>(host: &'a Names, name: &str) -> Result<(), Vec<String>> {
 }
 
 /// Host scope a `needs:` name re-resolves in. The name must be declared there.
-pub fn host_import<'a>(
-    host: &'a Rc<RefCell<Names>>,
+pub fn host_import(
+    host: &Rc<RefCell<Names>>,
     name: &str,
 ) -> Option<(Name, Rc<RefCell<Names>>)> {
     let parsed = Name::parse(name)?;
@@ -1757,11 +1774,11 @@ mod tests {
         assert_eq!(s(&key.grain()), old("art/t.art", "hero.eye.2#grain"));
         assert_eq!(
             s(&key.at_line(&[0, 4], 12).draw(1)),
-            old("art/t.art\0hero.eye.2#0#4\012", "1")
+            old("art/t.art\0hero.eye.2#0#4\x0012", "1")
         );
         assert_eq!(
             s(&Key::root().at_line(&[], 7).draw(1)),
-            old("art/t.art\0\07", "1")
+            old("art/t.art\0\x007", "1")
         );
         assert_eq!(
             s(&Key::binding("glint").draw(1)),
