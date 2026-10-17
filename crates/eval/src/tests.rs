@@ -3799,3 +3799,33 @@ fn a_new_binding_of_an_unseen_name_is_seen() {
         assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
     }
 }
+
+#[test]
+fn a_rule_that_reads_the_drawn_scene_is_unseen_in_the_prepass() {
+    let head = "@target t.png 40x40\nrule big\n  expect @marker.w > 10\nrule close\n  expect 3 ~= 5 tol:@marker.w\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
+    for tail in [
+        "let ok = big()\nplay bob start:(if ok then 0 else 5)\n",
+        "play bob start:(if close() then 0 else 5)\n",
+    ] {
+        let src = format!("{head}{tail}");
+        let line = src.lines().position(|l| l.starts_with("play bob")).unwrap() + 1;
+        let ev = run_with(&src, &[]);
+        let codes: Vec<_> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line as usize)).collect();
+        assert_eq!(codes, [("E0344", line)], "{tail}\n{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn the_prepass_records_the_names_the_drawing_pass_registers() {
+    let s = scene(
+        "@target t.png 40x40\ndef fill size:10x10\n  circle 4 name:dot\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nfill name:fill\nif @fill\n  play bob\n",
+    );
+    let c = node(&s, "c").opacity;
+    assert!((c - 0.2).abs() < 1e-4, "{c}");
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nlet k = none\nk name:x\nplay bob start:(if @x then 0 else 5)\n",
+        &[],
+    );
+    let codes: Vec<_> = ev.diagnostics.iter().map(|d| (d.code.as_str(), d.span.line)).collect();
+    assert_eq!(codes, [("E0344", 7)], "{}", show(&ev.diagnostics));
+}
