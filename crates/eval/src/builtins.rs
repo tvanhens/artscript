@@ -177,7 +177,7 @@ impl Evaluator<'_> {
                 }
                 let extra = get("seed").and_then(|v| v.num()).unwrap_or(0.0) as u64;
                 let mut rng = Rng::new(self.next_seed(extra));
-                items[(rng.unit() * items.len() as f64) as usize % items.len()].clone()
+                items[(rng.next_u64() % items.len() as u64) as usize].clone()
             }
             "shade" | "lit" => {
                 let c = col(0)?;
