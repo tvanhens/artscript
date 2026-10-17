@@ -428,6 +428,48 @@ fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
 }
 
+fn record_ids(names: &Rc<RefCell<Names>>) -> BTreeSet<usize> {
+    names
+        .borrow()
+        .records()
+        .iter()
+        .map(|r| Rc::as_ptr(r) as usize)
+        .collect()
+}
+
+fn records_after(names: &Rc<RefCell<Names>>, seen: &BTreeSet<usize>) -> Vec<Rc<RefCell<Record>>> {
+    names
+        .borrow()
+        .records()
+        .into_iter()
+        .filter(|r| !seen.contains(&(Rc::as_ptr(r) as usize)))
+        .collect()
+}
+
+/// `grid` learns its cell pitch after the copies are drawn, then moves the nodes.
+/// Records were placed before that move, so the same translation has to land on them.
+fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
+    let Some(inv) = base.invert() else {
+        return;
+    };
+    let shift = *base * *t * inv;
+    let mut stack: Vec<Rc<RefCell<Record>>> = roots.to_vec();
+    let mut seen = BTreeSet::new();
+    while let Some(rec) = stack.pop() {
+        if !seen.insert(Rc::as_ptr(&rec) as usize) {
+            continue;
+        }
+        if let Some(inner) = rec.borrow().inner.clone() {
+            stack.extend(inner.borrow().records());
+        }
+        let mut r = rec.borrow_mut();
+        r.parent_world = shift * r.parent_world;
+        if let Some(p) = r.anchor {
+            r.anchor = Some(shift.map_point(p));
+        }
+    }
+}
+
 /// A percent of an empty frame would resolve to 0 and hide a missing box.
 fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
     let Coord::Pct(p) = coord else {
@@ -2073,7 +2115,10 @@ impl<'a> Evaluator<'a> {
                 inner.env.push(("i".into(), Value::Num(i as f64)));
                 inner.env.push(("row".into(), Value::Num(row as f64)));
                 inner.env.push(("col".into(), Value::Num(col as f64)));
-                copies.push(((row, col), self.eval_block_nodes(body.scenes(), &mut inner)));
+                let seen = record_ids(&sc.names);
+                let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
+                let fresh = records_after(&sc.names, &seen);
+                copies.push(((row, col), nodes, fresh));
             }
         }
         let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
@@ -2081,7 +2126,7 @@ impl<'a> Evaluator<'a> {
             None => {
                 let b = copies
                     .first()
-                    .and_then(|(_, ns)| artscript_ir::union_bounds(ns))
+                    .and_then(|(_, ns, _)| artscript_ir::union_bounds(ns))
                     .unwrap_or(Rect::new_empty());
                 (b.width() as f64, b.height() as f64)
             }
@@ -2089,13 +2134,14 @@ impl<'a> Evaluator<'a> {
         let (sx, sy) = (cw + gap, ch + gap);
         let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
         let mut out = Vec::new();
-        for ((row, col), nodes) in copies {
+        for ((row, col), nodes, fresh) in copies {
             let t =
                 Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32));
             for mut n in nodes {
                 n.transform = t * n.transform;
                 out.push(n);
             }
+            shift_placed(&fresh, &sc.world, &t);
         }
         Ok(out)
     }
@@ -4198,7 +4244,7 @@ impl<'a> Evaluator<'a> {
 
     fn refs_of(&self, resolved: Resolved, label: &str) -> R<(Vec<RefVal>, usize)> {
         match resolved {
-            Resolved::One(e) => Ok((vec![ref_from(&e, label)], 0)),
+            Resolved::One(e, depth) => Ok((vec![ref_from(&e, label)], depth)),
             Resolved::Many(es, depth) => {
                 Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
             }

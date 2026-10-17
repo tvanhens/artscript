@@ -3581,3 +3581,25 @@ fn a_slot_keeps_the_host_copy() {
     );
     assert!(paths(&imported).contains(&"host.hole.1.gem.mark".to_string()));
 }
+
+#[test]
+fn a_grid_copy_measures_where_it_was_drawn() {
+    let s = scene(
+        "@target t.png 80x40\ngrid 2x1 gap:0 cell:20x20\n  circle 4 fill:#ffffff name:tile\ncopy @tile.1 name:echo\nassert @tile.1.cx - @tile.0.cx ~= 20\nassert @echo.cx ~= @tile.1.cx\n",
+    );
+    assert!(paths(&s).contains(&"tile.0".to_string()));
+    assert!(paths(&s).contains(&"tile.1".to_string()));
+
+    let nested = scene(
+        "@target t.png 80x40\ndef gem\n  circle 4 fill:#ffffff name:mark\ngrid 2x1 gap:0 cell:20x20\n  gem name:tile\nassert @tile.1.mark.cx - @tile.0.mark.cx ~= 20\n",
+    );
+    assert!(paths(&nested).contains(&"tile.1.mark".to_string()));
+}
+
+#[test]
+fn one_inner_copy_keeps_the_outer_index() {
+    let s = scene(
+        "@target t.png 80x40\neach row in 0..2\n  each col in 0..1\n    circle 4 at:(row * 30),0 name:dot\n  assert @dot.0.cx ~= row * 30\n",
+    );
+    assert!(paths(&s).contains(&"dot.1.0".to_string()));
+}

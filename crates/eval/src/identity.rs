@@ -1024,6 +1024,18 @@ impl Names {
             Row::Copies(map) => map.values().cloned().collect(),
         }
     }
+
+    pub fn records(&self) -> Vec<Rc<RefCell<Record>>> {
+        let mut out = Vec::new();
+        for row in &self.rows {
+            match row {
+                Row::Undrawn => {}
+                Row::One(e) => out.push(e.record.clone()),
+                Row::Copies(map) => out.extend(map.values().map(|e| e.record.clone())),
+            }
+        }
+        out
+    }
 }
 
 /// One scope a reference can see. Inherited frames keep the copies of the loop they were
@@ -1131,7 +1143,8 @@ impl Lookup {
 
 /// What a name reached.
 pub enum Resolved {
-    One(Entry),
+    /// `usize` is how many leading copy indices the loop context already chose.
+    One(Entry, usize),
     /// `usize` is how many leading copy indices the loop context already chose.
     Many(Vec<Entry>, usize),
     /// Declared, and not drawn on this pass.
@@ -1229,7 +1242,7 @@ fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span
             Some(site) => Resolved::Undrawn(site),
             None => Resolved::Missing(Vec::new()),
         },
-        1 => Resolved::One(drawn.pop().unwrap()),
+        1 => Resolved::One(drawn.pop().unwrap(), skipped),
         _ => Resolved::Many(drawn, skipped),
     }
 }
