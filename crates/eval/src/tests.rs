@@ -2633,3 +2633,445 @@ fn a_direct_instance_let_stays_in_the_call() {
         show(&ev.diagnostics)
     );
 }
+
+fn eval_lint(src: &str, lint: &str) -> Evaluation {
+    let manifest = format!(
+        "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\n{lint}"
+    );
+    let files = [("art/t.art".to_string(), src.to_string())].into();
+    let p = Project::from_sources(&manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    evaluate(&p, &plan.jobs[0])
+}
+
+fn pixel(scene: &Scene, x: i32, y: i32) -> [u8; 4] {
+    let (w, h, buf) = artscript_render::render_rgba(scene, 1.0).unwrap();
+    assert!(x >= 0 && y >= 0 && x < w as i32 && y < h as i32, "{w}x{h} has no {x},{y}");
+    let i = ((y as u32 * w) + x as u32) as usize * 4;
+    [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+}
+
+#[test]
+fn a_nose_above_the_eyes_keeps_the_patched_eye_red() {
+    let face = |nose: bool| {
+        format!(
+            "@target t.png 80x40\ndef face\n{}  circle 10 at:-16,0 fill:#ffffff name:eye_l\n  circle 10 at:16,0 fill:#ffffff name:eye_r\nface name:face at:40,20\n  .eye_r fill:#ff0000\n",
+            if nose {
+                "  circle 6 at:0,10 fill:#c47a4a name:nose\n"
+            } else {
+                ""
+            }
+        )
+    };
+    let before = scene(&face(false));
+    let after = scene(&face(true));
+    let eye = pixel(&before, 56, 20);
+    assert_eq!(pixel(&after, 56, 20), eye, "right eye pixel changed");
+    assert!(eye[0] > 200 && eye[1] < 40 && eye[2] < 40, "{eye:?}");
+    assert_ne!(
+        pixel(&before, 40, 30),
+        pixel(&after, 40, 30),
+        "the nose did not change a pixel"
+    );
+
+    let missed = run_with(
+        "@target t.png 80x40\ndef face\n  circle 10 at:-16,0 fill:#ffffff\n  circle 10 at:16,0 fill:#ffffff\nface name:face at:40,20\n  .circle2 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&missed, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.as_deref().unwrap().contains("add name:"), "{d}");
+}
+
+#[test]
+fn e0333_is_reported_at_the_second_name() {
+    let ev = run_with(
+        "@target t.png 40x40\ngroup beam\n  circle 4 name:beam\n",
+        &[],
+    );
+    let d = diag(&ev, "E0333");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 3);
+    assert_eq!(d.notes, ["first named at line 2"]);
+    assert_eq!(d.fix.as_deref(), Some("rename one of them"));
+
+    let shared = run_with(
+        "@target t.png 40x40\ndef a\n  circle 4 name:lips\ndef b\n  rect 4 name:lips\nif true\n  circle 4 name:lid\nelse\n  rect 4 name:lid\n",
+        &[],
+    );
+    assert!(
+        shared.diagnostics.iter().all(|d| d.code != "E0333"),
+        "{}",
+        show(&shared.diagnostics)
+    );
+}
+
+#[test]
+fn e0312_rejects_a_bad_name_and_an_unnamed_call_that_holds_one() {
+    let bad = run_with(
+        "@target t.png 40x40\ncircle 4 name:{x}\nlayer hat name:cap\n",
+        &[],
+    );
+    assert!(
+        bad.diagnostics
+            .iter()
+            .any(|d| d.code == "E0312" && d.span.line == 2),
+        "{}",
+        show(&bad.diagnostics)
+    );
+    let hat = bad
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0312" && d.span.line == 3)
+        .unwrap_or_else(|| panic!("{}", show(&bad.diagnostics)));
+    assert!(hat.message.contains("hat"), "{hat}");
+
+    let bare = run_with(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar\n",
+        &[],
+    );
+    let call = diag(&bare, "E0312");
+    assert_eq!(call.span.line, 4);
+    assert_eq!(call.fix.as_deref(), Some("add name:"));
+
+    let named = scene(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar name:pillar_l\n",
+    );
+    node(&named, "pillar_l.shaft");
+    let shifted = run_with(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar\n_pillar name:pillar_l\n",
+        &[],
+    );
+    assert!(
+        shifted
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0312" && d.span.line == 4),
+        "{}",
+        show(&shifted.diagnostics)
+    );
+    assert!(
+        shifted
+            .diagnostics
+            .iter()
+            .all(|d| d.span.line != 5 || d.code != "E0312"),
+        "{}",
+        show(&shifted.diagnostics)
+    );
+    node(shifted.scene.as_ref().unwrap(), "pillar_l.shaft");
+}
+
+#[test]
+fn e0340_for_a_hop_through_a_group_names_the_patch_line() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef prop\n  group face\n    circle 4 name:leaf\nprop name:prop\n  .face.leaf fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf"));
+}
+
+#[test]
+fn e0343_for_a_family_and_for_a_name_in_two_scopes() {
+    let family = run_with(
+        "@target t.png 40x40\ndef eye\n  each i in 0..2\n    circle 3 name:pupil\n  copy @pupil\neye name:eye\n",
+        &[],
+    );
+    let d = diag(&family, "E0343");
+    assert_eq!(d.span.line, 5);
+    assert!(d.notes.iter().any(|n| n.contains(".pupil.0")), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains(".pupil.1")), "{d}");
+
+    let both = run_with(
+        "@target t.png 40x40\ndef host\n  circle 4 name:x\n  slot hole\ncircle 4 name:x\nhost name:host\n  hole:\n    copy @x\n",
+        &[],
+    );
+    let d = diag(&both, "E0343");
+    assert_eq!(d.span.line, 8);
+    assert!(d.notes.iter().any(|n| n.contains("`host`")), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("this file")), "{d}");
+}
+
+#[test]
+fn l0104_warns_once_when_an_unnamed_circle_draws_a_seed() {
+    let src = "@target t.png 40x40\ncircle 4 at:rand(0 10),0\n";
+    let ev = eval_lint(src, "");
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0104").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 2);
+    assert_eq!(hits[0].fix.as_deref(), Some("add name:"));
+    let quiet = eval_lint(src, "positional-seed = \"off\"\n");
+    assert!(
+        quiet.diagnostics.iter().all(|d| d.code != "L0104"),
+        "{}",
+        show(&quiet.diagnostics)
+    );
+}
+
+#[test]
+fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
+    let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");
+    let wrapped = scene(
+        "@target t.png 40x40\ngroup name:face\n  circle 8 name:head\n    fx grain .2\n",
+    );
+    assert_eq!(
+        grain_seed(node(&bare, "head")),
+        grain_seed(node(&wrapped, "head"))
+    );
+    assert!(paths(&wrapped).contains(&"head".to_string()));
+}
+
+#[test]
+fn a_let_above_each_over_pick_does_not_rename_a_node() {
+    let lib = "def a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\n";
+    let direct = lib_scene(
+        "@target t.png 40x40\nuse d\nlet which = a\neach part in [which]\n  part name:piece\n",
+        lib,
+    );
+    let picked = lib_scene(
+        "@target t.png 40x40\nuse d\nlet which = pick([a b])\neach part in [which]\n  part name:piece\n",
+        lib,
+    );
+    assert_eq!(paths(&direct), paths(&picked));
+    assert_eq!(paths(&picked), ["piece.0", "piece.0.dot"]);
+}
+
+fn walk_deep<'a>(nodes: &'a [Node], out: &mut Vec<&'a Node>) {
+    for n in nodes {
+        out.push(n);
+        if let Some(mask) = &n.mask
+            && let artscript_ir::MaskSource::Nodes(inner) = &mask.source
+        {
+            walk_deep(inner, out);
+        }
+        walk_deep(n.children(), out);
+    }
+}
+
+fn node_print(n: &Node) -> String {
+    let geom = match &n.kind {
+        NodeKind::Shape(s) => s.geometry.to_svg(),
+        NodeKind::Group { .. } => String::new(),
+    };
+    format!("{:?} a:{} {geom} {:?}", n.transform, n.opacity, n.effects)
+}
+
+fn stable_print(scene: &Scene) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut all = Vec::new();
+    walk_deep(&scene.children, &mut all);
+    let mut map: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for n in all {
+        if n.path.contains('~') {
+            continue;
+        }
+        map.entry(n.path.clone()).or_default().push(node_print(n));
+    }
+    for prints in map.values_mut() {
+        prints.sort();
+    }
+    map
+}
+
+fn insert_probe(src: &str) -> String {
+    let lines: Vec<&str> = src.lines().collect();
+    let at = lines
+        .iter()
+        .position(|line| {
+            let t = line.trim();
+            !t.is_empty() && !t.starts_with("@target")
+        })
+        .unwrap_or(lines.len());
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        if i == at {
+            out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if at == lines.len() {
+        out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
+    }
+    out
+}
+
+fn chibi_jobs() -> (Project, Vec<crate::TargetJob>) {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/chibi");
+    let project = crate::load(&root).expect("examples/chibi");
+    let planned = plan(&project);
+    assert!(planned.diagnostics.is_empty(), "{:?}", planned.diagnostics);
+    let mut jobs = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for job in planned.jobs {
+        if job.clip.is_some() || job.frame_t != 0.0 {
+            continue;
+        }
+        if !job.outputs.iter().any(|o| o.format == crate::Format::Png) {
+            continue;
+        }
+        if seen.insert(job.source.clone()) {
+            jobs.push(job);
+        }
+    }
+    assert_eq!(jobs.len(), 6, "{seen:?}");
+    (project, jobs)
+}
+
+fn key_of(path: &str) -> crate::identity::Key {
+    let mut owner = crate::identity::Key::root();
+    let mut name: Option<crate::identity::Name> = None;
+    let mut copies = Vec::new();
+    let flush =
+        |owner: &mut crate::identity::Key,
+         name: &mut Option<crate::identity::Name>,
+         copies: &mut Vec<u32>| {
+            if let Some(n) = name.take() {
+                *owner = crate::identity::Key::named(owner, &n, copies);
+                copies.clear();
+            }
+        };
+    for seg in path.split('.') {
+        if !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_digit()) {
+            copies.push(seg.parse().unwrap());
+        } else {
+            flush(&mut owner, &mut name, &mut copies);
+            name = crate::identity::Name::parse(seg);
+        }
+    }
+    flush(&mut owner, &mut name, &mut copies);
+    owner
+}
+
+fn patch_segments(address: &str) -> Vec<String> {
+    let src = format!("@target t.png 10x10\ndef h\n  circle 1\nh name:h\n  {address} a:1\n");
+    let file = artscript_syntax::parse(&src).unwrap_or_else(|e| panic!("{address}: {e:?}"));
+    for scene in file.scenes() {
+        let artscript_syntax::ast::SceneKind::Draw(draw) = &scene.kind else {
+            continue;
+        };
+        for item in draw.body.items() {
+            if let artscript_syntax::ast::DrawItem::Patch(patch) = item {
+                return patch.path.clone();
+            }
+        }
+    }
+    panic!("{address} did not parse as a patch");
+}
+
+#[test]
+fn stable_chibi_nodes_keep_geometry_and_seeds_when_a_draw_is_inserted() {
+    let (project, jobs) = chibi_jobs();
+    for job in &jobs {
+        let before = evaluate(&project, job);
+        assert!(
+            before.scene.is_some(),
+            "{} did not evaluate\n{}",
+            job.source,
+            show(&before.diagnostics)
+        );
+        let base = stable_print(before.scene.as_ref().unwrap());
+        assert!(!base.is_empty(), "{}", job.source);
+        let mut files = project.files.clone();
+        let src = files.get(&job.source).unwrap();
+        files.insert(job.source.clone(), insert_probe(src));
+        let shifted = Project {
+            files,
+            ..project.clone()
+        };
+        let planned = plan(&shifted);
+        assert!(planned.diagnostics.is_empty(), "{:?}", planned.diagnostics);
+        let job2 = planned
+            .jobs
+            .iter()
+            .find(|j| {
+                j.source == job.source
+                    && j.clip.is_none()
+                    && j.outputs.iter().any(|o| o.format == crate::Format::Png)
+            })
+            .unwrap();
+        let after = evaluate(&shifted, job2);
+        let got = stable_print(after.scene.as_ref().unwrap());
+        for (path, print) in &base {
+            assert_eq!(got.get(path), Some(print), "{} moved {path}", job.source);
+        }
+    }
+}
+
+#[test]
+fn stable_chibi_keys_round_trip_through_a_patch() {
+    let (project, jobs) = chibi_jobs();
+    for job in &jobs {
+        let ev = evaluate(&project, job);
+        let scene = ev.scene.expect(&job.source);
+        let mut all = Vec::new();
+        walk_deep(&scene.children, &mut all);
+        let mut stable: Vec<String> = all
+            .iter()
+            .map(|n| n.path.clone())
+            .filter(|p| !p.contains('~'))
+            .collect();
+        stable.sort();
+        stable.dedup();
+        for path in stable {
+            let key = key_of(&path);
+            assert_eq!(key.to_string(), path, "{}", job.source);
+            let address = key
+                .address_from(&crate::identity::Key::root())
+                .unwrap_or_else(|| panic!("{path} has no address"));
+            assert_eq!(
+                patch_segments(&address),
+                address
+                    .trim_start_matches('.')
+                    .split('.')
+                    .collect::<Vec<_>>()
+            );
+            let old = all.iter().find(|n| n.path == path).unwrap().opacity;
+            let opacity = if (old - 0.5).abs() < 1e-3 { 0.25 } else { 0.5 };
+            let mut files = project.files.clone();
+            let src = files.get(&job.source).unwrap().clone();
+            files.insert(
+                job.source.clone(),
+                format!("{src}\nanim __probe dur:1s\n  {address} a:{opacity}\nplay __probe\n"),
+            );
+            let shifted = Project {
+                files,
+                ..project.clone()
+            };
+            let planned = plan(&shifted);
+            let job2 = planned
+                .jobs
+                .iter()
+                .find(|j| {
+                    j.source == job.source
+                        && j.clip.is_none()
+                        && j.outputs.iter().any(|o| o.format == crate::Format::Png)
+                })
+                .unwrap();
+            let probed = evaluate(&shifted, job2);
+            let scene = probed.scene.as_ref().unwrap();
+            let mut found = Vec::new();
+            walk_deep(&scene.children, &mut found);
+            let hits: Vec<_> = found.iter().filter(|n| n.path == path).collect();
+            assert!(
+                !hits.is_empty(),
+                "{} lost {path} via {address}\n{}",
+                job.source,
+                show(&probed.diagnostics)
+            );
+            for node in hits {
+                assert!(
+                    (f64::from(node.opacity) - opacity).abs() < 1e-3,
+                    "{} {path} via {address} opacity {} expected {opacity}\n{}",
+                    job.source,
+                    node.opacity,
+                    show(&probed.diagnostics)
+                );
+            }
+        }
+    }
+}

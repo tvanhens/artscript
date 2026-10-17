@@ -1270,6 +1270,20 @@ impl<'a> Parser<'a> {
                 span,
             };
         }
+        // `{x}` is not an identifier. A brace here is still a value, so `name:` can report
+        // E0312 instead of a parse error that never reaches that check.
+        if key == "name" && self.cur().is_some_and(|t| matches!(t.kind, Tok::LBrace)) {
+            self.bump();
+            let inner = self.parse_tuple();
+            if !self.eat(&Tok::RBrace) {
+                self.fail_here("unclosed `{`", "close it with `}`");
+            }
+            return Named {
+                key,
+                value: Expr::Tuple(vec![inner]),
+                span,
+            };
+        }
         let value = self.parse_tuple();
         Named { key, value, span }
     }
