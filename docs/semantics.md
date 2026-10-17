@@ -354,7 +354,7 @@ These record behavior the sections above do not mention. When this section disag
   - E0342: `play` is not at the top level of an entry file and not under an instance.
   - E0340: a patch matches nothing. A `play` reports it at the `play` site and the message names the anim. A patch expression or blend failure is reported on that patch, in the anim's file.
   - E0207: an unknown `{var}` in a target path.
-  - E0208: an unknown directive.
+  - E0208: an unknown directive. Every file reports it, including a file with no `@target` and a library under a lib root.
   - E0209: a `profile:vector` target that uses raster-only features. The notes list each node.
   - E0210: a module that cannot be found.
   - E0211: an import cycle.
