@@ -444,9 +444,8 @@ float3 linear_of_oklab(float L, float a, float b) {
         -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s
     );
 }
-bool fits(float L, float C, float H) {
-    float hr = radians(H);
-    float3 lin = linear_of_oklab(L, C * cos(hr), C * sin(hr));
+bool fits(float L, float2 ab) {
+    float3 lin = linear_of_oklab(L, ab.x, ab.y);
     return lin.r >= -0.0001 && lin.r <= 1.0001
         && lin.g >= -0.0001 && lin.g <= 1.0001
         && lin.b >= -0.0001 && lin.b <= 1.0001;
@@ -457,19 +456,21 @@ half4 main(half4 c) {
     }
     float3 lab = oklab_of(linear_rgb(c.rgb / c.a));
     float L = clamp(lab.x + light, 0.0, 1.0);
-    float C = max(length(lab.yz) * (1.0 + sat), 0.0);
-    float H = degrees(atan(lab.z, lab.y)) + hue;
-    if (!fits(L, C, H)) {
+    float hr = radians(hue);
+    float2 ab = max(1.0 + sat, 0.0) * float2(
+        lab.y * cos(hr) - lab.z * sin(hr),
+        lab.y * sin(hr) + lab.z * cos(hr)
+    );
+    if (!fits(L, ab)) {
         float lo = 0.0;
-        float hi = C;
+        float hi = 1.0;
         for (int i = 0; i < 12; i++) {
             float mid = 0.5 * (lo + hi);
-            if (fits(L, mid, H)) { lo = mid; } else { hi = mid; }
+            if (fits(L, ab * mid)) { lo = mid; } else { hi = mid; }
         }
-        C = lo;
+        ab *= lo;
     }
-    float hr = radians(H);
-    float3 lin = linear_of_oklab(L, C * cos(hr), C * sin(hr));
+    float3 lin = linear_of_oklab(L, ab.x, ab.y);
     float3 rgb = clamp(float3(
         to_srgb(clamp(lin.r, 0.0, 1.0)),
         to_srgb(clamp(lin.g, 0.0, 1.0)),
@@ -602,7 +603,22 @@ fn gather(
     };
     let mut local = Vec::new();
     match &node.kind {
-        NodeKind::Shape(shape) => push_shape(shape, &mut local)?,
+        NodeKind::Shape(shape) => {
+            push_shape(shape, &mut local)?;
+            // An opaque fill already covers every child, and stroking each child's clipped
+            // area again would thicken the antialiased rim the shared edges trace.
+            let opaque = shape.fill.as_ref().is_some_and(|fill| coverage_alpha(fill) >= 1.0);
+            let children = if opaque { &[][..] } else { &shape.children[..] };
+            for child in children {
+                let mut nested = Vec::new();
+                gather(child, &Matrix::new_identity(), 1.0, false, &mut nested)?;
+                local.extend(nested.into_iter().filter_map(|region| {
+                    skia_safe::op(&region.path, &shape.geometry, PathOp::Intersect)
+                        .filter(|p| !p.is_empty())
+                        .map(|path| Region { path, alpha: region.alpha })
+                }));
+            }
+        }
         NodeKind::Group { children, .. } => {
             for child in children {
                 gather(child, &Matrix::new_identity(), 1.0, false, &mut local)?;
@@ -629,8 +645,9 @@ fn gather(
     Ok(())
 }
 
-/// Fill path, plus the stroke's own filled outline. Shape children are source-atop, so they
-/// leave this alpha alone and are not part of the silhouette.
+/// Fill path, plus the stroke's own filled outline. `gather` adds the shape's children,
+/// clipped to its geometry, because they paint inside it whatever its own fill. It skips
+/// them under an opaque fill, which already covers them.
 fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
     if let Some(fill) = &shape.fill {
         let alpha = coverage_alpha(fill);

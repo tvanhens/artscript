@@ -4014,3 +4014,27 @@ fn an_entry_file_patches_its_own_underscore_names() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn a_fill_none_shape_clips_its_children_to_its_geometry() {
+    let s = scene("@target t.png 64x64\nrect 40x40 at:32,32 fill:none name:a\n  circle 30 fill:#0000ff name:c\n");
+    assert_eq!(pixel(&s, 32, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&s, 32, 6), [0, 0, 0, 0]);
+}
+
+#[test]
+fn nesting_under_a_translucent_shape_matches_inside() {
+    let nested = scene("@target t.png 64x64\nrect 40x40 at:32,32 fill:#0000ff4d name:glass\n  circle 6 fill:#000000 name:dot\n");
+    let inside = scene("@target t.png 64x64\nrect 40x40 at:32,32 fill:#0000ff4d name:glass\ninside @glass\n  circle 6 at:32,32 fill:#000000 name:dot\n");
+    assert_eq!(pixel(&nested, 32, 32), [0, 0, 0, 255]);
+    assert_eq!(pixel(&nested, 32, 32), pixel(&inside, 32, 32));
+}
+
+#[test]
+fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
+    let s = scene(
+        "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
+    );
+    near(at(node(&s, "r")), (3.0, 10.0));
+    near(at(node(&s, "v")), (4.0, 6.0));
+}

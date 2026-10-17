@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
-use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
+use skia_safe::canvas::SaveLayerRec;
 use skia_safe::{
     BlendMode, Canvas, ClipOp, ColorFilter, ColorMatrix, EncodedImageFormat, Image, ImageFilter,
     Paint, Rect, TileMode, image_filters,
@@ -400,20 +400,14 @@ fn draw_shape(
         return paint_shape(canvas);
     }
 
-    // The shape's own pixels are the only backdrop the children may touch.
+    // The layer keeps children's blend modes off the pixels below the shape. The clip is the
+    // geometry, not the painted alpha, so a fill:none or translucent shape still shows them.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
-    let mut atop = Paint::default();
-    atop.set_anti_alias(true);
-    atop.set_blend_mode(BlendMode::SrcATop);
-    let rec = SaveLayerRec::default()
-        .paint(&atop)
-        .flags(SaveLayerFlags::INIT_WITH_PREVIOUS);
-    canvas.save_layer(&rec);
+    canvas.clip_path(&shape.geometry, ClipOp::Intersect, true);
     for child in &shape.children {
         draw_node(canvas, child, ctx, world)?;
     }
-    canvas.restore();
     canvas.restore();
     Ok(())
 }

@@ -29,6 +29,84 @@ fn nested_child_never_paints_outside_parent() {
 }
 
 #[test]
+fn a_fill_none_parent_still_clips_and_shows_its_children() {
+    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), red());
+    let child = solid("dot", circle_at(32.0, 32.0, 30.0), color(0, 0, 255, 255));
+    match &mut frame.kind {
+        NodeKind::Shape(shape) => {
+            shape.fill = None;
+            shape.children.push(child);
+        }
+        _ => unreachable!(),
+    }
+    let png = render_png(&scene(64.0, 64.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 32, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 14, 32), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 32, 6), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 6, 32), [0, 0, 0, 0]);
+}
+
+#[test]
+fn an_opaque_child_of_a_translucent_parent_stays_opaque() {
+    let mut glass = solid("glass", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), color(0, 0, 255, 77));
+    let dot = solid("dot", circle_at(32.0, 32.0, 6.0), color(0, 0, 0, 255));
+    match &mut glass.kind {
+        NodeKind::Shape(shape) => shape.children.push(dot),
+        _ => unreachable!(),
+    }
+    let png = render_png(&scene(64.0, 64.0, vec![glass]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 32, 32), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 16, 16), [0, 0, 255, 77]);
+}
+
+#[test]
+fn outline_traces_the_children_a_fill_none_parent_shows() {
+    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0), None), red());
+    let child = solid("dot", circle_at(40.0, 40.0, 30.0), color(0, 0, 255, 255));
+    match &mut frame.kind {
+        NodeKind::Shape(shape) => {
+            shape.fill = None;
+            shape.children.push(child);
+        }
+        _ => unreachable!(),
+    }
+    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255) }));
+    let png = render_png(&scene(80.0, 80.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 0]);
+}
+
+#[test]
+fn svg_isolates_a_shape_with_children() {
+    let mut parent = solid("body", circle_at(40.0, 40.0, 20.0), red());
+    let child = solid("ink", circle_at(40.0, 40.0, 8.0), color(0, 0, 255, 255));
+    match &mut parent.kind {
+        NodeKind::Shape(shape) => shape.children.push(child),
+        _ => unreachable!(),
+    }
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<g id=\"body\" style=\"isolation:isolate\""), "{svg}");
+}
+
+#[test]
+fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
+    let mut ring = skia_safe::PathBuilder::new();
+    ring.add_circle((40.0, 40.0), 20.0, None);
+    ring.add_circle((40.0, 40.0), 8.0, None);
+    ring.set_fill_type(skia_safe::PathFillType::EvenOdd);
+    let mut parent = solid("ring", ring.detach(), red());
+    let child = solid("ink", circle_at(40.0, 40.0, 30.0), color(0, 0, 255, 255));
+    match &mut parent.kind {
+        NodeKind::Shape(shape) => shape.children.push(child),
+        _ => unreachable!(),
+    }
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let clip = svg.split("<clipPath id=\"ring-nest\">").nth(1).unwrap().split("</clipPath>").next().unwrap();
+    assert!(clip.contains("clip-rule=\"evenodd\""), "{svg}");
+}
+
+#[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
@@ -193,6 +271,16 @@ fn adjust_keeps_soft_edges_dark() {
     let png = render_png(&canvas, 1.0, Backend::Cpu).unwrap();
     let brightest = rgba(&png).iter().map(|p| p[0].max(p[1]).max(p[2])).max().unwrap();
     assert!(brightest < 80, "an edge pixel brightened to {brightest}");
+}
+
+#[test]
+fn adjust_leaves_black_black() {
+    for (sat, light) in [(-0.2, 0.0), (0.0, -0.12), (-0.35, -0.12), (0.5, 0.0)] {
+        let mut node = solid("black", circle_at(40.0, 40.0, 24.0), color(0, 0, 0, 255));
+        node.effects.push(effect(EffectOp::Adjust { hue: 30.0, sat, light }));
+        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        assert_eq!(pixel(&png, 40, 40), [0, 0, 0, 255], "sat {sat} light {light}");
+    }
 }
 
 #[test]
