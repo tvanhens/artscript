@@ -1105,7 +1105,12 @@ fn bucket(prop: Prop, detail: &str) -> String {
 }
 
 fn main() {
-    std::panic::set_hook(Box::new(|_| {}));
+    // Panics inside `guarded` are findings and print there. Any other panic is a harness bug.
+    std::panic::set_hook(Box::new(|info| {
+        if WATCH.load(Ordering::SeqCst) == 0 {
+            eprintln!("artfuzz: {info}");
+        }
+    }));
     spawn_watchdog();
     let a = args();
     let corpus = Corpus::load(&a.root);
@@ -1232,7 +1237,10 @@ fn known_issue(prop: Prop, text: &str, detail: &str) -> Option<u32> {
         artscript_syntax::format_source(text).is_ok_and(|f| f.lines().count() != text.lines().count())
             && (text.contains("rand(") || text.contains("pick("))
     };
-    let guard_reads_scene = text.lines().any(|l| l.ends_with(WRAP) && l.contains('@'));
+    let lines: Vec<&str> = text.lines().collect();
+    let guard_reads_scene = lines.windows(2).any(|w| {
+        w[0].ends_with(WRAP) && w[0].contains('@') && first_word(w[1]) == "play"
+    });
     match prop {
         Prop::CommentInert if detail.contains("rand below the comment") => Some(39),
         Prop::FmtKeepsOutput if line_seeded() => Some(39),
