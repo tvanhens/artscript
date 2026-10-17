@@ -1155,3 +1155,12 @@ fn a_member_of_a_number_keeps_its_member_when_formatted() {
     assert_eq!(must_parse(&format(&file)), file);
     round_trip_source(src);
 }
+
+#[test]
+fn a_braced_name_keeps_its_braces_when_formatted() {
+    let src = "circle 4 name:{x}\n";
+    let file = must_parse(src);
+    assert_eq!(format(&file), src);
+    assert_eq!(must_parse(&format(&file)), file);
+    round_trip_source(src);
+}

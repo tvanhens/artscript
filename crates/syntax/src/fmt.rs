@@ -439,7 +439,10 @@ fn join_head(kw: &str, name: &str, args: &[Expr], named: &[Named]) -> String {
 }
 
 fn fmt_named(n: &Named) -> String {
-    format!("{}:{}", n.key, fmt_expr(&n.value))
+    match &n.value {
+        Expr::Tuple(xs) if n.key == "name" && xs.len() == 1 => format!("name:{{{}}}", fmt_expr(&xs[0])),
+        value => format!("{}:{}", n.key, fmt_expr(value)),
+    }
 }
 
 pub(crate) fn fmt_expr(e: &Expr) -> String {
