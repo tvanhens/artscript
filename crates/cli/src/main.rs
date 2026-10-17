@@ -276,7 +276,7 @@ fn explain(project: &Project, file: &Path) -> u8 {
     };
     let ev = artscript_eval::evaluate(project, job);
     if let Some(scene) = &ev.scene {
-        print!("{}", artscript_eval::explain(scene));
+        print!("{}", artscript_eval::explain(scene, &ev.seeded));
     }
     report(ev.diagnostics, true, false)
 }

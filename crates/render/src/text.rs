@@ -21,11 +21,14 @@ pub fn fmt_num(v: f32) -> String {
 }
 
 /// XML Name-ish id. Dots in node paths stay, so `hero.body` remains readable.
+/// `~` becomes `-`, so `circle~1` (`circle-1`) does not collide with an author name `circle_1`.
 pub fn xml_id(path: &str) -> String {
     let mut s: String = path
         .chars()
         .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+            if c == '~' {
+                '-'
+            } else if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
                 c
             } else {
                 '_'

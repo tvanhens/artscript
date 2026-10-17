@@ -47,6 +47,8 @@ pub struct Evaluation {
     pub diagnostics: Vec<Diagnostic>,
     /// Every `play` the frame reached, including ones outside their active window.
     pub plays: Vec<PlayMark>,
+    /// Node keys that drew a key-derived seed. `explain` prints `seed` on these.
+    pub seeded: BTreeSet<String>,
 }
 
 pub struct Frame {
@@ -73,15 +75,15 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
                 scene: None,
                 diagnostics: ev.diags,
                 plays: Vec::new(),
+                seeded: BTreeSet::new(),
             };
         }
     };
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
     let scenes: Vec<_> = file.scenes().cloned().collect();
-    ev.collect_entry(&scenes, &sc);
+    ev.collect_entry(&scenes, &mut sc);
     let children = ev.eval_block_nodes(file.scenes(), &mut sc);
-    ev.finish_channels("");
     let checks = sc.checks.clone();
     ev.run_checks(&checks);
     let background = match &job.bg {
@@ -103,7 +105,12 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         children,
     };
     let plays = ev.plays.clone();
-    let mut diagnostics = ev.diags;
+    let seeded = ev.seeded().clone();
+    let mut diagnostics = std::mem::take(&mut ev.diags);
+    diagnostics.extend(lints::positional_seed(
+        ev.positional(),
+        &project.manifest,
+    ));
     let mut files: Vec<&String> = ev.parsed.keys().collect();
     files.sort();
     for f in files {
@@ -116,6 +123,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         scene: Some(scene),
         diagnostics,
         plays,
+        seeded,
     }
 }
 
@@ -364,10 +372,10 @@ impl AggAcc {
         let i = self.frames;
         self.frames += 1;
         for d in diags {
-            if d.code.starts_with('L') && d.code != "L0102" {
+            if d.code.starts_with('L') && !folded_lint(&d.code) {
                 continue;
             }
-            let message = if d.code == "L0102" {
+            let message = if folded_lint(&d.code) {
                 String::new()
             } else {
                 d.message.clone()
@@ -413,7 +421,7 @@ impl AggAcc {
         if i == 0 {
             for d in diags
                 .iter()
-                .filter(|d| d.code.starts_with('L') && d.code != "L0102")
+                .filter(|d| d.code.starts_with('L') && !folded_lint(&d.code))
             {
                 self.out.push(d.clone());
             }
@@ -444,6 +452,11 @@ struct Agg {
     worst: f64,
     mag: f64,
     has_mag: bool,
+}
+
+/// L0102 and L0104 are folded across frames. Other lints stay on frame 0.
+fn folded_lint(code: &str) -> bool {
+    code == "L0102" || code == "L0104"
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.

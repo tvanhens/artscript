@@ -1,5 +1,6 @@
 //! `artscript explain`: the evaluated node tree with paths, canvas bounds and resolved paint.
 
+use std::collections::BTreeSet;
 use std::fmt::Write;
 
 use artscript_ir::{Effect, EffectOp, Matrix, Node, NodeKind, Paint, Scene};
@@ -34,7 +35,7 @@ fn effect(e: &Effect) -> String {
     }
 }
 
-fn walk(n: &Node, parent: Matrix, depth: usize, out: &mut String) {
+fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String) {
     let pad = "  ".repeat(depth);
     let kind = match &n.kind {
         NodeKind::Group { isolate: true, .. } => "layer",
@@ -69,21 +70,24 @@ fn walk(n: &Node, parent: Matrix, depth: usize, out: &mut String) {
     for e in &n.effects {
         let _ = write!(out, "  [fx {}]", effect(e));
     }
+    if seeded.contains(&n.path) {
+        out.push_str("  seed");
+    }
     let _ = writeln!(out, "  ({})", n.origin);
     let world = parent * n.transform;
     for c in n.children() {
-        walk(c, world, depth + 1, out);
+        walk(c, world, depth + 1, seeded, out);
     }
 }
 
-pub fn explain(scene: &Scene) -> String {
+pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     let mut out = format!("canvas {}x{}", num(scene.width as f64), num(scene.height as f64));
     if let Some(bg) = scene.background {
         let _ = write!(out, " bg:{}", bg.hex());
     }
     out.push('\n');
     for c in &scene.children {
-        walk(c, Matrix::new_identity(), 0, &mut out);
+        walk(c, Matrix::new_identity(), 0, seeded, &mut out);
     }
     out
 }

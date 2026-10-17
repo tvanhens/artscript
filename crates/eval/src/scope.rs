@@ -9,6 +9,7 @@ use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
+use crate::identity::{DeclId, Entry, Key, Names};
 use crate::value::Value;
 
 pub struct Module {
@@ -134,36 +135,18 @@ pub struct RuleDef {
 pub struct Record {
     pub name: String,
     pub path: String,
+    pub key: Key,
     pub parent_world: Matrix,
     pub node: Option<Node>,
     /// Canvas position of an anchor.
     pub anchor: Option<Point>,
     /// The node's `at:` in its parent's coordinates (for suggested fixes).
     pub at: (f64, f64),
-}
-
-pub type Table = Rc<RefCell<Vec<(String, Rc<RefCell<Record>>)>>>;
-
-pub fn new_table() -> Table {
-    Rc::new(RefCell::new(Vec::new()))
-}
-
-pub fn table_get(t: &Table, name: &str) -> Option<Rc<RefCell<Record>>> {
-    t.borrow()
-        .iter()
-        .rev()
-        .find(|(n, _)| n == name)
-        .map(|(_, r)| r.clone())
-}
-
-pub fn table_names(t: &Table) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    for (n, _) in t.borrow().iter() {
-        if !names.contains(n) {
-            names.push(n.clone());
-        }
-    }
-    names
+    /// The scope this name was registered in, and the decl, so `*` can list named children.
+    pub home: Option<Rc<RefCell<Names>>>,
+    pub decl: Option<DeclId>,
+    /// Set when this node opens a scope (an instance or a slot).
+    pub inner: Option<Rc<RefCell<Names>>>,
 }
 
 /// The resolved target of an `@ref`. Everything is measured in canvas coordinates.
@@ -214,32 +197,18 @@ impl RefVal {
         }
     }
 
-    /// Direct children as references.
+    /// Named direct tree children. An instance or a slot lists the scope it opens.
     pub fn children(&self) -> Vec<RefVal> {
-        let Some(node) = &self.record.node else {
+        let entries = if let Some(inner) = &self.record.inner {
+            inner.borrow().children_of(None)
+        } else if let (Some(home), Some(decl)) = (&self.record.home, self.record.decl) {
+            home.borrow().children_of(Some(decl))
+        } else {
             return Vec::new();
         };
-        let world = self.world();
-        node.children()
-            .iter()
-            .map(|c| {
-                let name = c.path.rsplit('.').next().unwrap_or(&c.path).to_string();
-                RefVal {
-                    label: format!("{}.{name}", self.label),
-                    record: Record {
-                        name: name.clone(),
-                        path: c.path.clone(),
-                        parent_world: world,
-                        node: Some(c.clone()),
-                        anchor: None,
-                        at: (
-                            c.transform.translate_x() as f64,
-                            c.transform.translate_y() as f64,
-                        ),
-                    },
-                    canvas: None,
-                }
-            })
+        entries
+            .into_iter()
+            .map(|e| ref_from(&e, &format!("{}.{}", self.label, e.name)))
             .collect()
     }
 
@@ -262,6 +231,14 @@ fn collect_strokes(n: &Node, out: &mut Vec<f64>) {
     }
     for c in n.children() {
         collect_strokes(c, out);
+    }
+}
+
+pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
+    RefVal {
+        label: label.to_string(),
+        record: entry.record.borrow().clone(),
+        canvas: None,
     }
 }
 

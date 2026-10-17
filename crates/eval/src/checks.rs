@@ -48,14 +48,17 @@ fn bounds(r: &RefVal) -> R<Rect> {
 }
 
 /// `set .node at:x,y` for moving `r` by a canvas-space delta.
-fn nudge(r: &RefVal, dx: f64, dy: f64) -> Option<String> {
+fn nudge(r: &RefVal, dx: f64, dy: f64, owner: &crate::identity::Key) -> Option<String> {
     if r.canvas.is_some() || r.record.anchor.is_some() {
         return None;
     }
+    let Some(addr) = r.record.key.address_from(owner) else {
+        return Some("add name:".into());
+    };
     let inv = r.record.parent_world.invert()?;
     let d = inv.map_vector(Vector::new(dx as f32, dy as f32));
     let (x, y) = (r.record.at.0 + d.x as f64, r.record.at.1 + d.y as f64);
-    Some(format!("set .{} at:{},{}", r.label, num(x), num(y)))
+    Some(format!("set {addr} at:{},{}", num(x), num(y)))
 }
 
 impl Evaluator<'_> {
@@ -88,7 +91,7 @@ impl Evaluator<'_> {
         let state = std::mem::replace(&mut self.check, saved).expect("check state");
         match result {
             Err(f) => {
-                self.report(f, &file, stmt.span, &sc.path);
+                self.report(f, &file, stmt.span, &sc.node_name());
                 false
             }
             Ok(v) if v.truthy() => true,
@@ -103,7 +106,7 @@ impl Evaluator<'_> {
                     f.notes.push(m.clone());
                 }
                 f.notes.extend(state.notes);
-                self.report(f, &file, stmt.span, &sc.path);
+                self.report(f, &file, stmt.span, &sc.node_name());
                 false
             }
         }
@@ -157,7 +160,7 @@ impl Evaluator<'_> {
     }
 
     /// Check functions over references. `None` when `func` is not one.
-    pub(crate) fn check_fn(&mut self, func: &str, a: &[Value], nm: &[(String, Value)], _sc: &Scope) -> Option<R<Value>> {
+    pub(crate) fn check_fn(&mut self, func: &str, a: &[Value], nm: &[(String, Value)], sc: &Scope) -> Option<R<Value>> {
         let known = [
             "level", "aligned", "symmetric", "inside", "overlaps", "touches", "gap", "dist", "centered", "aspect", "on_grid", "same_size",
             "stroke_widths",
@@ -165,10 +168,10 @@ impl Evaluator<'_> {
         if !known.contains(&func) {
             return None;
         }
-        Some(self.check_fn_inner(func, a, nm))
+        Some(self.check_fn_inner(func, a, nm, sc.owner()))
     }
 
-    fn check_fn_inner(&mut self, func: &str, a: &[Value], nm: &[(String, Value)]) -> R<Value> {
+    fn check_fn_inner(&mut self, func: &str, a: &[Value], nm: &[(String, Value)], owner: &crate::identity::Key) -> R<Value> {
         let get = |k: &str| nm.iter().rev().find(|(n, _)| n == k).map(|(_, v)| v.clone());
         let rs = refs(a);
         let need = |n: usize| -> R<()> {
@@ -196,7 +199,7 @@ impl Evaluator<'_> {
                         num(d.abs()),
                         num(tol)
                     ));
-                    self.set_fix(nudge(&rs[1], 0.0, -d));
+                    self.set_fix(nudge(&rs[1], 0.0, -d, owner));
                 }
                 Value::Bool(ok)
             }
@@ -213,7 +216,7 @@ impl Evaluator<'_> {
                 if !ok {
                     self.note(format!("{}.{edge} = {}   {}.{edge} = {}   difference {} > tol {}", rs[0].label, num(ma), rs[1].label, num(mb), num(d.abs()), num(tol)));
                     let horizontal = matches!(edge.as_str(), "left" | "right" | "cx");
-                    self.set_fix(if horizontal { nudge(&rs[1], -d, 0.0) } else { nudge(&rs[1], 0.0, -d) });
+                    self.set_fix(if horizontal { nudge(&rs[1], -d, 0.0, owner) } else { nudge(&rs[1], 0.0, -d, owner) });
                 }
                 Value::Bool(ok)
             }
@@ -237,7 +240,7 @@ impl Evaluator<'_> {
                     if ey.abs() > tol {
                         self.note(format!("{}.cy - {}.cy = {}", rs[1].label, rs[0].label, num(ey)));
                     }
-                    self.set_fix(nudge(&rs[1], -ex, -ey));
+                    self.set_fix(nudge(&rs[1], -ex, -ey, owner));
                 }
                 Value::Bool(ok)
             }
@@ -266,7 +269,7 @@ impl Evaluator<'_> {
                     _ => 0.0,
                 };
                 if !bad.is_empty() && (dx != 0.0 || dy != 0.0) {
-                    self.set_fix(nudge(&rs[0], dx, dy));
+                    self.set_fix(nudge(&rs[0], dx, dy, owner));
                 }
                 Value::Bool(bad.is_empty())
             }
@@ -306,7 +309,7 @@ impl Evaluator<'_> {
                 let ok = dx.abs() <= tol && dy.abs() <= tol;
                 if !ok {
                     self.note(format!("{} center is off {}'s center by {},{}", rs[0].label, container.label, num(-dx), num(-dy)));
-                    self.set_fix(nudge(&rs[0], dx, dy));
+                    self.set_fix(nudge(&rs[0], dx, dy, owner));
                 }
                 Value::Bool(ok)
             }
