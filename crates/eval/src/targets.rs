@@ -55,7 +55,7 @@ pub struct TargetJob {
     pub size: (f32, f32),
     pub bg: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked SVG tiles render at: the target's highest scale.
+    /// Scale baked tiles and tapered strokes sample at. A GIF is 1. Anything else is the target's highest scale.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
@@ -320,7 +320,10 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
             })
             .collect();
     }
-    let bake_scale = scales.iter().copied().fold(1.0f32, f32::max);
+    let bake_scale = match format {
+        Format::Gif => 1.0,
+        Format::Png | Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
+    };
     cells
         .into_iter()
         .map(|matrix| {
@@ -448,6 +451,7 @@ mod tests {
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        assert!(plan.jobs.iter().all(|j| j.bake_scale == 2.0));
         let paths: Vec<String> = plan
             .jobs
             .iter()
@@ -485,6 +489,7 @@ mod tests {
         assert_eq!(plan.jobs[0].outputs.len(), 1);
         assert_eq!(plan.jobs[0].outputs[0].path, "t.gif");
         assert_eq!(plan.jobs[0].outputs[0].scale, 1.0);
+        assert_eq!(plan.jobs[0].bake_scale, 1.0);
     }
 
     #[test]

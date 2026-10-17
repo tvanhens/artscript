@@ -21,6 +21,7 @@ pub mod targets;
 mod value;
 
 use std::collections::BTreeSet;
+use std::sync::{Condvar, Mutex};
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
@@ -59,6 +60,7 @@ pub struct Sample {
     pub loops: bool,
     pub dur: f64,
     pub fps: f64,
+    _hold: SceneHold,
 }
 
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
@@ -147,28 +149,33 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
                 loops,
                 dur,
                 fps,
+                _hold: SceneHold { bytes: 0 },
             };
         }
     };
     let mut frames = Vec::new();
-    let mut per_frame: Vec<(f64, Vec<Diagnostic>)> = Vec::new();
+    let mut acc = AggAcc::default();
     let mut kept = 0u64;
     let mut peak = 0u64;
     let mut retained_error = None;
+    let mut hold = SceneHold { bytes: 0 };
     if n == 0 {
-        per_frame.push((0.0, probe.diagnostics));
+        acc.fold(0.0, &probe.diagnostics);
     } else if let Some(err) = probe
         .scene
         .as_ref()
         .and_then(|scene| gif_retained_error(job, scene, &mut kept, &mut peak, n))
     {
         retained_error = Some(err);
-        per_frame.push((0.0, probe.diagnostics));
+        acc.fold(0.0, &probe.diagnostics);
     } else {
+        if gif_job(job) {
+            hold_to(&mut hold, peak.saturating_mul(n as u64));
+        }
         if let Some(scene) = probe.scene {
             frames.push(Frame { t: 0.0, scene });
         }
-        per_frame.push((0.0, probe.diagnostics));
+        acc.fold(0.0, &probe.diagnostics);
         for i in 1..n {
             let t = i as f64 / fps;
             let mut frame_job = job.clone();
@@ -183,16 +190,20 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             {
                 retained_error = Some(err);
                 frames.clear();
-                per_frame.push((t, ev.diagnostics));
+                hold = SceneHold { bytes: 0 };
+                acc.fold(t, &ev.diagnostics);
                 break;
+            }
+            if gif_job(job) {
+                hold_to(&mut hold, peak.saturating_mul(n as u64));
             }
             if let Some(scene) = ev.scene {
                 frames.push(Frame { t, scene });
             }
-            per_frame.push((t, ev.diagnostics));
+            acc.fold(t, &ev.diagnostics);
         }
     }
-    let mut diagnostics = aggregate_frames(&per_frame);
+    let mut diagnostics = acc.finish();
     if let Some(d) = retained_error {
         diagnostics.push(d);
     } else if !diagnostics.iter().any(|d| d.code.starts_with('E'))
@@ -209,6 +220,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         loops,
         dur,
         fps,
+        _hold: hold,
     }
 }
 
@@ -317,6 +329,53 @@ fn projected_retention(kept: u64, peak: u64, frames_left: usize) -> u64 {
     kept.saturating_add(peak.saturating_mul(frames_left as u64))
 }
 
+fn gif_job(job: &TargetJob) -> bool {
+    job.outputs.iter().any(|o| o.format == Format::Gif)
+}
+
+static SCENE_HELD: Mutex<u64> = Mutex::new(0);
+static SCENE_SLOT: Condvar = Condvar::new();
+
+fn scene_slot_open(held: u64, bytes: u64) -> bool {
+    held == 0 || held.saturating_add(bytes) <= GIF_CLIP_BUDGET
+}
+
+struct SceneHold {
+    bytes: u64,
+}
+
+impl Drop for SceneHold {
+    fn drop(&mut self) {
+        if self.bytes == 0 {
+            return;
+        }
+        let mut held = SCENE_HELD.lock().unwrap_or_else(|e| e.into_inner());
+        *held = held.saturating_sub(self.bytes);
+        SCENE_SLOT.notify_all();
+    }
+}
+
+fn reserve_scenes(bytes: u64) -> SceneHold {
+    if bytes == 0 {
+        return SceneHold { bytes: 0 };
+    }
+    let mut held = SCENE_HELD.lock().unwrap_or_else(|e| e.into_inner());
+    while !scene_slot_open(*held, bytes) {
+        held = SCENE_SLOT.wait(held).unwrap_or_else(|e| e.into_inner());
+    }
+    *held = held.saturating_add(bytes);
+    SceneHold { bytes }
+}
+
+fn hold_to(hold: &mut SceneHold, bytes: u64) {
+    if bytes <= hold.bytes {
+        return;
+    }
+    let mut more = reserve_scenes(bytes - hold.bytes);
+    hold.bytes = hold.bytes.saturating_add(more.bytes);
+    more.bytes = 0;
+}
+
 /// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
 fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
     let scene = &frames.first()?.scene;
@@ -342,10 +401,26 @@ fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
     )
 }
 
+#[cfg(test)]
 fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
-    let mut groups: Vec<Agg> = Vec::new();
-    for (i, (t, diags)) in frames.iter().enumerate() {
+    let mut acc = AggAcc::default();
+    for (t, diags) in frames {
+        acc.fold(*t, diags);
+    }
+    acc.finish()
+}
+
+#[derive(Default)]
+struct AggAcc {
+    out: Vec<Diagnostic>,
+    groups: Vec<Agg>,
+    frames: usize,
+}
+
+impl AggAcc {
+    fn fold(&mut self, t: f64, diags: &[Diagnostic]) {
+        let i = self.frames;
+        self.frames += 1;
         for d in diags {
             if d.code.starts_with('L') && d.code != "L0102" {
                 continue;
@@ -368,26 +443,26 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
                     .cloned()
                     .collect::<Vec<_>>(),
             );
-            if let Some(agg) = groups.iter_mut().find(|g| g.key == key) {
+            if let Some(agg) = self.groups.iter_mut().find(|g| g.key == key) {
                 let mag = note_magnitude(d);
                 if let Some(mag) = mag
                     && (!agg.has_mag || mag > agg.mag)
                 {
                     agg.has_mag = true;
                     agg.mag = mag;
-                    agg.worst = *t;
+                    agg.worst = t;
                     agg.diag = d.clone();
-                } else if mag.is_none() && !agg.has_mag && *t > agg.worst {
-                    agg.worst = *t;
+                } else if mag.is_none() && !agg.has_mag && t > agg.worst {
+                    agg.worst = t;
                     agg.diag = d.clone();
                 }
             } else {
                 let mag = note_magnitude(d);
-                groups.push(Agg {
+                self.groups.push(Agg {
                     key,
                     diag: d.clone(),
-                    first: *t,
-                    worst: *t,
+                    first: t,
+                    worst: t,
                     mag: mag.unwrap_or(0.0),
                     has_mag: mag.is_some(),
                 });
@@ -398,22 +473,26 @@ fn aggregate_frames(frames: &[(f64, Vec<Diagnostic>)]) -> Vec<Diagnostic> {
                 .iter()
                 .filter(|d| d.code.starts_with('L') && d.code != "L0102")
             {
-                out.push(d.clone());
+                self.out.push(d.clone());
             }
         }
     }
-    for mut agg in groups {
-        if frames.len() > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
-            agg.diag
-                .notes
-                .push(format!("first at {}s", num_s(agg.first)));
-            agg.diag
-                .notes
-                .push(format!("worst at {}s", num_s(agg.worst)));
+
+    fn finish(mut self) -> Vec<Diagnostic> {
+        let frames = self.frames;
+        for mut agg in self.groups {
+            if frames > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
+                agg.diag
+                    .notes
+                    .push(format!("first at {}s", num_s(agg.first)));
+                agg.diag
+                    .notes
+                    .push(format!("worst at {}s", num_s(agg.worst)));
+            }
+            self.out.push(agg.diag);
         }
-        out.push(agg.diag);
+        self.out
     }
-    out
 }
 
 struct Agg {

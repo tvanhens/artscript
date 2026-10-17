@@ -2388,6 +2388,96 @@ fn an_anim_rand_ignores_a_toggling_let() {
 }
 
 #[test]
+fn a_picked_component_keeps_one_path() {
+    let s = scene(
+        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\nlet which = pick([a b c])\nwhich\na\nb\nc\n",
+    );
+    let ps = paths(&s);
+    let mut uniq = ps.clone();
+    uniq.sort();
+    uniq.dedup();
+    assert_eq!(ps.len(), uniq.len(), "{ps:?}");
+    let each = scene(
+        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\neach part in [pick([a b c])]\n  part\na\nb\nc\n",
+    );
+    let ep = paths(&each);
+    let mut eu = ep.clone();
+    eu.sort();
+    eu.dedup();
+    assert_eq!(ep.len(), eu.len(), "{ep:?}");
+}
+
+#[test]
+fn an_unreadable_each_keeps_an_instance_play_ahead_of_a_later_play() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero\n  each x in [@marker.w]\n    play inner\nplay outer\n",
+    );
+    let eye = node(&s, "hero.eye");
+    assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
+}
+
+#[test]
+fn a_play_start_rand_ignores_a_toggling_let() {
+    let body = |guard: &str| {
+        format!(
+            "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim idle dur:1s\n  .c at:t*10,0\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle start:rand(0 1)\n"
+        )
+    };
+    let quiet_src = body("false");
+    let noisy_src = body("t > 0");
+    let quiet = project(&[("art/t.art", &quiet_src)]);
+    let noisy = project(&[("art/t.art", &noisy_src)]);
+    let xs = |p: &Project| {
+        let plan = plan(p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        let sampled = crate::sample(p, &plan.jobs[0]);
+        assert!(
+            sampled.diagnostics.iter().all(|d| !d.code.starts_with('E')),
+            "{}",
+            show(&sampled.diagnostics)
+        );
+        sampled
+            .frames
+            .iter()
+            .map(|f| {
+                f.scene
+                    .children
+                    .iter()
+                    .find(|n| n.path == "c")
+                    .unwrap()
+                    .transform
+                    .translate_x()
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(xs(&quiet), xs(&noisy));
+}
+
+#[test]
+fn a_gif_scale_list_does_not_refine_a_tapered_stroke() {
+    let one = scene(
+        "@target t.gif 40x40 scale:1 bg:#ffffff\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n",
+    );
+    let listed = scene(
+        "@target t.gif 40x40 scale:1,2 bg:#ffffff\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n",
+    );
+    let n = |s: &Scene| match &node(s, "ink").kind {
+        NodeKind::Shape(shape) => shape.geometry.count_points(),
+        NodeKind::Group { .. } => panic!("ink is a group"),
+    };
+    assert_eq!(n(&one), n(&listed));
+}
+
+#[test]
+fn parallel_gif_samples_share_one_scene_cap() {
+    let cap = crate::GIF_CLIP_BUDGET;
+    assert!(super::scene_slot_open(0, cap));
+    assert!(!super::scene_slot_open(cap, 1));
+    assert!(super::scene_slot_open(cap / 2, cap / 2));
+    assert!(!super::scene_slot_open(cap / 2, cap / 2 + 1));
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

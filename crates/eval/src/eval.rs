@@ -1054,6 +1054,13 @@ impl<'a> Evaluator<'a> {
                 SceneKind::Each { var, iter, body } => {
                     let mut inner = sc.clone();
                     inner.publish = false;
+                    self.seed_at(format!(
+                        "{}\0{}{}\0{}",
+                        sc.file(),
+                        sc.path,
+                        sc.suffix,
+                        scene.span.line
+                    ));
                     if let Ok(items) = self.expr(iter, sc).and_then(each_items)
                         && let Some(first) = items.into_iter().next()
                     {
@@ -1063,6 +1070,13 @@ impl<'a> Evaluator<'a> {
                     self.count_scenes(&refs, &mut inner, counts, map);
                 }
                 SceneKind::Let { name, value } => {
+                    self.seed_at(format!(
+                        "{}\0{}{}\0{}",
+                        sc.file(),
+                        sc.path,
+                        sc.suffix,
+                        scene.span.line
+                    ));
                     let v = self.expr(value, sc).unwrap_or(Value::None);
                     sc.env.push((name.clone(), v));
                 }
@@ -2821,6 +2835,10 @@ impl<'a> Evaluator<'a> {
                     st.span.line
                 ));
                 let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
+                    let mut inner = sc.clone();
+                    for child in body {
+                        self.reserve_call_scene(child, &mut inner);
+                    }
                     return;
                 };
                 for (i, v) in items.into_iter().enumerate() {
@@ -3038,16 +3056,23 @@ impl<'a> Evaluator<'a> {
                 return;
             }
         };
+        let start_base = self.seed_base.clone();
+        let start_count = self.seed_count;
+        self.seed_at(format!("{}\0{owner}\0{}", sc.file(), span.line));
         let start_v = match start {
             Some(e) => match self.time_secs(e, sc) {
                 Ok(n) => n,
                 Err(f) => {
+                    self.seed_base = start_base;
+                    self.seed_count = start_count;
                     self.report(f, sc.file(), span, owner);
                     return;
                 }
             },
             None => 0.0,
         };
+        self.seed_base = start_base;
+        self.seed_count = start_count;
         let module = self.modules.get(&anim.module).cloned();
         let dur_scope = match &module {
             Some(m) => self.module_scope(m),
