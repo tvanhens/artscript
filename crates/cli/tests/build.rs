@@ -351,7 +351,7 @@ fn check_reports_a_gif_build_would_refuse() {
 #[test]
 fn the_sample_raster_cap_matches_the_encoder() {
     assert_eq!(
-        artscript_eval::GIF_RASTER_BUDGET,
+        artscript_eval::GIF_CLIP_BUDGET,
         artscript_render::RASTER_BUDGET
     );
 }
@@ -375,6 +375,31 @@ fn check_reports_a_gif_wider_than_65535px() {
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(
         text(&out).contains("a gif is larger than 65535px"),
+        "{}",
+        text(&out)
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_reports_a_gif_that_would_retain_too_many_scenes() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifscene-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifscene\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target heavy.gif 8x8 bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(
+        text(&out).contains("a gif retains more than 256MiB"),
         "{}",
         text(&out)
     );

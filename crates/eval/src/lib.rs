@@ -37,8 +37,8 @@ use crate::eval::{Evaluator, PlayMark};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// RGBA bytes of one GIF, `width × height × frames × 4`. The encoder's raster cap is the same number.
-pub const GIF_RASTER_BUDGET: u64 = 256 * 1024 * 1024;
+/// Byte ceiling for one GIF raster and for the scenes one `sample` keeps.
+pub const GIF_CLIP_BUDGET: u64 = 256 * 1024 * 1024;
 
 pub struct Evaluation {
     /// `None` when the entry file could not be evaluated at all.
@@ -152,7 +152,17 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     };
     let mut frames = Vec::new();
     let mut per_frame: Vec<(f64, Vec<Diagnostic>)> = Vec::new();
+    let mut kept = 0u64;
+    let mut peak = 0u64;
+    let mut retained_error = None;
     if n == 0 {
+        per_frame.push((0.0, probe.diagnostics));
+    } else if let Some(err) = probe
+        .scene
+        .as_ref()
+        .and_then(|scene| gif_retained_error(job, scene, &mut kept, &mut peak, n))
+    {
+        retained_error = Some(err);
         per_frame.push((0.0, probe.diagnostics));
     } else {
         if let Some(scene) = probe.scene {
@@ -165,6 +175,17 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             frame_job.frame_t = t;
             let ev = evaluate(project, &frame_job);
             loops |= ev.plays.iter().any(|p| p.loops);
+            let left = n - frames.len();
+            if let Some(err) = ev
+                .scene
+                .as_ref()
+                .and_then(|scene| gif_retained_error(job, scene, &mut kept, &mut peak, left))
+            {
+                retained_error = Some(err);
+                frames.clear();
+                per_frame.push((t, ev.diagnostics));
+                break;
+            }
             if let Some(scene) = ev.scene {
                 frames.push(Frame { t, scene });
             }
@@ -172,7 +193,9 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         }
     }
     let mut diagnostics = aggregate_frames(&per_frame);
-    if !diagnostics.iter().any(|d| d.code.starts_with('E'))
+    if let Some(d) = retained_error {
+        diagnostics.push(d);
+    } else if !diagnostics.iter().any(|d| d.code.starts_with('E'))
         && let Some(d) = gif_timing_error(job, frames.len(), dur)
             .or_else(|| gif_background_error(job, &frames))
             .or_else(|| gif_dimension_error(job, &frames))
@@ -262,6 +285,38 @@ fn gif_raster_bytes(width: f32, height: f32, scale: f32, frames: usize) -> u64 {
         .saturating_mul(frames as u64)
 }
 
+fn gif_retained_error(
+    job: &TargetJob,
+    scene: &Scene,
+    kept: &mut u64,
+    peak: &mut u64,
+    frames_left: usize,
+) -> Option<Diagnostic> {
+    if !job.outputs.iter().any(|o| o.format == Format::Gif) {
+        return None;
+    }
+    let bytes = scene.retained_bytes();
+    *peak = (*peak).max(bytes);
+    if projected_retention(*kept, *peak, frames_left) > GIF_CLIP_BUDGET {
+        let mib = GIF_CLIP_BUDGET / (1024 * 1024);
+        return Some(
+            Diagnostic::error(
+                "E0206",
+                job.span,
+                format!("a gif retains more than {mib}MiB"),
+            )
+            .in_file(&job.source)
+            .with_fix("lower `fps`, shorten `dur`, or draw less in each frame"),
+        );
+    }
+    *kept = kept.saturating_add(bytes);
+    None
+}
+
+fn projected_retention(kept: u64, peak: u64, frames_left: usize) -> u64 {
+    kept.saturating_add(peak.saturating_mul(frames_left as u64))
+}
+
 /// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
 fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
     let scene = &frames.first()?.scene;
@@ -270,12 +325,12 @@ fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
         .iter()
         .filter(|o| o.format == Format::Gif)
         .any(|o| {
-            gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_RASTER_BUDGET
+            gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_CLIP_BUDGET
         });
     if !over {
         return None;
     }
-    let mib = GIF_RASTER_BUDGET / (1024 * 1024);
+    let mib = GIF_CLIP_BUDGET / (1024 * 1024);
     Some(
         Diagnostic::error(
             "E0206",

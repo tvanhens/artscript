@@ -6,6 +6,8 @@
 
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
+mod retained;
+
 /// sRGB, 0..1, straight (not premultiplied) alpha.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {

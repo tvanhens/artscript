@@ -2180,6 +2180,48 @@ fn an_imported_anim_style_resolves_in_its_module() {
 }
 
 #[test]
+fn a_gif_that_would_retain_scenes_past_the_budget_is_e0206_from_sample() {
+    let heavy =
+        "@target t.gif 8x8 bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n";
+    let over = project(&[("art/t.art", heavy)]);
+    let over_plan = plan(&over);
+    assert!(
+        over_plan.diagnostics.is_empty(),
+        "{:?}",
+        over_plan.diagnostics
+    );
+    let over_sample = crate::sample(&over, &over_plan.jobs[0]);
+    assert!(
+        over_sample
+            .diagnostics
+            .iter()
+            .any(|d| { d.code == "E0206" && d.message.contains("a gif retains more than 256MiB") }),
+        "{}",
+        show(&over_sample.diagnostics)
+    );
+    assert!(
+        over_sample.frames.is_empty(),
+        "{}",
+        over_sample.frames.len()
+    );
+    let one = project(&[(
+        "art/t.art",
+        "@target t.gif 8x8 bg:#ffffff dur:1s fps:1\neach i in 0..1500\n  circle 1 at:i,0\n",
+    )]);
+    let one_plan = plan(&one);
+    let one_sample = crate::sample(&one, &one_plan.jobs[0]);
+    assert!(
+        one_sample
+            .diagnostics
+            .iter()
+            .all(|d| !d.message.contains("retains")),
+        "{}",
+        show(&one_sample.diagnostics)
+    );
+    assert_eq!(one_sample.frames.len(), 1, "{}", one_sample.dur);
+}
+
+#[test]
 fn a_gif_raster_over_the_budget_is_e0206_from_sample() {
     let huge = project(&[(
         "art/t.art",
