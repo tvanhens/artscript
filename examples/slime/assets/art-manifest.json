@@ -1,0 +1,27 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "188c35a979465e69",
+      "line": 2,
+      "matrix": {},
+      "path": "slime.gif",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "693dd7667d34d986",
+      "line": 1,
+      "matrix": {},
+      "path": "slime.png",
+      "scale": 1.0,
+      "source": "art/slime.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}
