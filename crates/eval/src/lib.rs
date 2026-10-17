@@ -380,7 +380,7 @@ impl AggAcc {
                 d.node.clone(),
                 d.notes
                     .iter()
-                    .filter(|n| n.starts_with("via rule "))
+                    .filter(|n| is_site_note(n))
                     .cloned()
                     .collect::<Vec<_>>(),
             );
@@ -445,10 +445,15 @@ struct Agg {
     has_mag: bool,
 }
 
+/// A note naming the call site that produced a failure. It separates failures and is not a magnitude.
+fn is_site_note(note: &str) -> bool {
+    note.starts_with("via rule ") || note.starts_with("played at ")
+}
+
 fn note_magnitude(d: &Diagnostic) -> Option<f64> {
     let mut best = None;
     for note in &d.notes {
-        if note.starts_with("via rule ") {
+        if is_site_note(note) {
             continue;
         }
         for token in note.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')) {

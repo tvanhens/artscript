@@ -2566,6 +2566,37 @@ fn a_boolean_key_position_is_e0320() {
 }
 
 #[test]
+fn an_instance_play_inside_a_group_keeps_its_source_order() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .root.hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ngroup root\n  hero\n    play inner\nplay outer\n",
+    );
+    let eye = node(&s, "root.hero.eye");
+    assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
+}
+
+#[test]
+fn two_plays_of_a_bad_duration_stay_two_failures_across_frames() {
+    let src = "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim idle dur:missing\n  .c a:.5\ncircle 4 name:c\nplay idle\nplay idle\n";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let sites: Vec<_> = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0320")
+        .flat_map(|d| d.notes.iter().filter(|n| n.starts_with("played at ")))
+        .cloned()
+        .collect();
+    assert_eq!(
+        sites,
+        ["played at art/t.art:5", "played at art/t.art:6"],
+        "{}",
+        show(&sampled.diagnostics)
+    );
+}
+
+#[test]
 fn a_direct_instance_let_stays_in_the_call() {
     let ev = run_with(
         "@target t.png 40x40\ndef hero size:40x40\n  circle 4 name:eye\nhero\n  let delay = 1\ncircle 4 at:delay,0 name:x\n",

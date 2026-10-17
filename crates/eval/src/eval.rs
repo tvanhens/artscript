@@ -2756,6 +2756,7 @@ impl<'a> Evaluator<'a> {
             None
         };
         let comp = self.component_for(verb, sc).and_then(|c| c);
+        self.reserve_call_block(draw, sc);
         let name = explicit
             .or(positional)
             .or_else(|| comp.as_ref().map(|c| c.name.clone()));
@@ -2777,13 +2778,11 @@ impl<'a> Evaluator<'a> {
                 at: (0.0, 0.0),
             },
         );
-        if comp.is_some() {
-            self.reserve_call_block(draw, sc);
-        }
     }
 
-    /// Remember source order for plays in this call block. `absorb_scene` schedules them later,
-    /// after file-level plays that follow the call, and the reserved order puts those later plays last.
+    /// Remember source order for plays under this draw, including calls nested in a structural draw.
+    /// `absorb_scene` schedules them later, after file-level plays that follow the call, and the
+    /// reserved order puts those later plays last.
     fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
         let seed_base = self.seed_base.clone();
         let seed_count = self.seed_count;
@@ -2859,7 +2858,8 @@ impl<'a> Evaluator<'a> {
                 }
             }
             SceneKind::Play { .. } => self.reserve_play(st.span),
-            SceneKind::Check { .. } | SceneKind::Slot { .. } | SceneKind::Draw(_) => {}
+            SceneKind::Draw(draw) => self.reserve_call_block(draw, sc),
+            SceneKind::Check { .. } | SceneKind::Slot { .. } => {}
         }
     }
 
