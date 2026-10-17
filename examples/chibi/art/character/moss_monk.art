@@ -59,7 +59,7 @@ def _arm side:1
       curve cuff stroke:ochre,10
       curve cuff at:2,0 stroke:ochre.1,3 a:.7
       curve cuff at:-2*side,-1 stroke:ochre.4,2 a:.6
-      curve -132,640 -142,680 -132,716 stroke:if side == 1 then moss.4 else moss.0,[1.5 3.5 1.5] taper:.35 a:.55
+      curve -132,640 -142,680 -132,716 stroke:(if side == 1 then moss.4 else moss.0),[1.5 3.5 1.5] taper:.35 a:.55
       curve -110,724 -82,730 -58,718 stroke:moss.0,[1.5 3 1.5] taper:.35 a:.5
 def _bead r:8.5
   circle r fill:radial(cedar.3 cedar,.55 cedar.0 at:.325,.3 r:r*1.5)

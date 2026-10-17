@@ -58,6 +58,7 @@ A scene block is the file top, a draw's children, a `def` body, and the bodies o
 - A binary operator continues the expression only when it has whitespace on both sides or on neither side. `w / 2` and `w/2` are both one expression. In `a -b`, the `-` is glued to `b` but spaced from `a`, so it starts a new item.
 - The keyword operators (`and or in -> ..` and the comparisons) continue the expression when they are spaced.
 - A tight comma, with no whitespace on either side, builds a `Tuple` at the lowest precedence of that tight run: `-w/2,0` is `Tuple[-(w)/2, 0]`, and `p.ink,1.5` is `Tuple[p.ink, 1.5]`.
+- Each branch of `if c then a else b` takes a whole tuple. `if k < 2 then 3,4 else 5,6` picks one of two points. The `else` branch runs to the end of the expression, so a tuple whose first element is an `if` needs parentheses: `(if mono then ink else ink.3),3`.
 
 **Inside `( )`, `[ ]` and `use … { }`.** There is one way to write this.
 
@@ -70,7 +71,7 @@ A scene block is the file top, a draw's children, a `def` body, and the bodies o
 
 **Precedence**, lowest to highest:
 
-1. `if-then-else`
+1. `if-then-else` (each branch is a tight tuple)
 2. `or`
 3. `and`
 4. `not`
@@ -93,7 +94,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - Positional args come before named args, in source order.
 - Numbers drop a leading zero and trailing zeros (`0.50` becomes `.5`, `1.0` becomes `1`).
 - The operators `+`, `-`, `*`, and `/` are written with no spaces. `cx-40,884` is a tuple of a subtraction and `884`. `cx - 40,884` and `(cx - 40),884` are both written `cx-40,884`.
-- Parentheses are printed when removing them would change the tree. `(a+b)*c` and `a+(b,c)` keep their parentheses.
+- Parentheses are printed when removing them would change the tree. `(a+b)*c`, `a+(b,c)`, and `(if c then a else b),3` keep their parentheses. `if c then (3,4) else (5,6)` is written `if c then 3,4 else 5,6`.
 - Comments are preserved: keep each comment's text attached to the statement that follows it, or trailing on its line. The AST does not hold comments, so `fmt` re-reads them from the source by line.
 - One blank line between statements is kept. Several blank lines in a row become one. Blank lines are not in the AST, so `fmt` re-reads them from the source.
 - `format(parse(format(x))) == format(x)`, and `parse(format(x))` is the same tree as `parse(x)`.

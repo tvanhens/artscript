@@ -502,7 +502,15 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Ident(s) => s.clone(),
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
-        Expr::Tuple(xs) => xs.iter().map(fmt_expr).collect::<Vec<_>>().join(","),
+        Expr::Tuple(xs) => {
+            // An `else` branch takes the rest of the tuple, so only the last element may be a bare `if`.
+            let last = xs.len().saturating_sub(1);
+            xs.iter()
+                .enumerate()
+                .map(|(i, x)| fmt_at(x, if i < last { 2 } else { 1 }, false))
+                .collect::<Vec<_>>()
+                .join(",")
+        }
         Expr::List(xs) => format!(
             "[{}]",
             xs.iter().map(fmt_expr).collect::<Vec<_>>().join(" ")
@@ -542,7 +550,7 @@ fn fmt_body(e: &Expr) -> String {
         } => {
             format!(
                 "if {} then {} else {}",
-                fmt_expr(cond),
+                fmt_at(cond, 2, false),
                 fmt_expr(then),
                 fmt_expr(otherwise)
             )
