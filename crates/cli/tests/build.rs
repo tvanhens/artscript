@@ -532,6 +532,27 @@ fn a_file_with_only_unknown_directives_is_e0208() {
 }
 
 #[test]
+fn adding_2x_leaves_the_1x_taper_png_unchanged() {
+    let dir = fixture("taper");
+    let curve = "curve 40,200 128,40 216,200 stroke:p.ink,[2 14 2] taper:.3\n";
+    let mut builds = Vec::new();
+    for target in [
+        "@target taper.png 256x256",
+        "@target taper.png 256x256 scale:1,2",
+    ] {
+        fs::write(dir.join("art/taper.art"), format!("{target}\n{curve}")).unwrap();
+        let out = artscript(&dir, &["build", "--backend", "cpu"]);
+        assert!(out.status.success(), "{target}: {}", text(&out));
+        builds.push(fs::read(dir.join("assets/taper.png")).unwrap());
+    }
+    assert!(dir.join("assets/taper@2x.png").exists());
+    assert!(
+        builds[0] == builds[1],
+        "taper.png changed when scale:1,2 was added"
+    );
+}
+
+#[test]
 fn a_bad_target_profile_is_e0206_on_every_format() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-profile-{}", std::process::id()));
     let cases = [
