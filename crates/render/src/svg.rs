@@ -257,11 +257,7 @@ impl Writer {
         self.body.push_str("/>\n");
         if !shape.children.is_empty() {
             let cid = format!("{id}-nest");
-            self.defs.push_str("    <clipPath id=\"");
-            self.defs.push_str(&cid);
-            self.defs.push_str("\"><path d=\"");
-            self.defs.push_str(&path_data(&shape.geometry));
-            self.defs.push_str("\"/></clipPath>\n");
+            self.clip_path_def(&cid, &shape.geometry);
             self.body.push_str(&pad);
             self.body.push_str("<g clip-path=\"url(#");
             self.body.push_str(&cid);
@@ -404,17 +400,25 @@ impl Writer {
         }
     }
 
+    fn clip_path_def(&mut self, id: &str, path: &Path) {
+        self.defs.push_str("    <clipPath id=\"");
+        self.defs.push_str(id);
+        self.defs.push_str("\"><path d=\"");
+        self.defs.push_str(&path_data(path));
+        self.defs.push('"');
+        if path.fill_type() == PathFillType::EvenOdd {
+            self.defs.push_str(" clip-rule=\"evenodd\"");
+        }
+        self.defs.push_str("/></clipPath>\n");
+    }
+
     fn clip_attr(&mut self, node: &Node, id: &str) {
         let Some(clip) = &node.clip else { return };
         if clip.feather > 0.0 || clip.invert {
             return;
         }
         let cid = format!("{id}-clip");
-        self.defs.push_str("    <clipPath id=\"");
-        self.defs.push_str(&cid);
-        self.defs.push_str("\"><path d=\"");
-        self.defs.push_str(&path_data(&clip.path));
-        self.defs.push_str("\"/></clipPath>\n");
+        self.clip_path_def(&cid, &clip.path);
         self.body.push_str(" clip-path=\"url(#");
         self.body.push_str(&cid);
         self.body.push_str(")\"");
