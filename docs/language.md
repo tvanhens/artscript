@@ -110,7 +110,7 @@ curve … name:cap
 
 ## Fields
 
-`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or a `mask worley(20) > .6` child line to threshold one into a shape. Seeds default to a hash of the file and node path, so editing one node never reshuffles another.
+`simplex(40)`, `perlin`, `worley`, `value` take a feature size, `seed:` and `oct:`. Wrap them with `fbm(f)` or `ridged(f)` and combine them with arithmetic. Use `fill:fbm(simplex(30)) -> p.stone` to map a field through a ramp or a list of colors, or a `mask worley(20) > .6` child line to threshold one into a shape. Seeds default to a hash of the file and the node's key. A named node keeps its seed when other nodes change. An unnamed node's seed can shift when a sibling with the same verb is added ahead of it, and `positional-seed` warns. Add `name:` to pin it.
 
 ## Components
 
@@ -124,9 +124,9 @@ def eye size:10 iris:p.sky.3 look:0,0
 
 - The first parameter is positional (`eye 9 at:-14,0`), and types come from the defaults.
 - `size` is the def's box, centered on the origin. `size:40` is a square. `size:72x32` is 72 wide and 32 tall. A bare percent uses the smaller side. Percents in the body measure that box, and a child with no `at:` stays at the origin.
-- Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing.
-- `slot name` exposes an insertion point, filled by the caller with a `name:` block. A def body may hold `fx`, which attach to every instance and run before the call site's. A mask, a slot fill, or a patch cannot sit directly in a def body. Inside slot content, `@part` resolves against the host first, and `needs:@torso` makes a missing part a clear error.
-- `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override any part of an instance from its block, in source order, with the last one winning. A segment may be a keyword when the part is a slot of that name, as in `.mask off`.
+- Components are values, so `outfit:tunic` can be placed as `outfit`, and `none` draws nothing. A def may reuse a shape word. `def circle` is that component, not the built-in circle.
+- `slot name` exposes an insertion point, filled by the caller with a `name:` block. A def body may hold `fx`, which attach to every instance and run before the call site's. A mask, a slot fill, or a patch cannot sit directly in a def body. Slot content is its own scope. `@part` there searches the content, then the host, then the caller. A def body sees only its own names. `needs:@torso` imports the host's `torso`, and a missing host or a missing part is an error at the call.
+- `.arm_r rot:-20`, `.cape off`, and `.head.eye_l iris:p.accent` override a declared name from the instance block, in source order, with the last one winning. Every segment before the last is an instance or a slot, so `.head.eye_l` needs `head` to be one. `.eye.0` reaches one copy of a family. A segment may be a keyword when the part is a slot of that name, as in `.mask off`. Hiding the instance with `off` still checks a hop through it.
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `each i in 0..8` runs 8 times, with `i` from 0 through 7. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants. A style takes keys only, never a block. A style holds keys that children inherit, while a finish holds effects that one node gets.
 
@@ -141,14 +141,14 @@ anim idle dur:2s loop
   .face at:0,key(0 6 0)
   .leaf rot:key(-4 4 -4)
 anim blink dur:200ms
-  .eyes.* lid:key(.6 1 .6)
+  .eye lid:key(.6 1 .6)
 play idle start:0s
 ```
 
 - `key` samples the current time. Values are spaced evenly unless `at:` lists fractions from 0 to 1. The default curve is smooth. `ease:` is `linear`, `in`, `out`, `in_out`, or `hold`, one name or one per segment. `loop` wraps. Outside an anim, `dur:` is required.
 - Numbers, angles, vectors, and sizes interpolate. Colors interpolate in OKLab. Words, components, and booleans step. Anything else is an error.
-- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. A percent rest `at` is measured against the node's frame before a numeric offset is added. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set, except `name:`, which stays on the draw. A patch expression is seeded from the anim's file, the owner path, and the patch line. A `style:` word from the anim is resolved in the anim's module. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins. A `let` inside `if` or `each` under an instance stays in that branch. A direct `let` under the instance is visible to later plays there.
-- An unnamed sibling's suffix is the statement's occurrence among siblings with the same base name, counting both arms of an `if` and the body of an `each`.
+- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. A percent rest `at` is measured against the node's frame before a numeric offset is added. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set, except `name:`, which stays on the draw. A patch expression is seeded from the anim's file, the owner key, and the patch line. A `style:` word from the anim is resolved in the anim's module. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins. A `let` inside `if` or `each` under an instance stays in that branch. A direct `let` under the instance is visible to later plays there.
+- A named node's key ignores layers and groups, so `layer body` holding `name:robe` is `robe`. An unnamed node's key is `verb~N` under its parent. `explain` prints the key, including nodes drawn in a mask block. A `~` means the node is not addressable. A node that drew a seed from its key is marked `seed`.
 
 ## Checks
 
@@ -160,8 +160,8 @@ assert inside(@hero canvas margin:24)
 expect @head.w / @body.w in .9..1.4 "head as wide as the body"
 ```
 
-Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a b margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a b edge:top)`, `level`, `centered(a in:b)`, `symmetric(a b about:x)`, `aspect`, `on_grid(a n)`, `same_size(@row.*)` and `stroke_widths(a)`. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
+Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functions are `inside(a b margin:)`, `overlaps`, `touches`, `gap`, `dist`, `aligned(a b edge:top)`, `level`, `centered(a in:b)`, `symmetric(a b about:x)`, `aspect`, `on_grid(a n)`, `same_size(@row.*)` and `stroke_widths(a)`. `@row.*` lists the named children of every copy. Inside a loop, `@dot` is that copy, including from a slot in the loop and from a second loop beside the one that draws it. A check inside a def can use `@self` when the call has no `name:`. A draw that reads `@self` is an error. `rule name subject:@self` + checks bundles them and is applied with `assert name(@x)`.
 
 ## CLI
 
-`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
+`artscript build [--only 'glob'] [--allow-warnings] [--backend auto|gpu|cpu]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.

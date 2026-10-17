@@ -1144,13 +1144,13 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let mut path = vec![self.part_name()];
+        let mut path = self.part_name();
         while self
             .cur()
             .is_some_and(|t| matches!(t.kind, Tok::Dot) && !t.ws_before)
         {
             self.bump();
-            path.push(self.part_name());
+            path.extend(self.part_name());
         }
         let mut named = Vec::new();
         let mut off = false;
@@ -1267,6 +1267,18 @@ impl<'a> Parser<'a> {
             return Named {
                 key,
                 value: Expr::Ident(String::new()),
+                span,
+            };
+        }
+        if key == "name" && self.cur().is_some_and(|t| matches!(t.kind, Tok::LBrace)) {
+            self.bump();
+            let inner = self.parse_tuple();
+            if !self.eat(&Tok::RBrace) {
+                self.fail_here("unclosed `{`", "close it with `}`");
+            }
+            return Named {
+                key,
+                value: Expr::Tuple(vec![inner]),
                 span,
             };
         }
@@ -1800,17 +1812,31 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// A patch segment names a part or a slot. A slot may be declared with a keyword (`slot mask`),
-    /// so the segment is not a binding and is not reserved.
-    fn part_name(&mut self) -> String {
+    fn part_name(&mut self) -> Vec<String> {
         if self.cur().is_some_and(|t| matches!(t.kind, Tok::Star)) {
             self.bump();
-            return "*".into();
+            return vec!["*".into()];
         }
-        self.take_word().unwrap_or_else(|| {
+        if let Some(tok) = self.cur()
+            && matches!(tok.kind, Tok::Num(_))
+        {
+            let text = self.src[tok.start..tok.end].to_string();
+            let span = tok.span;
+            self.bump();
+            let mut out = Vec::new();
+            for piece in text.split('.') {
+                if !piece.bytes().all(|b| b.is_ascii_digit()) || piece.is_empty() {
+                    self.fail(span, "a copy index is a whole number", "write `.part.0`");
+                    return out;
+                }
+                out.push(piece.to_string());
+            }
+            return out;
+        }
+        vec![self.take_word().unwrap_or_else(|| {
             self.fail_here("expected a part name", "write `.part` or `.head.eye`");
             String::new()
-        })
+        })]
     }
 
     fn take_word(&mut self) -> Option<String> {

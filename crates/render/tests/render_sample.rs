@@ -8,13 +8,13 @@ use artscript_ir::{
     Point, Scene, Shape, Stop,
 };
 use skia_safe::PathBuilder;
-use artscript_render::render_png;
+use artscript_render::{Backend, render_png};
 use common::pixel;
 
 #[test]
 fn showcase_png() {
     let scene = showcase();
-    let png = render_png(&scene, 2.0).expect("showcase");
+    let png = render_png(&scene, 2.0, Backend::Cpu).expect("showcase");
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/render-samples/showcase.png");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, &png).unwrap();

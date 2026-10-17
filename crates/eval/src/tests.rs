@@ -1,11 +1,11 @@
 //! Evaluator behaviour tests over in-memory projects.
 
-use artscript_ir::{EffectOp, Node, NodeKind, Paint, Scene};
+use artscript_ir::{Blend, EffectOp, Node, NodeKind, Paint, Scene};
 use artscript_syntax::Diagnostic;
 
 use crate::{Evaluation, Project, evaluate, plan};
 
-const MANIFEST: &str = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\n";
+const MANIFEST: &str = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\npositional-seed = \"off\"\n";
 
 fn project(files: &[(&str, &str)]) -> Project {
     let files = files
@@ -92,15 +92,15 @@ fn unnamed_siblings_get_count_suffixes_and_loops_append_the_index() {
         paths(&s),
         [
             "bg",
-            "bg.circle",
-            "bg.circle2",
-            "bg.box",
-            "bg.circle3#0",
-            "bg.circle3#1",
-            "bg.circle3#2"
+            "bg.circle~1",
+            "bg.circle~2",
+            "box",
+            "bg.circle~3.0",
+            "bg.circle~3.1",
+            "bg.circle~3.2"
         ]
     );
-    assert_eq!(at(node(&s, "bg.circle3#2")), (20.0, 0.0));
+    assert_eq!(at(node(&s, "bg.circle~3.2")), (20.0, 0.0));
 }
 
 #[test]
@@ -108,7 +108,7 @@ fn shape_name_is_registered_before_its_children_so_copy_can_reach_it() {
     let s = scene(
         "@target t.png 100x100\ncircle 20 at:50,50 name:white\n  subtract\n    copy @white\n    copy @white at:10,0\n",
     );
-    let sub = node(&s, "white.subtract");
+    let sub = node(&s, "white.subtract~1");
     let b = sub.bounds().unwrap();
     assert_eq!((b.left.round(), b.right.round()), (-20.0, 5.0));
 }
@@ -120,7 +120,7 @@ fn patches_rotate_hide_and_reach_nested_params() {
         "use eye\ndef face\n  eye 8 at:-10,0 name:a\n  eye 8 at:10,0 name:c\n  rect 40x2 at:0,10 name:mouth\n",
     );
     let ev = run_with(
-        "@target t.png 100x100\nuse face\nface at:50,50 name:f\n  .a rot:-20\n  .mouth off\n  .c.white.pupil fill:#ff0000\n  .a iris:#00ff00\n",
+        "@target t.png 100x100\nuse face\nface at:50,50 name:f\n  .a rot:-20\n  .mouth off\n  .c.pupil fill:#ff0000\n  .a iris:#00ff00\n",
         &[lib, ("lib/eye.art", EYE_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
@@ -129,19 +129,19 @@ fn patches_rotate_hide_and_reach_nested_params() {
     let (sin, cos) = (a.transform.skew_y(), a.transform.scale_x());
     assert!((sin.atan2(cos).to_degrees() + 20.0).abs() < 1e-3);
     assert!(!paths(&s).iter().any(|p| p == "f.mouth"));
-    assert_eq!(fill_hex(node(&s, "f.c.white.pupil")), "#ff0000");
-    assert_eq!(fill_hex(node(&s, "f.a.white.pupil")), "#00ff00");
+    assert_eq!(fill_hex(node(&s, "f.c.pupil")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "f.a.pupil")), "#00ff00");
     assert_eq!(fill_hex(node(&s, "f.c.white")), "#ffffff");
 
     let head = ("lib/head.art", "use face\ndef head\n  face name:f\n");
     let ev = run_with(
-        "@target t.png 100x100\nuse head\nhead\n  .f.c iris:#0000ff\n",
+        "@target t.png 100x100\nuse head\nhead name:head\n  .f.c iris:#0000ff\n",
         &[head, lib, ("lib/eye.art", EYE_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
-    assert_eq!(fill_hex(node(&s, "head.f.c.white.pupil")), "#0000ff");
-    assert_eq!(fill_hex(node(&s, "head.f.a.white.pupil")), "#3366cc");
+    assert_eq!(fill_hex(node(&s, "head.f.c.pupil")), "#0000ff");
+    assert_eq!(fill_hex(node(&s, "head.f.a.pupil")), "#3366cc");
 }
 
 #[test]
@@ -163,20 +163,20 @@ fn z_behind_moves_a_node_first() {
     let s = scene(
         "@target t.png 100x100\nlayer l\n  circle 5 name:a\n  circle 5 name:b\n  circle 5 name:c z:behind\n",
     );
-    assert_eq!(paths(&s), ["l", "l.c", "l.a", "l.b"]);
+    assert_eq!(paths(&s), ["l", "c", "a", "b"]);
 }
 
 #[test]
 fn slot_content_resolves_host_parts_and_needs_checks_them() {
     let ok = run_with(
-        "@target t.png 100x100\nuse eye\neye 10 at:50,50\n  lashes:\n    lash\n",
+        "@target t.png 100x100\nuse eye\neye 10 at:50,50 name:eye\n  lashes:\n    lash\n",
         &[("lib/eye.art", EYE_LIB)],
     );
     assert!(ok.diagnostics.is_empty(), "{}", show(&ok.diagnostics));
     assert!(
         paths(ok.scene.as_ref().unwrap())
             .iter()
-            .any(|p| p == "eye.lashes.lash"),
+            .any(|p| p == "eye.lashes.lash~1"),
         "{:?}",
         paths(ok.scene.as_ref().unwrap())
     );
@@ -196,7 +196,7 @@ fn slot_content_resolves_host_parts_and_needs_checks_them() {
         d.message,
         "lash needs @white, but the host `blank` has no part named white"
     );
-    assert_eq!(d.notes, ["parts available: ball"]);
+    assert_eq!(d.notes, ["parts available: ball, top"]);
 }
 
 #[test]
@@ -206,10 +206,10 @@ fn mirror_draws_a_flipped_copy_with_m_suffix() {
     );
     let all = paths(&s);
     assert!(
-        all.contains(&"g.mirror.ear".to_string()) && all.contains(&"g.mirror.ear_m".to_string()),
+        all.contains(&"ear".to_string()) && all.contains(&"ear~m".to_string()),
         "{all:?}"
     );
-    let m = node(&s, "g.mirror.ear_m");
+    let m = node(&s, "ear~m");
     let b = m
         .transform
         .map_rect(
@@ -233,10 +233,10 @@ fn repeat_and_grid_make_indexed_copies() {
     assert_eq!(
         petals,
         [
-            "g.repeat.petal#0",
-            "g.repeat.petal#1",
-            "g.repeat.petal#2",
-            "g.repeat.petal#3"
+            "petal.0",
+            "petal.1",
+            "petal.2",
+            "petal.3"
         ]
     );
 
@@ -489,9 +489,9 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
 fn each_walks_a_list_of_points() {
     let s =
         scene("@target t.png 80x80\nlet pts = [0,0 10,4 20,-3]\neach p in pts\n  circle 1 at:p\n");
-    assert_eq!(at(node(&s, "circle#0")), (0.0, 0.0));
-    assert_eq!(at(node(&s, "circle#1")), (10.0, 4.0));
-    assert_eq!(at(node(&s, "circle#2")), (20.0, -3.0));
+    assert_eq!(at(node(&s, "circle~1.0")), (0.0, 0.0));
+    assert_eq!(at(node(&s, "circle~1.1")), (10.0, 4.0));
+    assert_eq!(at(node(&s, "circle~1.2")), (20.0, -3.0));
 }
 
 #[test]
@@ -504,9 +504,9 @@ fn range_end_is_excluded_for_in_and_each() {
         "{:?}",
         paths(&s)
     );
-    assert_eq!(at(node(&s, "n#0")), (0.0, 0.0));
-    assert_eq!(at(node(&s, "n#1")), (10.0, 0.0));
-    assert_eq!(at(node(&s, "n#2")), (20.0, 0.0));
+    assert_eq!(at(node(&s, "n.0")), (0.0, 0.0));
+    assert_eq!(at(node(&s, "n.1")), (10.0, 0.0));
+    assert_eq!(at(node(&s, "n.2")), (20.0, 0.0));
 
     let outside = |expr: &str| {
         let ev = run_with(
@@ -792,7 +792,11 @@ fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
 fn png(src: &str) -> Vec<u8> {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
-    artscript_render::render_png(&ev.scene.unwrap(), ev_scale(src)).unwrap()
+    artscript_render::render_png(
+        &ev.scene.unwrap(),
+        ev_scale(src),
+        artscript_render::Backend::Cpu,
+    ).unwrap()
 }
 
 fn ev_scale(src: &str) -> f32 {
@@ -897,7 +901,7 @@ fn mask_value_and_mask_block_both_mask_the_draw() {
         matches!(source("f"), artscript_ir::MaskSource::Field { threshold: Some(t), .. } if (*t - 0.5).abs() < 1e-6)
     );
     assert!(
-        matches!(source("b"), artscript_ir::MaskSource::Nodes(n) if n[0].path == "b.mask.circle")
+        matches!(source("b"), artscript_ir::MaskSource::Nodes(n) if n[0].path == "b.mask~1.circle~1")
     );
 }
 
@@ -908,7 +912,7 @@ fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
         "def cup\n  circle 4\n  fx blur 1\n  slot mask\n",
     );
     let s = scene_with(
-        "@target t.png 100x100\nuse cup\ncup\n  fx glow 6\n  mask\n    circle 2\n",
+        "@target t.png 100x100\nuse cup\ncup name:cup\n  fx glow 6\n  mask\n    circle 2\n",
         &[lib],
     );
     let cup = node(&s, "cup");
@@ -926,17 +930,17 @@ fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
     assert!(cup.mask.is_some());
 
     let s = scene_with(
-        "@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n",
+        "@target t.png 100x100\nuse cup\ncup name:cup\n  mask:\n    circle 2\n",
         &[lib],
     );
     assert!(
         node(&s, "cup").mask.is_none(),
         "`mask:` fills the slot, it does not mask"
     );
-    node(&s, "cup.mask.circle");
+    node(&s, "cup.mask.circle~1");
 
     let s = scene_with(
-        "@target t.png 100x100\nuse cup\ncup\n  mask:\n    circle 2\n  .mask off\n",
+        "@target t.png 100x100\nuse cup\ncup name:cup\n  mask:\n    circle 2\n  .mask off\n",
         &[lib],
     );
     assert!(!paths(&s).iter().any(|p| p.starts_with("cup.mask")));
@@ -997,7 +1001,7 @@ fn lib_scene(src: &str, lib: &str) -> Scene {
 #[test]
 fn def_size_box_measures_percents_from_its_own_center() {
     let lib = "def d size:40x20\n  rect 100%x100% name:r\n  circle 50% name:c\n  circle 2 at:0%,0% name:mark\n";
-    let s = lib_scene("@target t.png 200x100\nuse d\nd\n", lib);
+    let s = lib_scene("@target t.png 200x100\nuse d\nd name:d\n", lib);
     assert_box(&s, "d.r", 40.0, 20.0);
     assert_box(&s, "d.c", 20.0, 20.0);
     near(at(node(&s, "d.mark")), (-20.0, -10.0));
@@ -1006,21 +1010,21 @@ fn def_size_box_measures_percents_from_its_own_center() {
 #[test]
 fn caller_percent_size_resolves_against_the_caller_frame() {
     let lib = "def d size:40x20\n  rect size name:r\n  circle size.w*.1 name:c\n";
-    let pair = lib_scene("@target t.png 200x100\nuse d\nd 50%x50%\n", lib);
+    let pair = lib_scene("@target t.png 200x100\nuse d\nd 50%x50% name:d\n", lib);
     assert_box(&pair, "d.r", 100.0, 50.0);
     assert_box(&pair, "d.c", 20.0, 20.0);
     let bare = lib_scene(
-        "@target t.png 200x100\nuse d\nd 50%\n",
+        "@target t.png 200x100\nuse d\nd 50% name:d\n",
         "def d size:40x20\n  rect size name:r\n",
     );
     assert_box(&bare, "d.r", 50.0, 50.0);
     let scaled = lib_scene(
-        "@target t.png 200x100\nuse d\nd 100%x100% scale:2\n",
+        "@target t.png 200x100\nuse d\nd 100%x100% scale:2 name:d\n",
         "def d size:10x10\n  rect 100%x100% name:r\n",
     );
     assert_box(&scaled, "d.r", 100.0, 50.0);
     let square = lib_scene(
-        "@target t.png 80x40\nuse d\nd 30\n",
+        "@target t.png 80x40\nuse d\nd 30 name:d\n",
         "def d size:72x32\n  rect size.w,size.h name:r\n",
     );
     assert_box(&square, "d.r", 30.0, 30.0);
@@ -1042,13 +1046,13 @@ fn a_square_size_rejects_a_pair() {
 #[test]
 fn child_without_at_stays_at_the_instance_origin() {
     let s = lib_scene(
-        "@target t.png 200x100\nuse d\nd at:30,16\n",
+        "@target t.png 200x100\nuse d\nd at:30,16 name:d\n",
         "def d size:80x40\n  circle 5 name:c\n",
     );
     near(at(node(&s, "d")), (30.0, 16.0));
     near(at(node(&s, "d.c")), (0.0, 0.0));
     let placed = lib_scene(
-        "@target t.png 200x100\nuse d\nd at:100%,100%\n",
+        "@target t.png 200x100\nuse d\nd at:100%,100% name:d\n",
         "def d size:40x20\n  circle 4 name:c\n",
     );
     near(at(node(&placed, "d")), (200.0, 100.0));
@@ -1091,13 +1095,13 @@ fn percent_in_a_def_without_size_is_e0322() {
 fn slot_fill_percents_use_the_host_box() {
     let lib = "def host size:40x20\n  slot hole\n";
     let s = lib_scene(
-        "@target t.png 200x100\nuse d\nhost\n  hole:\n    rect 100%x100% name:r\n    circle 2 at:0%,0% name:mark\n",
+        "@target t.png 200x100\nuse d\nhost name:host\n  hole:\n    rect 100%x100% name:r\n    circle 2 at:0%,0% name:mark\n",
         lib,
     );
     assert_box(&s, "host.hole.r", 40.0, 20.0);
     near(at(node(&s, "host.hole.mark")), (-20.0, -10.0));
     let shifted = lib_scene(
-        "@target t.png 200x100\nuse d\nhost\n",
+        "@target t.png 200x100\nuse d\nhost name:host\n",
         "def host size:40x20\n  slot hole at:10,0\n    circle 2 at:0%,0% name:mark\n",
     );
     near(at(node(&shifted, "host.hole.mark")), (-20.0, -10.0));
@@ -1106,10 +1110,10 @@ fn slot_fill_percents_use_the_host_box() {
 #[test]
 fn unplaced_slot_content_stays_at_the_slot() {
     let lib = "def host size:40x20\n  slot hole at:10,0\n    circle 2 name:own\n";
-    let own = lib_scene("@target t.png 200x100\nuse d\nhost\n", lib);
+    let own = lib_scene("@target t.png 200x100\nuse d\nhost name:host\n", lib);
     near(at(node(&own, "host.hole.own")), (0.0, 0.0));
     let filled = lib_scene(
-        "@target t.png 200x100\nuse d\nhost\n  hole:\n    circle 2 name:fill\n",
+        "@target t.png 200x100\nuse d\nhost name:host\n  hole:\n    circle 2 name:fill\n",
         lib,
     );
     near(at(node(&filled, "host.hole.fill")), (0.0, 0.0));
@@ -1146,8 +1150,8 @@ fn size_is_not_unused_when_only_percents_use_the_box() {
 #[test]
 fn absolute_size_still_boxes_a_child_of_a_sizeless_def() {
     let s = lib_scene(
-        "@target t.png 80x40\nuse d\nouter\n",
-        "def outer\n  inner 20\ndef inner size:10\n  rect 100%x100% name:r\n",
+        "@target t.png 80x40\nuse d\nouter name:outer\n",
+        "def outer\n  inner 20 name:inner\ndef inner size:10\n  rect 100%x100% name:r\n",
     );
     assert_box(&s, "outer.inner.r", 20.0, 20.0);
     let ev = run_with(
@@ -1222,9 +1226,9 @@ fn finish_reaches_only_the_node_its_fx_line_is_under() {
     let s = scene(&format!(
         "@target t.png 100x100\n{SURFACE}layer l\n  circle 10 name:c\n    circle 3 name:dot\n    fx surface\n"
     ));
-    assert_eq!(fx_ops(node(&s, "l.c")), ["Rim", "Grain"]);
+    assert_eq!(fx_ops(node(&s, "c")), ["Rim", "Grain"]);
     assert!(node(&s, "l").effects.is_empty());
-    assert!(node(&s, "l.c.dot").effects.is_empty());
+    assert!(node(&s, "dot").effects.is_empty());
 }
 
 #[test]
@@ -1279,12 +1283,12 @@ fn def_body_finish_comes_before_call_block_fx() {
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
     assert_eq!(
-        fx_ops(node(&s, "leaf")),
+        fx_ops(node(&s, "leaf~1")),
         ["Rim", "Grain", "Outline", "Adjust"]
     );
     let w = run_with(src, &[written]);
     assert!(w.diagnostics.is_empty(), "{}", show(&w.diagnostics));
-    assert_eq!(fx_debug(&s, "leaf"), fx_debug(&w.scene.unwrap(), "leaf"));
+    assert_eq!(fx_debug(&s, "leaf~1"), fx_debug(&w.scene.unwrap(), "leaf~1"));
 }
 
 #[test]
@@ -1474,10 +1478,10 @@ fn toggling_an_if_keeps_later_sibling_paths_and_seeds() {
     };
     let hidden = scene(&src(false));
     let shown = scene(&src(true));
-    assert_eq!(paths(&hidden), ["circle", "circle3"]);
-    assert_eq!(paths(&shown), ["circle", "circle2", "circle3"]);
-    assert_eq!(at(node(&hidden, "circle3")), at(node(&shown, "circle3")));
-    assert_eq!(at(node(&hidden, "circle")), at(node(&shown, "circle")));
+    assert_eq!(paths(&hidden), ["circle~1", "circle~3"]);
+    assert_eq!(paths(&shown), ["circle~1", "circle~2", "circle~3"]);
+    assert_eq!(at(node(&hidden, "circle~3")), at(node(&shown, "circle~3")));
+    assert_eq!(at(node(&hidden, "circle~1")), at(node(&shown, "circle~1")));
 }
 
 #[test]
@@ -1745,12 +1749,15 @@ fn play_marks_an_imported_anim_as_used() {
 }
 
 #[test]
-fn an_alias_shares_the_components_occurrence_base() {
+fn an_alias_counts_under_the_word_written() {
     let s = lib_scene(
         "@target t.png 40x40\nuse d\nlet alias = eye\nalias\neye\n",
         "def eye\n  circle 4\n",
     );
-    assert_eq!(paths(&s), ["eye", "eye.circle", "eye2", "eye2.circle"]);
+    assert_eq!(
+        paths(&s),
+        ["alias~1", "alias~1.circle~1", "eye~1", "eye~1.circle~1"]
+    );
 }
 
 #[test]
@@ -1896,7 +1903,7 @@ fn a_play_inside_if_sees_an_earlier_name() {
 #[test]
 fn a_hidden_parent_matches_a_channel_under_it() {
     let s = scene(
-        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.eye at:10,0\ngroup hero\n  circle 4 name:eye\nplay idle\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.eye at:10,0\ndef hero\n  circle 4 name:eye\nhero name:hero\nplay idle\n",
     );
     assert!(
         paths(&s).iter().all(|p| !p.contains("eye")),
@@ -1913,7 +1920,12 @@ fn an_each_binding_shares_the_components_occurrence_base() {
     );
     assert_eq!(
         paths(&s),
-        ["eye#0", "eye#0.circle", "eye2#0", "eye2#0.circle"]
+        [
+            "part~1.0",
+            "part~1.0.circle~1",
+            "eye~1.0",
+            "eye~1.0.circle~1"
+        ]
     );
 }
 
@@ -1994,12 +2006,12 @@ fn an_anim_style_replaces_the_rest_style() {
 #[test]
 fn a_later_file_play_wins_over_a_play_under_the_instance() {
     let later = scene(
-        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nhero\n  play inner\nplay outer\n",
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nhero name:hero\n  play inner\nplay outer\n",
     );
     let over = node(&later, "hero.eye").opacity;
     assert!((over - 0.8).abs() < 1e-4, "{over}");
     let earlier = scene(
-        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nplay outer\nhero\n  play inner\n",
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.2\nanim outer dur:1s\n  .hero.eye a:.8\ndef hero\n  circle 4 name:eye\nplay outer\nhero name:hero\n  play inner\n",
     );
     let under = node(&earlier, "hero.eye").opacity;
     assert!((under - 0.2).abs() < 1e-4, "{under}");
@@ -2134,7 +2146,7 @@ fn a_percent_rest_accepts_a_numeric_offset() {
 #[test]
 fn a_let_inside_if_under_an_instance_stays_in_the_branch() {
     let leaked = run_with(
-        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  if true\n    let delay = 0\n  play idle start:delay\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero name:hero\n  if true\n    let delay = 0\n  play idle start:delay\n",
         &[],
     );
     let d = leaked
@@ -2146,11 +2158,11 @@ fn a_let_inside_if_under_an_instance_stays_in_the_branch() {
     let eye = node(leaked.scene.as_ref().unwrap(), "hero.eye");
     assert!((eye.opacity - 1.0).abs() < 1e-4, "{}", eye.opacity);
     let direct = scene(
-        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  let delay = 0\n  play idle start:delay\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero name:hero\n  let delay = 0\n  play idle start:delay\n",
     );
     assert!((node(&direct, "hero.eye").opacity - 0.5).abs() < 1e-4);
     let inside = scene(
-        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero\n  if true\n    let delay = 0\n    play idle start:delay\n",
+        "@target t.png 40x40\nanim idle dur:1s\n  .eye a:.5\ndef hero\n  circle 4 name:eye\nhero name:hero\n  if true\n    let delay = 0\n    play idle start:delay\n",
     );
     assert!((node(&inside, "hero.eye").opacity - 0.5).abs() < 1e-4);
 }
@@ -2274,7 +2286,7 @@ fn an_anim_cannot_rename_a_node() {
     assert_eq!(paths(scene), ["c"]);
     assert!((node(scene, "c").opacity - 0.5).abs() < 1e-4);
     let patched = run_with(
-        "@target t.png 40x40\nuse d\nd\n  .eye name:other\n",
+        "@target t.png 40x40\nuse d\nd name:d\n  .eye name:other\n",
         &[("lib/d.art", "def d\n  circle 4 name:eye\n")],
     );
     let p = patched
@@ -2339,7 +2351,7 @@ fn a_rule_line_number_does_not_choose_the_worst_frame() {
 #[test]
 fn a_geometry_guard_keeps_an_instance_play_ahead_of_a_later_play() {
     let s = scene(
-        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8 at:10,0\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero\n  if @marker.w > 0\n    play inner\nplay outer\n",
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8 at:10,0\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero name:hero\n  if @marker.w > 0\n    play inner\nplay outer\n",
     );
     let eye = node(&s, "hero.eye");
     assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
@@ -2390,7 +2402,7 @@ fn an_anim_rand_ignores_a_toggling_let() {
 #[test]
 fn a_picked_component_keeps_one_path() {
     let s = scene(
-        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\nlet which = pick([a b c])\nwhich\na\nb\nc\n",
+        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\nlet which = pick([a b c])\nwhich name:which\na name:a\nb name:b\nc name:c\n",
     );
     let ps = paths(&s);
     let mut uniq = ps.clone();
@@ -2398,7 +2410,7 @@ fn a_picked_component_keeps_one_path() {
     uniq.dedup();
     assert_eq!(ps.len(), uniq.len(), "{ps:?}");
     let each = scene(
-        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\neach part in [pick([a b c])]\n  part\na\nb\nc\n",
+        "@target t.png 40x40\ndef a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\ndef c\n  circle 4 name:dot\neach part in [pick([a b c])]\n  part name:part\na name:a\nb name:b\nc name:c\n",
     );
     let ep = paths(&each);
     let mut eu = ep.clone();
@@ -2410,7 +2422,7 @@ fn a_picked_component_keeps_one_path() {
 #[test]
 fn an_unreadable_each_keeps_an_instance_play_ahead_of_a_later_play() {
     let s = scene(
-        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero\n  each x in [@marker.w]\n    play inner\nplay outer\n",
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero name:hero\n  each x in [@marker.w]\n    play inner\nplay outer\n",
     );
     let eye = node(&s, "hero.eye");
     assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
@@ -2583,9 +2595,9 @@ fn a_boolean_key_position_is_e0320() {
 #[test]
 fn an_instance_play_inside_a_group_keeps_its_source_order() {
     let s = scene(
-        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .root.hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ngroup root\n  hero\n    play inner\nplay outer\n",
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ngroup root\n  hero name:hero\n    play inner\nplay outer\n",
     );
-    let eye = node(&s, "root.hero.eye");
+    let eye = node(&s, "hero.eye");
     assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
 }
 
@@ -2614,7 +2626,7 @@ fn two_plays_of_a_bad_duration_stay_two_failures_across_frames() {
 #[test]
 fn a_direct_instance_let_stays_in_the_call() {
     let ev = run_with(
-        "@target t.png 40x40\ndef hero size:40x40\n  circle 4 name:eye\nhero\n  let delay = 1\ncircle 4 at:delay,0 name:x\n",
+        "@target t.png 40x40\ndef hero size:40x40\n  circle 4 name:eye\nhero name:hero\n  let delay = 1\ncircle 4 at:delay,0 name:x\n",
         &[],
     );
     assert!(
@@ -2624,4 +2636,995 @@ fn a_direct_instance_let_stays_in_the_call() {
         "{}",
         show(&ev.diagnostics)
     );
+}
+
+fn eval_lint(src: &str, lint: &str) -> Evaluation {
+    let manifest = format!(
+        "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\n{lint}"
+    );
+    let files = [("art/t.art".to_string(), src.to_string())].into();
+    let p = Project::from_sources(&manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    evaluate(&p, &plan.jobs[0])
+}
+
+fn pixel(scene: &Scene, x: i32, y: i32) -> [u8; 4] {
+    let (w, h, buf) = artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
+    assert!(x >= 0 && y >= 0 && x < w as i32 && y < h as i32, "{w}x{h} has no {x},{y}");
+    let i = ((y as u32 * w) + x as u32) as usize * 4;
+    [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+}
+
+#[test]
+fn a_nose_above_the_eyes_keeps_the_patched_eye_red() {
+    let face = |nose: bool| {
+        format!(
+            "@target t.png 80x40\ndef face\n{}  circle 10 at:-16,0 fill:#ffffff name:eye_l\n  circle 10 at:16,0 fill:#ffffff name:eye_r\nface name:face at:40,20\n  .eye_r fill:#ff0000\n",
+            if nose {
+                "  circle 6 at:0,10 fill:#c47a4a name:nose\n"
+            } else {
+                ""
+            }
+        )
+    };
+    let before = scene(&face(false));
+    let after = scene(&face(true));
+    let eye = pixel(&before, 56, 20);
+    assert_eq!(pixel(&after, 56, 20), eye, "right eye pixel changed");
+    assert!(eye[0] > 200 && eye[1] < 40 && eye[2] < 40, "{eye:?}");
+    assert_ne!(
+        pixel(&before, 40, 30),
+        pixel(&after, 40, 30),
+        "the nose did not change a pixel"
+    );
+
+    let missed = run_with(
+        "@target t.png 80x40\ndef face\n  circle 10 at:-16,0 fill:#ffffff\n  circle 10 at:16,0 fill:#ffffff\nface name:face at:40,20\n  .circle2 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&missed, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.as_deref().unwrap().contains("add name:"), "{d}");
+}
+
+#[test]
+fn e0333_is_reported_at_the_second_name() {
+    let ev = run_with(
+        "@target t.png 40x40\ngroup beam\n  circle 4 name:beam\n",
+        &[],
+    );
+    let d = diag(&ev, "E0333");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 3);
+    assert_eq!(d.notes, ["first named at line 2"]);
+    assert_eq!(d.fix.as_deref(), Some("rename one of them"));
+
+    let shared = run_with(
+        "@target t.png 40x40\ndef a\n  circle 4 name:lips\ndef b\n  rect 4 name:lips\nif true\n  circle 4 name:lid\nelse\n  rect 4 name:lid\n",
+        &[],
+    );
+    assert!(
+        shared.diagnostics.iter().all(|d| d.code != "E0333"),
+        "{}",
+        show(&shared.diagnostics)
+    );
+}
+
+#[test]
+fn e0312_rejects_a_bad_name_and_an_unnamed_call_that_holds_one() {
+    let bad = run_with(
+        "@target t.png 40x40\ncircle 4 name:{x}\nlayer hat name:cap\n",
+        &[],
+    );
+    assert!(
+        bad.diagnostics
+            .iter()
+            .any(|d| d.code == "E0312" && d.span.line == 2),
+        "{}",
+        show(&bad.diagnostics)
+    );
+    let hat = bad
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0312" && d.span.line == 3)
+        .unwrap_or_else(|| panic!("{}", show(&bad.diagnostics)));
+    assert!(hat.message.contains("hat"), "{hat}");
+
+    let bare = run_with(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar\n",
+        &[],
+    );
+    let call = diag(&bare, "E0312");
+    assert_eq!(call.span.line, 4);
+    assert_eq!(call.fix.as_deref(), Some("add name:"));
+
+    let named = scene(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar name:pillar_l\n",
+    );
+    node(&named, "pillar_l.shaft");
+    let shifted = run_with(
+        "@target t.png 40x40\ndef _pillar\n  rect 2x12 name:shaft\n_pillar\n_pillar name:pillar_l\n",
+        &[],
+    );
+    assert!(
+        shifted
+            .diagnostics
+            .iter()
+            .any(|d| d.code == "E0312" && d.span.line == 4),
+        "{}",
+        show(&shifted.diagnostics)
+    );
+    assert!(
+        shifted
+            .diagnostics
+            .iter()
+            .all(|d| d.span.line != 5 || d.code != "E0312"),
+        "{}",
+        show(&shifted.diagnostics)
+    );
+    node(shifted.scene.as_ref().unwrap(), "pillar_l.shaft");
+}
+
+#[test]
+fn e0340_for_a_hop_through_a_group_names_the_patch_line() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef prop\n  group face\n    circle 4 name:leaf\nprop name:prop\n  .face.leaf fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf"));
+}
+
+#[test]
+fn e0343_for_a_family_and_for_a_name_in_two_scopes() {
+    let family = run_with(
+        "@target t.png 40x40\ndef eye\n  each i in 0..2\n    circle 3 name:pupil\n  copy @pupil\neye name:eye\n",
+        &[],
+    );
+    let d = diag(&family, "E0343");
+    assert_eq!(d.span.line, 5);
+    assert!(d.notes.iter().any(|n| n.contains(".pupil.0")), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains(".pupil.1")), "{d}");
+
+    let both = run_with(
+        "@target t.png 40x40\ndef host\n  circle 4 name:x\n  slot hole\ncircle 4 name:x\nhost name:host\n  hole:\n    copy @x\n",
+        &[],
+    );
+    let d = diag(&both, "E0343");
+    assert_eq!(d.span.line, 8);
+    assert!(d.notes.iter().any(|n| n.contains("`host`")), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("this file")), "{d}");
+}
+
+#[test]
+fn l0104_warns_once_when_an_unnamed_circle_draws_a_seed() {
+    let src = "@target t.png 40x40\ncircle 4 at:rand(0 10),0\n";
+    let ev = eval_lint(src, "");
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0104").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 2);
+    assert_eq!(hits[0].fix.as_deref(), Some("add name:"));
+    let quiet = eval_lint(src, "positional-seed = \"off\"\n");
+    assert!(
+        quiet.diagnostics.iter().all(|d| d.code != "L0104"),
+        "{}",
+        show(&quiet.diagnostics)
+    );
+}
+
+#[test]
+fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
+    let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");
+    let wrapped = scene(
+        "@target t.png 40x40\ngroup name:face\n  circle 8 name:head\n    fx grain .2\n",
+    );
+    assert_eq!(
+        grain_seed(node(&bare, "head")),
+        grain_seed(node(&wrapped, "head"))
+    );
+    assert!(paths(&wrapped).contains(&"head".to_string()));
+}
+
+#[test]
+fn a_let_above_each_over_pick_does_not_rename_a_node() {
+    let lib = "def a\n  circle 4 name:dot\ndef b\n  rect 4 name:dot\n";
+    let direct = lib_scene(
+        "@target t.png 40x40\nuse d\nlet which = a\neach part in [which]\n  part name:piece\n",
+        lib,
+    );
+    let picked = lib_scene(
+        "@target t.png 40x40\nuse d\nlet which = pick([a b])\neach part in [which]\n  part name:piece\n",
+        lib,
+    );
+    assert_eq!(paths(&direct), paths(&picked));
+    assert_eq!(paths(&picked), ["piece.0", "piece.0.dot"]);
+}
+
+fn walk_deep<'a>(nodes: &'a [Node], out: &mut Vec<&'a Node>) {
+    for n in nodes {
+        out.push(n);
+        if let Some(mask) = &n.mask
+            && let artscript_ir::MaskSource::Nodes(inner) = &mask.source
+        {
+            walk_deep(inner, out);
+        }
+        walk_deep(n.children(), out);
+    }
+}
+
+fn node_print(n: &Node) -> String {
+    let geom = match &n.kind {
+        NodeKind::Shape(s) => s.geometry.to_svg(),
+        NodeKind::Group { .. } => String::new(),
+    };
+    format!("{:?} a:{} {geom} {:?}", n.transform, n.opacity, n.effects)
+}
+
+fn stable_print(scene: &Scene) -> std::collections::BTreeMap<String, Vec<String>> {
+    let mut all = Vec::new();
+    walk_deep(&scene.children, &mut all);
+    let mut map: std::collections::BTreeMap<String, Vec<String>> = std::collections::BTreeMap::new();
+    for n in all {
+        if n.path.contains('~') {
+            continue;
+        }
+        map.entry(n.path.clone()).or_default().push(node_print(n));
+    }
+    for prints in map.values_mut() {
+        prints.sort();
+    }
+    map
+}
+
+fn insert_probe(src: &str) -> String {
+    let mut out = src.to_string();
+    if !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out.push_str("circle 4 at:-80,-80\nrect 4x4 at:-80,-80 name:__probe\n");
+    out
+}
+
+fn chibi_jobs() -> (Project, Vec<crate::TargetJob>) {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/chibi");
+    let project = crate::load(&root).expect("examples/chibi");
+    let planned = plan(&project);
+    assert!(planned.diagnostics.is_empty(), "{:?}", planned.diagnostics);
+    let mut jobs = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for job in planned.jobs {
+        if job.clip.is_some() || job.frame_t != 0.0 {
+            continue;
+        }
+        if !job.outputs.iter().any(|o| o.format == crate::Format::Png) {
+            continue;
+        }
+        if seen.insert(job.source.clone()) {
+            jobs.push(job);
+        }
+    }
+    assert_eq!(jobs.len(), 6, "{seen:?}");
+    (project, jobs)
+}
+
+fn key_of(path: &str) -> crate::identity::Key {
+    let mut owner = crate::identity::Key::root();
+    let mut name: Option<crate::identity::Name> = None;
+    let mut copies = Vec::new();
+    let flush =
+        |owner: &mut crate::identity::Key,
+         name: &mut Option<crate::identity::Name>,
+         copies: &mut Vec<u32>| {
+            if let Some(n) = name.take() {
+                *owner = crate::identity::Key::named(owner, &n, copies);
+                copies.clear();
+            }
+        };
+    for seg in path.split('.') {
+        if !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_digit()) {
+            copies.push(seg.parse().unwrap());
+        } else {
+            flush(&mut owner, &mut name, &mut copies);
+            name = crate::identity::Name::parse(seg);
+        }
+    }
+    flush(&mut owner, &mut name, &mut copies);
+    owner
+}
+
+fn patch_segments(address: &str) -> Vec<String> {
+    let src = format!("@target t.png 10x10\ndef h\n  circle 1\nh name:h\n  {address} a:1\n");
+    let file = artscript_syntax::parse(&src).unwrap_or_else(|e| panic!("{address}: {e:?}"));
+    for scene in file.scenes() {
+        let artscript_syntax::ast::SceneKind::Draw(draw) = &scene.kind else {
+            continue;
+        };
+        for item in draw.body.items() {
+            if let artscript_syntax::ast::DrawItem::Patch(patch) = item {
+                return patch.path.clone();
+            }
+        }
+    }
+    panic!("{address} did not parse as a patch");
+}
+
+#[test]
+fn stable_chibi_nodes_keep_geometry_and_seeds_when_a_draw_is_inserted() {
+    let (project, jobs) = chibi_jobs();
+    for job in &jobs {
+        let before = evaluate(&project, job);
+        assert!(
+            before.scene.is_some(),
+            "{} did not evaluate\n{}",
+            job.source,
+            show(&before.diagnostics)
+        );
+        let base = stable_print(before.scene.as_ref().unwrap());
+        assert!(!base.is_empty(), "{}", job.source);
+        let mut files = project.files.clone();
+        let src = files.get(&job.source).unwrap();
+        files.insert(job.source.clone(), insert_probe(src));
+        let shifted = Project {
+            files,
+            ..project.clone()
+        };
+        let planned = plan(&shifted);
+        assert!(planned.diagnostics.is_empty(), "{:?}", planned.diagnostics);
+        let job2 = planned
+            .jobs
+            .iter()
+            .find(|j| {
+                j.source == job.source
+                    && j.clip.is_none()
+                    && j.outputs.iter().any(|o| o.format == crate::Format::Png)
+            })
+            .unwrap();
+        let after = evaluate(&shifted, job2);
+        let got = stable_print(after.scene.as_ref().unwrap());
+        for (path, print) in &base {
+            assert_eq!(got.get(path), Some(print), "{} moved {path}", job.source);
+        }
+    }
+}
+
+#[test]
+fn stable_chibi_keys_round_trip_through_a_patch() {
+    let (project, jobs) = chibi_jobs();
+    for job in &jobs {
+        let ev = evaluate(&project, job);
+        let scene = ev.scene.expect(&job.source);
+        let mut all = Vec::new();
+        walk_deep(&scene.children, &mut all);
+        let mut stable: Vec<String> = all
+            .iter()
+            .map(|n| n.path.clone())
+            .filter(|p| !p.contains('~'))
+            .collect();
+        stable.sort();
+        stable.dedup();
+        let mut lines = String::new();
+        let mut expect = std::collections::BTreeMap::new();
+        for path in &stable {
+            let key = key_of(path);
+            assert_eq!(key.to_string(), *path, "{}", job.source);
+            let address = key
+                .address_from(&crate::identity::Key::root())
+                .unwrap_or_else(|| panic!("{path} has no address"));
+            assert_eq!(
+                patch_segments(&address),
+                address
+                    .trim_start_matches('.')
+                    .split('.')
+                    .collect::<Vec<_>>()
+            );
+            let old = all.iter().find(|n| n.path == *path).unwrap().blend;
+            let (word, blend) = if old == Blend::Multiply {
+                ("screen", Blend::Screen)
+            } else {
+                ("multiply", Blend::Multiply)
+            };
+            lines.push_str(&format!("  {address} blend:{word}\n"));
+            expect.insert(path.clone(), blend);
+        }
+        let mut files = project.files.clone();
+        let src = files.get(&job.source).unwrap().clone();
+        files.insert(
+            job.source.clone(),
+            format!("{src}\nanim __probe dur:1s\n{lines}play __probe\n"),
+        );
+        let shifted = Project {
+            files,
+            ..project.clone()
+        };
+        let planned = plan(&shifted);
+        let job2 = planned
+            .jobs
+            .iter()
+            .find(|j| {
+                j.source == job.source
+                    && j.clip.is_none()
+                    && j.outputs.iter().any(|o| o.format == crate::Format::Png)
+            })
+            .unwrap();
+        let probed = evaluate(&shifted, job2);
+        let scene = probed
+            .scene
+            .as_ref()
+            .unwrap_or_else(|| panic!("{}", show(&probed.diagnostics)));
+        let mut found = Vec::new();
+        walk_deep(&scene.children, &mut found);
+        for path in &stable {
+            let hits: Vec<_> = found.iter().filter(|n| n.path == *path).collect();
+            assert!(
+                !hits.is_empty(),
+                "{} lost {path}\n{}",
+                job.source,
+                show(&probed.diagnostics)
+            );
+            let blend = expect[path];
+            for node in hits {
+                assert_eq!(
+                    node.blend, blend,
+                    "{} {path} blend {:?} expected {blend:?}\n{}",
+                    job.source, node.blend, show(&probed.diagnostics)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_copy_hop_stays_on_that_copy() {
+    let s = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    each j in 0..2\n      circle 4 at:(i * 20 + j * 5),0 name:gem\nassert @row.1.gem.0.cx ~= 20\n",
+    );
+    assert!(paths(&s).contains(&"gem.1.0".to_string()));
+
+    let marked = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 4 at:i * 10,0 name:mark\nassert @row.1.mark.cx ~= 10\n",
+    );
+    assert!(paths(&marked).iter().any(|p| p == "mark.1"));
+
+    let sized = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.0.*)\n",
+    );
+    assert!(paths(&sized).contains(&"a.0".to_string()));
+
+    let missed = run_with(
+        "@target t.png 40x40\neach i in 0..2\n  group name:row\n    if i == 0\n      circle 4 name:mark\ncopy @row.1.mark\n",
+        &[],
+    );
+    let d = diag(&missed, "E0350");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.is_some(), "{d}");
+}
+
+#[test]
+fn an_index_that_does_not_fit_is_not_copy_zero() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef face\n  circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.99999999999 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 5);
+    assert!(d.message.contains("not an address"), "{d}");
+    assert!(
+        d.fix.as_deref().unwrap().contains("whole-number"),
+        "{d}"
+    );
+    assert_eq!(fill_hex(node(ev.scene.as_ref().unwrap(), "face.eye")), "#ffffff");
+
+    let reference = run_with(
+        "@target t.png 40x40\ncircle 4 name:eye\nlet x = @eye.99999999999\n",
+        &[],
+    );
+    let d = diag(&reference, "E0350");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 3);
+    assert!(d.message.contains("not a copy index"), "{d}");
+    assert!(d.fix.as_deref().unwrap().contains("whole number"), "{d}");
+    assert_eq!(paths(reference.scene.as_ref().unwrap()), ["eye"]);
+}
+
+#[test]
+fn an_unnamed_patch_cites_the_statement_it_spells() {
+    let verb = run_with(
+        "@target t.png 40x40\ndef box\n  a 4\n  a1 4\nbox name:box\n  .a1 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&verb, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(
+        d.notes.iter().any(|n| n.contains("a1") && n.contains("art/t.art:4")),
+        "{d}"
+    );
+    assert!(d.fix.as_deref().unwrap().contains("art/t.art:4"), "{d}");
+
+    let second = run_with(
+        "@target t.png 40x40\ndef face\n  circle 4\n  circle 4\nface name:face\n  .circle2 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&second, "E0340");
+    assert_eq!(d.span.line, 6);
+    assert!(
+        d.notes.iter().any(|n| n.contains("circle") && n.contains("art/t.art:4")),
+        "{d}"
+    );
+    assert_eq!(d.fix.as_deref(), Some("add name: at art/t.art:4"));
+}
+
+#[test]
+fn a_missing_drawn_copy_is_e0340_and_an_undrawn_name_is_not() {
+    let missing = run_with(
+        "@target t.png 40x40\ndef row\n  each i in 0..2\n    circle 4 fill:#ffffff name:eye\nrow name:row\n  .eye.5 fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = missing.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&missing.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 6);
+    assert!(hits[0].message.contains("matches no drawn copy"), "{hits:?}");
+    assert!(hits[0].fix.as_deref().unwrap().contains(".eye.0"), "{hits:?}");
+    assert_eq!(fill_hex(node(missing.scene.as_ref().unwrap(), "row.eye.0")), "#ffffff");
+
+    let arm = run_with(
+        "@target t.png 40x40\ndef face\n  if false\n    each i in 0..2\n      circle 4 name:eye\n  else\n    circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.0 fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = arm.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&arm.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].fix.as_deref().unwrap().contains(".eye"), "{hits:?}");
+    assert_eq!(fill_hex(node(arm.scene.as_ref().unwrap(), "face.eye")), "#ffffff");
+
+    let empty = run_with(
+        "@target t.png 40x40\ndef face\n  each i in 0..0\n    circle 4 name:eye\nface name:face\n  .eye fill:#ff0000\n",
+        &[],
+    );
+    assert!(
+        empty.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&empty.diagnostics)
+    );
+
+    let off = run_with(
+        "@target t.png 40x40\ndef face\n  circle 4 name:eye\nface name:face\n  .eye off\n",
+        &[],
+    );
+    assert!(
+        off.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&off.diagnostics)
+    );
+    assert!(!paths(off.scene.as_ref().unwrap()).iter().any(|p| p.contains("eye")));
+}
+
+#[test]
+fn a_patch_on_an_anchor_is_e0340() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef face\n  anchor neck 0,0\nface name:face\n  .neck fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 5);
+    assert_eq!(d.fix.as_deref(), Some("patch a shape or a group"));
+}
+
+#[test]
+fn a_group_hop_fix_keeps_the_copy_index_on_the_child() {
+    let indexed = run_with(
+        "@target t.png 40x40\ndef prop\n  each i in 0..2\n    group name:face\n      circle 4 name:leaf\nprop name:prop\n  .face.0.leaf fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&indexed, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 7);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf.0"));
+
+    let star = run_with(
+        "@target t.png 40x40\ndef prop\n  group name:face\n    circle 4 name:leaf\nprop name:prop\n  .face.* fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&star, "E0340");
+    assert_eq!(d.span.line, 6);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf"));
+}
+
+#[test]
+fn explain_includes_a_seeded_mask_node() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 8 name:body\n  mask\n    circle 3 at:rand(0 1),0 name:hole\n",
+        &[],
+    );
+    let text = crate::explain(ev.scene.as_ref().unwrap(), &ev.seeded);
+    assert!(text.contains("hole"), "{text}");
+    assert!(text.contains("seed"), "{text}");
+}
+
+#[test]
+fn a_play_guard_sees_the_same_copies_as_the_draw() {
+    let hit = scene(
+        "@target t.png 40x40\nanim tint dur:1s\n  .eye.1 fill:#ff0000\nlet n = 2\nrepeat n\n  circle 8 fill:#ffffff name:eye\nif @eye.1\n  play tint\n",
+    );
+    assert_eq!(fill_hex(node(&hit, "eye.1")), "#ff0000");
+    assert_eq!(fill_hex(node(&hit, "eye.0")), "#ffffff");
+
+    let grid = scene(
+        "@target t.png 80x80\nanim tint dur:1s\n  .gem.3 fill:#ff0000\ngrid 2x2\n  circle 4 fill:#ffffff name:gem\nif @gem.3\n  play tint\n",
+    );
+    assert_eq!(fill_hex(node(&grid, "gem.3")), "#ff0000");
+    assert_eq!(fill_hex(node(&grid, "gem.0")), "#ffffff");
+
+    let family = run_with(
+        "@target t.png 40x40\nanim tint dur:1s\n  .eye.0 fill:#ff0000\nrepeat 2\n  circle 8 fill:#ffffff name:eye\nif @eye\n  play tint\n",
+        &[],
+    );
+    let d = diag(&family, "E0343");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.is_some(), "{d}");
+    assert_eq!(fill_hex(node(family.scene.as_ref().unwrap(), "eye.0")), "#ffffff");
+}
+
+#[test]
+fn a_final_star_lists_every_copy() {
+    let even = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 8 name:a\n    circle 8 name:b\nassert same_size(@row.*)\n",
+    );
+    assert!(paths(&even).contains(&"a.0".to_string()));
+    assert!(paths(&even).contains(&"b.1".to_string()));
+
+    let uneven = run_with(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.*)\n",
+        &[],
+    );
+    assert!(
+        uneven.diagnostics.iter().all(|d| d.code != "E0343"),
+        "{}",
+        show(&uneven.diagnostics)
+    );
+    let d = diag(&uneven, "C0101");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+
+    let indexed = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.0.*)\n",
+    );
+    assert!(paths(&indexed).contains(&"a.1".to_string()));
+}
+
+#[test]
+fn a_def_that_reuses_a_shape_word_is_the_component() {
+    let painted = scene(
+        "@target t.png 40x40\ndef circle\n  rect 8 fill:#ffffff name:child\ncircle name:c\n  .child fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&painted, "c.child")), "#ff0000");
+
+    let hopped = scene(
+        "@target t.png 40x40\ndef wrap\n  circle name:c\ndef circle\n  rect 8 fill:#ffffff name:child\nwrap name:wrap\n  .c.child fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&hopped, "wrap.c.child")), "#ff0000");
+
+    let slotted = scene(
+        "@target t.png 40x40\ndef circle\n  slot hole\ncircle name:c\n  hole:\n    rect 6 fill:#00ff00 name:gem\n",
+    );
+    assert_eq!(fill_hex(node(&slotted, "c.hole.gem")), "#00ff00");
+
+    let through = scene(
+        "@target t.png 40x40\ndef wrap\n  circle name:c\ndef circle\n  slot hole\n    rect 4 fill:#ffffff name:gem\nwrap name:wrap\n  .c.hole.gem fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&through, "wrap.c.hole.gem")), "#ff0000");
+}
+
+#[test]
+fn an_unnamed_call_still_has_self() {
+    let s = scene(
+        "@target t.png 40x40\ndef dot\n  circle 4\n  assert centered(@self in:canvas) tol:1\ndot at:20,20\n",
+    );
+    assert!(
+        paths(&s).iter().any(|p| p.starts_with("dot~")),
+        "{:?}",
+        paths(&s)
+    );
+}
+
+#[test]
+fn an_off_instance_still_checks_a_hop_through_it() {
+    let anim = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.typo at:1,0\ndef hero\n  circle 4 name:eye\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = anim.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&anim.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 8);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(anim.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(anim.scene.as_ref().unwrap())
+    );
+
+    let static_off = run_with(
+        "@target t.png 40x40\ndef wrap\n  hero name:hero\ndef hero\n  circle 4 name:eye\nwrap name:wrap\n  .hero off\n  .hero.typo at:1,0\n",
+        &[],
+    );
+    let hits: Vec<_> = static_off
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0340")
+        .collect();
+    assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 8);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(static_off.scene.as_ref().unwrap())
+            .iter()
+            .all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(static_off.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn a_hidden_path_checks_every_hop() {
+    let nested = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.head.typo at:1,0\ndef head\n  circle 4 name:eye\ndef hero\n  head name:head\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = nested.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&nested.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 10);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(nested.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(nested.scene.as_ref().unwrap())
+    );
+
+    let kept = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.head.eye at:10,0\ndef head\n  circle 4 name:eye\ndef hero\n  head name:head\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    assert!(
+        kept.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&kept.diagnostics)
+    );
+    assert!(
+        paths(kept.scene.as_ref().unwrap()).iter().all(|p| !p.contains("eye")),
+        "{:?}",
+        paths(kept.scene.as_ref().unwrap())
+    );
+
+    let through_slot = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero off\n  .hero.hole.typo at:1,0\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = through_slot.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&through_slot.diagnostics));
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+}
+
+#[test]
+fn an_off_slot_still_checks_a_hop_through_it() {
+    let static_off = run_with(
+        "@target t.png 40x40\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\n  .hole off\n  .hole.typo at:1,0\n",
+        &[],
+    );
+    let hits: Vec<_> = static_off.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 7);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(static_off.scene.as_ref().unwrap()).iter().all(|p| !p.contains("gem")),
+        "{:?}",
+        paths(static_off.scene.as_ref().unwrap())
+    );
+
+    let anim = run_with(
+        "@target t.png 40x40\nanim idle dur:1s\n  .hero.hole off\n  .hero.hole.typo at:1,0\ndef hero\n  slot hole\n    circle 4 name:gem\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = anim.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&anim.diagnostics));
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].message.contains("typo"), "{}", hits[0]);
+    assert!(
+        paths(anim.scene.as_ref().unwrap()).iter().all(|p| !p.contains("gem")),
+        "{:?}",
+        paths(anim.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn an_empty_slot_does_not_borrow_a_file_name() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 8 fill:#ffffff name:foo\ndef hero\n  slot hole\nhero name:hero\n  .hole.foo fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 6);
+    assert!(hits[0].message.contains("foo"), "{}", hits[0]);
+    assert_eq!(fill_hex(node(ev.scene.as_ref().unwrap(), "foo")), "#ffffff");
+
+    let filled = scene(
+        "@target t.png 40x40\ndef hero\n  slot hole\nhero name:hero\n  hole:\n    rect 6 fill:#ffffff name:gem\n  .hole.gem fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&filled, "hero.hole.gem")), "#ff0000");
+}
+
+#[test]
+fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
+    let ev = run_with(
+        "@target t.png 80x80\ndef host\n  circle 4 at:0,0 name:eye\n  slot hole\nhost name:host at:40,40\n  hole:\n    circle 4 at:0,12 name:b\n    assert level(@b @eye) tol:.5\n",
+        &[],
+    );
+    let d = diag(&ev, "C0101");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 8);
+    let fix = d.fix.as_deref().unwrap();
+    assert!(fix.contains("host.eye"), "{d}");
+    assert!(!fix.contains("add name:"), "{d}");
+}
+
+#[test]
+fn a_bad_call_name_is_one_e0312() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef hero\n  circle 4 name:eye\nhero name:x+1\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0312").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 4);
+    assert!(hits[0].message.contains("identifier"), "{}", hits[0]);
+    assert!(
+        paths(ev.scene.as_ref().unwrap()).iter().any(|p| p.contains("eye")),
+        "{:?}",
+        paths(ev.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn a_star_with_no_declared_part_is_e0340() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef hero\n  circle 4\nhero name:hero\n  .* fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 5);
+    assert!(hits[0].message.contains('*'), "{}", hits[0]);
+    assert_eq!(hits[0].fix.as_deref(), Some("name a part in this scope"));
+
+    let hit = scene(
+        "@target t.png 40x40\ndef hero\n  circle 4 fill:#ffffff name:eye\nhero name:hero\n  .* fill:#ff0000\n",
+    );
+    assert_eq!(fill_hex(node(&hit, "hero.eye")), "#ff0000");
+}
+
+#[test]
+fn an_anim_reports_each_path_that_misses() {
+    let ev = run_with(
+        "@target t.png 80x40\nanim idle dur:1s\n  .hero.left.typo at:1,0\n  .hero.right.typo at:1,0\ndef side\n  circle 4 name:eye\ndef hero\n  side name:left\n  side name:right\nhero name:hero\nplay idle\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 2, "{}", show(&ev.diagnostics));
+    assert!(hits.iter().all(|d| d.span.line == 11), "{hits:?}");
+    assert!(
+        hits.iter().any(|d| d.message.contains("hero.left.typo")),
+        "{hits:?}"
+    );
+    assert!(
+        hits.iter().any(|d| d.message.contains("hero.right.typo")),
+        "{hits:?}"
+    );
+}
+
+#[test]
+fn self_is_hidden_until_checks() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef dot\n  copy @self\n  circle 4\n  assert centered(@self in:canvas) tol:1\ndot at:20,20\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0350").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 3);
+    assert!(hits[0].message.contains("checks"), "{}", hits[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "C0101"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    assert!(
+        paths(ev.scene.as_ref().unwrap()).iter().any(|p| p.contains("circle")),
+        "{:?}",
+        paths(ev.scene.as_ref().unwrap())
+    );
+}
+
+#[test]
+fn a_shared_outer_loop_keeps_the_current_copy() {
+    let s = scene(
+        "@target t.png 120x40\neach row in 0..2\n  each col in 0..2\n    circle (8 + row * 10) at:(row * 30 + col * 8),0 name:dot\n  assert @dot.0.cx ~= row * 30\n  each side in 0..1\n    assert same_size(@dot)\n    assert @dot.1.cx ~= row * 30 + 8\n",
+    );
+    assert!(paths(&s).contains(&"dot.0.0".to_string()));
+    assert!(paths(&s).contains(&"dot.1.1".to_string()));
+}
+
+#[test]
+fn a_slot_keeps_the_host_copy() {
+    let filled = scene(
+        "@target t.png 80x40\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\nhost name:host\n  hole:\n    circle 3 at:@dot.cx,12 name:mark\nassert @host.hole.0.mark.cx ~= 0\nassert @host.hole.1.mark.cx ~= 16\n",
+    );
+    assert!(paths(&filled).contains(&"host.hole.0.mark".to_string()));
+
+    let fallback = scene(
+        "@target t.png 80x40\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\n      circle 3 at:@dot.cx,12 name:mark\nhost name:host\nassert @host.hole.0.mark.cx ~= 0\nassert @host.hole.1.mark.cx ~= 16\n",
+    );
+    assert!(paths(&fallback).contains(&"host.hole.1.mark".to_string()));
+
+    let imported = scene(
+        "@target t.png 80x40\ndef gem needs:@dot\n  circle 3 at:@dot.cx,12 name:mark\ndef host\n  each i in 0..2\n    circle 4 at:(i * 16),0 name:dot\n    slot hole\nhost name:host\n  hole:\n    gem name:gem\nassert @host.hole.0.gem.mark.cx ~= 0\nassert @host.hole.1.gem.mark.cx ~= 16\n",
+    );
+    assert!(paths(&imported).contains(&"host.hole.1.gem.mark".to_string()));
+}
+
+#[test]
+fn a_grid_copy_measures_where_it_was_drawn() {
+    let s = scene(
+        "@target t.png 80x40\ngrid 2x1 gap:0 cell:20x20\n  circle 4 fill:#ffffff name:tile\ncopy @tile.1 name:echo\nassert @tile.1.cx - @tile.0.cx ~= 20\nassert @echo.cx ~= @tile.1.cx\n",
+    );
+    assert!(paths(&s).contains(&"tile.0".to_string()));
+    assert!(paths(&s).contains(&"tile.1".to_string()));
+
+    let nested = scene(
+        "@target t.png 80x40\ndef gem\n  circle 4 fill:#ffffff name:mark\ngrid 2x1 gap:0 cell:20x20\n  gem name:tile\nassert @tile.1.mark.cx - @tile.0.mark.cx ~= 20\n",
+    );
+    assert!(paths(&nested).contains(&"tile.1.mark".to_string()));
+}
+
+#[test]
+fn one_inner_copy_keeps_the_outer_index() {
+    let s = scene(
+        "@target t.png 80x40\neach row in 0..2\n  each col in 0..1\n    circle 4 at:(row * 30),0 name:dot\n  assert @dot.0.cx ~= row * 30\n",
+    );
+    assert!(paths(&s).contains(&"dot.1.0".to_string()));
+}
+
+#[test]
+fn manifest_backend_defaults_to_auto_and_rejects_unknown_values() {
+    use crate::{BackendChoice, Manifest};
+
+    assert_eq!(Manifest::parse("").unwrap().backend, BackendChoice::Auto);
+    for (value, want) in [
+        ("auto", BackendChoice::Auto),
+        ("gpu", BackendChoice::Gpu),
+        ("cpu", BackendChoice::Cpu),
+    ] {
+        let manifest = Manifest::parse(&format!("[build]\nbackend = \"{value}\"\n")).unwrap();
+        assert_eq!(manifest.backend, want);
+    }
+    for bad in ["backend = \"metal\"", "backend = 1"] {
+        let err = Manifest::parse(&format!("[project]\n[build]\n{bad}\n")).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert!(err.message.contains("[build]"), "{}", err.message);
+        assert_eq!(err.span.line, 3, "the error points at the backend line");
+    }
 }

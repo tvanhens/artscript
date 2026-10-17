@@ -33,14 +33,23 @@ impl Evaluator<'_> {
         if let Some(Value::Rule(rule)) = sc.module.global(func) {
             return self.call_rule(&rule, args, named, sc);
         }
-        let mut a = Vec::with_capacity(args.len());
-        for e in args {
-            a.push(self.expr(e, sc)?);
+        let saved_family = self.accept_family;
+        if func == "same_size" {
+            self.accept_family = true;
         }
-        let mut nm = Vec::with_capacity(named.len());
-        for n in named {
-            nm.push((n.key.clone(), self.expr(&n.value, sc)?));
-        }
+        let parsed = (|| -> R<_> {
+            let mut a = Vec::with_capacity(args.len());
+            for e in args {
+                a.push(self.expr(e, sc)?);
+            }
+            let mut nm = Vec::with_capacity(named.len());
+            for n in named {
+                nm.push((n.key.clone(), self.expr(&n.value, sc)?));
+            }
+            Ok((a, nm))
+        })();
+        self.accept_family = saved_family;
+        let (a, nm) = parsed?;
         if let Some(v) = self.check_fn(func, &a, &nm, sc) {
             return v;
         }
