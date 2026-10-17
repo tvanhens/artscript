@@ -2,7 +2,7 @@
 //! patches, and expressions. Produces the scene IR described in `artscript-ir`.
 
 use std::cell::RefCell;
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
@@ -20,7 +20,7 @@ use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
 use crate::geom::{self, BoolOp, P};
 use crate::identity::{
-    self, Arrival, ChannelPatch, DeclId, Entry, Key, Lookup, ModuleIds, Names, Pending,
+    self, Arrival, ChannelPatch, DeclId, Entry, Key, Lookup, ModuleIds, Names, Order, Pending,
     PendingPatch, ReportKey, Resolved, Site,
 };
 use crate::key::Ease;
@@ -275,8 +275,9 @@ pub(crate) struct Evaluator<'a> {
     pub time: f64,
     anim_clock: Option<AnimClock>,
     pub plays: Vec<PlayMark>,
-    next_play: u32,
-    play_ords: HashMap<Span, VecDeque<u32>>,
+    /// What the prepass decided at each `if` and `each` that holds an entry-file play, keyed by
+    /// position: the branch or item count, or `None` when it could not evaluate the guard.
+    guards: HashMap<Vec<u32>, Option<usize>>,
     silence: bool,
 }
 
@@ -303,6 +304,33 @@ struct SeedSnap {
     file: String,
     key: Key,
     count: u64,
+}
+
+/// A statement's place in evaluation order: each enclosing loop's line and copy index, then its
+/// own line. Every statement is one line, so the line is unique in its file.
+fn position(sc: &Scope, span: Span) -> Vec<u32> {
+    let mut at: Vec<u32> = sc
+        .scope_loops
+        .iter()
+        .zip(&sc.scope_copies)
+        .flat_map(|(l, &i)| [l.line, i])
+        .collect();
+    at.push(span.line);
+    at
+}
+
+fn holds_play(scenes: &[Scene]) -> bool {
+    scenes.iter().any(|st| match &st.kind {
+        SceneKind::Play { .. } => true,
+        SceneKind::If {
+            then, otherwise, ..
+        } => holds_play(then) || holds_play(otherwise),
+        SceneKind::Each { body, .. } => holds_play(body),
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Slot { .. }
+        | SceneKind::Draw(_) => false,
+    })
 }
 
 /// A percent rest and a numeric offset are different units. Resolve only the percent
@@ -686,8 +714,7 @@ impl<'a> Evaluator<'a> {
             time: job.frame_t,
             anim_clock: None,
             plays: Vec::new(),
-            next_play: 0,
-            play_ords: HashMap::new(),
+            guards: HashMap::new(),
             silence: false,
         }
     }
@@ -1239,6 +1266,7 @@ impl<'a> Evaluator<'a> {
             } => {
                 self.seed_line(sc, st.span);
                 let c = self.expr(cond, sc)?;
+                self.confirm_guard(st, "if", usize::from(c.truthy()), sc);
                 let mut inner = sc.clone();
                 inner.publish = false;
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
@@ -1247,6 +1275,7 @@ impl<'a> Evaluator<'a> {
             SceneKind::Each { var, iter, body } => {
                 self.seed_line(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
+                self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
@@ -3178,18 +3207,28 @@ impl<'a> Evaluator<'a> {
                 otherwise,
             } => {
                 self.seed_line(sc, st.span);
-                let Ok(c) = self.quiet_expr(cond, sc) else {
+                let taken = self.quiet_expr(cond, sc).map(|c| c.truthy());
+                if schedule && (holds_play(then) || holds_play(otherwise)) {
+                    let decided = taken.as_ref().ok().map(|&b| usize::from(b));
+                    self.guards.insert(position(sc, st.span), decided);
+                }
+                let Ok(taken) = taken else {
                     return Ok(());
                 };
                 let mut inner = sc.clone();
                 inner.publish = false;
-                let branch = if c.truthy() { then } else { otherwise };
+                let branch = if taken { then } else { otherwise };
                 self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
             SceneKind::Each { var, iter, body } => {
                 self.seed_line(sc, st.span);
-                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
+                let items = self.quiet_expr(iter, sc).and_then(each_items);
+                if schedule && holds_play(body) {
+                    let decided = items.as_ref().ok().map(Vec::len);
+                    self.guards.insert(position(sc, st.span), decided);
+                }
+                let Ok(items) = items else {
                     return Ok(());
                 };
                 for (i, v) in items.into_iter().enumerate() {
@@ -3205,15 +3244,11 @@ impl<'a> Evaluator<'a> {
                 self.incoming.extend(patches);
                 Ok(())
             }
-            SceneKind::Play { .. } => {
-                self.reserve_play(st.span);
-                Ok(())
-            }
             SceneKind::Draw(draw) => {
                 self.collect_draw(draw, sc, st.span);
                 Ok(())
             }
-            SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
+            SceneKind::Play { .. } | SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
         }
     }
 
@@ -3229,7 +3264,6 @@ impl<'a> Evaluator<'a> {
             self.place(sc, id, &key, sc.world, None, None, (0.0, 0.0), None);
         }
         if self.verb_is_call(verb, sc) {
-            self.reserve_call_block(draw, sc);
             return;
         }
         if verb == "repeat" || verb == "grid" {
@@ -3306,82 +3340,29 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
-        let snap = self.snap_seed();
-        let mut inner = sc.clone();
-        inner.publish = false;
-        for item in draw.body.items() {
-            if let DrawItem::Scene(st) = item {
-                self.reserve_call_scene(st, &mut inner);
-            }
+    /// The real pass checks the prepass's answer at a guard around an entry-file play. Those
+    /// plays were scheduled from that answer, so a different one would play the wrong anims.
+    fn confirm_guard(&mut self, st: &Scene, word: &str, decided: usize, sc: &Scope) {
+        if !sc.top {
+            return;
         }
-        self.restore_seed(snap);
-    }
-
-    fn reserve_call_scene(&mut self, st: &Scene, sc: &mut Scope) {
-        match &st.kind {
-            SceneKind::Let { name, value } => {
-                self.seed_line(sc, st.span);
-                let v = self.quiet_expr(value, sc).unwrap_or(Value::None);
-                sc.env.push((name.clone(), v));
-            }
-            SceneKind::If {
-                cond,
-                then,
-                otherwise,
-            } => {
-                self.seed_line(sc, st.span);
-                let branches: Vec<&[Scene]> = match self.quiet_expr(cond, sc) {
-                    Ok(c) => vec![if c.truthy() { then } else { otherwise }],
-                    Err(_) => vec![then, otherwise],
-                };
-                for branch in branches {
-                    let mut inner = sc.clone();
-                    for child in branch {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                }
-            }
-            SceneKind::Each { var, iter, body } => {
-                self.seed_line(sc, st.span);
-                let Ok(items) = self.quiet_expr(iter, sc).and_then(each_items) else {
-                    let mut inner = sc.clone();
-                    for child in body {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                    return;
-                };
-                for (i, v) in items.into_iter().enumerate() {
-                    let mut inner = sc.iteration(st.span, i as u32);
-                    inner.env.push((var.clone(), v));
-                    for child in body {
-                        self.reserve_call_scene(child, &mut inner);
-                    }
-                }
-            }
-            SceneKind::Play { .. } => self.reserve_play(st.span),
-            SceneKind::Draw(draw) => {
-                let key = sc.node_key(st.span);
-                let inner = sc.child(key, sc.frame, sc.world);
-                self.reserve_call_block(draw, &inner);
-            }
-            SceneKind::Check { .. } | SceneKind::Slot { .. } => {}
+        let Some(&planned) = self.guards.get(&position(sc, st.span)) else {
+            return;
+        };
+        if planned == Some(decided) {
+            return;
         }
-    }
-
-    fn reserve_play(&mut self, span: Span) {
-        let ord = self.next_play;
-        self.next_play += 1;
-        self.play_ords.entry(span).or_default().push_back(ord);
-    }
-
-    fn take_ord(&mut self, span: Span) -> u32 {
-        if let Some(ord) = self.play_ords.get_mut(&span).and_then(VecDeque::pop_front) {
-            return ord;
-        }
-        let ord = self.next_play;
-        self.next_play += 1;
-        ord
+        self.report(
+            fail(
+                "E0344",
+                format!("this `{word}` decides a top-level `play` and reads the drawn scene"),
+            )
+            .note("top-level plays are scheduled before anything is drawn, so `@name.w` and names inside other draws are not known yet")
+            .fix("guard the play with `let`s, `t`, `clip`, or `@name` of an earlier top-level draw, or move it under the instance it drives"),
+            sc.file(),
+            st.span,
+            &sc.node_name(),
+        );
     }
 
     fn absorb_item(
@@ -3539,7 +3520,7 @@ impl<'a> Evaluator<'a> {
             written: rest.clone(),
             rest,
             origin_depth: sc.depth,
-            order: self.next_order(),
+            order: Order::Evaluated(self.next_order()),
             named: vals,
             off,
             channel: None,
@@ -3561,7 +3542,10 @@ impl<'a> Evaluator<'a> {
         let Some(name) = name else {
             return Vec::new();
         };
-        let ord = self.take_ord(span);
+        let ord = match sc.inst {
+            None => Order::Position(position(sc, span)),
+            Some(_) => Order::Evaluated(self.next_order()),
+        };
         let node = owner.to_string();
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
@@ -3672,7 +3656,7 @@ impl<'a> Evaluator<'a> {
                     written: rest.clone(),
                     rest,
                     origin_depth: sc.depth,
-                    order: ord,
+                    order: ord.clone(),
                     named: Vec::new(),
                     off: patch.off,
                     channel: Some(ChannelPatch {
@@ -3711,7 +3695,7 @@ impl<'a> Evaluator<'a> {
                         written: rest.clone(),
                         rest: rest.clone(),
                         origin_depth: sc.depth,
-                        order: ord,
+                        order: ord.clone(),
                         named: Vec::new(),
                         off: false,
                         channel: Some(ChannelPatch {
