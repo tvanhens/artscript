@@ -27,11 +27,11 @@ mod metal {
     fn make() -> Option<DirectContext> {
         let device = MTLCreateSystemDefaultDevice()?;
         let queue = device.newCommandQueue()?;
-        // SAFETY: the raw device and queue pointers are owned by the backend context from here on.
+        // SAFETY: both pointers are live for this call, and the backend context retains its own references.
         let backend = unsafe {
             mtl::BackendContext::new(
-                Retained::into_raw(device) as mtl::Handle,
-                Retained::into_raw(queue) as mtl::Handle,
+                Retained::as_ptr(&device) as mtl::Handle,
+                Retained::as_ptr(&queue) as mtl::Handle,
             )
         };
         gpu::direct_contexts::make_metal(&backend, None)

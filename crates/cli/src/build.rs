@@ -401,17 +401,20 @@ fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
 }
 
 pub fn build(project: &Project, opts: &Options) -> u8 {
+    let plan = plan(project);
     let choice = opts.backend.unwrap_or(project.manifest.backend);
     let Some(backend) = resolve_backend(choice, artscript_render::gpu_available()) else {
-        let d = Diagnostic::error(
-            "E0400",
-            Span::default(),
-            "the gpu backend is not available on this machine",
-        )
-        .with_fix("use `--backend auto` or `--backend cpu`, or set `[build] backend` in artscript.toml");
-        return report(vec![d], opts.allow_warnings, false);
+        let mut diagnostics = plan.diagnostics;
+        diagnostics.push(
+            Diagnostic::error(
+                "E0400",
+                Span::default(),
+                "the gpu backend is not available on this machine",
+            )
+            .with_fix("use `--backend auto` or `--backend cpu`, or set `[build] backend` in artscript.toml"),
+        );
+        return report(diagnostics, opts.allow_warnings, false);
     };
-    let plan = plan(project);
     let out_dir = project.root.join(&project.manifest.out);
     let jobs: Vec<&TargetJob> = plan
         .jobs

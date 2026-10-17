@@ -40,6 +40,23 @@ impl std::str::FromStr for BackendChoice {
     }
 }
 
+#[derive(serde::Deserialize)]
+struct BuildDoc {
+    build: Option<BuildSection>,
+}
+
+#[derive(serde::Deserialize)]
+struct BuildSection {
+    backend: Option<toml::Spanned<toml::Value>>,
+}
+
+fn span_at(src: &str, offset: usize) -> Span {
+    let before = &src[..offset.min(src.len())];
+    let line = before.matches('\n').count() as u32 + 1;
+    let col = before.rsplit('\n').next().map_or(0, |l| l.chars().count()) as u32 + 1;
+    Span { line, col }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Manifest {
     pub name: String,
@@ -56,11 +73,12 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn parse(src: &str) -> Result<Manifest, Diagnostic> {
-        let bad = |msg: String| {
-            Diagnostic::error("E0200", Span { line: 1, col: 1 }, msg)
+        let bad_at = |span: Span, msg: String| {
+            Diagnostic::error("E0200", span, msg)
                 .in_file(MANIFEST)
                 .with_fix("see `artscript init` for a valid manifest")
         };
+        let bad = |msg: String| bad_at(Span { line: 1, col: 1 }, msg);
         let doc: toml::Table = src.parse().map_err(|e: toml::de::Error| bad(format!("invalid manifest: {e}")))?;
         let section = |name: &str| doc.get(name).and_then(|v| v.as_table()).cloned().unwrap_or_default();
         let project = section("project");
@@ -91,13 +109,14 @@ impl Manifest {
             };
             lint.insert(k, level);
         }
-        let backend = match section("build").get("backend") {
+        let backend = match toml::from_str::<BuildDoc>(src).ok().and_then(|d| d.build?.backend) {
             None => BackendChoice::default(),
             Some(v) => v
+                .get_ref()
                 .as_str()
                 .ok_or_else(|| "backend must be a string".to_string())
                 .and_then(str::parse)
-                .map_err(|e| bad(format!("[build] {e}")))?,
+                .map_err(|e| bad_at(span_at(src, v.span().start), format!("[build] {e}")))?,
         };
         Ok(Manifest {
             name: s(&project, "name").unwrap_or_default(),

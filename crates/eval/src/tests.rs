@@ -2644,8 +2644,9 @@ fn manifest_backend_defaults_to_auto_and_rejects_unknown_values() {
         assert_eq!(manifest.backend, want);
     }
     for bad in ["backend = \"metal\"", "backend = 1"] {
-        let err = Manifest::parse(&format!("[build]\n{bad}\n")).unwrap_err();
+        let err = Manifest::parse(&format!("[project]\n[build]\n{bad}\n")).unwrap_err();
         assert_eq!(err.code, "E0200");
         assert!(err.message.contains("[build]"), "{}", err.message);
+        assert_eq!(err.span.line, 3, "the error points at the backend line");
     }
 }

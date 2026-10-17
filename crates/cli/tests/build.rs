@@ -482,6 +482,26 @@ fn backend_flag_is_validated_and_switching_backends_rebuilds() {
     if artscript_render::gpu_available() {
         let gpu = artscript(&dir, &[&only[..], &["--backend", "gpu"]].concat());
         assert!(gpu.status.success(), "{}", text(&gpu));
-        assert_ne!(fs::read(&png).unwrap(), cpu_bytes, "a backend switch must re-render");
+        let project = artscript_eval::load(&dir).unwrap();
+        let plan = artscript_eval::plan(&project);
+        let job = plan.jobs.iter().find(|j| j.source.ends_with("momo_peach.art")).unwrap();
+        let scene = artscript_eval::evaluate(&project, job).scene.unwrap();
+        let want = artscript_render::render_png(&scene, 1.0, artscript_render::Backend::Gpu).unwrap();
+        assert_eq!(fs::read(&png).unwrap(), want, "a backend switch must re-render on the gpu");
     }
+}
+
+#[test]
+fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
+    if artscript_render::gpu_available() {
+        return;
+    }
+    let dir = fixture("nogpu");
+    fs::write(dir.join("art/broken.art"), "@target broken.png 64x64 scale:-1\n").unwrap();
+    let out = artscript(&dir, &["build", "--backend", "gpu"]);
+    let report = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{report}");
+    assert!(report.contains("E0400"), "{report}");
+    assert!(report.contains("E0206"), "plan errors survive a missing gpu: {report}");
+    let _ = fs::remove_dir_all(&dir);
 }
