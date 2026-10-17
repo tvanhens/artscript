@@ -673,44 +673,26 @@ fn matrix_attr(m: &Matrix) -> Option<String> {
 fn path_data(path: &Path) -> String {
     let mut out = String::new();
     let mut iter = PathIter::new(path, false);
-    let mut current = Point::default();
-    let mut start = Point::default();
     while let Some((verb, pts)) = iter.next() {
         match verb {
-            Verb::Move => {
-                current = pts[0];
-                start = current;
-                cmd(&mut out, "M", &[current]);
-            }
+            Verb::Move => cmd(&mut out, "M", &pts[..1]),
             Verb::Line => {
-                if iter.is_close_line() {
-                    continue;
+                if !iter.is_close_line() {
+                    cmd(&mut out, "L", &pts[1..2]);
                 }
-                current = pts[0];
-                cmd(&mut out, "L", &[current]);
             }
-            Verb::Quad => {
-                quad_as_cubic(&mut out, current, pts[0], pts[1]);
-                current = pts[1];
-            }
+            Verb::Quad => quad_as_cubic(&mut out, pts[0], pts[1], pts[2]),
             Verb::Conic => {
                 let w = iter.conic_weight().unwrap_or(1.0);
                 emit_conic(
                     &mut out,
-                    Conic { p0: current, p1: pts[0], p2: pts[1], w },
+                    Conic { p0: pts[0], p1: pts[1], p2: pts[2], w },
                     (0.0, 1.0),
                     3,
                 );
-                current = pts[1];
             }
-            Verb::Cubic => {
-                cmd(&mut out, "C", &pts);
-                current = pts[2];
-            }
-            Verb::Close => {
-                out.push('Z');
-                current = start;
-            }
+            Verb::Cubic => cmd(&mut out, "C", &pts[1..4]),
+            Verb::Close => out.push('Z'),
             Verb::Done => break,
         }
     }

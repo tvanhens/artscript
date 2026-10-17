@@ -108,6 +108,13 @@ pub fn plan(project: &Project) -> Plan {
                 continue;
             }
         };
+        for d in file.directives.iter().filter(|d| d.name != "target") {
+            diagnostics.push(
+                Diagnostic::error("E0208", d.span, format!("unknown directive `@{}`", d.name))
+                    .in_file(path)
+                    .with_fix("the only directive in v0.1 is `@target <path> <W>x<H>`"),
+            );
+        }
         if !is_entry(&file) {
             continue;
         }
@@ -123,7 +130,7 @@ pub fn plan(project: &Project) -> Plan {
             continue;
         }
         entries.push(path.clone());
-        for d in &file.directives {
+        for d in file.directives.iter().filter(|d| d.name == "target") {
             match expand(project, path, d) {
                 Ok(mut js) => jobs.append(&mut js),
                 Err(diag) => diagnostics.push(diag.in_file(path)),
@@ -191,12 +198,6 @@ fn time_literal(e: &Expr) -> Option<f64> {
 }
 
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
-    if d.name != "target" {
-        return Err(
-            Diagnostic::error("E0208", d.span, format!("unknown directive `@{}`", d.name))
-                .with_fix("the only directive in v0.1 is `@target <path> <W>x<H>`"),
-        );
-    }
     let Some(raw_path) = d.path.clone() else {
         return Err(
             Diagnostic::error("E0206", d.span, "`@target` needs an output path")
