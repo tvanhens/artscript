@@ -24,19 +24,15 @@
   <img src="examples/chibi/assets/monument/vermilion_torii.png" alt="A vermilion torii gate" width="132">
 </p>
 
-<p align="center"><sub>Coding agents wrote every piece above, porting each one from a Python drawing toolkit, one agent per file.<br>The sources are in <a href="examples/chibi"><code>examples/chibi</code></a>. The run is logged in <a href="docs/decisions.tsv"><code>docs/decisions.tsv</code></a>.</sub></p>
-
 ---
 
 A game or an app needs hundreds of icons, characters, props, and their variants. A model can draw one of them in SVG. It struggles to draw the hundredth in the same style, to change one detail without regenerating the file, or to tell whether its own output is right.
 
-artscript is a language designed for that loop. A finished, shaded character is a few thousand tokens. An edit is one line. The compiler tells the model what went wrong, where, and how to fix it, in JSON. And the same source always builds the same bytes, so a large project stays reviewable.
-
 ## Built for the model's side of the loop
 
-**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger, even with embedded textures removed. The whole language card, [`docs/language.md`](docs/language.md), is 4,608 tokens, so it fits in a system prompt.
+**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger. The whole language card, [`docs/language.md`](docs/language.md), is 4,608 tokens, so it fits in a system prompt.
 
-| Piece | `.art` tokens | Built `.svg` tokens |
+| Piece | `.art` tokens | Built `.svg` tokens (vector markup only) |
 |---|---:|---:|
 | `character/moss_monk` | 4,638 | 128,721 |
 | `monument/stone_lantern` | 6,521 | 40,257 |
@@ -45,8 +41,6 @@ artscript is a language designed for that loop. A finished, shaded character is 
 | `produce/sweet_strawberry` | 2,529 | 84,302 |
 | `prop/matcha_teacup` | 2,549 | 91,884 |
 
-<sub>Counted with `o200k_base`. Rerun with `uv run --with tiktoken python scripts/svg_tokens.py`.</sub>
-
 **Edits stay local.** Style lives in palettes, components, and named parts, not in baked coordinates. To give the monk blue eyes, a model changes one line:
 
 ```diff
@@ -54,9 +48,9 @@ artscript is a language designed for that loop. A finished, shaded character is 
 +  color iris #4f7fc0
 ```
 
-Rebuilt, the monk changes only inside a 301 by 69 pixel box around the eyes. Every other pixel is identical, because noise and random scatter are seeded from each node's name, not from the order things were drawn. `artscript fmt` prints one canonical form, so diffs carry only what changed.
+Rebuilt, only the eyes change. Every other pixel is identical. `artscript fmt` prints one canonical form, so diffs carry only what changed.
 
-**Feedback a model can act on.** `artscript check` evaluates a whole project without rendering. The chibi project, with GIF frames sampled, checks in about a second. Each diagnostic names the file, the line, the node, and a concrete fix. `--json` hands that straight back to the agent:
+**Feedback a model can act on.** `artscript check` evaluates a whole project without rendering. The chibi project checks in about a second. `--json` gives the agent the location and a fix:
 
 ```json
 {
@@ -122,7 +116,7 @@ assert inside(@body canvas margin:24)
   <img src="examples/slime/assets/slime_peach.gif" alt="A peach-orange jelly slime squashing and stretching" width="200">
 </p>
 
-That is 435 tokens. Here is what they buy:
+The file is 435 tokens.
 
 - **One color in, a painted ramp out.** `ramp mint #7fd4a8 5` makes five stops whose shadows shift cool and whose lights shift warm. `jelly.line` is a matching outline color. A new flavor is one palette row.
 - **Children clip to their parent.** The highlight, the shadow, and the eyes sit under `body`, so none of them can spill outside it, whatever the model gets wrong about coordinates.
@@ -136,7 +130,7 @@ That is 435 tokens. Here is what they buy:
 2. The model writes or edits an `.art` file.
 3. Run `artscript check --json`. Feed any diagnostics back, and repeat until it exits 0.
 4. Run `artscript build --only '<its files>'` to render.
-5. Review the source diff and the changed hashes in `art-manifest.json`, like any other code.
+5. Review the source diff and the changed hashes in `art-manifest.json`.
 
 ## What the language covers
 
@@ -182,8 +176,8 @@ artscript build
 
 ## Learn more
 
-- [`docs/language.md`](docs/language.md) is the one-page language card, for you and for the model.
+- [`docs/language.md`](docs/language.md) is the one-page language card.
 - [`docs/semantics.md`](docs/semantics.md) holds the details the card leaves out.
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
 
-artscript is a v0.1 draft. The design is still open, and a better rule can replace any rule in the docs, even when it changes today's output.
+artscript is a v0.1 draft. Expect breaking changes.
