@@ -2337,7 +2337,8 @@ impl<'a> Evaluator<'a> {
             "poly" | "star" => {
                 let n = first
                     .and_then(Value::num)
-                    .ok_or_else(|| need("a point count", "star 5 r:20"))?;
+                    .filter(|n| n.is_finite() && *n <= 100_000.0)
+                    .ok_or_else(|| need("a point count up to 100000", "star 5 r:20"))?;
                 let r = a.num("r").unwrap_or(10.0);
                 let inner = (verb == "star").then(|| a.num("inner").unwrap_or(0.5));
                 let mut p = geom::regular(n as usize, r, inner);

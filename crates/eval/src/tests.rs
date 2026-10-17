@@ -4470,3 +4470,12 @@ fn name_listings_in_notes_are_sorted() {
         diag(&ev, "E0307").notes
     );
 }
+
+#[test]
+fn an_unbounded_point_count_is_e0320() {
+    for src in ["poly 1/0 r:10", "star 1/0", "poly 1000000"] {
+        let ev = run_with(&format!("@target t.png 40x40\n{src}\n"), &[]);
+        assert_eq!(diag(&ev, "E0320").message, format!("`{}` needs a point count up to 100000", &src[..4]));
+    }
+    scene("@target t.png 40x40\npoly 6 r:10\nstar 5 r:10\n");
+}
