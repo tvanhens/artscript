@@ -3761,3 +3761,41 @@ fn a_shadowed_geometry_let_does_not_block_a_top_level_play() {
         assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
     }
 }
+
+#[test]
+fn every_read_of_an_unseen_let_is_e0344() {
+    let head = "@target t.png 40x40\npalette p\n  ramp ink #102030 #f0e0d0 11\nanim bob dur:1s\n  .c a:.2\nrect 8x4 name:marker\ncircle 4 name:c fill:#000000\n";
+    for (tail, at) in [
+        ("let w = @marker.w\nplay bob start:canvas.{w}\n", "play bob"),
+        ("anim tint dur:1s\n  .c fill:p.ink.{line}\nlet line = @marker.w\nplay tint\n", ".c fill"),
+        ("anim fade dur:1s\n  .c a:(if n == 0 then .25 else .9)\nlet seg = @marker.w\nlet color = p.ink.{seg}\nlet n = if color == none then 0 else 1\nplay fade\n", ".c a:(if"),
+        ("if @marker.w > 0\n  circle 4 name:dot\nlet r = @dot\nplay bob start:(if r == none then 0 else 1)\n", "play bob"),
+    ] {
+        let src = format!("{head}{tail}");
+        let line = src.lines().position(|l| l.contains(at)).unwrap() + 1;
+        let ev = run_with(&src, &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{tail}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{tail}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line as usize, line, "{tail}\n{}", errors[0]);
+    }
+}
+
+#[test]
+fn a_new_binding_of_an_unseen_name_is_seen() {
+    let head = "@target t.png 40x40\nrule width w:0\n  expect w >= 0\nanim bob dur:1s\n  .c a:.2\nrect 8x4 name:marker\ncircle 4 name:c\nlet w = @marker.w\n";
+    for tail in [
+        "each w in [0]\n  play bob start:w\n",
+        "let xs = [each w in [0] -> w]\nlet n = xs.0\nplay bob start:n\n",
+        "let n = if width(0) then 0 else 1\nplay bob start:n\n",
+        "if width(0)\n  play bob\n",
+    ] {
+        let s = scene(&format!("{head}{tail}"));
+        let c = node(&s, "c").opacity;
+        assert!((c - 0.2).abs() < 1e-4, "{tail}: {c}");
+    }
+}
