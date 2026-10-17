@@ -3073,3 +3073,215 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
         }
     }
 }
+
+#[test]
+fn a_copy_hop_stays_on_that_copy() {
+    let s = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    each j in 0..2\n      circle 4 at:(i * 20 + j * 5),0 name:gem\nassert @row.1.gem.0.cx ~= 20\n",
+    );
+    assert!(paths(&s).contains(&"gem.1.0".to_string()));
+
+    let marked = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 4 at:i * 10,0 name:mark\nassert @row.1.mark.cx ~= 10\n",
+    );
+    assert!(paths(&marked).iter().any(|p| p == "mark.1"));
+
+    let sized = scene(
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle (8 + i * 10) name:a\n    circle (8 + i * 10) name:b\nassert same_size(@row.0.*)\n",
+    );
+    assert!(paths(&sized).contains(&"a.0".to_string()));
+
+    let missed = run_with(
+        "@target t.png 40x40\neach i in 0..2\n  group name:row\n    if i == 0\n      circle 4 name:mark\ncopy @row.1.mark\n",
+        &[],
+    );
+    let d = diag(&missed, "E0350");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.is_some(), "{d}");
+}
+
+#[test]
+fn an_index_that_does_not_fit_is_not_copy_zero() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef face\n  circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.99999999999 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 5);
+    assert!(d.message.contains("not an address"), "{d}");
+    assert!(
+        d.fix.as_deref().unwrap().contains("whole-number"),
+        "{d}"
+    );
+    assert_eq!(fill_hex(node(ev.scene.as_ref().unwrap(), "face.eye")), "#ffffff");
+
+    let reference = run_with(
+        "@target t.png 40x40\ncircle 4 name:eye\nlet x = @eye.99999999999\n",
+        &[],
+    );
+    let d = diag(&reference, "E0350");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 3);
+    assert!(d.message.contains("not a copy index"), "{d}");
+    assert!(d.fix.as_deref().unwrap().contains("whole number"), "{d}");
+    assert_eq!(paths(reference.scene.as_ref().unwrap()), ["eye"]);
+}
+
+#[test]
+fn an_unnamed_patch_cites_the_statement_it_spells() {
+    let verb = run_with(
+        "@target t.png 40x40\ndef box\n  a 4\n  a1 4\nbox name:box\n  .a1 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&verb, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(
+        d.notes.iter().any(|n| n.contains("a1") && n.contains("art/t.art:4")),
+        "{d}"
+    );
+    assert!(d.fix.as_deref().unwrap().contains("art/t.art:4"), "{d}");
+
+    let second = run_with(
+        "@target t.png 40x40\ndef face\n  circle 4\n  circle 4\nface name:face\n  .circle2 fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&second, "E0340");
+    assert_eq!(d.span.line, 6);
+    assert!(
+        d.notes.iter().any(|n| n.contains("circle") && n.contains("art/t.art:4")),
+        "{d}"
+    );
+    assert_eq!(d.fix.as_deref(), Some("add name: at art/t.art:4"));
+}
+
+#[test]
+fn a_missing_drawn_copy_is_e0340_and_an_undrawn_name_is_not() {
+    let missing = run_with(
+        "@target t.png 40x40\ndef row\n  each i in 0..2\n    circle 4 fill:#ffffff name:eye\nrow name:row\n  .eye.5 fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = missing.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&missing.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 6);
+    assert!(hits[0].message.contains("matches no drawn copy"), "{hits:?}");
+    assert!(hits[0].fix.as_deref().unwrap().contains(".eye.0"), "{hits:?}");
+    assert_eq!(fill_hex(node(missing.scene.as_ref().unwrap(), "row.eye.0")), "#ffffff");
+
+    let arm = run_with(
+        "@target t.png 40x40\ndef face\n  if false\n    each i in 0..2\n      circle 4 name:eye\n  else\n    circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.0 fill:#ff0000\n",
+        &[],
+    );
+    let hits: Vec<_> = arm.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&arm.diagnostics));
+    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].span.line, 9);
+    assert!(hits[0].fix.as_deref().unwrap().contains(".eye"), "{hits:?}");
+    assert_eq!(fill_hex(node(arm.scene.as_ref().unwrap(), "face.eye")), "#ffffff");
+
+    let empty = run_with(
+        "@target t.png 40x40\ndef face\n  each i in 0..0\n    circle 4 name:eye\nface name:face\n  .eye fill:#ff0000\n",
+        &[],
+    );
+    assert!(
+        empty.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&empty.diagnostics)
+    );
+
+    let off = run_with(
+        "@target t.png 40x40\ndef face\n  circle 4 name:eye\nface name:face\n  .eye off\n",
+        &[],
+    );
+    assert!(
+        off.diagnostics.iter().all(|d| d.code != "E0340"),
+        "{}",
+        show(&off.diagnostics)
+    );
+    assert!(!paths(off.scene.as_ref().unwrap()).iter().any(|p| p.contains("eye")));
+}
+
+#[test]
+fn a_patch_on_an_anchor_is_e0340() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef face\n  anchor neck 0,0\nface name:face\n  .neck fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&ev, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 5);
+    assert_eq!(d.fix.as_deref(), Some("patch a shape or a group"));
+}
+
+#[test]
+fn a_group_hop_fix_keeps_the_copy_index_on_the_child() {
+    let indexed = run_with(
+        "@target t.png 40x40\ndef prop\n  each i in 0..2\n    group name:face\n      circle 4 name:leaf\nprop name:prop\n  .face.0.leaf fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&indexed, "E0340");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 7);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf.0"));
+
+    let star = run_with(
+        "@target t.png 40x40\ndef prop\n  group name:face\n    circle 4 name:leaf\nprop name:prop\n  .face.* fill:#ff0000\n",
+        &[],
+    );
+    let d = diag(&star, "E0340");
+    assert_eq!(d.span.line, 6);
+    assert_eq!(d.fix.as_deref(), Some("write .leaf"));
+}
+
+#[test]
+fn explain_includes_a_seeded_mask_node() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 8 name:body\n  mask\n    circle 3 at:rand(0 1),0 name:hole\n",
+        &[],
+    );
+    let text = crate::explain(ev.scene.as_ref().unwrap(), &ev.seeded);
+    assert!(text.contains("hole"), "{text}");
+    assert!(text.contains("seed"), "{text}");
+}
+
+#[test]
+fn a_play_guard_sees_the_same_copies_as_the_draw() {
+    let hit = scene(
+        "@target t.png 40x40\nanim tint dur:1s\n  .eye.1 fill:#ff0000\nlet n = 2\nrepeat n\n  circle 8 fill:#ffffff name:eye\nif @eye.1\n  play tint\n",
+    );
+    assert_eq!(fill_hex(node(&hit, "eye.1")), "#ff0000");
+    assert_eq!(fill_hex(node(&hit, "eye.0")), "#ffffff");
+
+    let grid = scene(
+        "@target t.png 80x80\nanim tint dur:1s\n  .gem.3 fill:#ff0000\ngrid 2x2\n  circle 4 fill:#ffffff name:gem\nif @gem.3\n  play tint\n",
+    );
+    assert_eq!(fill_hex(node(&grid, "gem.3")), "#ff0000");
+    assert_eq!(fill_hex(node(&grid, "gem.0")), "#ffffff");
+
+    let family = run_with(
+        "@target t.png 40x40\nanim tint dur:1s\n  .eye.0 fill:#ff0000\nrepeat 2\n  circle 8 fill:#ffffff name:eye\nif @eye\n  play tint\n",
+        &[],
+    );
+    let d = diag(&family, "E0343");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 6);
+    assert!(d.fix.is_some(), "{d}");
+    assert_eq!(fill_hex(node(family.scene.as_ref().unwrap(), "eye.0")), "#ffffff");
+}
+
+#[test]
+fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
+    let ev = run_with(
+        "@target t.png 80x80\ndef host\n  circle 4 at:0,0 name:eye\n  slot hole\nhost name:host at:40,40\n  hole:\n    circle 4 at:0,12 name:b\n    assert level(@b @eye) tol:.5\n",
+        &[],
+    );
+    let d = diag(&ev, "C0101");
+    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.span.line, 8);
+    let fix = d.fix.as_deref().unwrap();
+    assert!(fix.contains("host.eye"), "{d}");
+    assert!(!fix.contains("add name:"), "{d}");
+}

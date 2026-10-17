@@ -1972,6 +1972,16 @@ impl<'a> Evaluator<'a> {
         let key = sc.node_key(span);
         self.anchors.insert(key.to_string(), p);
         if let Some(id) = sc.decl_at(span) {
+            let region = sc.names.borrow().region();
+            let own = sc.pending.arrive(id, &region, &sc.scope_copies).own;
+            for patch in &own {
+                identity::reject_anchor_patch(
+                    patch,
+                    &sc.node_name(),
+                    &mut self.reported,
+                    &mut self.diags,
+                );
+            }
             self.place(sc, id, &key, sc.world, None, Some(p), at, None);
         }
         Ok(())
@@ -2591,6 +2601,7 @@ impl<'a> Evaluator<'a> {
         });
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
+        self.report_unlanded(&body_scope);
         let mut node = new_node(
             path.clone(),
             origin,
@@ -2696,6 +2707,21 @@ impl<'a> Evaluator<'a> {
         )
     }
 
+    pub(crate) fn report_unlanded(&mut self, sc: &Scope) {
+        let pending = Rc::clone(&sc.pending);
+        let owner = sc.owner().clone();
+        let at = sc.node_name();
+        let names = sc.names.borrow();
+        identity::report_misses(
+            &pending,
+            &names,
+            &owner,
+            &at,
+            &mut self.reported,
+            &mut self.diags,
+        );
+    }
+
     fn slot(
         &mut self,
         st: &Scene,
@@ -2796,6 +2822,7 @@ impl<'a> Evaluator<'a> {
             Some((body, _, _)) => self.eval_block_nodes(body, &mut inner),
             None => self.eval_block_nodes(fallback, &mut inner),
         };
+        self.report_unlanded(&inner);
         let mut node = new_node(
             path,
             format!("{}:{}", sc.file(), st.span.line),
@@ -2911,6 +2938,14 @@ impl<'a> Evaluator<'a> {
             self.reserve_call_block(draw, sc);
             return;
         }
+        if verb == "repeat" || verb == "grid" {
+            self.collect_loop(draw, sc, span, &key);
+            return;
+        }
+        self.collect_body(draw, sc, &key);
+    }
+
+    fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
         let mut inner = sc.child(key.clone(), sc.frame, sc.world);
         for item in draw.body.items() {
             match item {
@@ -2926,6 +2961,54 @@ impl<'a> Evaluator<'a> {
                 }
                 _ => {}
             }
+        }
+    }
+
+    /// Registers each `repeat` or `grid` copy the draw pass will register.
+    /// A count that cannot be read registers none, so a later `if @name.0` does not see a stub.
+    fn collect_loop(&mut self, draw: &Draw, sc: &Scope, span: Span, key: &Key) {
+        self.seed_node(sc.file(), key);
+        let n = self.loop_copies(draw, sc);
+        if n == 0 {
+            return;
+        }
+        for item in draw.body.items() {
+            if let DrawItem::Mask {
+                mask: ast::Mask::Block(body),
+                ..
+            } = item
+            {
+                let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
+                self.collect_surface(body, &mut mask_sc, false);
+            }
+        }
+        for i in 0..n {
+            let mut inner = sc.iteration(span, i as u32);
+            for item in draw.body.items() {
+                if let DrawItem::Scene(st) = item {
+                    let _ = self.collect_one(st, &mut inner, false);
+                }
+            }
+        }
+    }
+
+    fn loop_copies(&mut self, draw: &Draw, sc: &Scope) -> usize {
+        let Some(expr) = draw.args.first() else {
+            return 0;
+        };
+        let Ok(v) = self.quiet_expr(expr, sc) else {
+            return 0;
+        };
+        match draw.verb.as_str() {
+            "repeat" => v
+                .num()
+                .map(|n| (n.max(0.0) as usize).min(10_000))
+                .unwrap_or(0),
+            "grid" => v
+                .vec2()
+                .map(|(cols, rows)| cols.max(1.0) as usize * rows.max(1.0) as usize)
+                .unwrap_or(0),
+            _ => 0,
         }
     }
 
@@ -3911,7 +3994,13 @@ impl<'a> Evaluator<'a> {
                 )));
             }
             if !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()) {
-                let ix: u32 = seg.parse().unwrap_or(0);
+                let Ok(ix) = seg.parse::<u32>() else {
+                    return Err(fail(
+                        "E0350",
+                        format!("`@{label}.{seg}` is not a copy index"),
+                    )
+                    .fix("write a whole number that fits"));
+                };
                 cur.retain(|r| r.record.key.copy_at(index_depth) == Some(ix));
                 index_depth += 1;
                 label = format!("{label}.{seg}");
@@ -3954,7 +4043,11 @@ impl<'a> Evaluator<'a> {
             }
             cur = matched;
             label = format!("{label}.{seg}");
-            index_depth = 0;
+            index_depth = if one.record.inner.is_some() {
+                0
+            } else {
+                one.record.key.trailing_copies().len()
+            };
             i += 1;
         }
         match cur.len() {

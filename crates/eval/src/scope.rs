@@ -189,18 +189,27 @@ impl RefVal {
         }
     }
 
-    /// Named direct tree children. An instance or a slot lists the scope it opens.
+    /// Named direct tree children of this copy. An instance or a slot lists the scope it opens.
     pub fn children(&self) -> Vec<RefVal> {
-        let entries = if let Some(inner) = &self.record.inner {
-            inner.borrow().children_of(None)
+        let (entries, prefix_len) = if let Some(inner) = &self.record.inner {
+            (inner.borrow().children_of(None, &[]), 0)
         } else if let (Some(home), Some(decl)) = (&self.record.home, self.record.decl) {
-            home.borrow().children_of(Some(decl))
+            let prefix = self.record.key.trailing_copies();
+            let n = prefix.len();
+            (home.borrow().children_of(Some(decl), &prefix), n)
         } else {
             return Vec::new();
         };
         entries
             .into_iter()
-            .map(|e| ref_from(&e, &format!("{}.{}", self.label, e.name)))
+            .map(|e| {
+                let extra = e.record.borrow().key.trailing_copies();
+                let mut label = format!("{}.{}", self.label, e.name);
+                for c in extra.iter().skip(prefix_len) {
+                    label.push_str(&format!(".{c}"));
+                }
+                ref_from(&e, &label)
+            })
             .collect()
     }
 

@@ -52,12 +52,17 @@ fn nudge(r: &RefVal, dx: f64, dy: f64, owner: &crate::identity::Key) -> Option<S
     if r.canvas.is_some() || r.record.anchor.is_some() {
         return None;
     }
-    let Some(addr) = r.record.key.address_from(owner) else {
+    if !r.record.key.is_stable() {
         return Some("add name:".into());
-    };
+    }
     let inv = r.record.parent_world.invert()?;
     let d = inv.map_vector(Vector::new(dx as f32, dy as f32));
     let (x, y) = (r.record.at.0 + d.x as f64, r.record.at.1 + d.y as f64);
+    let addr = r
+        .record
+        .key
+        .address_from(owner)
+        .unwrap_or_else(|| format!(".{}", r.record.key));
     Some(format!("set {addr} at:{},{}", num(x), num(y)))
 }
 

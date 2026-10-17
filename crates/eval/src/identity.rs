@@ -177,7 +177,8 @@ impl Key {
         }
     }
 
-    pub fn copy_at(&self, depth: usize) -> Option<u32> {
+    /// Loop indices after the last name or positional segment.
+    pub fn trailing_copies(&self) -> Vec<u32> {
         let mut out = Vec::new();
         for seg in self.segs.iter().rev() {
             match seg {
@@ -186,7 +187,11 @@ impl Key {
             }
         }
         out.reverse();
-        out.get(depth).copied()
+        out
+    }
+
+    pub fn copy_at(&self, depth: usize) -> Option<u32> {
+        self.trailing_copies().get(depth).copied()
     }
 
     pub fn is_stable(&self) -> bool {
@@ -453,12 +458,32 @@ impl Region {
 
     /// The first unnamed statement whose verb `seg` spells, alone or with a count after it.
     pub fn anon_hint(&self, seg: &str) -> Option<&Site> {
+        let mut verb: Option<&str> = None;
+        for (name, _) in &self.anon {
+            let Some(rest) = seg.strip_prefix(name.as_ref()) else {
+                continue;
+            };
+            if !rest.chars().all(|c| c.is_ascii_digit()) {
+                continue;
+            }
+            if verb.is_none_or(|v| name.len() > v.len()) {
+                verb = Some(name);
+            }
+        }
+        let verb = verb?;
+        let rest = seg.strip_prefix(verb).unwrap_or("");
+        let want = if rest.is_empty() {
+            1usize
+        } else {
+            match rest.parse::<usize>() {
+                Ok(n) if n >= 1 => n,
+                _ => return None,
+            }
+        };
         self.anon
             .iter()
-            .find(|(verb, _)| {
-                seg.strip_prefix(&**verb)
-                    .is_some_and(|rest| rest.chars().all(|c| c.is_ascii_digit()))
-            })
+            .filter(|(name, _)| name.as_ref() == verb)
+            .nth(want - 1)
             .map(|(_, site)| site)
     }
 }
@@ -890,7 +915,7 @@ pub fn hops_from(segs: &[String]) -> Option<Vec<Hop>> {
             }
             hops.push(Hop::Star);
         } else if !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit()) {
-            hops.push(Hop::Index(seg.parse().unwrap_or(0)));
+            hops.push(Hop::Index(seg.parse().ok()?));
         } else {
             let name = Name::parse(seg)?;
             hops.push(Hop::Name(name));
@@ -949,20 +974,33 @@ impl Names {
         }
     }
 
-    /// Drawn names whose tree parent is `parent`, declaration order, copies in index order.
-    pub fn children_of(&self, parent: Option<DeclId>) -> Vec<Entry> {
+    /// Drawn names whose tree parent is `parent`. `prefix` is that parent's own loop indices,
+    /// so a hop through copy 1 does not see copy 0. An opened scope passes an empty prefix.
+    pub fn children_of(&self, parent: Option<DeclId>, prefix: &[u32]) -> Vec<Entry> {
         let mut out = Vec::new();
         for id in self.region.decl_ids() {
             if self.region.decl(id).tree_parent != parent {
                 continue;
             }
             match &self.rows[id.0] {
-                Row::One(e) => out.push(e.clone()),
-                Row::Copies(map) => out.extend(map.values().cloned()),
-                Row::Undrawn => {}
+                Row::One(e) if prefix.is_empty() => out.push(e.clone()),
+                Row::Copies(map) => out.extend(
+                    map.iter()
+                        .filter(|(k, _)| k.starts_with(prefix))
+                        .map(|(_, e)| e.clone()),
+                ),
+                _ => {}
             }
         }
         out
+    }
+
+    pub fn drawn(&self, id: DeclId) -> Vec<Entry> {
+        match &self.rows[id.0] {
+            Row::Undrawn => Vec::new(),
+            Row::One(e) => vec![e.clone()],
+            Row::Copies(map) => map.values().cloned().collect(),
+        }
     }
 }
 
@@ -1211,6 +1249,10 @@ impl Pending {
         Pending { items: Vec::new() }
     }
 
+    pub fn items(&self) -> &[PendingPatch] {
+        &self.items
+    }
+
     /// Patches for this decl at `copies`. A following name is forwarded when the decl opens a scope.
     pub fn arrive(&self, decl: DeclId, region: &Region, copies: &[u32]) -> Arrival {
         let d = region.decl(decl);
@@ -1311,8 +1353,8 @@ fn validate(
         ),
         Hop::Name(name) => {
             let ids = region.lookup(name.as_str());
+            let shown = hop_text(&patch.rest);
             if ids.is_empty() {
-                let shown = hop_text(&patch.rest);
                 let (notes, fix) = if let Some(site) = region.anon_hint(name.as_str()) {
                     let verb = region
                         .anon
@@ -1367,6 +1409,15 @@ fn validate(
                 }
             }
             if patch.rest[i..].is_empty() {
+                if ids.iter().any(|&id| region.decl(id).kind == NameKind::Anchor)
+                    && ids.iter().all(|&id| region.decl(id).kind == NameKind::Anchor)
+                {
+                    return fail(
+                        format!("patch `.{shown}` names anchor `{name}`, which has no node"),
+                        Vec::new(),
+                        "patch a shape or a group".into(),
+                    );
+                }
                 return true;
             }
             if patch.rest[i..]
@@ -1386,8 +1437,6 @@ fn validate(
             if opens {
                 return true;
             }
-            let rest = hop_text(&patch.rest[i..]);
-            let shown = hop_text(&patch.rest);
             let msg = match &patch.anim {
                 Some(anim) => format!(
                     "`{anim}` patch `.{shown}` hops through `{name}`, which is not an instance or a slot"
@@ -1396,9 +1445,147 @@ fn validate(
                     "patch `.{shown}` hops through `{name}`, which is not an instance or a slot"
                 ),
             };
-            fail(msg, Vec::new(), format!("write .{rest}"))
+            let fix = child_fix(&patch.rest[1..i], &patch.rest[i..], region, ids);
+            fail(msg, Vec::new(), fix)
         }
     }
+}
+
+fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]) -> String {
+    if rest.len() == 1 && matches!(rest.first(), Some(Hop::Star)) {
+        let mut kids = Vec::new();
+        for id in region.decl_ids() {
+            let decl = region.decl(id);
+            if decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
+                let name = decl.name.to_string();
+                if !kids.contains(&name) {
+                    kids.push(name);
+                }
+            }
+        }
+        let Some(first) = kids.first() else {
+            return "name the part under this node".into();
+        };
+        let mut addr = format!(".{first}");
+        for hop in consumed {
+            addr.push('.');
+            addr.push_str(&hop.to_string());
+        }
+        return format!("write {addr}");
+    }
+    let mut indices: Vec<String> = consumed.iter().map(|h| h.to_string()).collect();
+    let mut name = None;
+    let mut after = Vec::new();
+    for hop in rest {
+        match hop {
+            Hop::Index(i) if name.is_none() => indices.push(i.to_string()),
+            Hop::Name(n) if name.is_none() => name = Some(n.to_string()),
+            other => after.push(other.to_string()),
+        }
+    }
+    let Some(name) = name else {
+        return "write a name, as in `.eye`".into();
+    };
+    let mut parts = vec![name];
+    parts.extend(indices);
+    parts.extend(after);
+    format!("write .{}", parts.join("."))
+}
+
+/// A patch whose name was drawn, but whose index matches none of those copies.
+/// A name that was not drawn at all stays quiet.
+pub fn missed_landing(patch: &PendingPatch, names: &Names, owner: &Key) -> Option<String> {
+    let Hop::Name(name) = patch.rest.first()? else {
+        return None;
+    };
+    let ids = names.region.lookup(name.as_str());
+    if ids.is_empty() {
+        return None;
+    }
+    let mut fix = None;
+    let mut landed = false;
+    for &id in ids {
+        let decl = names.region.decl(id);
+        for entry in names.drawn(id) {
+            if fix.is_none() {
+                fix = entry
+                    .record
+                    .borrow()
+                    .key
+                    .address_from(owner)
+                    .or_else(|| Some(format!(".{}", entry.record.borrow().key)));
+            }
+            if take(
+                patch,
+                &decl.name,
+                decl.tree_parent,
+                &decl.loops,
+                &entry.record.borrow().key.trailing_copies(),
+            )
+            .is_some_and(|rest| rest.is_empty() || decl.kind.opens_scope())
+            {
+                landed = true;
+            }
+        }
+    }
+    if landed { None } else { fix }
+}
+
+/// Reports one E0340 when a patch that survived entry matches no drawn copy.
+pub fn report_misses(
+    pending: &Pending,
+    names: &Names,
+    owner: &Key,
+    at_node: &str,
+    reported: &mut BTreeSet<ReportKey>,
+    out: &mut Vec<Diagnostic>,
+) {
+    for patch in pending.items() {
+        let Some(addr) = missed_landing(patch, names, owner) else {
+            continue;
+        };
+        if !reported.insert(report_key(patch)) {
+            continue;
+        }
+        let hops = hop_text(&patch.rest);
+        let msg = match &patch.anim {
+            Some(anim) => format!("`{anim}` patch `.{hops}` matches no drawn copy"),
+            None => format!("patch `.{hops}` matches no drawn copy"),
+        };
+        out.push(
+            Diagnostic::error("E0340", patch.report.span, msg)
+                .with_fix(format!("write {addr}"))
+                .in_file(&*patch.report.file)
+                .at_node(at_node),
+        );
+    }
+}
+
+/// A patch that landed on an anchor has no node to change.
+pub fn reject_anchor_patch(
+    patch: &PendingPatch,
+    at_node: &str,
+    reported: &mut BTreeSet<ReportKey>,
+    out: &mut Vec<Diagnostic>,
+) {
+    if !reported.insert(report_key(patch)) {
+        return;
+    }
+    let shown = hop_text(&patch.rest);
+    let name = match patch.rest.first() {
+        Some(Hop::Name(n)) => n.to_string(),
+        _ => shown.clone(),
+    };
+    out.push(
+        Diagnostic::error(
+            "E0340",
+            patch.report.span,
+            format!("patch `.{shown}` names anchor `{name}`, which has no node"),
+        )
+        .with_fix("patch a shape or a group")
+        .in_file(&*patch.report.file)
+        .at_node(at_node),
+    );
 }
 
 fn report_key(patch: &PendingPatch) -> ReportKey {

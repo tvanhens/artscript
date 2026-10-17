@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use artscript_ir::{Effect, EffectOp, Matrix, Node, NodeKind, Paint, Scene};
+use artscript_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Scene};
 
 use crate::value::num;
 
@@ -75,6 +75,13 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
     }
     let _ = writeln!(out, "  ({})", n.origin);
     let world = parent * n.transform;
+    if let Some(mask) = &n.mask
+        && let MaskSource::Nodes(nodes) = &mask.source
+    {
+        for c in nodes {
+            walk(c, world, depth + 1, seeded, out);
+        }
+    }
     for c in n.children() {
         walk(c, world, depth + 1, seeded, out);
     }

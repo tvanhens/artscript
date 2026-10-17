@@ -84,6 +84,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     let scenes: Vec<_> = file.scenes().cloned().collect();
     ev.collect_entry(&scenes, &mut sc);
     let children = ev.eval_block_nodes(file.scenes(), &mut sc);
+    ev.report_unlanded(&sc);
     let checks = sc.checks.clone();
     ev.run_checks(&checks);
     let background = match &job.bg {
