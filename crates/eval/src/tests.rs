@@ -3724,6 +3724,14 @@ fn a_geometry_guard_without_a_play_is_not_e0344() {
 }
 
 #[test]
+fn a_play_none_under_a_geometry_guard_is_not_e0344() {
+    let s = scene(
+        "@target t.png 40x40\ncircle 4 name:marker\nif @marker.w > 0\n  play none\neach x in [@marker.w]\n  play none\n",
+    );
+    node(&s, "marker");
+}
+
+#[test]
 fn a_top_level_play_input_that_reads_the_drawn_scene_is_e0344() {
     let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
     for (tail, line) in [
@@ -3734,6 +3742,8 @@ fn a_top_level_play_input_that_reads_the_drawn_scene_is_e0344() {
         ("let w = @marker.w\neach x in [if w == none then 0 else 5]\n  play bob start:x\n", 7),
         ("group g\n  circle 4 name:a\nlet n = [each k in @g.* -> 1]\nanim fade dur:1s\n  .c a:(if n == [] then .25 else .9)\nplay fade\n", 10),
         ("each i in 0..3\n  if @marker.w > 0\n    play bob\n", 7),
+        ("rule r\n  check true\nlet floor = if @marker.w > 0 then r else r\nplay bob start:floor(1)\n", 9),
+        ("def hero size:8x8\n  circle 4\nlet k = if @marker.w > 100 then hero else none\nk name:x\nplay bob start:(if @x then 0 else 1)\n", 10),
     ] {
         let ev = run_with(&format!("{head}{tail}"), &[]);
         let errors: Vec<_> = ev
