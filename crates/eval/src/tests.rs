@@ -3647,3 +3647,78 @@ fn manifest_errors_point_at_the_bad_line() {
         assert_eq!((err.span.line, err.span.col), (line, col), "{src:?}: {}", err.message);
     }
 }
+
+#[test]
+fn every_play_of_an_instance_each_stays_ahead_of_a_later_play() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\ncircle 4 name:marker\nhero name:hero\n  each x in [@marker.w 1]\n    play inner\nplay outer\n",
+    );
+    let eye = node(&s, "hero.eye");
+    assert!((eye.opacity - 0.2).abs() < 1e-4, "{}", eye.opacity);
+}
+
+#[test]
+fn plays_in_a_file_each_apply_in_iteration_order() {
+    let s = scene(
+        "@target t.png 40x40\nanim inner dur:1s\n  .eye a:.8\nanim outer dur:1s\n  .hero.eye a:.2\ndef hero size:40x40\n  circle 4 name:eye\neach i in 0..2\n  hero name:hero\n    play inner\n  if i == 0\n    play outer\n",
+    );
+    let first = node(&s, "hero.0.eye").opacity;
+    let second = node(&s, "hero.1.eye").opacity;
+    assert!((first - 0.2).abs() < 1e-4, "{first}");
+    assert!((second - 0.8).abs() < 1e-4, "{second}");
+}
+
+#[test]
+fn an_entry_play_beats_a_play_in_a_def_body() {
+    let s = scene_with(
+        "@target t.png 40x40\nuse knight { knight }\nanim outer dur:1s\n  .knight.helmet.eye a:.2\nknight name:knight\nplay outer\n",
+        &[(
+            "lib/knight.art",
+            "anim inner dur:1s\n  .eye a:.8\ndef helmet size:40x40\n  circle 4 name:eye\ndef knight size:40x40\n  helmet name:helmet\n    play inner\n",
+        )],
+    );
+    let eye = node(&s, "knight.helmet.eye").opacity;
+    assert!((eye - 0.2).abs() < 1e-4, "{eye}");
+}
+
+#[test]
+fn a_file_play_guard_that_reads_the_drawn_scene_is_e0344() {
+    let head = "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\n";
+    for (guard, line) in [
+        ("if @marker.w > 0\n  play bob\n", 5),
+        ("each x in [@marker.w]\n  play bob\n", 5),
+        ("let w = @marker.w\nif w > 0\n  play bob\n", 6),
+        ("if true\n  each x in 0..@marker.w\n    play bob\n", 6),
+    ] {
+        let ev = run_with(&format!("{head}{guard}"), &[]);
+        let errors: Vec<_> = ev
+            .diagnostics
+            .iter()
+            .filter(|d| d.code.starts_with('E'))
+            .collect();
+        assert_eq!(errors.len(), 1, "{guard}\n{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].code, "E0344", "{guard}\n{}", errors[0]);
+        assert_eq!(errors[0].span.line, line, "{guard}\n{}", errors[0]);
+    }
+    let s = scene(&format!("{head}group g\n  circle 4 name:dot\nif @dot\n  play bob\n"));
+    near(at(node(&s, "marker")), (30.0, 20.0));
+}
+
+#[test]
+fn a_file_play_guard_that_fails_in_both_passes_is_reported_once() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\nif @missing.w > 0\n  play bob\n",
+        &[],
+    );
+    let codes: Vec<_> = ev.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E0350"], "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_geometry_guard_without_a_play_is_not_e0344() {
+    let s = scene(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\ncircle 4 name:marker\nif @marker.w > 0\n  circle 2 name:dot\nif true\n  play bob\n",
+    );
+    near(at(node(&s, "marker")), (30.0, 20.0));
+    node(&s, "dot");
+}
