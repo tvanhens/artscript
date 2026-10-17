@@ -1,0 +1,71 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "2c73e7dee7908c3f",
+      "line": 4,
+      "matrix": {},
+      "path": "avatar-dark.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "avatar_dark"
+    },
+    {
+      "checks": [],
+      "hash": "7410e95d5e260c20",
+      "line": 6,
+      "matrix": {},
+      "path": "avatar-mono.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "avatar_mono"
+    },
+    {
+      "checks": [],
+      "hash": "63dd15e7583e87b6",
+      "line": 5,
+      "matrix": {},
+      "path": "avatar-paper.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "avatar_paper"
+    },
+    {
+      "checks": [],
+      "hash": "8855f5c8108b03bb",
+      "line": 1,
+      "matrix": {},
+      "path": "logo-dark.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "dark"
+    },
+    {
+      "checks": [],
+      "hash": "088e53bbb89a660d",
+      "line": 3,
+      "matrix": {},
+      "path": "logo-mono.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "mono"
+    },
+    {
+      "checks": [],
+      "hash": "99c37ad2d6e55b32",
+      "line": 2,
+      "matrix": {},
+      "path": "logo-paper.png",
+      "scale": 1.0,
+      "source": "logo.art",
+      "status": "pass",
+      "target": "paper"
+    }
+  ],
+  "version": 1
+}
