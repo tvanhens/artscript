@@ -1,8 +1,8 @@
 # artscript semantics
 
-These notes describe the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs. When you change a rule, update this file and `docs/language.md` in the same change.
+These notes describe the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs. When you change a rule, update this file, `docs/language.md`, and the matching file in `docs/topics/` in the same change.
 
-`docs/language.md` is the author-facing card for the same draft. This file records details that the card leaves out. When the two files disagree, choose the better behavior and make them agree.
+`docs/language.md` is the author-facing core card for the same draft, and `docs/topics/` holds the author-facing rules for each topic. This file records details that the card and the topics leave out. When they disagree, choose the better behavior and make them agree.
 
 ## 1. Lexing
 

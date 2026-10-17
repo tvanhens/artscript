@@ -1,12 +1,12 @@
 # artscript
 
-`docs/semantics.md` and `docs/language.md` describe the draft the code implements today. The design is still open. A better design can replace any rule in either file, and it can break today's outputs.
+`docs/semantics.md`, `docs/language.md`, and the topic files in `docs/topics/` describe the draft the code implements today. The design is still open. A better design can replace any rule in any of these files, and it can break today's outputs.
 
 ## Code Review Rules
 
 ### The design is still open
 
-Choose the better design. When that design breaks today's behavior, accept the break and update both docs in the same change.
+Choose the better design. When that design breaks today's behavior, accept the break and update the docs in the same change.
 
 Flag a change that leaves the code and the docs describing different behavior. Choose the better behavior and make them agree in that change.
 
@@ -16,7 +16,7 @@ A limit that drops or corrupts output and reports no error is a finding even whe
 
 Write a rule into the docs when you want that behavior. Accidental behavior stays out of the docs until you choose it.
 
-When the two docs disagree, choose the better behavior and make them agree. A row in `docs/decisions.tsv` records an earlier choice. Replace that choice when a better design needs it, and append a new row. Leave the old row as it is.
+When the docs disagree, choose the better behavior and make them agree. A row in `docs/decisions.tsv` records an earlier choice. Replace that choice when a better design needs it, and append a new row. Leave the old row as it is.
 
 ### Inputs are the author's own files
 

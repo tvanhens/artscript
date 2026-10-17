@@ -30,7 +30,7 @@ A game or an app needs hundreds of icons, characters, props, and their variants.
 
 ## Built for the model's side of the loop
 
-**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger. The whole language card, [`docs/language.md`](docs/language.md), is 4,608 tokens, so it fits in a system prompt.
+**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger. The core language card, [`docs/language.md`](docs/language.md), is 614 tokens. `artscript docs <topic>` adds only the topics a task needs, and all ten together are 4,686 tokens.
 
 | Piece | `.art` tokens | Built `.svg` tokens (vector markup only) |
 |---|---:|---:|
@@ -126,7 +126,7 @@ The file is 435 tokens.
 
 ## The agent loop
 
-1. Give the model [`docs/language.md`](docs/language.md) and the project's palette and component libraries.
+1. Give the model the output of `artscript docs <topic>...` for the topics the task touches, and the project's palette and component libraries.
 2. The model writes or edits an `.art` file.
 3. Run `artscript check --json`. Feed any diagnostics back, and repeat until it exits 0.
 4. Run `artscript build --only '<its files>'` to render.
@@ -176,7 +176,7 @@ artscript build
 
 ## Learn more
 
-- [`docs/language.md`](docs/language.md) is the one-page language card.
+- [`docs/language.md`](docs/language.md) is the core language card, and [`docs/topics/`](docs/topics) holds one file per topic. `artscript docs` prints both.
 - [`docs/semantics.md`](docs/semantics.md) holds the details the card leaves out.
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
 

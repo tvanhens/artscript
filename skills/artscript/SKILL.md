@@ -10,7 +10,17 @@ artscript is a declarative language for vector art. You write `.art` files. `art
 ## Before you draw
 
 1. Run `artscript --version`. If it fails, tell the user that the `artscript` binary must be on PATH, and stop.
-2. Run `artscript docs` and read the whole output once per session. It is the language card for the installed version. Do not guess syntax from memory.
+2. Run `artscript docs <topic> [topic...]` once per session, naming every topic the task touches. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
+   - `targets` @target keys, entry files and libraries, use, the manifest palette p
+   - `values` the values table, expressions, operators, functions
+   - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients
+   - `shapes` the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter)
+   - `structure` layer and group, clipping by nesting, inside/outside, mask, fx, finish
+   - `fields` noise fields, fbm, ridged, field fills and masks, seeds
+   - `components` def, size box, slots, patches, let/if/each, style
+   - `anim` t, key, anim, play, node keys, explain
+   - `checks` assert, expect, measurements, check functions, rule
+   - `cli` commands, flags, docs topics, exit codes
 3. Find the project root: the nearest `artscript.toml`. If there is none, run `artscript init` in the folder where the art belongs, then delete the starter `art/hello.art`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
 
 ## The loop
