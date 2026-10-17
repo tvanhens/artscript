@@ -30,7 +30,7 @@ A game or an app needs hundreds of icons, characters, props, and their variants.
 
 ## Built for the model's side of the loop
 
-**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger. The core language card, [`docs/language.md`](docs/language.md), is 614 tokens. `artscript docs <topic>` adds only the topics a task needs, and all ten together are 4,686 tokens.
+**Small enough to write in one turn.** The six chibi pieces average 4,135 tokens each. The SVGs they build are 43 times larger. The core language card, [`docs/language.md`](docs/language.md), is 644 tokens. `artscript docs <topic>` adds only the topics a task needs, and all eleven together are 5,236 tokens.
 
 | Piece | `.art` tokens | Built `.svg` tokens (vector markup only) |
 |---|---:|---:|

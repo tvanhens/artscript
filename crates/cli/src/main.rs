@@ -80,6 +80,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("anim", include_str!("../../../docs/topics/anim.md")),
     ("checks", include_str!("../../../docs/topics/checks.md")),
     ("cli", include_str!("../../../docs/topics/cli.md")),
+    ("craft", include_str!("../../../docs/topics/craft.md")),
 ];
 
 fn docs(names: &[String]) -> u8 {
