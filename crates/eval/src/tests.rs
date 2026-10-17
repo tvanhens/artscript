@@ -792,7 +792,11 @@ fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
 fn png(src: &str) -> Vec<u8> {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
-    artscript_render::render_png(&ev.scene.unwrap(), ev_scale(src)).unwrap()
+    artscript_render::render_png(
+        &ev.scene.unwrap(),
+        ev_scale(src),
+        artscript_render::Backend::Cpu,
+    ).unwrap()
 }
 
 fn ev_scale(src: &str) -> f32 {
@@ -2646,7 +2650,7 @@ fn eval_lint(src: &str, lint: &str) -> Evaluation {
 }
 
 fn pixel(scene: &Scene, x: i32, y: i32) -> [u8; 4] {
-    let (w, h, buf) = artscript_render::render_rgba(scene, 1.0).unwrap();
+    let (w, h, buf) = artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
     assert!(x >= 0 && y >= 0 && x < w as i32 && y < h as i32, "{w}x{h} has no {x},{y}");
     let i = ((y as u32 * w) + x as u32) as usize * 4;
     [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
@@ -3602,4 +3606,25 @@ fn one_inner_copy_keeps_the_outer_index() {
         "@target t.png 80x40\neach row in 0..2\n  each col in 0..1\n    circle 4 at:(row * 30),0 name:dot\n  assert @dot.0.cx ~= row * 30\n",
     );
     assert!(paths(&s).contains(&"dot.1.0".to_string()));
+}
+
+#[test]
+fn manifest_backend_defaults_to_auto_and_rejects_unknown_values() {
+    use crate::{BackendChoice, Manifest};
+
+    assert_eq!(Manifest::parse("").unwrap().backend, BackendChoice::Auto);
+    for (value, want) in [
+        ("auto", BackendChoice::Auto),
+        ("gpu", BackendChoice::Gpu),
+        ("cpu", BackendChoice::Cpu),
+    ] {
+        let manifest = Manifest::parse(&format!("[build]\nbackend = \"{value}\"\n")).unwrap();
+        assert_eq!(manifest.backend, want);
+    }
+    for bad in ["backend = \"metal\"", "backend = 1"] {
+        let err = Manifest::parse(&format!("[project]\n[build]\n{bad}\n")).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert!(err.message.contains("[build]"), "{}", err.message);
+        assert_eq!(err.span.line, 3, "the error points at the backend line");
+    }
 }

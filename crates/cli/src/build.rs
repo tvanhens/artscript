@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use artscript_eval::{Format, Project, TargetJob, dependencies, evaluate, fnv1a, plan};
+use artscript_eval::{BackendChoice, Format, Project, TargetJob, dependencies, evaluate, fnv1a, plan};
+use artscript_render::Backend;
 use artscript_syntax::ast::Span;
 use artscript_syntax::{Diagnostic, Severity};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,8 @@ const CACHE_DIR: &str = ".artscript/cache";
 pub struct Options {
     pub only: Option<String>,
     pub allow_warnings: bool,
+    /// Overrides the manifest's `[build] backend`.
+    pub backend: Option<BackendChoice>,
 }
 
 /// What one target produced: output bytes' hashes plus its diagnostics.
@@ -99,7 +102,7 @@ fn hex(bytes: &[u8]) -> String {
     format!("{:016x}", fnv1a(bytes))
 }
 
-fn cache_key(project: &Project, job: &TargetJob) -> String {
+fn cache_key(project: &Project, job: &TargetJob, backend: Backend) -> String {
     let mut buf = Vec::new();
     for dep in dependencies(project, &job.source) {
         buf.extend_from_slice(dep.as_bytes());
@@ -116,6 +119,8 @@ fn cache_key(project: &Project, job: &TargetJob) -> String {
     buf.extend_from_slice(project.manifest_src.as_bytes());
     buf.push(0);
     buf.extend_from_slice(renderer_id().as_bytes());
+    buf.push(0);
+    buf.extend_from_slice(format!("{backend:?}").as_bytes());
     buf.push(0);
     buf.extend_from_slice(job.key().as_bytes());
     hex(&buf)
@@ -196,13 +201,13 @@ fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic
     }
 }
 
-fn run_job(project: &Project, out_dir: &Path, job: &TargetJob) -> Outcome {
-    let key = cache_key(project, job);
+fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend) -> Outcome {
+    let key = cache_key(project, job, backend);
     if let Some(hit) = cache_hit(project, out_dir, job, &key) {
         return hit;
     }
     if job.outputs.iter().any(|o| o.format == Format::Gif) {
-        return run_gif(project, out_dir, job, key);
+        return run_gif(project, out_dir, job, key, backend);
     }
     let ev = evaluate(project, job);
     let mut diagnostics = ev.diagnostics;
@@ -213,8 +218,8 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob) -> Outcome {
     if let (Some(scene), false) = (&ev.scene, compile_error) {
         for out in &job.outputs {
             let bytes = match out.format {
-                Format::Png => artscript_render::render_png(scene, out.scale),
-                Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale)
+                Format::Png => artscript_render::render_png(scene, out.scale, backend),
+                Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale, backend)
                     .map(String::into_bytes),
                 Format::Gif => Err(artscript_render::RenderError::Skia(
                     "gif is rendered through sample".into(),
@@ -260,7 +265,13 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob) -> Outcome {
     }
 }
 
-fn run_gif(project: &Project, out_dir: &Path, job: &TargetJob, key: String) -> Outcome {
+fn run_gif(
+    project: &Project,
+    out_dir: &Path,
+    job: &TargetJob,
+    key: String,
+    backend: Backend,
+) -> Outcome {
     use artscript_eval::{frame_delays, sample};
     let sampled = sample(project, job);
     let mut diagnostics = sampled.diagnostics;
@@ -274,7 +285,7 @@ fn run_gif(project: &Project, out_dir: &Path, job: &TargetJob, key: String) -> O
     {
         let scenes: Vec<_> = sampled.frames.iter().map(|f| &f.scene).collect();
         for out in &job.outputs {
-            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sampled.loops);
+            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sampled.loops, backend);
             let bytes = match bytes {
                 Ok(b) => b,
                 Err(artscript_render::RenderError::TransparentGif) => {
@@ -386,8 +397,30 @@ fn read_manifest(path: &Path) -> BTreeMap<String, Json> {
         .collect()
 }
 
+/// `Auto` falls back to the CPU. `None` is a forced `gpu` with no GPU, never a silent fallback.
+fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
+    match (choice, gpu) {
+        (BackendChoice::Cpu, _) | (BackendChoice::Auto, false) => Some(Backend::Cpu),
+        (BackendChoice::Gpu | BackendChoice::Auto, true) => Some(Backend::Gpu),
+        (BackendChoice::Gpu, false) => None,
+    }
+}
+
 pub fn build(project: &Project, opts: &Options) -> u8 {
     let plan = plan(project);
+    let choice = opts.backend.unwrap_or(project.manifest.backend);
+    let Some(backend) = resolve_backend(choice, artscript_render::gpu_available()) else {
+        let mut diagnostics = plan.diagnostics;
+        diagnostics.push(
+            Diagnostic::error(
+                "E0400",
+                Span::default(),
+                "the gpu backend is not available on this machine",
+            )
+            .with_fix("use `--backend auto` or `--backend cpu`, or set `[build] backend` in artscript.toml"),
+        );
+        return report(diagnostics, opts.allow_warnings, false);
+    };
     let out_dir = project.root.join(&project.manifest.out);
     let jobs: Vec<&TargetJob> = plan
         .jobs
@@ -407,7 +440,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
                     loop {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                         let Some(job) = jobs.get(i) else { break };
-                        done.push((i, run_job(project, &out_dir, job)));
+                        done.push((i, run_job(project, &out_dir, job, backend)));
                     }
                     done
                 })
@@ -469,4 +502,18 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
         project.manifest.out
     );
     report(diagnostics, opts.allow_warnings, false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn backend_resolution() {
+        assert_eq!(resolve_backend(BackendChoice::Auto, true), Some(Backend::Gpu));
+        assert_eq!(resolve_backend(BackendChoice::Auto, false), Some(Backend::Cpu));
+        assert_eq!(resolve_backend(BackendChoice::Gpu, true), Some(Backend::Gpu));
+        assert_eq!(resolve_backend(BackendChoice::Gpu, false), None, "forced gpu never falls back");
+        assert_eq!(resolve_backend(BackendChoice::Cpu, true), Some(Backend::Cpu));
+    }
 }

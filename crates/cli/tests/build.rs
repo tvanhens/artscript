@@ -162,7 +162,7 @@ fn check_json_reports_failed_asserts_with_exit_2() {
 #[test]
 fn monk_gif_frames_match_the_sampled_palette() {
     let dir = fixture("gif");
-    let built = artscript(&dir, &["build", "--only", "character/moss_monk_*.gif"]);
+    let built = artscript(&dir, &["build", "--only", "character/moss_monk_*.gif", "--backend", "cpu"]);
     assert_eq!(built.status.code(), Some(0), "{}", text(&built));
     let project = artscript_eval::load(&dir).unwrap();
     let plan = artscript_eval::plan(&project);
@@ -200,7 +200,12 @@ fn monk_gif_frames_match_the_sampled_palette() {
         let mut rasters = Vec::with_capacity(sampled.frames.len());
         for frame in &sampled.frames {
             let (w, h, px) =
-                artscript_render::render_rgba(&frame.scene, job.outputs[0].scale).unwrap();
+                artscript_render::render_rgba(
+                &frame.scene,
+                job.outputs[0].scale,
+                artscript_render::Backend::Cpu,
+            )
+            .unwrap();
             assert_eq!((w, h), (512, 512));
             rasters.push(px);
         }
@@ -453,5 +458,50 @@ fn check_reports_a_gif_without_an_opaque_background() {
         "{}",
         text(&out)
     );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn backend_flag_is_validated_and_switching_backends_rebuilds() {
+    let dir = fixture("backend");
+    let bad = artscript(&dir, &["build", "--backend", "metal"]);
+    assert_eq!(bad.status.code(), Some(1), "{}", text(&bad));
+    assert!(text(&bad).contains("backend `metal`"), "{}", text(&bad));
+    let missing = artscript(&dir, &["build", "--backend"]);
+    assert_eq!(missing.status.code(), Some(1), "{}", text(&missing));
+
+    let only = ["build", "--only", "produce/momo_peach.*"];
+    let cpu = artscript(&dir, &[&only[..], &["--backend", "cpu"]].concat());
+    assert!(cpu.status.success(), "{}", text(&cpu));
+    let png = dir.join("assets/produce/momo_peach.png");
+    let cpu_bytes = fs::read(&png).unwrap();
+    let again = artscript(&dir, &[&only[..], &["--backend=cpu"]].concat());
+    assert!(again.status.success(), "{}", text(&again));
+    assert_eq!(fs::read(&png).unwrap(), cpu_bytes);
+
+    if artscript_render::gpu_available() {
+        let gpu = artscript(&dir, &[&only[..], &["--backend", "gpu"]].concat());
+        assert!(gpu.status.success(), "{}", text(&gpu));
+        let project = artscript_eval::load(&dir).unwrap();
+        let plan = artscript_eval::plan(&project);
+        let job = plan.jobs.iter().find(|j| j.source.ends_with("momo_peach.art")).unwrap();
+        let scene = artscript_eval::evaluate(&project, job).scene.unwrap();
+        let want = artscript_render::render_png(&scene, 1.0, artscript_render::Backend::Gpu).unwrap();
+        assert_eq!(fs::read(&png).unwrap(), want, "a backend switch must re-render on the gpu");
+    }
+}
+
+#[test]
+fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
+    if artscript_render::gpu_available() {
+        return;
+    }
+    let dir = fixture("nogpu");
+    fs::write(dir.join("art/broken.art"), "@target broken.png 64x64 scale:-1\n").unwrap();
+    let out = artscript(&dir, &["build", "--backend", "gpu"]);
+    let report = text(&out);
+    assert_ne!(out.status.code(), Some(0), "{report}");
+    assert!(report.contains("E0400"), "{report}");
+    assert!(report.contains("E0206"), "plan errors survive a missing gpu: {report}");
     let _ = fs::remove_dir_all(&dir);
 }

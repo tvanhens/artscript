@@ -211,6 +211,7 @@ fn seed_pair(seed: u32) -> (f32, f32) {
 }
 
 fn ramp_shader(stops: &[Stop]) -> Result<Shader, RenderError> {
+    // A 256-entry lookup table, kept on the CPU so every backend samples the same colors.
     let mut surface = surfaces::raster_n32_premul((256, 1))
         .ok_or_else(|| RenderError::Skia("ramp surface".into()))?;
     let canvas = surface.canvas();

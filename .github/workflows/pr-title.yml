@@ -1,0 +1,21 @@
+name: pr-title
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  conventional:
+    runs-on: ubuntu-24.04
+    steps:
+      # Squash merges use the PR title as the commit subject on main.
+      - env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          pattern='^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9._/-]*\))?!?: [^ ]'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error title=PR title is not a conventional commit::\"$TITLE\" must look like 'type(scope): summary' or 'type: summary', where type is one of build, chore, ci, docs, feat, fix, perf, refactor, revert, style, test."
+            exit 1
+          fi

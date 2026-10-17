@@ -1,7 +1,7 @@
 mod common;
 
 use artscript_ir::{Field, NodeKind, NoiseKind, Paint, Path, Point, Profile};
-use artscript_render::{render_png, render_svg, raster_only_features, RenderError};
+use artscript_render::{Backend, render_png, render_svg, raster_only_features, RenderError};
 use common::{circle_at, color, effect, pixel, red, scene, solid};
 
 use artscript_ir::EffectOp;
@@ -9,7 +9,7 @@ use artscript_ir::EffectOp;
 #[test]
 fn red_circle_center_is_red_and_corner_is_clear() {
     let scene = scene(80.0, 80.0, vec![solid("dot", circle_at(40.0, 40.0, 20.0), red())]);
-    let png = render_png(&scene, 1.0).unwrap();
+    let png = render_png(&scene, 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255]);
     assert_eq!(pixel(&png, 0, 0), [0, 0, 0, 0]);
 }
@@ -22,7 +22,7 @@ fn nested_child_never_paints_outside_parent() {
         artscript_ir::NodeKind::Shape(shape) => shape.children.push(child),
         _ => unreachable!(),
     }
-    let png = render_png(&scene(80.0, 80.0, vec![parent]), 1.0).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![parent]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 8, 40), [0, 0, 0, 0]);
     assert_eq!(pixel(&png, 40, 8), [0, 0, 0, 0]);
@@ -32,7 +32,7 @@ fn nested_child_never_paints_outside_parent() {
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
-    let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0).unwrap();
+    let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 80, 60), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 85, 60), [0, 0, 0, 244]);
@@ -51,7 +51,7 @@ fn svg_outline_is_a_round_stroked_path() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
     let scene = scene(140.0, 140.0, vec![node]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0).unwrap();
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let outline_at = svg.find("stroke-linejoin=\"round\"").expect(&svg);
     let fill_at = svg.find("fill=\"#ffffff\"").expect(&svg);
     assert!(outline_at < fill_at, "{svg}");
@@ -59,14 +59,14 @@ fn svg_outline_is_a_round_stroked_path() {
     assert!(svg.contains("stroke-width=\"12\""), "{svg}");
     assert!(!svg.contains("<image"), "{svg}");
     assert_eq!(raster_only_features(&scene), Vec::new());
-    render_svg(&scene, Profile::Vector, 1.0).unwrap();
+    render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).unwrap();
 }
 
 #[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
-    let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0).unwrap();
+    let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 160, 120), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 170, 120), [0, 0, 0, 255]);
@@ -86,7 +86,7 @@ fn rim_brightens_the_bottom_right_edge() {
         dir: Point::new(1.0, 1.0),
         color: color(255, 255, 255, 255),
     }));
-    let png = render_png(&scene(120.0, 120.0, vec![node]), 1.0).unwrap();
+    let png = render_png(&scene(120.0, 120.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     let center = pixel(&png, 50, 50);
     let lit = pixel(&png, 68, 68);
     let shade = pixel(&png, 32, 32);
@@ -141,7 +141,7 @@ fn grain_rect(strength: f32, scale: f32, seed: u32) -> Vec<u8> {
         color(128, 128, 128, 255),
     );
     node.effects.push(effect(EffectOp::Grain { strength, scale, seed }));
-    render_png(&scene(192.0, 192.0, vec![node]), 1.0).unwrap()
+    render_png(&scene(192.0, 192.0, vec![node]), 1.0, Backend::Cpu).unwrap()
 }
 
 fn rgba(png: &[u8]) -> Vec<[u8; 4]> {
@@ -169,8 +169,8 @@ fn grain_changes_only_opaque_pixels() {
     let plain = solid("disc", circle_at(40.0, 40.0, 24.0), color(180, 140, 120, 255));
     let mut gritty = plain.clone();
     gritty.effects.push(effect(EffectOp::Grain { strength: 0.45, scale: 3.0, seed: 9 }));
-    let a = render_png(&scene(80.0, 80.0, vec![plain]), 1.0).unwrap();
-    let b = render_png(&scene(80.0, 80.0, vec![gritty]), 1.0).unwrap();
+    let a = render_png(&scene(80.0, 80.0, vec![plain]), 1.0, Backend::Cpu).unwrap();
+    let b = render_png(&scene(80.0, 80.0, vec![gritty]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&a, 40, 40), [180, 140, 120, 255]);
     assert_ne!(pixel(&b, 40, 40), pixel(&a, 40, 40));
     assert_eq!(pixel(&a, 2, 2), [0, 0, 0, 0]);
@@ -190,7 +190,7 @@ fn adjust_keeps_soft_edges_dark() {
     layer.effects.push(effect(EffectOp::Adjust { hue: 0.0, sat: 0.05, light: -0.06 }));
     let mut canvas = scene(80.0, 80.0, vec![layer]);
     canvas.background = Some(color(40, 20, 20, 255));
-    let png = render_png(&canvas, 1.0).unwrap();
+    let png = render_png(&canvas, 1.0, Backend::Cpu).unwrap();
     let brightest = rgba(&png).iter().map(|p| p[0].max(p[1]).max(p[2])).max().unwrap();
     assert!(brightest < 80, "an edge pixel brightened to {brightest}");
 }
@@ -198,8 +198,8 @@ fn adjust_keeps_soft_edges_dark() {
 #[test]
 fn png_bytes_are_deterministic() {
     let scene = scene(80.0, 80.0, vec![solid("dot", circle_at(40.0, 40.0, 20.0), red())]);
-    let a = render_png(&scene, 1.0).unwrap();
-    let b = render_png(&scene, 1.0).unwrap();
+    let a = render_png(&scene, 1.0, Backend::Cpu).unwrap();
+    let b = render_png(&scene, 1.0, Backend::Cpu).unwrap();
     assert_eq!(a, b);
     assert_eq!(pixel(&a, 40, 40), [255, 0, 0, 255]);
 }
@@ -231,7 +231,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
         node
     };
     let scene = scene(100.0, 40.0, vec![disc, rock]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0).unwrap();
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("linearGradient"), "{svg}");
     assert!(svg.contains("gradientUnits=\"userSpaceOnUse\""), "{svg}");
     assert!(svg.contains("id=\"disc\""), "{svg}");
@@ -244,7 +244,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
     assert_eq!(hits[0].node, "rock");
     assert_eq!(hits[0].feature, "field fill");
 
-    match render_svg(&scene, Profile::Vector, 1.0) {
+    match render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu) {
         Err(RenderError::NotVector(list)) => {
             assert_eq!(list.len(), 1);
             assert_eq!(list[0].node, "rock");

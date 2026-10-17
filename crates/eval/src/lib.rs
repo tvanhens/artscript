@@ -29,7 +29,7 @@ use artscript_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use key::{frame_count, frame_delays};
-pub use project::{LintLevel, Manifest, Project, find_root, load};
+pub use project::{BackendChoice, LintLevel, Manifest, Project, find_root, load};
 pub use seed::fnv1a;
 pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
 
