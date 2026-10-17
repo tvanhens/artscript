@@ -3647,3 +3647,31 @@ fn manifest_errors_point_at_the_bad_line() {
         assert_eq!((err.span.line, err.span.col), (line, col), "{src:?}: {}", err.message);
     }
 }
+
+#[test]
+fn comments_and_blank_lines_keep_statement_seeds() {
+    let src = |pad: &str| {
+        format!(
+            "@target t.png 100x100 t:.5s
+{pad}def blip
+{pad}  let d = rand(0 30)
+  circle 2 at:d,0 name:dot
+{pad}anim bob dur:1s
+{pad}  .box at:key(0 rand(1 9)),0
+{pad}let y = rand(20 80)
+{pad}if rand(0 1) > 2
+  circle 1
+{pad}each i in [rand(0 9) 1]
+  circle 1 at:i,0
+{pad}play bob start:rand(0 .4) * 1s
+blip name:b
+rect 4 at:0,y name:box
+"
+        )
+    };
+    let plain = scene(&src(""));
+    let padded = scene(&src("\n# note\n"));
+    for p in paths(&plain) {
+        assert_eq!(at(node(&plain, &p)), at(node(&padded, &p)), "{p}");
+    }
+}
