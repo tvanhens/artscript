@@ -90,6 +90,23 @@ fn svg_isolates_a_shape_with_children() {
 }
 
 #[test]
+fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
+    let mut ring = skia_safe::PathBuilder::new();
+    ring.add_circle((40.0, 40.0), 20.0, None);
+    ring.add_circle((40.0, 40.0), 8.0, None);
+    ring.set_fill_type(skia_safe::PathFillType::EvenOdd);
+    let mut parent = solid("ring", ring.detach(), red());
+    let child = solid("ink", circle_at(40.0, 40.0, 30.0), color(0, 0, 255, 255));
+    match &mut parent.kind {
+        NodeKind::Shape(shape) => shape.children.push(child),
+        _ => unreachable!(),
+    }
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let clip = svg.split("<clipPath id=\"ring-nest\">").nth(1).unwrap().split("</clipPath>").next().unwrap();
+    assert!(clip.contains("clip-rule=\"evenodd\""), "{svg}");
+}
+
+#[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
