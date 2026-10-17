@@ -4479,3 +4479,28 @@ fn an_unbounded_point_count_is_e0320() {
     }
     scene("@target t.png 40x40\npoly 6 r:10\nstar 5 r:10\n");
 }
+
+#[test]
+fn a_comma_dash_dashes_the_stroke() {
+    let s = scene("@target t.svg 40x40\ncurve 4,20 36,20 stroke:#000,2 dash:4,2\n");
+    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Vector, 1.0, artscript_render::Backend::Cpu).unwrap();
+    assert!(svg.contains("stroke-dasharray=\"4,2\""), "{svg}");
+    let ev = run_with("@target t.png 40x40\ncurve 4,20 36,20 stroke:#000,2 dash:red\n", &[]);
+    assert_eq!(diag(&ev, "E0320").message, "`dash:` takes lengths");
+}
+
+#[test]
+fn an_odd_dash_list_repeats_in_png_as_in_svg() {
+    let png = |dash: &str| {
+        let s = scene(&format!("@target t.png 60x20\ncurve 2,10 58,10 stroke:#000,2 dash:{dash}\n"));
+        artscript_render::render_png(&s, 1.0, artscript_render::Backend::Cpu).unwrap()
+    };
+    assert_eq!(png("[4 2 3]"), png("[4 2 3 4 2 3]"));
+}
+
+#[test]
+fn rect_radii_are_one_number_or_four() {
+    scene("@target t.png 40x40\nrect 20x20 at:20,20 r:4\nrect 20x20 at:20,20 r:4,4,0,0\nrect 20x20 at:20,20 r:[1 2 3 4]\n");
+    let ev = run_with("@target t.png 40x40\nrect 20x20 r:4,4\n", &[]);
+    assert_eq!(diag(&ev, "E0320").message, "`rect` needs one corner radius or four");
+}
