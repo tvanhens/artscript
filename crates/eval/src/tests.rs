@@ -3981,3 +3981,12 @@ fn an_entry_file_patches_its_own_underscore_names() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
+    let s = scene(
+        "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
+    );
+    near(at(node(&s, "r")), (3.0, 10.0));
+    near(at(node(&s, "v")), (4.0, 6.0));
+}
