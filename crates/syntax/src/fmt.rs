@@ -501,6 +501,7 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Str(s) => fmt_string(s),
         Expr::Ident(s) => s.clone(),
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
+        Expr::Member(base, seg) if matches!(**base, Expr::Num(_)) => format!("({}).{seg}", fmt_body(base)),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
         Expr::Tuple(xs) => {
             // An `else` branch takes the rest of the tuple, so only the last element may be a bare `if`.

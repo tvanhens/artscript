@@ -1143,3 +1143,15 @@ fn a_color_glued_to_an_operator_round_trips() {
         "let p = #ff0000+(1,0)\nlet q = #ff0000*2\n"
     );
 }
+
+#[test]
+fn a_member_of_a_number_keeps_its_member_when_formatted() {
+    let src = "let a = 1.00.0001\nlet b = 2.5.x\n";
+    let file = must_parse(src);
+    assert_eq!(
+        format(&file),
+        "let a = (1).0001\nlet b = (2.5).x\n"
+    );
+    assert_eq!(must_parse(&format(&file)), file);
+    round_trip_source(src);
+}
