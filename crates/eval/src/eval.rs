@@ -4250,7 +4250,7 @@ impl<'a> Evaluator<'a> {
             return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
-        if self.prepass && matches!(resolved, Resolved::Missing(_) | Resolved::Undrawn(_)) {
+        if self.prepass && matches!(resolved, Resolved::Undrawn(_)) {
             return Err(unseen(&format!("@{first}")));
         }
         let (cur, depth) = self.refs_of(resolved, first)?;

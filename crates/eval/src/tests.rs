@@ -3758,6 +3758,30 @@ fn a_top_level_play_input_that_reads_the_drawn_scene_is_e0344() {
 }
 
 #[test]
+fn a_misspelled_name_in_a_top_level_play_is_e0350_not_e0344() {
+    let ev = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 4 name:c\nplay bob start:@tpyo.x\n",
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].code, "E0350", "{}", errors[0]);
+    assert_eq!(errors[0].span.line, 5, "{}", errors[0]);
+    assert!(errors[0].notes.iter().any(|n| n.contains('c')), "{}", errors[0]);
+
+    let later = run_with(
+        "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\nplay bob start:@c.x\ncircle 4 name:c\n",
+        &[],
+    );
+    let codes: Vec<_> = later.diagnostics.iter().map(|d| d.code.as_str()).collect();
+    assert_eq!(codes, ["E0344"], "{}", show(&later.diagnostics));
+}
+
+#[test]
 fn a_shadowed_geometry_let_does_not_block_a_top_level_play() {
     let head = "@target t.png 40x40\nanim bob dur:1s\n  .c a:.2\ncircle 8 name:marker\ncircle 4 name:c\n";
     for tail in [
