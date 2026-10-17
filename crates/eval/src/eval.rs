@@ -3274,10 +3274,10 @@ impl<'a> Evaluator<'a> {
     }
 
     /// A name the real pass will register, recorded so a later `if @name` can take its branch.
-    /// The stub has no geometry: `@name` is visible, `@name.w` is not.
+    /// The stub has no geometry: `@name` is visible, `@name.w` is not. The skips match `eval_node`.
     fn collect_draw(&mut self, draw: &Draw, sc: &Scope, span: Span) {
         let verb = draw.verb.as_str();
-        if verb == "canvas" {
+        if verb == "canvas" || matches!(self.component_for(verb, sc), Some(None)) {
             return;
         }
         let key = sc.node_key(span);

@@ -70,15 +70,20 @@ impl Evaluator<'_> {
     pub(crate) fn run_checks(&mut self, list: &Rc<RefCell<Vec<Pending>>>) {
         let pending: Vec<Pending> = list.borrow_mut().drain(..).collect();
         for p in pending {
-            self.run_check(&p.stmt, &p.scope);
+            if let Err(f) = self.run_check(&p.stmt, &p.scope) {
+                let file = p.scope.file().to_string();
+                self.report(f, &file, p.stmt.span, &p.scope.node_name());
+            }
         }
     }
 
-    /// Evaluates one check and reports its failure. Returns whether it passed.
-    fn run_check(&mut self, stmt: &Scene, sc: &Scope) -> bool {
-        let SceneKind::Check { kind, expr, named, message } = &stmt.kind else { return true };
+    /// Evaluates one check and reports its failure. Returns whether it passed. A prepass read of
+    /// the drawn scene (E0344) is returned instead, so a rule call cannot turn it into `false`.
+    fn run_check(&mut self, stmt: &Scene, sc: &Scope) -> R<bool> {
+        let SceneKind::Check { kind, expr, named, message } = &stmt.kind else { return Ok(true) };
         let file = sc.file().to_string();
         let tol = match named.iter().find(|n| n.key == "tol").map(|n| self.expr(&n.value, sc)) {
+            Some(Err(f)) if f.code == "E0344" => return Err(f),
             Some(Ok(v)) => v.num().unwrap_or(0.5),
             _ => 0.5,
         };
@@ -95,12 +100,13 @@ impl Evaluator<'_> {
         let result = self.expr(expr, sc);
         let state = std::mem::replace(&mut self.check, saved).expect("check state");
         match result {
+            Err(f) if f.code == "E0344" => Err(f),
             Err(f) => {
                 self.report(f, &file, stmt.span, &sc.node_name());
-                false
+                Ok(false)
             }
-            Ok(v) if v.truthy() => true,
-            Ok(_) if state.reported => false,
+            Ok(v) if v.truthy() => Ok(true),
+            Ok(_) if state.reported => Ok(false),
             Ok(_) => {
                 let code = match kind {
                     CheckKind::Assert => "C0101",
@@ -112,7 +118,7 @@ impl Evaluator<'_> {
                 }
                 f.notes.extend(state.notes);
                 self.report(f, &file, stmt.span, &sc.node_name());
-                false
+                Ok(false)
             }
         }
     }
@@ -142,7 +148,7 @@ impl Evaluator<'_> {
         let mut ok = true;
         for st in &rule.body {
             if matches!(st.kind, SceneKind::Check { .. }) {
-                ok &= self.run_check(st, &rsc);
+                ok &= self.run_check(st, &rsc)?;
             }
         }
         for d in &mut self.diags[before..] {
