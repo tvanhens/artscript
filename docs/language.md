@@ -77,7 +77,7 @@ Paint keys:
 
 ## Structure
 
-- `layer name` is an isolated group. `group` is a plain group.
+- `layer name` is an isolated group, and so is each instance of a `def`. A `blend:` inside it composites only with what that layer or instance drew, so a def draws the same pixels wherever it is called. A `blend:` on the call composites the finished instance onto the caller. `group` is a plain group, and its children blend with what is below it.
 - **Nesting under a shape clips the children to that shape.** This is how every highlight, shadow and texture stays inside its form:
 
 ```

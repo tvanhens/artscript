@@ -2702,7 +2702,7 @@ impl<'a> Evaluator<'a> {
             origin.clone(),
             m,
             NodeKind::Group {
-                isolate: false,
+                isolate: true,
                 children: vec![],
             },
         );
@@ -2738,7 +2738,7 @@ impl<'a> Evaluator<'a> {
             origin,
             m,
             NodeKind::Group {
-                isolate: false,
+                isolate: true,
                 children,
             },
         );
