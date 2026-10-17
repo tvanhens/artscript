@@ -41,7 +41,14 @@ pub(crate) enum Word {
     T,
     Frames,
     Anim,
+    Play,
     Key,
+    Clip,
+    Loop,
+    Set,
+    Mark,
+    Root,
+    Visible,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -92,8 +99,15 @@ const WORDS: &[(Word, &str, Class)] = &[
     (Word::Ease, "ease", Class::ReservedName),
     (Word::T, "t", Class::ReservedName),
     (Word::Frames, "frames", Class::ReservedName),
-    (Word::Anim, "anim", Class::ReservedName),
+    (Word::Anim, "anim", Class::Keyword),
+    (Word::Play, "play", Class::Keyword),
     (Word::Key, "key", Class::ReservedName),
+    (Word::Clip, "clip", Class::ReservedName),
+    (Word::Loop, "loop", Class::ReservedName),
+    (Word::Set, "set", Class::ReservedName),
+    (Word::Mark, "mark", Class::ReservedName),
+    (Word::Root, "root", Class::ReservedName),
+    (Word::Visible, "visible", Class::ReservedName),
 ];
 
 impl Word {

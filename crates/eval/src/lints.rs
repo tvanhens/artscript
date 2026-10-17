@@ -3,7 +3,10 @@
 use std::collections::HashSet;
 
 use artscript_ir::{Matrix, Node, NodeKind, Rect};
-use artscript_syntax::ast::{Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span, SwatchKind};
+use artscript_syntax::ast::{
+    Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
+    SwatchKind,
+};
 use artscript_syntax::{Diagnostic, Severity};
 
 use crate::project::{LintLevel, Manifest};
@@ -15,7 +18,10 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
         LintLevel::Warn => Severity::Warning,
         LintLevel::Error => Severity::Error,
     };
-    Some(Diagnostic { severity, ..Diagnostic::error(code, span, msg) })
+    Some(Diagnostic {
+        severity,
+        ..Diagnostic::error(code, span, msg)
+    })
 }
 
 fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
@@ -35,7 +41,11 @@ fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
             args.iter().for_each(|x| walk_expr(x, f));
             named.iter().for_each(|n| walk_expr(&n.value, f));
         }
-        Expr::If { cond, then, otherwise } => {
+        Expr::If {
+            cond,
+            then,
+            otherwise,
+        } => {
             walk_expr(cond, f);
             walk_expr(then, f);
             walk_expr(otherwise, f);
@@ -47,7 +57,12 @@ fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
 fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
     f(s);
     match &s.kind {
-        SceneKind::If { then, otherwise, .. } => then.iter().chain(otherwise.iter()).for_each(|c| walk_scene(c, f)),
+        SceneKind::If {
+            then, otherwise, ..
+        } => then
+            .iter()
+            .chain(otherwise.iter())
+            .for_each(|c| walk_scene(c, f)),
         SceneKind::Each { body, .. } => body.iter().for_each(|c| walk_scene(c, f)),
         SceneKind::Slot { fallback, .. } => fallback.iter().for_each(|c| walk_scene(c, f)),
         SceneKind::Draw(d) => {
@@ -55,12 +70,20 @@ fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
                 match item {
                     DrawItem::Scene(c) => walk_scene(c, f),
                     DrawItem::SlotFill(fill) => fill.body.iter().for_each(|c| walk_scene(c, f)),
-                    DrawItem::Mask { mask: Mask::Block(body), .. } => body.iter().for_each(|c| walk_scene(c, f)),
-                    DrawItem::Mask { mask: Mask::Value(_), .. } | DrawItem::Fx(_) | DrawItem::Patch(_) => {}
+                    DrawItem::Mask {
+                        mask: Mask::Block(body),
+                        ..
+                    } => body.iter().for_each(|c| walk_scene(c, f)),
+                    DrawItem::Mask {
+                        mask: Mask::Value(_),
+                        ..
+                    }
+                    | DrawItem::Fx(_)
+                    | DrawItem::Patch(_) => {}
                 }
             }
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } => {}
+        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
     }
 }
 
@@ -68,10 +91,17 @@ fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(
     for item in items {
         match item {
             Item::Scene(s) => walk_scene(s, f),
-            Item::Decl(Decl { kind: DeclKind::Def { body, .. }, .. }) => {
-                body.iter().filter_map(DefItem::scene).for_each(|s| walk_scene(s, f))
-            }
-            Item::Decl(Decl { kind: DeclKind::Rule { body, .. }, .. }) => body.iter().for_each(|s| walk_scene(s, f)),
+            Item::Decl(Decl {
+                kind: DeclKind::Def { body, .. },
+                ..
+            }) => body
+                .iter()
+                .filter_map(DefItem::scene)
+                .for_each(|s| walk_scene(s, f)),
+            Item::Decl(Decl {
+                kind: DeclKind::Rule { body, .. },
+                ..
+            }) => body.iter().for_each(|s| walk_scene(s, f)),
             Item::Decl(_) => {}
         }
     }
@@ -91,20 +121,30 @@ fn fx_exprs<'a>(fx: &'a Fx, out: &mut Exprs<'a>) {
 fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
     match &s.kind {
         SceneKind::Let { value, .. } => out.push((value, s.span)),
-        SceneKind::Check { expr, named: ns, .. } => {
+        SceneKind::Check {
+            expr, named: ns, ..
+        } => {
             out.push((expr, s.span));
             named(ns, out);
         }
         SceneKind::If { cond, .. } => out.push((cond, s.span)),
         SceneKind::Each { iter, .. } => out.push((iter, s.span)),
         SceneKind::Slot { named: ns, .. } => named(ns, out),
+        SceneKind::Play { start, .. } => {
+            if let Some(e) = start {
+                out.push((e, s.span));
+            }
+        }
         SceneKind::Draw(d) => {
             d.args.iter().for_each(|a| out.push((a, s.span)));
             named(&d.named, out);
             for item in d.body.items() {
                 match item {
                     DrawItem::Fx(fx) => fx_exprs(fx, out),
-                    DrawItem::Mask { mask: Mask::Value(e), span } => out.push((e, *span)),
+                    DrawItem::Mask {
+                        mask: Mask::Value(e),
+                        span,
+                    } => out.push((e, *span)),
                     DrawItem::Patch(p) => named(&p.named, out),
                     DrawItem::Scene(_) | DrawItem::SlotFill(_) | DrawItem::Mask { .. } => {}
                 }
@@ -131,20 +171,34 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
                     }
                 }
             }
-            DeclKind::Style { named: ns, .. } | DeclKind::Light { named: ns, .. } | DeclKind::Brush { named: ns, .. } => named(ns, &mut out),
+            DeclKind::Style { named: ns, .. }
+            | DeclKind::Light { named: ns, .. }
+            | DeclKind::Brush { named: ns, .. } => named(ns, &mut out),
             DeclKind::Finish { params, body, .. } => {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
             }
-            DeclKind::Shader { params, .. } | DeclKind::Rule { params, .. } => named(params, &mut out),
+            DeclKind::Shader { params, .. } | DeclKind::Rule { params, .. } => {
+                named(params, &mut out)
+            }
             DeclKind::Def { params, body, .. } => {
                 named(params, &mut out);
-                body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut out));
+                body.iter()
+                    .filter_map(DefItem::fx)
+                    .for_each(|fx| fx_exprs(fx, &mut out));
             }
             DeclKind::Use { .. } => {}
+            DeclKind::Anim { dur, body, .. } => {
+                out.push((dur, d.span));
+                for p in body {
+                    named(&p.named, &mut out);
+                }
+            }
         }
     }
-    all_scenes(&file.items, &mut |s| scene_line_and_direct_fx_mask_patch_exprs(s, &mut out));
+    all_scenes(&file.items, &mut |s| {
+        scene_line_and_direct_fx_mask_patch_exprs(s, &mut out)
+    });
     out
 }
 
@@ -159,9 +213,17 @@ pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic
                 _ => None,
             };
             if let Some(lit) = lit
-                && let Some(d) = diag(level, "L0101", span, format!("raw color {lit} outside a palette"))
+                && let Some(d) = diag(
+                    level,
+                    "L0101",
+                    span,
+                    format!("raw color {lit} outside a palette"),
+                )
             {
-                out.push(d.in_file(path).with_fix("add it to a palette block and refer to it as `p.<name>`"));
+                out.push(
+                    d.in_file(path)
+                        .with_fix("add it to a palette block and refer to it as `p.<name>`"),
+                );
             }
         });
     }
@@ -186,6 +248,9 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
         });
     }
     for s in scenes {
+        if let SceneKind::Play { name: Some(n), .. } = &s.kind {
+            out.insert(n.clone());
+        }
         if let SceneKind::Draw(d) = &s.kind {
             out.insert(d.verb.clone());
             if let Some(st) = d.named.iter().find(|n| n.key == "style")
@@ -223,22 +288,36 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
     };
     for d in file.decls() {
         match &d.kind {
-            DeclKind::Use { path: p, alias, items } => {
+            DeclKind::Use {
+                path: p,
+                alias,
+                items,
+            } => {
                 if let Some(a) = alias
                     && !used.contains(a)
                 {
-                    push(d.span, format!("`use {p} as {a}` is never used"), "remove the import");
+                    push(
+                        d.span,
+                        format!("`use {p} as {a}` is never used"),
+                        "remove the import",
+                    );
                 }
                 for item in items {
                     if !used.contains(item) {
-                        push(d.span, format!("imported `{item}` is never used"), "remove it from the import list");
+                        push(
+                            d.span,
+                            format!("imported `{item}` is never used"),
+                            "remove it from the import list",
+                        );
                     }
                 }
             }
             DeclKind::Def { name, params, body } => {
                 let mut exprs = Vec::new();
                 let mut inner_scenes = Vec::new();
-                body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut exprs));
+                body.iter()
+                    .filter_map(DefItem::fx)
+                    .for_each(|fx| fx_exprs(fx, &mut exprs));
                 for s in body.iter().filter_map(DefItem::scene) {
                     walk_scene(s, &mut |c| {
                         scene_line_and_direct_fx_mask_patch_exprs(c, &mut exprs);
@@ -247,9 +326,16 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
                 }
                 let mut inner = HashSet::new();
                 idents(exprs, &inner_scenes, &mut inner);
-                for p in params.iter().filter(|p| p.key != "needs" && p.key != "size") {
+                for p in params
+                    .iter()
+                    .filter(|p| p.key != "needs" && p.key != "size")
+                {
                     if !inner.contains(&p.key) {
-                        push(p.span, format!("parameter `{}` of `{name}` is never used", p.key), "use it in the body or remove it");
+                        push(
+                            p.span,
+                            format!("parameter `{}` of `{name}` is never used", p.key),
+                            "use it in the body or remove it",
+                        );
                     }
                 }
             }
@@ -260,7 +346,11 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
         if let SceneKind::Let { name, .. } = &s.kind
             && !used.contains(name)
         {
-            push(s.span, format!("`let {name}` is never used"), "remove the binding");
+            push(
+                s.span,
+                format!("`let {name}` is never used"),
+                "remove the binding",
+            );
         }
     }
     out
@@ -276,7 +366,11 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             NodeKind::Shape(_) => {
                 if let Some(b) = n.bounds() {
                     let b = parent.map_rect(b).0;
-                    if !(b.left >= canvas.left && b.top >= canvas.top && b.right <= canvas.right && b.bottom <= canvas.bottom) {
+                    if !(b.left >= canvas.left
+                        && b.top >= canvas.top
+                        && b.right <= canvas.right
+                        && b.bottom <= canvas.bottom)
+                    {
                         hits.push((n.path.clone(), n.origin.clone(), b));
                     }
                 }
@@ -291,17 +385,44 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
         }
     }
     let mut hits = Vec::new();
-    scene.children.iter().for_each(|c| walk(c, Matrix::new_identity(), canvas, &mut hits));
+    scene
+        .children
+        .iter()
+        .for_each(|c| walk(c, Matrix::new_identity(), canvas, &mut hits));
     for (path, origin, b) in hits {
-        let line = origin.rsplit(':').next().and_then(|l| l.parse().ok()).unwrap_or(1);
-        let src = origin.rsplit_once(':').map(|(f, _)| f.to_string()).unwrap_or(file.to_string());
-        let msg = if b.intersects(canvas) { "is clipped by the canvas edge" } else { "is entirely outside the canvas" };
-        if let Some(d) = diag(level, "L0102", Span { line, col: 1 }, format!("`{path}` {msg}")) {
+        let line = origin
+            .rsplit(':')
+            .next()
+            .and_then(|l| l.parse().ok())
+            .unwrap_or(1);
+        let src = origin
+            .rsplit_once(':')
+            .map(|(f, _)| f.to_string())
+            .unwrap_or(file.to_string());
+        let msg = if b.intersects(canvas) {
+            "is clipped by the canvas edge"
+        } else {
+            "is entirely outside the canvas"
+        };
+        if let Some(d) = diag(
+            level,
+            "L0102",
+            Span { line, col: 1 },
+            format!("`{path}` {msg}"),
+        ) {
             out.push(
                 d.in_file(src)
                     .at_node(path)
-                    .with_note(format!("bounds {},{} {}x{}", b.left.round(), b.top.round(), b.width().round(), b.height().round()))
-                    .with_fix("move or shrink it to fit the canvas, or clip it by nesting under a shape"),
+                    .with_note(format!(
+                        "bounds {},{} {}x{}",
+                        b.left.round(),
+                        b.top.round(),
+                        b.width().round(),
+                        b.height().round()
+                    ))
+                    .with_fix(
+                        "move or shrink it to fit the canvas, or clip it by nesting under a shape",
+                    ),
             );
         }
     }

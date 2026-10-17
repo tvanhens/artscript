@@ -31,6 +31,7 @@ pub(crate) enum Tok {
     Num(f64),
     Percent(f64),
     Angle(f64),
+    Time(f64),
     Size(SizePart, SizePart),
     Hex(String),
     Str(String),
@@ -68,6 +69,7 @@ impl Tok {
             Tok::Num(n) => format!("number {n}"),
             Tok::Percent(_) => "percent".into(),
             Tok::Angle(_) => "angle".into(),
+            Tok::Time(_) => "time".into(),
             Tok::Size(_, _) => "size".into(),
             Tok::Hex(h) => format!("color `#{h}`"),
             Tok::Str(_) => "string".into(),
@@ -542,6 +544,12 @@ impl<'a> Scanner<'a> {
         }
         if self.consume_suffix("turn") {
             return Tok::Angle(value * 360.0);
+        }
+        if self.consume_suffix("ms") {
+            return Tok::Time(value / 1000.0);
+        }
+        if self.consume_suffix("s") {
+            return Tok::Time(value);
         }
         if self.peek() == Some('%') {
             self.bump();

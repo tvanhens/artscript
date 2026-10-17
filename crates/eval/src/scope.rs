@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
-use artscript_syntax::ast::{DefItem, FxLine, Named, Scene, Span};
+use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
 use crate::value::Value;
@@ -17,6 +17,7 @@ pub struct Module {
     pub globals: RefCell<HashMap<String, Value>>,
     pub styles: RefCell<HashMap<String, Rc<StyleDef>>>,
     pub finishes: RefCell<HashMap<String, Rc<FinishDef>>>,
+    pub anims: RefCell<HashMap<String, Rc<AnimDef>>>,
     pub palettes: RefCell<Vec<Rc<Palette>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
@@ -29,6 +30,7 @@ impl Module {
             globals: RefCell::new(HashMap::new()),
             styles: RefCell::new(HashMap::new()),
             finishes: RefCell::new(HashMap::new()),
+            anims: RefCell::new(HashMap::new()),
             palettes: RefCell::new(Vec::new()),
             own: RefCell::new(Vec::new()),
         }
@@ -75,13 +77,26 @@ pub struct Palette {
 
 impl Palette {
     pub fn get(&self, key: &str) -> Option<Value> {
-        self.entries.iter().rev().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        self.entries
+            .iter()
+            .rev()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.clone())
     }
 }
 
 pub struct StyleDef {
     pub module: String,
     pub named: Vec<Named>,
+}
+
+pub struct AnimDef {
+    pub name: String,
+    pub dur: Expr,
+    pub loop_: bool,
+    pub body: Vec<Patch>,
+    pub module: String,
+    pub span: Span,
 }
 
 /// A named, ordered list of built-in `fx` lines. It holds no keys, so nothing about it reaches
@@ -134,7 +149,11 @@ pub fn new_table() -> Table {
 }
 
 pub fn table_get(t: &Table, name: &str) -> Option<Rc<RefCell<Record>>> {
-    t.borrow().iter().rev().find(|(n, _)| n == name).map(|(_, r)| r.clone())
+    t.borrow()
+        .iter()
+        .rev()
+        .find(|(n, _)| n == name)
+        .map(|(_, r)| r.clone())
 }
 
 pub fn table_names(t: &Table) -> Vec<String> {
@@ -197,7 +216,9 @@ impl RefVal {
 
     /// Direct children as references.
     pub fn children(&self) -> Vec<RefVal> {
-        let Some(node) = &self.record.node else { return Vec::new() };
+        let Some(node) = &self.record.node else {
+            return Vec::new();
+        };
         let world = self.world();
         node.children()
             .iter()
@@ -211,7 +232,10 @@ impl RefVal {
                         parent_world: world,
                         node: Some(c.clone()),
                         anchor: None,
-                        at: (c.transform.translate_x() as f64, c.transform.translate_y() as f64),
+                        at: (
+                            c.transform.translate_x() as f64,
+                            c.transform.translate_y() as f64,
+                        ),
                     },
                     canvas: None,
                 }
@@ -246,7 +270,11 @@ pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
     match &node.kind {
         NodeKind::Shape(s) => s.geometry.make_transform(&world),
         NodeKind::Group { children, .. } => {
-            let parts: Vec<Path> = children.iter().map(|c| silhouette(c, &world)).filter(|p| !p.is_empty()).collect();
+            let parts: Vec<Path> = children
+                .iter()
+                .map(|c| silhouette(c, &world))
+                .filter(|p| !p.is_empty())
+                .collect();
             geom::union_all(&parts)
         }
     }
@@ -255,10 +283,15 @@ pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
 fn geom_bounds(node: &Node, parent_world: &Matrix) -> Option<Rect> {
     let world = *parent_world * node.transform;
     match &node.kind {
-        NodeKind::Shape(s) => (!s.geometry.is_empty()).then(|| world.map_rect(s.geometry.compute_tight_bounds()).0),
-        NodeKind::Group { children, .. } => children.iter().filter_map(|c| geom_bounds(c, &world)).reduce(|mut a, b| {
-            a.join(b);
-            a
-        }),
+        NodeKind::Shape(s) => {
+            (!s.geometry.is_empty()).then(|| world.map_rect(s.geometry.compute_tight_bounds()).0)
+        }
+        NodeKind::Group { children, .. } => children
+            .iter()
+            .filter_map(|c| geom_bounds(c, &world))
+            .reduce(|mut a, b| {
+                a.join(b);
+                a
+            }),
     }
 }

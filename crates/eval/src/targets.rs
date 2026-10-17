@@ -11,6 +11,7 @@ use crate::value::num;
 pub enum Format {
     Png,
     Svg,
+    Gif,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -44,11 +45,17 @@ pub struct TargetJob {
     pub span: Span,
     /// The `as:` label, read by the file as `target`.
     pub label: Option<String>,
+    pub fps: f64,
+    /// Explicit clip length in seconds. `None` means the latest `play` end.
+    pub dur: Option<f64>,
+    /// Binds `clip`. `None` is `none`.
+    pub clip: Option<String>,
+    pub frame_t: f64,
     pub matrix: Vec<(String, MatrixValue)>,
     pub size: (f32, f32),
     pub bg: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked SVG tiles render at: the target's highest scale.
+    /// Scale baked tiles and tapered strokes sample at. A GIF is 1. Anything else is the target's highest scale.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
@@ -56,8 +63,23 @@ pub struct TargetJob {
 impl TargetJob {
     /// Identifies the declaration and matrix cell, stable across builds.
     pub fn key(&self) -> String {
-        let m: Vec<String> = self.matrix.iter().map(|(k, v)| format!("{k}={}", v.text())).collect();
-        format!("{}:{}[{}]", self.source, self.line, m.join(","))
+        let m: Vec<String> = self
+            .matrix
+            .iter()
+            .map(|(k, v)| format!("{k}={}", v.text()))
+            .collect();
+        let dur = self.dur.map(num).unwrap_or_else(|| "auto".into());
+        let clip = self.clip.clone().unwrap_or_else(|| "none".into());
+        format!(
+            "{}:{}[{}] fps={} dur={} clip={} t={}",
+            self.source,
+            self.line,
+            m.join(","),
+            num(self.fps),
+            dur,
+            clip,
+            num(self.frame_t)
+        )
     }
 }
 
@@ -114,10 +136,16 @@ pub fn plan(project: &Project) -> Plan {
         for out in &job.outputs {
             if let Some((file, line)) = seen.get(&out.path) {
                 diagnostics.push(
-                    Diagnostic::error("E0202", job.span, format!("output `{}` is declared twice", out.path))
-                        .in_file(&job.source)
-                        .with_note(format!("first declared at {file}:{line}"))
-                        .with_fix("give each `@target` a distinct path, or add `{name}` for each matrix axis"),
+                    Diagnostic::error(
+                        "E0202",
+                        job.span,
+                        format!("output `{}` is declared twice", out.path),
+                    )
+                    .in_file(&job.source)
+                    .with_note(format!("first declared at {file}:{line}"))
+                    .with_fix(
+                        "give each `@target` a distinct path, or add `{name}` for each matrix axis",
+                    ),
                 );
                 dup_jobs.push(ji);
             } else {
@@ -129,7 +157,11 @@ pub fn plan(project: &Project) -> Plan {
     for ji in dup_jobs.into_iter().rev() {
         jobs.remove(ji);
     }
-    Plan { jobs, diagnostics, entries }
+    Plan {
+        jobs,
+        diagnostics,
+        entries,
+    }
 }
 
 fn matrix_value(e: &Expr) -> Option<MatrixValue> {
@@ -151,14 +183,25 @@ fn number(e: &Expr) -> Option<f64> {
     }
 }
 
+fn time_literal(e: &Expr) -> Option<f64> {
+    match e {
+        Expr::Time(s) | Expr::Num(s) => Some(*s),
+        _ => None,
+    }
+}
+
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
     if d.name != "target" {
-        return Err(Diagnostic::error("E0208", d.span, format!("unknown directive `@{}`", d.name))
-            .with_fix("the only directive in v0.1 is `@target <path> <W>x<H>`"));
+        return Err(
+            Diagnostic::error("E0208", d.span, format!("unknown directive `@{}`", d.name))
+                .with_fix("the only directive in v0.1 is `@target <path> <W>x<H>`"),
+        );
     }
     let Some(raw_path) = d.path.clone() else {
-        return Err(Diagnostic::error("E0206", d.span, "`@target` needs an output path")
-            .with_fix("write `@target chars/hero.png 256x256`"));
+        return Err(
+            Diagnostic::error("E0206", d.span, "`@target` needs an output path")
+                .with_fix("write `@target chars/hero.png 256x256`"),
+        );
     };
     let size = match d.args.first() {
         Some(Expr::Size(w, h)) => match (number(w), number(h)) {
@@ -170,43 +213,100 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
     let named = |k: &str| d.named.iter().find(|n| n.key == k).map(|n| &n.value);
     let scales: Vec<f32> = match named("scale") {
         None => project.manifest.scale.clone(),
-        Some(Expr::Tuple(xs)) | Some(Expr::List(xs)) => xs.iter().filter_map(number).map(|v| v as f32).collect(),
+        Some(Expr::Tuple(xs)) | Some(Expr::List(xs)) => {
+            xs.iter().filter_map(number).map(|v| v as f32).collect()
+        }
         Some(e) => number(e).map(|v| vec![v as f32]).unwrap_or_default(),
     };
     if scales.is_empty() || scales.iter().any(|s| *s <= 0.0) {
-        return Err(Diagnostic::error("E0206", d.span, "`scale:` must list positive numbers")
-            .with_fix("write `scale:1,2`"));
+        return Err(
+            Diagnostic::error("E0206", d.span, "`scale:` must list positive numbers")
+                .with_fix("write `scale:1,2`"),
+        );
     }
     let label = match named("as") {
         Some(Expr::Ident(s)) => Some(s.clone()),
         _ => None,
     };
+    let fps = match named("fps") {
+        None => 24.0,
+        Some(Expr::Time(_)) => {
+            return Err(
+                Diagnostic::error("E0206", d.span, "`fps:` is a count, not a time")
+                    .with_fix("write `fps:24`"),
+            );
+        }
+        Some(e) => match number(e) {
+            Some(n) if n.is_finite() && n > 0.0 => n,
+            _ => {
+                return Err(
+                    Diagnostic::error("E0206", d.span, "`fps:` must be a positive number")
+                        .with_fix("write `fps:24`"),
+                );
+            }
+        },
+    };
+    let dur = match named("dur") {
+        None => None,
+        Some(e) => match time_literal(e) {
+            Some(n) if n.is_finite() && n > 0.0 => Some(n),
+            _ => {
+                return Err(
+                    Diagnostic::error("E0206", d.span, "`dur:` must be a positive time")
+                        .with_fix("write `dur:2s`"),
+                );
+            }
+        },
+    };
+    let frame_t = match named("t") {
+        None => 0.0,
+        Some(e) => match time_literal(e) {
+            Some(n) if n.is_finite() && n >= 0.0 => n,
+            _ => {
+                return Err(Diagnostic::error("E0206", d.span, "`t:` must be a time")
+                    .with_fix("write `t:100ms`"));
+            }
+        },
+    };
+    let clip_expr = named("clip").cloned();
     let format = if raw_path.ends_with(".svg") {
         Format::Svg
     } else if raw_path.ends_with(".png") {
         Format::Png
+    } else if raw_path.ends_with(".gif") {
+        Format::Gif
     } else {
-        return Err(Diagnostic::error("E0206", d.span, format!("`{raw_path}` has no known extension"))
-            .with_fix("end the path with .png or .svg"));
+        return Err(Diagnostic::error(
+            "E0206",
+            d.span,
+            format!("`{raw_path}` has no known extension"),
+        )
+        .with_fix("end the path with .png, .svg or .gif"));
     };
     let profile_word = match named("profile") {
         Some(Expr::Ident(s)) => s.clone(),
         _ => project.manifest.profile.clone(),
     };
     let profile = match (format, profile_word.as_str()) {
-        (Format::Png, _) | (_, "raster") => Profile::Raster,
+        (Format::Png | Format::Gif, _) | (_, "raster") => Profile::Raster,
         (Format::Svg, "vector") => Profile::Vector,
         (Format::Svg, "svg" | "auto") => Profile::Svg,
         (_, other) => {
-            return Err(Diagnostic::error("E0206", d.span, format!("unknown profile `{other}`"))
-                .with_fix("use profile:vector, profile:svg or profile:raster"));
+            return Err(
+                Diagnostic::error("E0206", d.span, format!("unknown profile `{other}`"))
+                    .with_fix("use profile:vector, profile:svg or profile:raster"),
+            );
         }
     };
     let mut cells: Vec<Vec<(String, MatrixValue)>> = vec![Vec::new()];
     for axis in &d.each {
         let Expr::List(items) = &axis.value else {
-            return Err(Diagnostic::error("E0206", axis.span, format!("matrix axis `{}` needs a list", axis.key))
-                .with_fix(format!("write `each {}:[a b]`", axis.key)));
+            return Err(Diagnostic::error(
+                "E0206",
+                axis.span,
+                format!("matrix axis `{}` needs a list", axis.key),
+            )
+            .with_fix(format!("write `each {}:[a b]`", axis.key)));
         };
         let values: Vec<MatrixValue> = items.iter().filter_map(matrix_value).collect();
         cells = cells
@@ -220,26 +320,46 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
             })
             .collect();
     }
-    let bake_scale = scales.iter().copied().fold(1.0f32, f32::max);
+    let bake_scale = match format {
+        Format::Gif => 1.0,
+        Format::Png | Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
+    };
     cells
         .into_iter()
         .map(|matrix| {
             let path = interpolate(&raw_path, &matrix).map_err(|var| {
-                Diagnostic::error("E0207", d.span, format!("`{{{var}}}` in the path is not a matrix axis"))
-                    .with_fix(format!("add `each {var}:[..]`, or remove `{{{var}}}`"))
+                Diagnostic::error(
+                    "E0207",
+                    d.span,
+                    format!("`{{{var}}}` in the path is not a matrix axis"),
+                )
+                .with_fix(format!("add `each {var}:[..]`, or remove `{{{var}}}`"))
             })?;
             let outputs = match format {
-                Format::Svg => vec![OutputSpec { path, format, scale: 1.0 }],
+                Format::Svg | Format::Gif => vec![OutputSpec {
+                    path,
+                    format,
+                    scale: 1.0,
+                }],
                 Format::Png => scales
                     .iter()
-                    .map(|s| OutputSpec { path: scaled_name(&path, *s), format, scale: *s })
+                    .map(|s| OutputSpec {
+                        path: scaled_name(&path, *s),
+                        format,
+                        scale: *s,
+                    })
                     .collect(),
             };
+            let clip = clip_of(clip_expr.as_ref(), &matrix, d.span)?;
             Ok(TargetJob {
                 source: file.to_string(),
                 line: d.span.line,
                 span: d.span,
                 label: label.clone(),
+                fps,
+                dur,
+                clip,
+                frame_t,
                 matrix,
                 size,
                 bg: named("bg").cloned(),
@@ -252,8 +372,38 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
 }
 
 fn size_error(span: Span) -> Diagnostic {
-    Diagnostic::error("E0206", span, "`@target` needs a canvas size after the path")
-        .with_fix("write the size as `<W>x<H>`, e.g. `@target chars/hero.png 256x256`")
+    Diagnostic::error(
+        "E0206",
+        span,
+        "`@target` needs a canvas size after the path",
+    )
+    .with_fix("write the size as `<W>x<H>`, e.g. `@target chars/hero.png 256x256`")
+}
+
+fn clip_of(
+    expr: Option<&Expr>,
+    matrix: &[(String, MatrixValue)],
+    span: Span,
+) -> Result<Option<String>, Diagnostic> {
+    let Some(expr) = expr else { return Ok(None) };
+    match expr {
+        Expr::Ident(s) if s == "none" => Ok(None),
+        Expr::Ident(s) => {
+            if let Some((_, v)) = matrix.iter().find(|(k, _)| k == s) {
+                let text = v.text();
+                if text == "none" {
+                    Ok(None)
+                } else {
+                    Ok(Some(text))
+                }
+            } else {
+                Ok(Some(s.clone()))
+            }
+        }
+        Expr::Str(s) => Ok(Some(s.clone())),
+        _ => Err(Diagnostic::error("E0206", span, "`clip:` needs a name")
+            .with_fix("write `clip:idle` or `each c:[idle] clip:c`")),
+    }
 }
 
 fn interpolate(path: &str, matrix: &[(String, MatrixValue)]) -> Result<String, String> {
@@ -286,7 +436,10 @@ mod tests {
     use super::*;
 
     fn project(files: &[(&str, &str)]) -> Project {
-        let files = files.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        let files = files
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
         Project::from_sources("[project]\nout = \"out\"\nlib = [\"lib\"]\n", files).unwrap()
     }
 
@@ -298,7 +451,12 @@ mod tests {
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
-        let paths: Vec<String> = plan.jobs.iter().flat_map(|j| j.outputs.iter().map(|o| o.path.clone())).collect();
+        assert!(plan.jobs.iter().all(|j| j.bake_scale == 2.0));
+        let paths: Vec<String> = plan
+            .jobs
+            .iter()
+            .flat_map(|j| j.outputs.iter().map(|o| o.path.clone()))
+            .collect();
         assert_eq!(
             paths,
             [
@@ -313,7 +471,52 @@ mod tests {
             ]
         );
         assert_eq!(plan.jobs[1].label.as_deref(), Some("knights"));
-        assert_eq!(plan.jobs[1].matrix[1], ("team".to_string(), MatrixValue::Word("blue".into())));
+        assert_eq!(
+            plan.jobs[1].matrix[1],
+            ("team".to_string(), MatrixValue::Word("blue".into()))
+        );
+    }
+
+    #[test]
+    fn a_gif_stays_one_output_at_scale_one() {
+        let p = project(&[(
+            "art/k.art",
+            "@target t.gif 8x8 scale:1,2 bg:#ffffff\nrect 1\n",
+        )]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        assert_eq!(plan.jobs.len(), 1);
+        assert_eq!(plan.jobs[0].outputs.len(), 1);
+        assert_eq!(plan.jobs[0].outputs[0].path, "t.gif");
+        assert_eq!(plan.jobs[0].outputs[0].scale, 1.0);
+        assert_eq!(plan.jobs[0].bake_scale, 1.0);
+    }
+
+    #[test]
+    fn a_non_list_after_an_axis_stays_an_axis() {
+        let p = project(&[("art/k.art", "@target t.png 8x8 each a:[x] b:oops\nrect 1\n")]);
+        let plan = plan(&p);
+        assert!(
+            plan.diagnostics
+                .iter()
+                .any(|d| d.code == "E0206" && d.message.contains("`b`")),
+            "{:?}",
+            plan.diagnostics
+        );
+        assert!(plan.jobs.is_empty(), "{:?}", plan.jobs);
+    }
+
+    #[test]
+    fn a_known_key_after_each_stays_a_target_key() {
+        let p = project(&[(
+            "art/k.art",
+            "@target t.png 8x8 each a:[x] clip:go fps:12\nrect 1\n",
+        )]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        assert_eq!(plan.jobs.len(), 1);
+        assert_eq!(plan.jobs[0].clip.as_deref(), Some("go"));
+        assert_eq!(plan.jobs[0].fps, 12.0);
     }
 
     #[test]
@@ -325,7 +528,10 @@ mod tests {
         let plan = plan(&p);
         assert_eq!(plan.diagnostics.len(), 1);
         let d = &plan.diagnostics[0];
-        assert_eq!((d.code.as_str(), d.file.as_str(), d.span.line), ("E0202", "art/b.art", 2));
+        assert_eq!(
+            (d.code.as_str(), d.file.as_str(), d.span.line),
+            ("E0202", "art/b.art", 2)
+        );
         assert_eq!(d.notes, ["first declared at art/a.art:1"]);
         assert_eq!(plan.jobs.len(), 1);
     }

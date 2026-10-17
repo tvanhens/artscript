@@ -1,13 +1,13 @@
 # artscript language card (v0.1)
 
-artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG and SVG. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
+artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment.
 
-A line that does not draw says so with its first word: `use palette style finish def rule let shader light brush` declare, `if else each` branch and loop, `assert expect` check, `slot` exposes a slot, `ramp color` are palette rows, `fx` adds an effect, `mask` masks, `.part` patches, and `name:` at the end of a line fills a slot. Every other line is a draw: a shape, a structure verb, or a component. `fx`, `mask`, `slot` and `finish` are reserved, so `let fx = 1` is an error.
+A line that does not draw says so with its first word: `use palette style finish def rule let shader light brush anim` declare, `if else each` branch and loop, `assert expect` check, `slot` exposes a slot, `play` starts an anim, `ramp color` are palette rows, `fx` adds an effect, `mask` masks, `.part` patches, and `name:` at the end of a line fills a slot. Every other line is a draw: a shape, a structure verb, or a component. `fx`, `mask`, `slot`, `finish`, `anim`, and `play` are reserved, so `let fx = 1` is an error.
 
 ## Files
 
-- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`.
-- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `each k:[a b]` fans out a matrix interpolated as `{k}` in the path.
+- An **entry file** starts with one or more `@target` lines. Any file without one is a **library** and may only hold `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`, `anim`.
+- `@target produce/peach.png 1024x1024 scale:1,2` writes `peach.png` and `peach@2x.png`. `.svg` targets write SVG. `.gif` targets write one GIF at scale 1; `scale:` does not add `@2x` copies or change the stroke sample. Keys: `bg:none|<color>`, `as:<label>` (the file reads it as `target`), `profile:vector|svg|raster`, `fps:` (default 24), `dur:`, `clip:` (the file reads it as `clip`, default `none`), `t:` (the time a still draws, default 0), `each k:[a b]` fans out a matrix interpolated as `{k}` in the path. `fmt` prints `clip:` after `each`. `bg`, `scale`, `as`, `fps`, `dur`, `t`, `clip`, and `profile` are never axes, so `clip:[idle blink]` stays a `clip:` error. A GIF needs an opaque `bg:`, at most one frame per centisecond of `dur`, and at most 256MiB of raster and 256MiB of retained frames.
 - `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The manifest's default palette is always available as `p`.
 
@@ -18,6 +18,7 @@ A line that does not draw says so with its first word: `use palette style finish
 | number | `12`, `.5`, `-3` (canvas units) |
 | percent | `50%` of the current frame (the canvas, a parent shape's bounds, or a def's `size` box) |
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
+| time | `200ms`, `2s`, a bare number in a time position is seconds |
 | vector / size | `14,0` (no spaces around the comma), `256x256` |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
@@ -125,6 +126,26 @@ def eye size:10 iris:p.sky.3 look:0,0
 - `let w = if build == slim then 34 else 42`, `if`/`else` (a statement `if` takes a block, not `then`), and `each x in [..]` / `each i in 0..8` are bounded control flow. `each i in 0..8` runs 8 times, with `i` from 0 through 7. `[each k in 0..n -> expr]` builds the list.
 - `style ink stroke:p.ink,2` with `style:ink` applies those keys to a node and its descendants. A style takes keys only, never a block. A style holds keys that children inherit, while a finish holds effects that one node gets.
 
+## Animation
+
+`t` is the clip time in seconds. Inside an `anim` it is that anim's local time. `clip` is the target's `clip:` name, or `none`.
+
+```
+key(0 6 0)
+key(0 1 1 0 at:[0 .3 .7 1] ease:in_out)
+anim idle dur:2s loop
+  .face at:0,key(0 6 0)
+  .leaf rot:key(-4 4 -4)
+anim blink dur:200ms
+  .eyes.* lid:key(.6 1 .6)
+play idle start:0s
+```
+
+- `key` samples the current time. Values are spaced evenly unless `at:` lists fractions from 0 to 1. The default curve is smooth. `ease:` is `linear`, `in`, `out`, `in_out`, or `hold`, one name or one per segment. `loop` wraps. Outside an anim, `dur:` is required.
+- Numbers, angles, vectors, and sizes interpolate. Colors interpolate in OKLab. Words, components, and booleans step. Anything else is an error.
+- `anim` is a declaration. Its body is patch lines. `at` and `rot` add to the rest pose. A percent rest `at` is measured against the node's frame before a numeric offset is added. `scale` multiplies. `abs(v)` on those three sets the value. Every other argument is set, except `name:`, which stays on the draw. A patch expression is seeded from the anim's file, the owner path, and the patch line. A `style:` word from the anim is resolved in the anim's module. `play` is a statement at the top of an entry file or under an instance. `play none` does nothing. Plays apply in source order after static patches. The last set value wins. A `let` inside `if` or `each` under an instance stays in that branch. A direct `let` under the instance is visible to later plays there.
+- An unnamed sibling's suffix is the statement's occurrence among siblings with the same base name, counting both arms of an `if` and the body of an `each`.
+
 ## Checks
 
 Checks measure the evaluated scene and never move anything. An `assert` failure is an error, and an `expect` failure is a warning.
@@ -139,4 +160,4 @@ Measurements are `@a.x .y .w .h .cx .cy .left .right .top .bottom .area`. Functi
 
 ## CLI
 
-`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.
+`artscript build [--only 'glob'] [--allow-warnings]`, `check [--json]`, `fmt [--check] [FILE...]`, `explain <file>`, `init`. With no files, `fmt` rewrites every `.art` file. `fmt --check` lists files that would change and writes nothing. `check` evaluates each still once and samples each GIF, and it does not render. An unknown flag on any command prints usage and exits 1. Exit codes: 0 ok, 1 compile error or a `fmt --check` diff, 2 an assert failed, 3 only warnings.

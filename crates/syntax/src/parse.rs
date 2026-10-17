@@ -133,7 +133,12 @@ impl<'a> Parser<'a> {
                             );
                             break;
                         }
-                        each.push(self.parse_named());
+                        let item = self.parse_named();
+                        if is_each_axis(&item.key) {
+                            each.push(item);
+                        } else {
+                            named.push(item);
+                        }
                     } else {
                         self.fail_here(
                             "expected a named axis after `each`",
@@ -217,7 +222,10 @@ impl<'a> Parser<'a> {
             return if self.ti + 2 >= tokens.len() {
                 Head::SlotFill(word)
             } else {
-                Head::GluedColon { name: word, rest: self.line_rest(self.ti + 2) }
+                Head::GluedColon {
+                    name: word,
+                    rest: self.line_rest(self.ti + 2),
+                }
             };
         }
         match tok.kind {
@@ -230,7 +238,8 @@ impl<'a> Parser<'a> {
                 | Word::Rule
                 | Word::Shader
                 | Word::Light
-                | Word::Brush,
+                | Word::Brush
+                | Word::Anim,
             ) => Head::Decl,
             Tok::Kw(Word::Fx) => Head::Fx,
             Tok::Kw(Word::Mask) => Head::Mask,
@@ -309,9 +318,7 @@ impl<'a> Parser<'a> {
             Head::GluedColon { name, rest } => {
                 self.reject_line_and_block(
                     format!("`{name}:` must end the line"),
-                    format!(
-                        "write `{name} {rest}`, or end the line with `{name}:` to fill a slot"
-                    ),
+                    format!("write `{name} {rest}`, or end the line with `{name}:` to fill a slot"),
                 );
                 None
             }
@@ -456,6 +463,7 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Shader)) => self.parse_shader(),
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
             Some(Tok::Kw(Word::Brush)) => self.parse_brush(),
+            Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
             _ => None,
         }?;
         Some(Decl { kind, span })
@@ -470,6 +478,7 @@ impl<'a> Parser<'a> {
             Tok::Kw(Word::If) => self.parse_if(),
             Tok::Kw(Word::Each) => self.parse_each(),
             Tok::Kw(Word::Slot) => self.parse_slot(),
+            Tok::Kw(Word::Play) => self.parse_play(),
             Tok::Kw(Word::Else) => {
                 self.reject_line_and_block(
                     "`else` must directly follow an `if` block at the same indent",
@@ -739,6 +748,121 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Brush { name, named })
     }
 
+    fn parse_anim(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let mut dur = None;
+        let mut loop_ = false;
+        while !self.eol() {
+            if self.is_named() {
+                let n = self.parse_named();
+                if n.key == "dur" && dur.is_none() {
+                    dur = Some(n.value);
+                } else {
+                    self.fail(
+                        n.span,
+                        format!("`anim` does not take `{}:`", n.key),
+                        "write `anim name dur:<time>` and an optional `loop`",
+                    );
+                }
+            } else if self.eat_ident("loop") {
+                loop_ = true;
+            } else {
+                self.fail_here("expected `dur:` or `loop`", "write `anim name dur:1s loop`");
+                break;
+            }
+        }
+        let dur = dur.unwrap_or_else(|| {
+            self.fail(span, "`anim` needs `dur:`", "write `anim name dur:1s`");
+            Expr::Time(1.0)
+        });
+        let has_child = self
+            .lines
+            .get(self.li + 1)
+            .is_some_and(|l| l.indent > indent);
+        let body = self.block(indent, span.line, Self::anim_line);
+        if body.is_empty() && !has_child {
+            self.errors.push(
+                Diagnostic::error(
+                    "E0341",
+                    span,
+                    format!("anim `{name}` needs an indented block of patch lines"),
+                )
+                .with_fix(format!("indent `.part key:value` under `anim {name}`")),
+            );
+        }
+        Some(DeclKind::Anim {
+            name,
+            dur,
+            loop_,
+            body,
+        })
+    }
+
+    fn anim_line(&mut self) -> Option<Patch> {
+        if matches!(self.head(), Head::Patch) {
+            return self.parse_patch();
+        }
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.errors.push(
+            Diagnostic::error("E0341", span, "an anim body may only contain patch lines")
+                .with_fix("write `.part key:value` under the anim"),
+        );
+        self.skip_block(indent);
+        self.line_failed = true;
+        if self.li < self.lines.len() {
+            self.ti = self.lines[self.li].tokens.len();
+        }
+        None
+    }
+
+    fn parse_play(&mut self) -> Option<Scene> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = if self.eat_kw(Word::None) {
+            None
+        } else if self.eol() {
+            self.fail(
+                span,
+                "expected an anim name after `play`",
+                "write `play name` or `play none`",
+            );
+            None
+        } else {
+            Some(self.expect_name())
+        };
+        let mut start = None;
+        while !self.eol() {
+            if self.is_named() {
+                let n = self.parse_named();
+                if n.key == "start" && start.is_none() {
+                    start = Some(n.value);
+                } else {
+                    self.fail(
+                        n.span,
+                        format!("`play` does not take `{}:`", n.key),
+                        "write `play name start:<time>`",
+                    );
+                }
+            } else {
+                self.fail_here(
+                    "expected `start:` or the end of the line",
+                    "write `play name start:0s`",
+                );
+                break;
+            }
+        }
+        self.no_block(indent);
+        Some(Scene {
+            kind: SceneKind::Play { name, start },
+            span,
+        })
+    }
+
     fn parse_let(&mut self) -> Option<Scene> {
         let span = self.cur_span();
         let indent = self.cur_indent();
@@ -1001,9 +1125,9 @@ impl<'a> Parser<'a> {
                 return None;
             }
             (Some(v), false) => Mask::Value(v),
-            (None, true) => Mask::Block(
-                self.block(indent, span.line, |p| p.scene_line("in a mask block")),
-            ),
+            (None, true) => {
+                Mask::Block(self.block(indent, span.line, |p| p.scene_line("in a mask block")))
+            }
             (None, false) => {
                 self.fail(
                     span,
@@ -1507,6 +1631,10 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Angle(n)
             }
+            Tok::Time(n) => {
+                self.bump();
+                Expr::Time(n)
+            }
             Tok::Size(a, b) => {
                 self.bump();
                 Expr::Size(Box::new(size_part(a)), Box::new(size_part(b)))
@@ -1521,7 +1649,6 @@ impl<'a> Parser<'a> {
             }
             Tok::Ident(s) => {
                 self.bump();
-                self.reject_reserved(&s, tok.span);
                 Expr::Ident(s)
             }
             Tok::Kw(Word::True) => {
@@ -1535,6 +1662,10 @@ impl<'a> Parser<'a> {
             Tok::Kw(Word::None) => {
                 self.bump();
                 Expr::Ident("none".into())
+            }
+            Tok::Kw(Word::In) => {
+                self.bump();
+                Expr::Ident("in".into())
             }
             Tok::Ref(segs) => {
                 self.bump();
@@ -1618,10 +1749,7 @@ impl<'a> Parser<'a> {
             self.parse_prec(PREC_MAP + 1)
         };
         if !self.eat(&Tok::Arrow) {
-            self.fail_here(
-                "expected `->`",
-                "write `[each name in <expr> -> <expr>]`",
-            );
+            self.fail_here("expected `->`", "write `[each name in <expr> -> <expr>]`");
             return Expr::Each {
                 var,
                 iter: Box::new(iter),
@@ -1675,6 +1803,10 @@ impl<'a> Parser<'a> {
     /// A patch segment names a part or a slot. A slot may be declared with a keyword (`slot mask`),
     /// so the segment is not a binding and is not reserved.
     fn part_name(&mut self) -> String {
+        if self.cur().is_some_and(|t| matches!(t.kind, Tok::Star)) {
+            self.bump();
+            return "*".into();
+        }
         self.take_word().unwrap_or_else(|| {
             self.fail_here("expected a part name", "write `.part` or `.head.eye`");
             String::new()
@@ -1905,6 +2037,13 @@ impl<'a> Parser<'a> {
 
 fn is_key(kind: &Tok) -> bool {
     matches!(kind, Tok::Ident(_) | Tok::Kw(_))
+}
+
+fn is_each_axis(key: &str) -> bool {
+    !matches!(
+        key,
+        "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile"
+    )
 }
 
 fn binop_of(kind: &Tok) -> Option<(BinOp, u8)> {

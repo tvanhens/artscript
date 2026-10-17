@@ -94,10 +94,7 @@ pub enum DeclKind {
         body: Vec<Swatch>,
     },
     /// `style ink stroke:p.ink,2 join:round`. Keys only; paint keys reach descendants.
-    Style {
-        name: String,
-        named: Vec<Named>,
-    },
+    Style { name: String, named: Vec<Named> },
     /// `finish lacquer width:5` + a block of `fx` lines, kept in order. An `fx lacquer` line under
     /// a node puts those lines on that node at that position.
     Finish {
@@ -124,14 +121,15 @@ pub enum DeclKind {
         sksl: Option<String>,
     },
     /// `light sun dir:-1,-1.5`. Parsed, not implemented in v0.1.
-    Light {
-        name: String,
-        named: Vec<Named>,
-    },
+    Light { name: String, named: Vec<Named> },
     /// `brush ink stamp:@dab`. Parsed, not implemented in v0.1.
-    Brush {
+    Brush { name: String, named: Vec<Named> },
+    /// `anim idle dur:2s loop` with a body of patch lines.
+    Anim {
         name: String,
-        named: Vec<Named>,
+        dur: Expr,
+        loop_: bool,
+        body: Vec<Patch>,
     },
 }
 
@@ -145,7 +143,10 @@ pub struct Swatch {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SwatchKind {
     Color(Expr),
-    Ramp { pos: Box<RampPos>, hue: Option<Expr> },
+    Ramp {
+        pos: Box<RampPos>,
+        hue: Option<Expr>,
+    },
 }
 
 /// A ramp's positionals. The evaluator decides which are colors and which is the stop count,
@@ -205,6 +206,11 @@ pub enum SceneKind {
         name: String,
         named: Vec<Named>,
         fallback: Vec<Scene>,
+    },
+    /// `play idle start:1s`. `name` is `None` for `play none`.
+    Play {
+        name: Option<String>,
+        start: Option<Expr>,
     },
     Draw(Draw),
 }
@@ -368,6 +374,8 @@ pub enum Expr {
     Percent(f64),
     /// Always degrees. `.25turn` parses to 90.
     Angle(f64),
+    /// Seconds. `200ms` is 0.2. A bare number in a time position is also seconds.
+    Time(f64),
     /// `256x256`, `100%x60%`.
     Size(Box<Expr>, Box<Expr>),
     /// Hex without `#`, lowercased: `ff5e5b`, `fff`.

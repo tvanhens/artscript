@@ -4,6 +4,7 @@ mod draw;
 mod effects;
 mod features;
 mod field;
+mod gif;
 mod paint;
 mod svg;
 mod text;
@@ -25,7 +26,14 @@ pub enum RenderError {
     /// Under `Profile::Vector`, every node that uses a raster-only feature.
     NotVector(Vec<Unsupported>),
     Skia(String),
+    TransparentGif,
+    /// `width × height × frames × 4` exceeds [`RASTER_BUDGET`].
+    GifTooLarge,
 }
+
+/// RGBA bytes of every GIF frame. Encoding also holds a second copy for the palette.
+/// `sample` uses this same cap, and parallel encodes reserve against it and wait.
+pub const RASTER_BUDGET: u64 = 256 * 1024 * 1024;
 
 /// Renders the scene at `scale` (1 = one pixel per canvas unit) and encodes it as PNG.
 /// Deterministic: the same scene produces the same bytes.
@@ -37,4 +45,19 @@ pub fn render_png(scene: &Scene, scale: f32) -> Result<Vec<u8>, RenderError> {
 /// embedded PNG tiles rendered at `bake_scale`. Under `Profile::Vector` they are an error.
 pub fn render_svg(scene: &Scene, profile: Profile, bake_scale: f32) -> Result<String, RenderError> {
     svg::render_svg(scene, profile, bake_scale)
+}
+
+/// Unpremultiplied RGBA8888 bytes, row-major, length `width * height * 4` at `scale`.
+pub fn render_rgba(scene: &Scene, scale: f32) -> Result<(u32, u32, Vec<u8>), RenderError> {
+    draw::render_rgba(scene, scale)
+}
+
+/// One global palette, deterministic NeuQuant, delays already in centiseconds.
+pub fn render_gif(
+    scenes: &[&Scene],
+    scale: f32,
+    delays: &[u16],
+    loop_forever: bool,
+) -> Result<Vec<u8>, RenderError> {
+    gif::encode(scenes, scale, delays, loop_forever)
 }

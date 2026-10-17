@@ -11,9 +11,9 @@ The author-facing reference is `docs/language.md`. This file settles the details
   - Any other `#` starts a comment that runs to end of line.
 - **Numbers.**
   - Numbers look like `12`, `1.5`, `.5`. There is no exponent, and the sign is never part of the token.
-  - The suffixes `%`, `deg` and `turn` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees.
+  - The suffixes `%`, `deg`, `turn`, `ms`, and `s` attach with no space. A percent is stored as 0.5 for `50%`, and a turn as 360 degrees. `ms` and `s` store seconds. The lexer tries `ms` before `s`.
 - **Sizes.** A number or percent, then `x`, then a number or percent with no spaces is one size token: `256x256`, `100%x60%`, `8x40`. `mirror x` stays an identifier because `x` is not glued to a number.
-- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Every grammar word has one row in the word table in `crates/syntax/src/words.rs`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none fx mask slot`. The future words (`sksl field warp backdrop profile pose joint ease t frames anim key`) are reserved too. A reserved word used as a name is E0105, so `let fx = 1` is an error. `ramp` and `color` head palette rows and are ordinary names everywhere else, so `color:p.ink`, a def parameter named `color`, and the `ramp(...)` builtin keep working.
+- **Identifiers.** Identifiers match `[A-Za-z_][A-Za-z0-9_]*`. Every grammar word has one row in the word table in `crates/syntax/src/words.rs`. Keywords are `use as from palette style finish def rule let shader light brush assert expect if then else each in and or not true false none fx mask slot anim play`. The future words (`sksl field warp backdrop profile pose joint ease t frames key clip loop set mark root visible`) are reserved too. A reserved word used as a name is E0105, so `let fx = 1` and `let t = 1` are errors. `ramp` and `color` head palette rows and are ordinary names everywhere else, so `color:p.ink`, a def parameter named `color`, and the `ramp(...)` builtin keep working. `in` is also a value word, so `ease:in` parses. A reserved word in expression position is a value, so `let n = t`, `key(...)`, and `name:mark` parse. The same word as a binding, a parameter, or a draw verb is still E0105.
 - **References.** `@` followed by an identifier, then `.segment` repeats where a segment is an identifier, digits or `*`.
 - **Member access.** A `.` glued to the end of an identifier, a `)` or a reference continues a member chain (`p.sky.3`, `v.x`). A `.` at the start of a statement followed by a name is a patch. A segment may be a keyword, because a slot may be named one: `slot mask`, then `.mask off`.
 - **Strings.** `"..."` supports the escapes `\" \\ \n`. `"""..."""` is raw and may span lines. Its common leading indentation is stripped.
@@ -25,17 +25,18 @@ The first word of a line decides its form, so a line that does not draw says so 
 
 | line starts with | form | where it may go |
 |---|---|---|
-| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each` followed by named axes | file top |
+| `@ident` before any statement | directive. `@target` takes a raw path token (everything up to whitespace), then args, named args, and an optional `each`. A known target key (`bg`, `scale`, `as`, `fps`, `dur`, `t`, `clip`, `profile`) is never an axis, even when the value is a list. Any other named item after `each` is an axis. `fmt` prints `clip:` after `each` | file top |
 | `use` | `use <raw path> [as x] [{ a b }]` | file top |
-| `palette`, `style`, `finish`, `def`, `rule`, `shader`, `light`, `brush` | declarations. In `finish`, `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs`. A `style` takes no block, and one is E0101 whose fix names `finish`. A `finish` needs a block, and every line in it must be an `fx` line, or it is E0101 | file top |
+| `palette`, `style`, `finish`, `def`, `rule`, `shader`, `light`, `brush`, `anim` | declarations. In `finish`, `def` and `rule` every parameter is a named arg. `def` accepts `needs:@a` or `needs:@a,@b` as a parameter named `needs`. A `style` takes no block, and one is E0101 whose fix names `finish`. A `finish` needs a block, and every line in it must be an `fx` line, or it is E0101. `anim <name> dur:<time> [loop]` needs a block of patch lines (E0341 otherwise). A path segment may be `*` | file top |
 | `ramp`, `color` | palette row: `ramp <name> <color> [<color>] [<count>] [hue:h]` or `color <name> <color>` | directly under `palette`, and nothing else may go there |
 | `let` | `let name = expr` | any scene block |
 | `assert`, `expect` | `expr named* "message"?` | any scene block |
 | `if`, `each`, `else` | control. `else` must directly follow an `if` block at the same indent. `else if` chains are allowed | any scene block |
 | `slot` | `slot <name> named*` with an optional fallback block. The name may be `mask` | any scene block. Evaluation requires a `def` (E0334) |
+| `play` | `play <name>\|none [start:<time>]` | entry file top, and under an instance (E0342 otherwise) |
 | `fx` | `fx <name> items`, with no block. The name is a built-in effect or a finish | directly under a draw, a `def`, or a `finish` |
 | `mask` | `mask <expr>`, or `mask` alone over a block. One per draw, anywhere among its children | directly under a draw |
-| `.ident` | patch. Path segments, named args, and an optional trailing `off` | directly under a draw |
+| `.ident` | patch. Path segments, named args, and an optional trailing `off`. A segment may be `*` | directly under a draw, and under an `anim` |
 | `ident:` then end of line | slot fill, which needs a block. `mask:` is a slot fill named `mask`, not a mask | directly under a draw |
 | any other identifier | draw: the verb (a shape, a structure verb, or a component), then items | any scene block |
 
@@ -127,9 +128,9 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   2. a layer's or group's positional name
   3. for an instance, the def name
   4. otherwise the verb
-- A second unnamed sibling with the same base name gets a 1-based suffix, so the second is `circle2`.
+- An unnamed sibling's suffix is the statement's 1-based occurrence among sibling statements with the same base name. The count includes both arms of an `if` and statements inside an `each`. It does not walk into a `group`, `layer`, shape, `repeat`, `grid`, or `mirror` body. Index 1 omits the suffix, so the second circle is `circle2`. A dynamic `name:` does not change the index.
 - Mirror copies append `_m`.
-- Repeat, grid and each copies append `#<i>` to every top-level node of the copy.
+- Repeat, grid and each copies append `#<i>` to every top-level node of the copy. The occurrence index counts the `each` statement once, so two successive `each` loops are `circle#0` and `circle2#0`. The `each` variable is bound to the first item while the number is assigned, so `each part in [eye]` drawing `part`, then a later `each` drawing `eye`, are `eye#0` and `eye2#0`. A later item that is a different component still uses that one number. An alias of a component shares that component's base, so `let alias = eye` then `alias` and `eye` are `eye` and `eye2`. A `let` or an `each` iterator is seeded from its file, path, and line while the occurrences are counted, the same seed the draw uses, so `pick` and `rand` choose the same component in both passes.
 - Slot content lives under `<instance path>.<slot name>`.
 
 ## 5. Values and types
@@ -185,7 +186,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - `stroke:w` alone uses `line(fill)` (or `line(#8a8a8a)`).
   - `cap:` and `join:` override, and `dash:4,2` dashes.
 - **Tapered ink.** A stroke whose width is a list, or a stroke with `taper:` set, becomes a filled outline (`Shape.fill = stroke paint`, no stroke). Use the `brush` algorithm from chibi `paths.py`:
-  1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the target's highest `scale:`, so `@2x` stays as smooth as `scale:1`. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
+  1. Sample the curve every 0.75 output pixels. In the path's own units that step is `0.75 / (transform scale × target scale)`. The transform scale is the accumulated scale (the longer axis of the local-to-canvas matrix). The target scale is the target's highest `scale:`, so `@2x` stays as smooth as `scale:1`. A GIF uses scale 1 for that step, including when `scale:` or the manifest lists a higher number. A stroke in unit space under `scale:50` then matches the same stroke written in pixels.
   2. Interpolate the per-point widths by chord fraction.
   3. Taper each end with the floor `.12` and ease `sin(x*pi/2)^.8`.
   4. Add round caps.
@@ -281,8 +282,8 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
 - `use` of an entry file is E0201.
 - Two declarations that produce the same output path, after matrix expansion, are E0202. The note names the first declaration.
 - `@target` under a manifest lib root is E0203.
-- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `finish`, `def`, `rule`, and `let`.
-- The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`.
+- A drawing statement at a library's top level is E0204. Allowed forms there are `use`, `palette`, `style`, `finish`, `def`, `rule`, `let`, and `anim`.
+- The out path is relative to the manifest `out`. `scale:` applies to `.png` only, where scale 1 is `name.png` and scale k is `name@kx.png`. A `.gif` is one file at scale 1. `scale:` does not add `@2x` copies.
 - `bg:` defaults to the manifest `[defaults] bg`, which defaults to `none` (transparent).
 - `art-manifest.json` sits in `out`. It holds `{ "version": 1, "outputs": [ { "path", "source", "line", "target", "matrix", "scale", "hash", "status": "pass|warn|fail", "checks": [..] } ] }`, sorted by path.
   - Hashes are FNV-1a 64 of the output bytes, as hex.
@@ -292,7 +293,7 @@ So `1/8..1/6` parses as a range of two quotients, and `(.8..1.2) * w` needs its 
   - every transitively imported library source
   - the manifest
   - the hash of the `artscript` executable, so a renderer change re-renders every target
-  - the target's matrix values
+  - the target's matrix values, `fps`, `dur` (or `auto`), `clip` (or `none`), and `t`
   
   When the key matches and the outputs on disk match their hashes, skip the target.
 - **Determinism.**
@@ -319,7 +320,8 @@ These pin down points the sections above leave open. Earlier sections still gove
   - Finishes are imported the same way as styles. `use x` and `use x { surface }` bind them by name. `use x as m` does not, and there is no `fx m.surface` form.
   - A style and a finish may share a name. Both of those forms bind both.
 - **Node identity.**
-  - The sibling suffix counter is keyed by the base name plus any `#i` suffix. So the copies of one `each` are `circle#0`, `circle#1`, and a second loop's copies are `circle2#0`, `circle2#1`.
+  - The suffix is the static occurrence from section 4, not a count of emitted nodes. One `each` emits `circle#0`, `circle#1`. A second `each` is the next occurrence, so its copies are `circle2#0`, `circle2#1`.
+  - Seeds follow that path. Toggling an `if` does not renumber a later sibling.
   - Only nodes with `name:`, named layers and groups, and instances are registered for `@refs`. A bare `circle` is not addressable.
   - Slot content registers its names in the caller's table, and resolves `@x` against the host first.
 - **Patches.** When an outer instance and an inner one both patch the same node, the outer one wins.
@@ -336,11 +338,16 @@ These pin down points the sections above leave open. Earlier sections still gove
 - **Measurements.** `.area` is the bounds area, `w * h`.
 - **Lints.**
   - `raw-color` only scans statements. `@target` keys such as `bg:` are exempt.
-  - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
+  - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. A `play` name counts as a use of that import. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
 - **Codes added in this version.**
   - E0200: the manifest is missing or invalid, or a CLI argument is invalid.
-  - E0206: a bad `@target` size, scale, extension, profile or matrix axis.
+  - E0206: a bad `@target` size, scale, extension, profile, matrix axis, `fps`, `dur`, or `t`. Also a GIF with no duration, a GIF whose background is missing or not opaque (`a gif needs an opaque bg:`), a GIF with more frames than centiseconds (`a gif has more frames than centiseconds`), a GIF frame longer than 65535cs (`a gif frame is longer than 65535cs`), a GIF whose frames would exceed 256MiB of RGBA (`a gif raster is larger than 256MiB`), a GIF whose retained scenes would exceed 256MiB (`a gif retains more than 256MiB`), or a clip with more than 100000 frames (`a clip has more than 100000 frames`). The zero-delay fix says to lower `fps` or lengthen `dur`. The long-frame fix says to raise `fps` or shorten `dur`. The raster fix says to lower `fps`, shorten `dur`, or shrink the canvas. The retained-scene fix says to lower `fps`, shorten `dur`, or draw less in each frame.
+  - E0308: `play` names an anim that is not in scope.
+  - E0320 also covers a value that cannot be animated, a bad `key` (`dur`, `at`, `ease`), a non-positive duration, and a `key` outside an anim with no `dur:`. The message is `cannot animate <kind> yet` when the kind has no interpolation.
+  - E0341: an `anim` body contains something other than a patch line, or the anim has no indented patch block.
+  - E0342: `play` is not at the top level of an entry file and not under an instance.
+  - E0340: a patch matches nothing. A `play` reports it at the `play` site and the message names the anim. A patch expression or blend failure is reported on that patch, in the anim's file.
   - E0207: an unknown `{var}` in a target path.
   - E0208: an unknown directive.
   - E0209: a `profile:vector` target that uses raster-only features. The notes list each node.
@@ -364,3 +371,19 @@ These pin down points the sections above leave open. Earlier sections still gove
   - A target whose evaluation reports an `E` error writes no outputs. Its previous manifest entries are kept with `status: fail`, so the old outputs are not deleted.
   - With `--only`, entries of targets that were not selected stay in the manifest unchanged.
   - The manifest's `checks` field lists the `C` diagnostics as `"<code>: <message>"`.
+
+## 14. Time, anims and GIFs
+
+- **Time.** `ms` and `s` are suffixes. A bare number in a time position is seconds. A boolean is not a time. `anim` `dur:`, `play` `start:`, and `key`'s `dur:` reject it with E0320. `fmt` prints a positive sub-second whole number of milliseconds as `Nms`, and every other time as seconds. `0.5s` prints as `500ms`. `1500ms` prints as `1.5s`.
+- **`t` and `clip`.** `t` reads the evaluator's time. While an anim's body is sampled, that time is the anim's local time. `clip` reads the target's clip name, or `none`.
+- **`key`.** Fractions are `i / (n - 1)`. One value returns that value. `at:` is fractions of the key's duration, non-decreasing, in `[0, 1]`. A boolean in `at:` is E0320. The length must match the values. A zero-width segment uses the later value at that instant. The default duration is the anim's `dur`. Outside an anim, a missing `dur:` is E0320. `dur` must be positive.
+  - The default interpolation is uniform Catmull-Rom with the endpoint tangents duplicated. `ease:` replaces that curve. `linear` is `s`. `in` is `s^2`. `out` is `1 - (1 - s)^2`. `in_out` is `2s^2` below 0.5 and `1 - (2 - 2s)^2 / 2` otherwise. `hold` keeps the left value until the next key.
+  - A non-looping key holds the first value before 0 and the last value after `dur`. `loop` uses the fractional part of `t / dur`.
+  - Numbers, angles, vectors, and sizes interpolate in value space. An angle is a number of degrees, so `key(0 90deg)` is one kind. An angle does not take the short arc. Colors interpolate in OKLab, with alpha linear, then the usual gamut map. Words, components, and booleans step and ignore `ease`. A percent, a vector or size of percents, a ramp, gradient, list, string, field, or reference is E0320 at every sample, including the endpoints and `ease:hold`. Mixed kinds in one key are E0320. A vector and a size are different kinds.
+- **`anim`.** The duration is evaluated in the anim's module and seeded from the anim's file, the play's owner path, and the anim line. A duration that fails or is not positive is reported at the anim, with a note naming the `play`. The body is an indented block of patch lines (E0341 when the block is missing or holds something else). Anims are not values. `use` copies them the way it copies styles, skipping `_` names. `at` and `rot` add to the rest value. A percent rest position is measured against the node's frame before a numeric offset is added. A percent offset still adds to a percent rest. `scale` multiplies. `skew` and `pivot` are set. `abs(v)` on `at`, `rot`, or `scale` sets that channel. `name:` on a patch or an anim channel is E0320. The node's name stays the name on the draw. A patch expression is seeded from the anim's file, the play's owner path, and the patch line. `style:` is expanded after static patches and anim channels, so the last `style:` word supplies the paint keys. A word applied by an anim is resolved in that anim's module, and a word that module does not declare is reported at that patch. A word on the node or a static patch is resolved in the node's module. An explicit paint key on the node, a patch, or a channel still beats that style's key. `off` hides the node and still counts as a match. A patch line with only a path sets nothing, and it is E0340 when it matches nothing. A channel under that node counts as a match too, including on a frame where the node is hidden, so a typo under a hidden parent is not E0340. A `*` segment matches one path segment.
+- **`play`.** Allowed at the top level of an entry file and under an instance (E0342). The entry file's top level is the instance those paths patch. Static patches set the rest pose. Plays then apply in source order, including a play under an instance and a play that follows that instance in the file. An instance nested in a structural draw such as a `group` keeps that order too. A play whose `if` guard cannot be read in the prepass, such as `@name.w`, still keeps that source order. An `each` whose iterator cannot be read, such as `[@name.w]`, still reserves the plays in its body once, so a later file-level play stays later. Offsets accumulate. The last set value wins. `play none` records nothing.
+  - A `let` at file top is a module global from that line onward. A `let` inside `if` or `each` stays in that block, including under an instance. A `let` written as a direct line under the instance is visible to later plays, `fx`, and `mask` in that call, and not after the call. The play prepass reads those bindings, then restores the module globals, so a later `let` is not visible to an earlier line. As it walks, it records each named draw, so a later `if @name` sees that name. The record has no geometry, so `@name.w` still fails in the prepass. That branch's `play` is not scheduled, and an entry-file `each` whose iterator reads `@name.w` schedules none of its plays. Errors from that prepass's `let`, `if`, and `each` are dropped, because the real pass reports them. Errors from the `play` itself are kept.
+  - Local time is `t - start` (`start` defaults to 0, evaluated at the `play`). A `start:` expression is seeded from the play's file, the owner path, and the play line, then the previous seed is restored. A looping anim is always live and wraps with `rem_euclid`. A non-looping anim is live only on `[0, dur)`. A path that matches nothing is E0340 at the `play`, once per `play`, anim, and path, including when this frame is outside the window.
+  - The clip duration, when `dur:` is omitted, is the latest `end` among plays reached at `t = 0`. A clip loops when any play reached on a sampled frame has an anim that loops.
+- **Sampling.** `sample` is the entry point for a time-based target. Frame `i` is at `t = i / fps`, over `[0, dur)`, for both looping and non-looping clips. A product `dur * fps` that lands within `1e-8` of an integer does not grow the boundary frame, so `100ms + 200ms` at 10 fps is three frames. A count above 100000 frames is E0206 and `sample` returns no frames. Checks run on every frame. One failure on one node is reported once, with notes `first at {t}s` and `worst at {t}s`. The same check on another node stays a separate failure. Two applications of one rule stay two failures when their `via rule … applied at` notes name different call sites, and two plays that reach one bad anim duration stay two failures when their `played at` notes differ. The worst frame is the greatest absolute number found in the failure's notes, ignoring notes that start with `via rule` or `played at`, otherwise the greatest failing `t`. The message, notes, and fix are that worst frame's. `first at` stays the earliest failing time. `off-canvas` (L0102) is aggregated the same way, one diagnostic per node. A node that is clipped on one frame and entirely outside on a later frame stays one failure, and the worst frame supplies the message. Other lints stay on the first frame. `check` evaluates a still once. A GIF target goes through `sample`, so a check that fails on a later frame is reported. `sample` also reports a clip with no duration, a delay of 0, a delay above 65535cs, a GIF whose declared background is missing or translucent, a GIF side longer than 65535px, and a GIF whose `width × height × frames × 4` exceeds 256MiB, the same E0206 `build` uses before it encodes. Before it keeps a frame, `sample` charges the heaviest scene so far against the frames still to come. A clip whose retained scenes would pass 256MiB is E0206 and `sample` returns no frames, so `check` reports it before those scenes accumulate. Each frame's diagnostics are folded into the aggregate as the frame is evaluated. A pixel with alpha below 255 is still found when the GIF is encoded.
+- **GIF.** One NeuQuant palette, `sample_fac` 10, built from every frame. Delays are centiseconds. The total is `round(dur * 100)`, spread with Bresenham so 24 fps over 1 second is `4,4,4,4,4,5`. A delay of 0, or a delay above 65535cs, is E0206 and no GIF is written. A side longer than 65535px is E0206. Before any frame is rendered, `width × height × frames × 4` is capped at 256MiB. A larger raster is E0206 and nothing is written. The scenes held for those frames are capped at 256MiB as well. A heavier clip is E0206 and nothing is written. Parallel GIF encodes share the raster cap and wait, so several encodes cannot each hold a full raster at once. The scene cap is per target. A looping clip repeats forever. Any other clip plays once. A missing background, a background alpha below 1, or any pixel with alpha below 255 is E0206.

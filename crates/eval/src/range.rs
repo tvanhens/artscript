@@ -43,8 +43,14 @@ impl Range {
     pub(crate) fn scale(self, op: Arith, k: f64) -> Range {
         match op {
             // Leave a negative `k` reversed. `contains` then matches nothing, same as a descending literal.
-            Arith::Mul => Range { lo: self.lo * k, hi: self.hi * k },
-            Arith::Div => Range { lo: self.lo / k, hi: self.hi / k },
+            Arith::Mul => Range {
+                lo: self.lo * k,
+                hi: self.hi * k,
+            },
+            Arith::Div => Range {
+                lo: self.lo / k,
+                hi: self.hi / k,
+            },
             Arith::Add | Arith::Sub => panic!("range scale is multiplication or division"),
         }
     }
@@ -83,7 +89,10 @@ mod tests {
             let r = Range::new(lo, hi);
             let steps: Vec<f64> = r.steps().take(64).collect();
             assert!(steps.len() < 64, "{lo}..{hi} did not stop");
-            assert!(steps.iter().all(|x| r.contains(*x)), "{lo}..{hi} -> {steps:?}");
+            assert!(
+                steps.iter().all(|x| r.contains(*x)),
+                "{lo}..{hi} -> {steps:?}"
+            );
             let next = lo + steps.len() as f64;
             if steps.last().is_some_and(|last| next > *last) {
                 assert!(!r.contains(next), "{lo}..{hi} still contains {next}");
@@ -92,13 +101,19 @@ mod tests {
 
         let third = 1.0 / 3.0;
         let drifted = Range::new(third, third + 2.0);
-        assert_eq!(drifted.steps().collect::<Vec<_>>(), vec![third, third + 1.0]);
+        assert_eq!(
+            drifted.steps().collect::<Vec<_>>(),
+            vec![third, third + 1.0]
+        );
 
         let nan_lo = Range::new(f64::NAN, 1.0);
         assert!(!nan_lo.contains(0.0));
         assert!(!nan_lo.contains(f64::NAN));
         assert!(nan_lo.steps().next().is_none());
         assert!(Range::new(0.0, f64::NAN).steps().next().is_none());
-        assert_ne!(Range::new(f64::NAN, f64::NAN), Range::new(f64::NAN, f64::NAN));
+        assert_ne!(
+            Range::new(f64::NAN, f64::NAN),
+            Range::new(f64::NAN, f64::NAN)
+        );
     }
 }

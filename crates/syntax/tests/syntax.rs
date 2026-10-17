@@ -196,6 +196,29 @@ fn directive_target_matrix() {
         format(&file),
         "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
     );
+    let clip = must_parse("@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n");
+    assert_eq!(clip.directives[0].each[0].key, "c");
+    assert_eq!(
+        clip.directives[0]
+            .named
+            .iter()
+            .map(|n| n.key.as_str())
+            .collect::<Vec<_>>(),
+        ["bg", "clip"]
+    );
+    assert_eq!(
+        format(&clip),
+        "@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n"
+    );
+    let listed = must_parse("@target t-{clip}.gif 8x8 clip:[idle blink] each x:[one]\n");
+    assert_eq!(
+        format(&listed),
+        "@target t-{clip}.gif 8x8 each x:[one] clip:[idle blink]\n"
+    );
+    let again = must_parse(&format(&listed));
+    assert_eq!(again.directives[0].each.len(), 1);
+    assert_eq!(again.directives[0].each[0].key, "x");
+    assert!(again.directives[0].named.iter().any(|n| n.key == "clip"));
 }
 
 #[test]
@@ -422,7 +445,10 @@ fn calls_members_and_colors() {
             other => panic!("{other:?}"),
         })
         .collect();
-    assert_eq!(lets, [&Expr::Hex("fff".into()), &Expr::Hex("1b1f3a".into())]);
+    assert_eq!(
+        lets,
+        [&Expr::Hex("fff".into()), &Expr::Hex("1b1f3a".into())]
+    );
     let formatted = format_source("# comment\nlet a = #fff\nlet b = #1b1f3a\n").unwrap();
     assert_eq!(formatted, "# comment\nlet a = #fff\nlet b = #1b1f3a\n");
     assert_eq!(format_source(&formatted).unwrap(), formatted);
@@ -544,7 +570,10 @@ fn suffixes_slots_and_else_if() {
 fn statement_if_then_says_to_remove_then() {
     let errs = parse("if ready then\n  circle 1\n").unwrap_err();
     let e = errs.iter().find(|e| e.code == "E0101").expect("E0101");
-    assert_eq!(e.fix.as_deref(), Some("statement `if` takes a block; remove `then`"));
+    assert_eq!(
+        e.fix.as_deref(),
+        Some("statement `if` takes a block; remove `then`")
+    );
 }
 
 #[test]
@@ -628,9 +657,18 @@ fn syntax_errors_carry_a_fix() {
 #[test]
 fn separator_commas_are_rejected() {
     for (src, fix) in [
-        ("let v = shade(c, -2)\n", "remove the comma: write `f(a b)`, not `f(a, b)`"),
-        ("let v = [a, b]\n", "remove the comma: write `[a b]`, not `[a, b]`"),
-        ("use a/b { x, y }\n", "remove the comma: write `use lib { a b }`"),
+        (
+            "let v = shade(c, -2)\n",
+            "remove the comma: write `f(a b)`, not `f(a, b)`",
+        ),
+        (
+            "let v = [a, b]\n",
+            "remove the comma: write `[a b]`, not `[a, b]`",
+        ),
+        (
+            "use a/b { x, y }\n",
+            "remove the comma: write `use lib { a b }`",
+        ),
     ] {
         let errs = parse(src).unwrap_err();
         assert_eq!(errs.len(), 1, "{src}: {errs:?}");
@@ -712,9 +750,18 @@ fn palette_rows_take_ramp_or_color_payloads_only() {
             "palette p\n  ramp a #fff #000 5 9\n",
             "a ramp takes one or two colors and an optional stop count",
         ),
-        ("palette p\n  ramp a #fff 5 step:3\n", "a ramp takes no `step:`"),
-        ("palette p\n  color a #fff #000\n", "`color a` takes one color"),
-        ("palette p\n  fx blur 2\n", "a palette row starts with `ramp` or `color`"),
+        (
+            "palette p\n  ramp a #fff 5 step:3\n",
+            "a ramp takes no `step:`",
+        ),
+        (
+            "palette p\n  color a #fff #000\n",
+            "`color a` takes one color",
+        ),
+        (
+            "palette p\n  fx blur 2\n",
+            "a palette row starts with `ramp` or `color`",
+        ),
     ] {
         assert_eq!(one_error(src).message, message, "{src}");
     }
@@ -724,7 +771,11 @@ fn palette_rows_take_ramp_or_color_payloads_only() {
 fn fx_is_rejected_where_no_draw_owns_it() {
     let top = one_error("fx grade warm:.2\n");
     assert_eq!(top.message, "`fx` cannot go at the top level");
-    assert!(top.fix.as_ref().is_some_and(|f| f.contains("directly under")));
+    assert!(
+        top.fix
+            .as_ref()
+            .is_some_and(|f| f.contains("directly under"))
+    );
 
     let each = one_error("layer l\n  each i in 0..3\n    fx blur 2\n");
     assert_eq!(each.message, "`fx` cannot go directly under `each`");
@@ -806,8 +857,14 @@ fn def_body_holds_fx_but_no_mask_slot_fill_or_patch() {
     must_parse("def cup\n  circle 4\n    mask @x\n  fx glow 4\n");
     for (src, message) in [
         ("def cup\n  mask @x\n", "a `def` body cannot hold a mask"),
-        ("def cup\n  mask\n    circle 1\n", "a `def` body cannot hold a mask"),
-        ("def cup\n  head:\n    circle 1\n", "a `def` body cannot hold slot fill `head:`"),
+        (
+            "def cup\n  mask\n    circle 1\n",
+            "a `def` body cannot hold a mask",
+        ),
+        (
+            "def cup\n  head:\n    circle 1\n",
+            "a `def` body cannot hold slot fill `head:`",
+        ),
         ("def cup\n  .arm off\n", "a `def` body cannot hold a patch"),
     ] {
         assert_eq!(one_error(src).message, message, "{src}");
@@ -849,7 +906,10 @@ fn style_with_a_block_is_an_error_pointing_at_finish() {
     assert_eq!(errs.len(), 1, "{errs:?}");
     assert_eq!(errs[0].code, "E0101");
     assert_eq!(errs[0].span.line, 2);
-    assert_eq!(errs[0].message, "a style takes named keys only, not a block");
+    assert_eq!(
+        errs[0].message,
+        "a style takes named keys only, not a block"
+    );
     assert_eq!(
         errs[0].fix.as_deref(),
         Some("declare `finish <name>` with this block and write `fx <name>` under the node")
@@ -894,8 +954,12 @@ fn finish_holds_fx_lines_and_round_trips() {
 
 #[test]
 fn finish_body_takes_only_fx_lines() {
-    let errs = parse("finish f\n  fx rim 3\n  circle 4\n  finish g\n    fx grain .1\n").unwrap_err();
-    let lines: Vec<(u32, &str)> = errs.iter().map(|e| (e.span.line, e.message.as_str())).collect();
+    let errs =
+        parse("finish f\n  fx rim 3\n  circle 4\n  finish g\n    fx grain .1\n").unwrap_err();
+    let lines: Vec<(u32, &str)> = errs
+        .iter()
+        .map(|e| (e.span.line, e.message.as_str()))
+        .collect();
     assert_eq!(
         lines,
         [
@@ -908,5 +972,103 @@ fn finish_body_takes_only_fx_lines() {
     let named = parse("finish f 3\n  fx rim 3\n").unwrap_err();
     assert_eq!(named[0].message, "finish parameters are named arguments");
     let empty = parse("finish f\n").unwrap_err();
-    assert_eq!(empty[0].message, "finish `f` needs an indented block of `fx` lines");
+    assert_eq!(
+        empty[0].message,
+        "finish `f` needs an indented block of `fx` lines"
+    );
+}
+
+#[test]
+fn an_anim_without_a_body_is_e0341() {
+    let empty = parse("anim idle dur:1s\n").unwrap_err();
+    assert_eq!(empty[0].code, "E0341");
+    assert_eq!(
+        empty[0].message,
+        "anim `idle` needs an indented block of patch lines"
+    );
+    let bad = parse("anim idle dur:1s\n  circle 4\n").unwrap_err();
+    assert!(
+        bad.iter()
+            .any(|e| e.code == "E0341" && e.message.contains("patch lines")),
+        "{bad:?}"
+    );
+}
+
+#[test]
+fn time_anim_and_play_round_trip() {
+    let src = "\
+anim idle dur:2s loop
+  .face at:0,key(0 6 0)
+  .eyes.* lid:key(.6 1 .6 ease:in_out)
+anim yawn dur:1.6s
+  .mouth open:key(0 1 1 0 at:[0 .3 .7 1])
+anim blink dur:200ms
+  .eyes.* lid:key(.6 1 .6)
+play idle start:0s
+play none
+let n = t
+";
+    let file = must_parse(src);
+    match decl(&file) {
+        DeclKind::Anim {
+            name,
+            dur,
+            loop_,
+            body,
+        } => {
+            assert_eq!(name, "idle");
+            assert_eq!(dur, &Expr::Time(2.0));
+            assert!(*loop_);
+            assert_eq!(body.len(), 2);
+            assert_eq!(body[1].path, ["eyes".to_string(), "*".into()]);
+        }
+        other => panic!("{other:?}"),
+    }
+    match &file.items[1] {
+        Item::Decl(d) => match &d.kind {
+            DeclKind::Anim { dur, loop_, .. } => {
+                assert_eq!(dur, &Expr::Time(1.6));
+                assert!(!*loop_);
+            }
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    match &file.items[2] {
+        Item::Decl(d) => match &d.kind {
+            DeclKind::Anim { dur, .. } => assert_eq!(dur, &Expr::Time(0.2)),
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    match &file.items[3] {
+        Item::Scene(s) => match &s.kind {
+            SceneKind::Play { name, start } => {
+                assert_eq!(name.as_deref(), Some("idle"));
+                assert_eq!(start, &Some(Expr::Time(0.0)));
+            }
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    match &file.items[4] {
+        Item::Scene(s) => match &s.kind {
+            SceneKind::Play {
+                name: None,
+                start: None,
+            } => {}
+            other => panic!("{other:?}"),
+        },
+        other => panic!("{other:?}"),
+    }
+    let once = format(&file);
+    assert!(once.contains("dur:200ms"), "{once}");
+    assert!(once.contains("dur:2s"), "{once}");
+    assert!(once.contains("dur:1.6s"), "{once}");
+    assert!(once.contains(".eyes.*"), "{once}");
+    round_trip_ast(&file);
+    round_trip_source(src);
+    assert_eq!(format(&must_parse("let n = 0.5s\n")), "let n = 500ms\n");
+    assert_eq!(format(&must_parse("let n = 1500ms\n")), "let n = 1.5s\n");
+    assert_eq!(format(&must_parse("let n = 0s\n")), "let n = 0s\n");
 }
