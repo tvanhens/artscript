@@ -124,7 +124,7 @@ enum Use {
 #[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
 struct Tail {
     binding: Option<Rc<str>>,
-    line: Option<(Rc<[u32]>, u32)>,
+    stmt: Option<(Rc<[u32]>, Rc<str>)>,
     used: Option<Use>,
 }
 
@@ -222,9 +222,9 @@ impl Key {
     }
 
     /// The seed key of a `let`, `if`, `each`, `play`, or anim line under this node, after the loop
-    /// indices since this node.
-    pub fn at_line(&self, copies: &[u32], line: u32) -> Key {
-        self.with_tail(|t| t.line = Some((copies.into(), line)))
+    /// indices since this node. `stmt` is the statement's `let y~1` among its siblings.
+    pub fn at_stmt(&self, copies: &[u32], stmt: &str) -> Key {
+        self.with_tail(|t| t.stmt = Some((copies.into(), stmt.into())))
     }
 
     /// The `n`th draw-site seed (`rand`, `pick`, noise) under this key.
@@ -259,11 +259,11 @@ impl Key {
             if let Some(b) = &t.binding {
                 s.push_str(b);
             }
-            if let Some((copies, line)) = &t.line {
+            if let Some((copies, stmt)) = &t.stmt {
                 for c in copies.iter() {
                     s.push_str(&format!("#{c}"));
                 }
-                s.push_str(&format!("\0{line}"));
+                s.push_str(&format!("\0{stmt}"));
             }
             match t.used {
                 Some(Use::Draw(n)) => s.push_str(&format!("\0{n}")),
@@ -753,23 +753,44 @@ impl Declarer<'_> {
 /// The `verb~N` of every draw under `block`, by statement span. Within one block it counts every
 /// draw with the same written verb, named ones too, through both `if` arms and once per loop
 /// body. Each child block counts from 1 on its own. It evaluates nothing, so an alias counts
-/// under the word written.
-pub fn ordinals(file: &Rc<str>, block: &[&Scene], out: &mut BTreeMap<Span, Anon>) {
+/// under the word written. `tags` gets the same count for `let y`, `if`, `each i`, and
+/// `play bob` statements, so a statement seed does not move with its line.
+pub fn ordinals(
+    file: &Rc<str>,
+    block: &[&Scene],
+    out: &mut BTreeMap<Span, Anon>,
+    tags: &mut BTreeMap<Span, Rc<str>>,
+) {
     let mut children = Vec::new();
-    count(file, block, &mut BTreeMap::new(), out, &mut children);
+    count(file, block, &mut BTreeMap::new(), out, tags, &mut children);
     for c in children {
-        ordinals(file, &c, out);
+        ordinals(file, &c, out, tags);
     }
 }
 
 fn count<'s>(
     file: &Rc<str>,
     stmts: &[&'s Scene],
-    counts: &mut BTreeMap<&'s str, u32>,
+    counts: &mut BTreeMap<String, u32>,
     out: &mut BTreeMap<Span, Anon>,
+    tags: &mut BTreeMap<Span, Rc<str>>,
     children: &mut Vec<Vec<&'s Scene>>,
 ) {
     for s in stmts {
+        let tag = match &s.kind {
+            SceneKind::Let { name, .. } => Some(format!("let {name}")),
+            SceneKind::If { .. } => Some("if".to_string()),
+            SceneKind::Each { var, .. } => Some(format!("each {var}")),
+            SceneKind::Play { name, .. } => {
+                Some(format!("play {}", name.as_deref().unwrap_or("none")))
+            }
+            _ => None,
+        };
+        if let Some(tag) = tag {
+            let n = counts.entry(tag.clone()).or_insert(0);
+            *n += 1;
+            tags.insert(s.span, format!("{tag}~{n}").into());
+        }
         match &s.kind {
             SceneKind::If {
                 then, otherwise, ..
@@ -779,6 +800,7 @@ fn count<'s>(
                     &then.iter().collect::<Vec<_>>(),
                     counts,
                     out,
+                    tags,
                     children,
                 );
                 count(
@@ -786,6 +808,7 @@ fn count<'s>(
                     &otherwise.iter().collect::<Vec<_>>(),
                     counts,
                     out,
+                    tags,
                     children,
                 );
             }
@@ -795,12 +818,13 @@ fn count<'s>(
                     &body.iter().collect::<Vec<_>>(),
                     counts,
                     out,
+                    tags,
                     children,
                 );
             }
             SceneKind::Slot { fallback, .. } => children.push(fallback.iter().collect()),
             SceneKind::Draw(d) => {
-                let n = counts.entry(d.verb.as_str()).or_insert(0);
+                let n = counts.entry(d.verb.clone()).or_insert(0);
                 *n += 1;
                 out.insert(
                     s.span,
@@ -835,6 +859,7 @@ pub struct ModuleIds {
     file: Rc<Region>,
     regions: BTreeMap<Span, Rc<Region>>,
     anon: BTreeMap<Span, Anon>,
+    tags: BTreeMap<Span, Rc<str>>,
 }
 
 impl ModuleIds {
@@ -847,6 +872,7 @@ impl ModuleIds {
         let file: Rc<str> = path.into();
         let mut regions = BTreeMap::new();
         let mut anon = BTreeMap::new();
+        let mut tags = BTreeMap::new();
         let top: Vec<&Scene> = parsed.scenes().collect();
         let file_region = declare(
             &file,
@@ -857,7 +883,7 @@ impl ModuleIds {
             &mut regions,
             out,
         );
-        ordinals(&file, &top, &mut anon);
+        ordinals(&file, &top, &mut anon, &mut tags);
         for d in parsed.decls() {
             if let DeclKind::Def { name, body, .. } = &d.kind {
                 let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
@@ -871,13 +897,14 @@ impl ModuleIds {
                     out,
                 );
                 regions.insert(d.span, Rc::new(r));
-                ordinals(&file, &stmts, &mut anon);
+                ordinals(&file, &stmts, &mut anon, &mut tags);
             }
         }
         ModuleIds {
             file: Rc::new(file_region),
             regions,
             anon,
+            tags,
         }
     }
 
@@ -893,11 +920,17 @@ impl ModuleIds {
         self.anon.get(&stmt)
     }
 
+    /// The `let y~1` of a `let`, `if`, `each`, or `play` statement.
+    pub fn tag(&self, stmt: Span) -> Option<&str> {
+        self.tags.get(&stmt).map(|t| &**t)
+    }
+
     pub fn blank() -> ModuleIds {
         ModuleIds {
             file: Rc::new(Region::new(RegionKind::File, "this file".into())),
             regions: BTreeMap::new(),
             anon: BTreeMap::new(),
+            tags: BTreeMap::new(),
         }
     }
 }
@@ -1975,12 +2008,12 @@ mod tests {
         assert_eq!(s(&key.jitter()), old("art/t.art", "hero.eye.2#jitter"));
         assert_eq!(s(&key.grain()), old("art/t.art", "hero.eye.2#grain"));
         assert_eq!(
-            s(&key.at_line(&[0, 4], 12).draw(1)),
-            old("art/t.art\0hero.eye.2#0#4\x0012", "1")
+            s(&key.at_stmt(&[0, 4], "let y~1").draw(1)),
+            old("art/t.art\0hero.eye.2#0#4\0let y~1", "1")
         );
         assert_eq!(
-            s(&Key::root().at_line(&[], 7).draw(1)),
-            old("art/t.art\0\x007", "1")
+            s(&Key::root().at_stmt(&[], "if~2").draw(1)),
+            old("art/t.art\0\0if~2", "1")
         );
         assert_eq!(
             s(&Key::binding("glint").draw(1)),
