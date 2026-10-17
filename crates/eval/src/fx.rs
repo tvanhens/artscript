@@ -9,7 +9,7 @@ use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of};
-use crate::identity::{self, Key, Site};
+use crate::identity::{self, Key};
 use crate::scope::{FinishDef, Module};
 use crate::value::Value;
 
@@ -205,13 +205,7 @@ impl Evaluator<'_> {
                 EffectOp::Grain {
                     strength: n0.unwrap_or(0.05) as f32,
                     scale: a.num("scale").unwrap_or(1.5) as f32,
-                    seed: identity::seed(
-                        seed_file,
-                        &key.grain(),
-                        extra,
-                        &mut self.uses,
-                        Site::new(seed_file, line.span),
-                    ) as u32,
+                    seed: identity::seed(seed_file, &key.grain(), extra, &mut self.uses) as u32,
                 }
             }
             "merge" => {

@@ -1270,8 +1270,6 @@ impl<'a> Parser<'a> {
                 span,
             };
         }
-        // `{x}` is not an identifier. A brace here is still a value, so `name:` can report
-        // E0312 instead of a parse error that never reaches that check.
         if key == "name" && self.cur().is_some_and(|t| matches!(t.kind, Tok::LBrace)) {
             self.bump();
             let inner = self.parse_tuple();
@@ -1814,9 +1812,6 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// A patch segment names a part or a slot, or a whole-number copy index. A slot may be
-    /// declared with a keyword (`slot mask`), so the segment is not a binding and is not reserved.
-    /// `.h.0.1` is lexed as a name and then the number `0.1`, so that number splits into `0` and `1`.
     fn part_name(&mut self) -> Vec<String> {
         if self.cur().is_some_and(|t| matches!(t.kind, Tok::Star)) {
             self.bump();

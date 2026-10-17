@@ -1,5 +1,3 @@
-//! Taste lints: raw-color (L0101), off-canvas (L0102), unused (L0103), and positional-seed (L0104).
-
 use std::collections::HashSet;
 
 use artscript_ir::{Matrix, Node, NodeKind, Rect};

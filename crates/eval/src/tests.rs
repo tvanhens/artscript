@@ -2878,8 +2878,6 @@ fn stable_print(scene: &Scene) -> std::collections::BTreeMap<String, Vec<String>
 }
 
 fn insert_probe(src: &str) -> String {
-    // Appended so a line-seeded `let` keeps its line. The new draws are still
-    // file scope, which is what would renumber an unnamed sibling.
     let mut out = src.to_string();
     if !out.ends_with('\n') {
         out.push('\n');
@@ -3020,7 +3018,6 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
                     .split('.')
                     .collect::<Vec<_>>()
             );
-            // `a:` is often a def parameter, so it never reaches `Node.opacity`.
             let old = all.iter().find(|n| n.path == *path).unwrap().blend;
             let (word, blend) = if old == Blend::Multiply {
                 ("screen", Blend::Screen)

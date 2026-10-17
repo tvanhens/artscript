@@ -454,7 +454,6 @@ struct Agg {
     has_mag: bool,
 }
 
-/// L0102 and L0104 are folded across frames. Other lints stay on frame 0.
 fn folded_lint(code: &str) -> bool {
     code == "L0102" || code == "L0104"
 }

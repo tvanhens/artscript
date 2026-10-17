@@ -1,6 +1,3 @@
-//! Node identity. A [`Key`] names a node, a [`Region`] holds the names one scope declares, and
-//! [`seed`] hashes a key. The evaluator builds every key here and never formats a path itself.
-
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -15,7 +12,6 @@ use crate::scope::Record;
 use crate::seed::node_seed;
 use crate::value::Value;
 
-/// Verbs the language defines. Any other verb calls a def, so a name on it names an instance.
 const BUILTIN: &[&str] = &[
     "rect",
     "circle",
@@ -41,7 +37,6 @@ const BUILTIN: &[&str] = &[
     "canvas",
 ];
 
-/// Names cannot hold `~`, so a mirror clone never collides with an original.
 const REFLECTION: &str = "~m";
 
 /// An identifier the author wrote as `name:x`, `layer x`, `group x`, `slot x`, or `anchor x`.
@@ -92,9 +87,6 @@ impl Site {
     }
 }
 
-/// An unnamed statement's segment: the verb as written and its 1-based count among draws with
-/// that verb in one block. `site` is fixed by the key prefix, verb, and count, so it never splits
-/// two keys. L0104 reports there.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Anon {
     pub verb: Rc<str>,
@@ -105,10 +97,8 @@ pub struct Anon {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Seg {
     Name(Name),
-    /// One `each`, `repeat`, or `grid` iteration. Grid copies count row by row.
     Copy(u32),
     Anon(Anon),
-    /// The parent of a draw's `mask` block. It prints `mask~1`, so a slot named `mask` stays apart.
     Mask,
 }
 
@@ -131,8 +121,6 @@ enum Use {
     Grain,
 }
 
-/// What a seed hashes after the node key. These spellings are the bytes earlier builds hashed,
-/// so a node whose key equals its old path keeps every seed.
 #[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
 struct Tail {
     binding: Option<Rc<str>>,
@@ -145,8 +133,6 @@ struct Tail {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct Key {
     segs: Rc<[Seg]>,
-    /// Each enclosing mirror clone adds one.
-    reflected: u8,
     tail: Option<Rc<Tail>>,
 }
 
@@ -160,17 +146,14 @@ impl Key {
     pub fn root() -> Key {
         Key {
             segs: Rc::from(Vec::new()),
-            reflected: 0,
             tail: None,
         }
     }
 
     pub fn is_root(&self) -> bool {
-        self.segs.is_empty() && self.reflected == 0
+        self.segs.is_empty()
     }
 
-    /// The owner scope's key, then `name`, then the index of every loop between the scope root
-    /// and the statement. Groups, layers, shapes, and masks in between do not appear.
     pub fn named(owner: &Key, name: &Name, copies: &[u32]) -> Key {
         owner.extend(Seg::Name(name.clone()), copies)
     }
@@ -180,18 +163,8 @@ impl Key {
         parent.extend(Seg::Anon(anon.clone()), copies)
     }
 
-    /// The parent key of this draw's mask block, and the key of a `mask @ref` node.
     pub fn mask(&self) -> Key {
         self.extend(Seg::Mask, &[])
-    }
-
-    /// The key of this node's twin in a mirror clone.
-    #[allow(dead_code)]
-    pub fn reflected(&self) -> Key {
-        Key {
-            reflected: self.reflected + 1,
-            ..self.clone()
-        }
     }
 
     fn extend(&self, seg: Seg, copies: &[u32]) -> Key {
@@ -200,12 +173,10 @@ impl Key {
         segs.extend(copies.iter().map(|&i| Seg::Copy(i)));
         Key {
             segs: segs.into(),
-            reflected: self.reflected,
             tail: None,
         }
     }
 
-    /// The copy index at `depth` among the indices of this node's own loops.
     pub fn copy_at(&self, depth: usize) -> Option<u32> {
         let mut out = Vec::new();
         for seg in self.segs.iter().rev() {
@@ -218,29 +189,14 @@ impl Key {
         out.get(depth).copied()
     }
 
-    /// No `~` anywhere. A stable key, with a leading `.`, is a patch address from the root.
     pub fn is_stable(&self) -> bool {
-        self.reflected == 0
-            && self
-                .segs
-                .iter()
-                .all(|s| matches!(s, Seg::Name(_) | Seg::Copy(_)))
-    }
-
-    /// The unnamed statements in this key, outermost first.
-    #[allow(dead_code)]
-    pub fn positional(&self) -> impl Iterator<Item = &Anon> {
-        self.segs.iter().filter_map(|s| match s {
-            Seg::Anon(a) => Some(a),
-            _ => None,
-        })
+        self.segs
+            .iter()
+            .all(|s| matches!(s, Seg::Name(_) | Seg::Copy(_)))
     }
 
     /// `.a.b.0` from `scope` to this key, or `None` when the rest of the key is not stable.
     pub fn address_from(&self, scope: &Key) -> Option<String> {
-        if self.reflected > 0 || scope.reflected > 0 {
-            return None;
-        }
         let rest = self.segs.strip_prefix(&scope.segs[..])?;
         match rest.first() {
             Some(Seg::Name(_)) => {}
@@ -292,15 +248,6 @@ impl Key {
         }
     }
 
-    /// The node key without seed tags.
-    #[allow(dead_code)]
-    pub fn node(&self) -> Key {
-        Key {
-            tail: None,
-            ..self.clone()
-        }
-    }
-
     fn seed_text(&self) -> String {
         let mut s = self.to_string();
         if let Some(t) = &self.tail {
@@ -336,15 +283,10 @@ fn join(segs: &[Seg]) -> String {
 /// print this.
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&join(&self.segs))?;
-        for _ in 0..self.reflected {
-            f.write_str(REFLECTION)?;
-        }
-        Ok(())
+        f.write_str(&join(&self.segs))
     }
 }
 
-/// Appends the reflection marker to every key in a mirror clone, masks included.
 pub fn reflect(node: &mut artscript_ir::Node) {
     node.path.push_str(REFLECTION);
     if let Some(mask) = &mut node.mask
@@ -364,12 +306,6 @@ pub struct Positional {
     pub verb: Rc<str>,
     /// The statement's own key, through its `verb~N`.
     pub statement: String,
-    /// The key that drew the seed.
-    #[allow(dead_code)]
-    pub key: String,
-    /// Where the seed was drawn.
-    #[allow(dead_code)]
-    pub at: Site,
 }
 
 /// Every seed records its key here. An unstable key records each unnamed statement in it once,
@@ -381,7 +317,7 @@ pub struct PositionalUses {
 }
 
 impl PositionalUses {
-    fn note(&mut self, key: &Key, at: Site) {
+    fn note(&mut self, key: &Key) {
         if key.segs.is_empty() {
             return;
         }
@@ -393,8 +329,6 @@ impl PositionalUses {
                     .or_insert_with(|| Positional {
                         verb: a.verb.clone(),
                         statement: join(&key.segs[..=i]),
-                        key: text.clone(),
-                        at: at.clone(),
                     });
             }
         }
@@ -411,9 +345,9 @@ impl PositionalUses {
 }
 
 /// `node_seed` over `file` and the key's seed text, plus `seed:`. When the key holds an unnamed
-/// segment, `uses` records that statement for L0104. `site` is where the seed is drawn.
-pub fn seed(file: &str, key: &Key, extra: u64, uses: &mut PositionalUses, site: Site) -> u64 {
-    uses.note(key, site);
+/// segment, `uses` records that statement for L0104.
+pub fn seed(file: &str, key: &Key, extra: u64, uses: &mut PositionalUses) -> u64 {
+    uses.note(key);
     node_seed(file, &key.seed_text(), extra)
 }
 
@@ -451,12 +385,9 @@ pub struct NameDecl {
     pub name: Name,
     pub site: Site,
     pub kind: NameKind,
-    #[allow(dead_code)]
-    pub verb: Rc<str>,
     /// The `each`, `repeat`, and `grid` statements between the region root and this one. More
     /// than none makes a family.
     pub loops: Vec<Span>,
-    /// `(if, else arm)` pairs, outermost first. Two decls share a name only when these diverge.
     arms: Vec<(Span, bool)>,
     /// The nearest named draw above this one in the region. A final `*` matches on it.
     pub tree_parent: Option<DeclId>,
@@ -472,7 +403,6 @@ pub struct Region {
     decls: Vec<NameDecl>,
     by_name: BTreeMap<Name, Vec<DeclId>>,
     by_span: BTreeMap<Span, DeclId>,
-    /// Unnamed draws in source order, for the `add name:` hint.
     anon: Vec<(Rc<str>, Site)>,
 }
 
@@ -620,7 +550,7 @@ impl Declarer<'_> {
                     self.two_names(n.span, "slot", name);
                 }
                 if let Some(n) = Name::parse(name) {
-                    self.add(n, s.span, NameKind::Slot, "slot");
+                    self.add(n, s.span, NameKind::Slot);
                 }
                 if !fallback.is_empty() {
                     let stmts: Vec<&Scene> = fallback.iter().collect();
@@ -651,7 +581,7 @@ impl Declarer<'_> {
         }
         let id = self
             .name_of(d)
-            .map(|name| self.add(name, span, kind_of(&d.verb), &d.verb));
+            .map(|name| self.add(name, span, kind_of(&d.verb)));
         if id.is_none() {
             let site = Site {
                 file: self.file.clone(),
@@ -690,7 +620,6 @@ impl Declarer<'_> {
         self.parent = saved;
     }
 
-    /// The first identifier `name:`, else a layer's, group's, or anchor's positional name.
     fn name_of(&mut self, d: &Draw) -> Option<Name> {
         let positional = matches!(d.verb.as_str(), "layer" | "group" | "anchor")
             .then(|| match d.args.first() {
@@ -742,7 +671,7 @@ impl Declarer<'_> {
         );
     }
 
-    fn add(&mut self, name: Name, span: Span, kind: NameKind, verb: &str) -> DeclId {
+    fn add(&mut self, name: Name, span: Span, kind: NameKind) -> DeclId {
         let site = Site {
             file: self.file.clone(),
             span,
@@ -771,7 +700,6 @@ impl Declarer<'_> {
             name: name.clone(),
             site,
             kind,
-            verb: verb.into(),
             loops: self.loops.clone(),
             arms: self.arms.clone(),
             tree_parent: self.parent,
@@ -865,7 +793,6 @@ fn count<'s>(
 /// Identity facts for one loaded module, built once and shared by every instance.
 pub struct ModuleIds {
     file: Rc<Region>,
-    /// By the def's span, the fill's span, or the slot's span for a fallback.
     regions: BTreeMap<Span, Rc<Region>>,
     anon: BTreeMap<Span, Anon>,
 }
@@ -1088,10 +1015,6 @@ impl Lookup {
         }
     }
 
-    #[allow(dead_code)]
-    pub fn frames(&self) -> &[Rc<RefCell<Names>>] {
-        &self.frames
-    }
 }
 
 /// What a name reached.
@@ -1183,7 +1106,6 @@ fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span
     }
 }
 
-/// `None` when the row was never filled. `Some(empty)` is not used.
 fn select(
     row: &Row,
     decl: &NameDecl,
@@ -1218,7 +1140,6 @@ fn select(
     }
 }
 
-/// A patch or anim channel waiting to land.
 #[derive(Clone)]
 pub struct PendingPatch {
     pub rest: Vec<Hop>,
@@ -1233,7 +1154,6 @@ pub struct PendingPatch {
     pub play: Option<Site>,
 }
 
-/// An anim channel's sampled value. `motion` already evaluated it.
 #[derive(Clone)]
 pub struct ChannelPatch {
     pub key: String,
@@ -1498,7 +1418,6 @@ fn report_key(patch: &PendingPatch) -> ReportKey {
     }
 }
 
-/// `needs:@name` against the host region. A missing host or a missing name is the caller's E0311.
 pub fn host_part(host: &Names, name: &str) -> Result<(), Vec<String>> {
     if host.region.lookup(name).is_empty() {
         Err(host.region.names().iter().map(|n| n.to_string()).collect())
@@ -1686,10 +1605,6 @@ mod tests {
                 .as_deref(),
             Some(".head")
         );
-        assert_eq!(
-            Key::named(&root, &name("ear"), &[]).reflected().to_string(),
-            "ear~m"
-        );
         assert_eq!(face.mask().to_string(), "face.mask~1");
     }
 
@@ -1702,9 +1617,8 @@ mod tests {
             &name("eye"),
             &[2],
         );
-        let site = Site::new(file, line(9));
         let old = |base: &str, path: &str| node_seed(base, path, 3);
-        let mut s = |k: &Key| seed(file, k, 3, &mut uses, site.clone());
+        let mut s = |k: &Key| seed(file, k, 3, &mut uses);
         assert_eq!(s(&key.draw(2)), old("art/t.art\0hero.eye.2", "2"));
         assert_eq!(s(&key.blob()), old("art/t.art\0hero.eye.2", "blob"));
         assert_eq!(s(&key.jitter()), old("art/t.art", "hero.eye.2#jitter"));
@@ -1739,13 +1653,7 @@ mod tests {
         let mut uses = PositionalUses::default();
         for i in 0..3 {
             let key = Key::anon(&call, &circle, &[i]);
-            seed(
-                "art/t.art",
-                &key.draw(1),
-                0,
-                &mut uses,
-                Site::new("lib/s.art", line(4)),
-            );
+            seed("art/t.art", &key.draw(1), 0, &mut uses);
         }
         let sites: Vec<(u32, &str, &str)> = uses
             .sites()

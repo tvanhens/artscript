@@ -105,21 +105,15 @@ pub(crate) struct Host {
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
     pub module: Rc<Module>,
-    /// Key names in this scope hang from. The file root, an instance, or a slot.
     owner: Key,
-    /// Key unnamed children hang from.
     parent: Key,
-    /// Loop indices since `owner`.
     scope_copies: Vec<u32>,
-    /// Loop indices since `parent`.
     parent_copies: Vec<u32>,
-    /// Loop spans parallel to `scope_copies`.
     scope_loops: Vec<Span>,
     names: Rc<RefCell<Names>>,
     lookup: Lookup,
     pending: Rc<Pending>,
     ids: Rc<ModuleIds>,
-    /// Patch origin. Outer scopes have smaller depths and win.
     depth: u32,
     pub frame: Rect,
     /// Canvas from local coordinates.
@@ -133,7 +127,6 @@ pub(crate) struct Scope {
 }
 
 impl Scope {
-    /// Into a draw's block. Loop indices since the new parent start over.
     fn child(&self, parent: Key, frame: Rect, world: Matrix) -> Scope {
         Scope {
             parent,
@@ -154,7 +147,6 @@ impl Scope {
         inner
     }
 
-    /// A new naming scope hanging from `key`. Loop indices start over.
     #[allow(clippy::too_many_arguments)]
     fn enter(
         &self,
@@ -274,7 +266,6 @@ pub(crate) struct Evaluator<'a> {
     seed_file: String,
     seed_key: Key,
     seed_count: u64,
-    seed_site: Site,
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
     patch_order: u32,
@@ -310,7 +301,6 @@ struct SeedSnap {
     file: String,
     key: Key,
     count: u64,
-    site: Site,
 }
 
 /// A percent rest and a numeric offset are different units. Resolve only the percent
@@ -641,7 +631,6 @@ impl<'a> Evaluator<'a> {
             seed_file: String::new(),
             seed_key: Key::root(),
             seed_count: 0,
-            seed_site: Site::new("", Span::default()),
             style_hits: Vec::new(),
             accept_family: false,
             patch_order: 0,
@@ -669,34 +658,26 @@ impl<'a> Evaluator<'a> {
         self.diags.push(d.in_file(file).at_node(node));
     }
 
-    fn begin_seed(&mut self, file: &str, key: Key, site: Site) {
+    fn begin_seed(&mut self, file: &str, key: Key) {
         self.seed_file = file.to_string();
         self.seed_key = key;
         self.seed_count = 0;
-        self.seed_site = site;
     }
 
-    /// A `let`, `if`, `each`, or other line seed under the current tree parent.
     fn seed_line(&mut self, sc: &Scope, span: Span) {
         let key = sc.parent.at_line(&sc.parent_copies, span.line);
-        self.begin_seed(sc.file(), key, Site::new(sc.file(), span));
+        self.begin_seed(sc.file(), key);
     }
 
-    fn seed_node(&mut self, file: &str, key: &Key, span: Span) {
-        self.begin_seed(file, key.clone(), Site::new(file, span));
+    fn seed_node(&mut self, file: &str, key: &Key) {
+        self.begin_seed(file, key.clone());
     }
 
     /// Draw-site `rand`, `pick`, and noise. The counter is how many of those this statement drew.
     pub fn next_seed(&mut self, extra: u64) -> u64 {
         self.seed_count += 1;
         let key = self.seed_key.draw(self.seed_count);
-        identity::seed(
-            &self.seed_file,
-            &key,
-            extra,
-            &mut self.uses,
-            self.seed_site.clone(),
-        )
+        identity::seed(&self.seed_file, &key, extra, &mut self.uses)
     }
 
     pub(crate) fn seeded(&self) -> &BTreeSet<String> {
@@ -712,7 +693,6 @@ impl<'a> Evaluator<'a> {
             file: self.seed_file.clone(),
             key: self.seed_key.clone(),
             count: self.seed_count,
-            site: self.seed_site.clone(),
         }
     }
 
@@ -720,7 +700,6 @@ impl<'a> Evaluator<'a> {
         self.seed_file = snap.file;
         self.seed_key = snap.key;
         self.seed_count = snap.count;
-        self.seed_site = snap.site;
     }
 
     fn next_order(&mut self) -> u32 {
@@ -729,7 +708,6 @@ impl<'a> Evaluator<'a> {
         order
     }
 
-    /// `name:` inside a def hangs from the call that opened the scope.
     fn unstable_scope(&mut self, key: &Key, region: &identity::Region, file: &str, span: Span) {
         if key.is_stable() || region.is_empty() {
             return;
@@ -824,11 +802,7 @@ impl<'a> Evaluator<'a> {
                 ..
             }) if !entry => {
                 let sc = self.module_scope(module);
-                self.begin_seed(
-                    &module.path,
-                    Key::binding(name),
-                    Site::new(&module.path, Span { line: 1, col: 1 }),
-                );
+                self.begin_seed(&module.path, Key::binding(name));
                 let v = self.expr(value, &sc)?;
                 module.define(name, v);
                 return Ok(());
@@ -1471,8 +1445,6 @@ impl<'a> Evaluator<'a> {
         )
     }
 
-    /// Static patches, then live channels, so a channel wins. Outer origins are applied last.
-    /// `true` when a live `off` hides the node.
     fn land(
         &mut self,
         a: &mut Args,
@@ -1623,7 +1595,7 @@ impl<'a> Evaluator<'a> {
         let patch_stroke = arrival.own.iter().filter(|p| p.channel.is_none()).any(|p| {
             p.named.iter().any(|(k, _)| k == "stroke")
         });
-        self.seed_node(sc.file(), &key, st.span);
+        self.seed_node(sc.file(), &key);
         let skip = usize::from(positional_name.is_some());
         let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
@@ -1830,13 +1802,7 @@ impl<'a> Evaluator<'a> {
                             .fix("write `jitter:1.5,60`"));
                     }
                     let extra = a.num("seed").unwrap_or(0.0) as u64;
-                    let jitter = identity::seed(
-                        sc.file(),
-                        &key.jitter(),
-                        extra,
-                        &mut self.uses,
-                        self.seed_site.clone(),
-                    );
+                    let jitter = identity::seed(sc.file(), &key.jitter(), extra, &mut self.uses);
                     let mut rng = Rng::new(jitter);
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
@@ -2217,13 +2183,8 @@ impl<'a> Evaluator<'a> {
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
                 let extra = a.num("seed").unwrap_or(0.0) as u64;
-                let blob = identity::seed(
-                    sc.file(),
-                    &self.seed_key.blob(),
-                    extra,
-                    &mut self.uses,
-                    self.seed_site.clone(),
-                );
+                let blob =
+                    identity::seed(sc.file(), &self.seed_key.blob(), extra, &mut self.uses);
                 let mut rng = Rng::new(blob);
                 let points = a.num("points").unwrap_or(7.0) as usize;
                 (
@@ -2558,7 +2519,6 @@ impl<'a> Evaluator<'a> {
         let region = def_ids
             .region(comp.span)
             .unwrap_or_else(|| def_ids.file());
-        // The name hangs from the call that opened this scope, so the error is reported there.
         self.unstable_scope(&key, &region, sc.file(), span);
         if let Some(err) = self.needs_of(comp, sc) {
             return Err(err);
@@ -2681,7 +2641,6 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
-    /// Missing host or missing part. `None` when every `needs:` name is declared on the host.
     fn needs_of(&self, comp: &Component, sc: &Scope) -> Option<Fail> {
         if comp.needs.is_empty() {
             return None;
@@ -2773,7 +2732,7 @@ impl<'a> Evaluator<'a> {
             mark_used(&inst);
             return Ok(());
         }
-        self.seed_node(sc.file(), &key, st.span);
+        self.seed_node(sc.file(), &key);
         let mut a = self.eval_args(&[], named, sc, 0)?;
         if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path) {
             return Ok(());
@@ -2970,7 +2929,6 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    /// Remember source order for plays under this call. `absorb` schedules them later.
     fn reserve_call_block(&mut self, draw: &Draw, sc: &Scope) {
         let snap = self.snap_seed();
         let mut inner = sc.clone();
@@ -3241,11 +3199,7 @@ impl<'a> Evaluator<'a> {
             }
         };
         let snap = self.snap_seed();
-        self.begin_seed(
-            sc.file(),
-            owner.at_line(&[], span.line),
-            Site::new(sc.file(), span),
-        );
+        self.begin_seed(sc.file(), owner.at_line(&[], span.line));
         let start_v = match start {
             Some(e) => match self.time_secs(e, sc) {
                 Ok(n) => n,
@@ -3262,11 +3216,7 @@ impl<'a> Evaluator<'a> {
             Some(m) => self.module_scope(m),
             None => sc.clone(),
         };
-        self.begin_seed(
-            &anim.module,
-            owner.at_line(&[], anim.span.line),
-            Site::new(&anim.module, anim.span),
-        );
+        self.begin_seed(&anim.module, owner.at_line(&[], anim.span.line));
         let dur = self.time_secs(&anim.dur, &dur_scope);
         self.restore_seed(snap);
         let dur = match dur {
@@ -3319,11 +3269,7 @@ impl<'a> Evaluator<'a> {
         let play = Site::new(sc.file(), span);
         let mut out = Vec::new();
         for patch in &anim.body {
-            self.begin_seed(
-                &anim.module,
-                owner.at_line(&[], patch.span.line),
-                Site::new(&anim.module, patch.span),
-            );
+            self.begin_seed(&anim.module, owner.at_line(&[], patch.span.line));
             let Some(rest) = identity::hops_from(&patch.path) else {
                 self.report(
                     fail(

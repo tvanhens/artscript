@@ -142,7 +142,6 @@ pub struct Record {
     pub anchor: Option<Point>,
     /// The node's `at:` in its parent's coordinates (for suggested fixes).
     pub at: (f64, f64),
-    /// The scope this name was registered in, and the decl, so `*` can list named children.
     pub home: Option<Rc<RefCell<Names>>>,
     pub decl: Option<DeclId>,
     /// Set when this node opens a scope (an instance or a slot).
@@ -187,14 +186,6 @@ impl RefVal {
         match &self.record.node {
             Some(n) => silhouette(n, &self.record.parent_world),
             None => Path::new(),
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn world(&self) -> Matrix {
-        match &self.record.node {
-            Some(n) => self.record.parent_world * n.transform,
-            None => self.record.parent_world,
         }
     }
 
