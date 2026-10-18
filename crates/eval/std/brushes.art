@@ -4,8 +4,32 @@
 # Mark: p dev u s v d len width pressure angle tilt velocity edge uv seed paint px.
 # Helpers: hash12 hash22 vnoise simplex worley fbm rot seeded cover. See `artscript docs brushes`.
 
-# Area: dry brush. Coverage breaks into streaks along `dir`; `fade` wears it out toward the
-# far end of the stroke direction.
+# Stroke: bristle streaks along the ribbon, gaps where pressure is low or the hand moves fast,
+# ragged ends. `gaps` is how much pressure thins the paint, `speed` how much velocity does.
+brush bristle strength:.7 scale:1 gaps:.7 speed:.4
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    // bundles are measured across the brush (v), so a thin stroke keeps its bristle count
+    float across = m.v * 5 / scale;
+    float hair = fbm(float2(m.s / (70 * scale), across) + o, 3);
+    float fine = vnoise(float2(m.s / (26 * scale), m.v * 22 / scale) + o * 2);
+    // low pressure carries less paint: more bristles skip
+    float load = mix(1, m.pressure, gaps) - speed * max(0, m.velocity - 1);
+    float dry = strength * (.12 + .9 * (1 - load));
+    float keep = smoothstep(dry - .05, dry + .05, hair * .75 + fine * .25);
+    // each bristle lifts off at its own distance from the ends
+    float lift = vnoise(float2(m.v * 9 / scale, m.seed + 4));
+    float ends = min(m.s, m.len - m.s);
+    float rag = smoothstep(-1, 1, ends + m.width * .3 - lift * m.width * 2.5 * strength);
+    float side = cover(m.edge - (1 - hair) * m.width * .2 * strength, m);
+    float3 c = m.paint.rgb * (.84 + .28 * hair);
+    return float4(c, side * keep * rag);
+  }
+  """
+
+# Area or stroke: dry brush. Coverage breaks into streaks along `dir` on a fill and along the
+# ribbon on a stroke; `fade` wears it out toward the far end.
 brush dry strength:.5 scale:1 fade:0 dir:0
   sksl """
   // One pass of the brush: it starts loaded and runs dry along its length; the seam
@@ -35,7 +59,7 @@ brush dry strength:.5 scale:1 fade:0 dir:0
   }
   """
 
-# Area: chipped, gritty edge. `scale` is the chip size; inside stays solid.
+# Area or stroke: chipped, gritty edge. `scale` is the chip size; inside stays solid.
 brush chip strength:.6 scale:1 grit:.5
   sksl """
   // Flakes: rotated, flattened squares scattered on a grid. A flake removes paint only
