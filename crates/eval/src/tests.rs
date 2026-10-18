@@ -4268,6 +4268,19 @@ fn nesting_under_a_translucent_shape_matches_inside() {
 }
 
 #[test]
+fn an_inside_or_outside_block_blends_with_what_is_below_it() {
+    let draws = "  rect 20x20 at:10,10 fill:#ffffff\n  rect 40x20 at:20,10 fill:#80c0ff blend:multiply\n";
+    let head = "@target t.png 40x20 bg:#010001\nrect 40x20 at:20,10 fill:none name:frame\ncircle 1 at:-9,-9 fill:none name:away\n";
+    let plain = scene(&format!("{head}group\n{draws}"));
+    let inside = scene(&format!("{head}inside @frame\n{draws}"));
+    let outside = scene(&format!("{head}outside @away\n{draws}"));
+    assert_eq!(pixel(&plain, 35, 10), [1, 0, 1, 255]);
+    assert_eq!(pixel(&inside, 35, 10), pixel(&plain, 35, 10), "inside isolated its block");
+    assert_eq!(pixel(&outside, 35, 10), pixel(&plain, 35, 10), "outside isolated its block");
+    assert_eq!(pixel(&inside, 5, 10), pixel(&plain, 5, 10));
+}
+
+#[test]
 fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     let s = scene(
         "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
