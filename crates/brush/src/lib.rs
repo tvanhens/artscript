@@ -336,7 +336,9 @@ fn parse_errors(program: &Program, text: &str) -> Vec<SkslError> {
         if num.is_some() && i + 1 < lines.len() {
             let caret = lines[i + 1];
             if !caret.is_empty() && caret.trim_start_matches(' ').chars().all(|c| c == '^') {
-                col = Some(caret.chars().take_while(|c| *c == ' ').count() as u32);
+                let shown = caret.chars().take_while(|c| *c == ' ').count();
+                let source = num.and_then(|n| program.source().lines().nth(n as usize - 1)).unwrap_or("");
+                col = Some(source_col(source, shown));
                 i += 2;
             }
         }
@@ -355,6 +357,18 @@ fn parse_errors(program: &Program, text: &str) -> Vec<SkslError> {
     let mut frame_seen = false;
     out.retain(|e| e.origin != Origin::Frame || !std::mem::replace(&mut frame_seen, true));
     out
+}
+
+/// The character index in `line` under Skia's caret column. Skia echoes each tab as 4 spaces.
+fn source_col(line: &str, shown: usize) -> u32 {
+    let mut width = 0;
+    for (i, c) in line.chars().enumerate() {
+        if width >= shown {
+            return i as u32;
+        }
+        width += if c == '\t' { 4 } else { 1 };
+    }
+    line.chars().count() as u32
 }
 
 fn is_count(line: &str) -> bool {
@@ -481,6 +495,14 @@ mod tests {
         assert_eq!(errs[0].origin, Origin::Body { line: 2, col: Some(12) });
         assert_eq!(errs[0].message, "unknown identifier 'fbmx'");
         assert_eq!(errs[1].origin, Origin::Body { line: 3, col: Some(29) });
+    }
+
+    #[test]
+    fn a_tab_in_the_body_does_not_shift_the_column() {
+        let body = "float4 shade(Mark m) {\n\treturn float4(m.paint.rgb, nn);\n}\nfloat g() {\n  \t\tx return 1; }\n";
+        let errs = check(&Program::assemble(MainKind::Area, &[], body)).unwrap_err();
+        assert_eq!(errs[0].origin, Origin::Body { line: 2, col: Some(28) }, "{errs:?}");
+        assert_eq!(errs[1].origin, Origin::Body { line: 5, col: Some(4) }, "{errs:?}");
     }
 
     #[test]
