@@ -1,15 +1,15 @@
 //! What names resolve to: modules and their exports, palettes, components, rules, styles,
 //! finishes, and the records of named nodes that `@ref`s and checks measure.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
-use crate::identity::{DeclId, Entry, Key, Names};
+use crate::identity::{DeclId, Entry, Key, NameKind, Names};
 use crate::value::Value;
 
 pub struct Module {
@@ -22,6 +22,10 @@ pub struct Module {
     pub palettes: RefCell<Vec<Rc<Palette>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
+    /// Names a failed `use` would have bound. The `use` already reported the failure.
+    pub lost: RefCell<BTreeSet<String>>,
+    /// A failed `use` without an item list could have bound any name.
+    pub lost_all: Cell<bool>,
 }
 
 impl Module {
@@ -34,6 +38,8 @@ impl Module {
             anims: RefCell::new(HashMap::new()),
             palettes: RefCell::new(Vec::new()),
             own: RefCell::new(Vec::new()),
+            lost: RefCell::new(BTreeSet::new()),
+            lost_all: Cell::new(false),
         }
     }
 
@@ -47,6 +53,11 @@ impl Module {
         if !own.iter().any(|n| n == name) {
             own.push(name.to_string());
         }
+    }
+
+    /// A use site of a lost name stays quiet instead of reporting the name as unknown.
+    pub fn lost(&self, name: &str) -> bool {
+        self.lost_all.get() || self.lost.borrow().contains(name)
     }
 
     pub fn exports(&self) -> Vec<(String, Value)> {
@@ -206,17 +217,50 @@ impl RefVal {
         } else {
             return Vec::new();
         };
-        entries
-            .into_iter()
-            .map(|e| {
-                let extra = e.record.borrow().key.trailing_copies();
-                let mut label = format!("{}.{}", self.label, e.name);
-                for c in extra.iter().skip(prefix_len) {
-                    label.push_str(&format!(".{c}"));
-                }
-                ref_from(&e, &label)
-            })
+        entries.iter().map(|e| self.child(e, prefix_len)).collect()
+    }
+
+    /// The drawn parts named `name` anywhere in the scope this instance or slot opens, under
+    /// any groups and layers, as a patch finds them. Empty when this node opens no scope.
+    pub fn parts(&self, name: &str) -> Vec<RefVal> {
+        let Some(inner) = &self.record.inner else {
+            return Vec::new();
+        };
+        let names = inner.borrow();
+        let region = names.region();
+        region
+            .lookup(name)
+            .iter()
+            .flat_map(|&id| names.drawn(id))
+            .map(|e| self.child(&e, 0))
             .collect()
+    }
+
+    /// Whether a part named `name` that is not an anchor is declared anywhere under this node.
+    pub fn holds(&self, name: &str) -> bool {
+        let (Some(home), Some(decl)) = (&self.record.home, self.record.decl) else {
+            return false;
+        };
+        let region = home.borrow().region();
+        region.lookup(name).iter().any(|&id| {
+            let mut up = region.decl(id).tree_parent;
+            while let Some(p) = up {
+                if p == decl {
+                    return region.decl(id).kind != NameKind::Anchor;
+                }
+                up = region.decl(p).tree_parent;
+            }
+            false
+        })
+    }
+
+    fn child(&self, e: &Entry, prefix_len: usize) -> RefVal {
+        let extra = e.record.borrow().key.trailing_copies();
+        let mut label = format!("{}.{}", self.label, e.name);
+        for c in extra.iter().skip(prefix_len) {
+            label.push_str(&format!(".{c}"));
+        }
+        ref_from(e, &label)
     }
 
     pub fn stroke_widths(&self) -> Vec<f64> {

@@ -79,6 +79,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
             };
         }
     };
+    let loaded = ev.diags.len();
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
     let scenes: Vec<_> = file.scenes().cloned().collect();
@@ -112,6 +113,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         ev.positional(),
         &project.manifest,
     ));
+    stamp_target(job, &mut diagnostics[loaded..]);
     let mut files: Vec<&String> = ev.parsed.keys().collect();
     files.sort();
     for f in files {
@@ -119,7 +121,9 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, &project.manifest));
     }
-    diagnostics.extend(lints::off_canvas(&scene, &project.manifest, &job.source));
+    let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
+    stamp_target(job, &mut off_canvas);
+    diagnostics.extend(off_canvas);
     Evaluation {
         scene: Some(scene),
         diagnostics,
@@ -146,11 +150,13 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         Ok(n) => n,
         Err(msg) => {
             let mut diagnostics = probe.diagnostics;
+            let own = diagnostics.len();
             diagnostics.push(
                 Diagnostic::error("E0206", job.span, msg)
                     .in_file(&job.source)
                     .with_fix("lower `fps` or shorten `dur`"),
             );
+            stamp_target(job, &mut diagnostics[own..]);
             return Sample {
                 frames: Vec::new(),
                 diagnostics,
@@ -203,6 +209,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         }
     }
     let mut diagnostics = acc.finish();
+    let own = diagnostics.len();
     if let Some(d) = retained_error {
         diagnostics.push(d);
     } else if !diagnostics.iter().any(|d| d.code.starts_with('E'))
@@ -213,6 +220,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     {
         diagnostics.push(d);
     }
+    stamp_target(job, &mut diagnostics[own..]);
     Sample {
         frames,
         diagnostics,
@@ -461,7 +469,24 @@ fn folded_lint(code: &str) -> bool {
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.
 fn is_site_note(note: &str) -> bool {
-    note.starts_with("via rule ") || note.starts_with("played at ")
+    note.starts_with("via rule ") || note.starts_with("played at ") || is_entry_site(note)
+}
+
+/// The `in art/a.art:4` note: the entry-file line that reached a library's diagnostic.
+pub(crate) fn is_entry_site(note: &str) -> bool {
+    note.starts_with("in ") && !note.contains('`')
+}
+
+/// Names `job` on each diagnostic its evaluation raised in its entry file or reached from it. A
+/// library's diagnostic with no entry line is about that library's text, so it stays unnamed and
+/// prints once. Callers leave out text lints and load errors for the same reason.
+fn stamp_target(job: &TargetJob, diags: &mut [Diagnostic]) {
+    let target = job.outputs.first().map(|o| o.path.as_str()).unwrap_or_default();
+    for d in diags {
+        if d.file == job.source || d.notes.iter().any(|n| is_entry_site(n)) {
+            d.target = target.to_string();
+        }
+    }
 }
 
 fn note_magnitude(d: &Diagnostic) -> Option<f64> {

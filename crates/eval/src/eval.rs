@@ -67,7 +67,7 @@ impl Fail {
     }
 
     /// Already reported (for example, syntax errors in an imported file).
-    fn reported() -> Fail {
+    pub(crate) fn reported() -> Fail {
         fail("", "")
     }
 }
@@ -136,6 +136,8 @@ pub(crate) struct Scope {
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
+    /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
+    pub site: Option<u32>,
     top: bool,
     publish: bool,
 }
@@ -880,7 +882,10 @@ impl<'a> Evaluator<'a> {
                         .borrow_mut()
                         .insert("p".into(), Value::Module(m));
                 }
-                Err(f) => self.report(f, file, Span { line: 1, col: 1 }, ""),
+                Err(f) => {
+                    module.lost.borrow_mut().insert("p".into());
+                    self.report(f, file, Span { line: 1, col: 1 }, "")
+                }
             }
         }
         for item in &parsed.items {
@@ -922,7 +927,19 @@ impl<'a> Evaluator<'a> {
             }
         };
         match &decl.kind {
-            DeclKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
+            DeclKind::Use { path, alias, items } => {
+                let declared = self.declare_use(module, path, alias, items);
+                if declared.is_err() {
+                    match alias {
+                        Some(a) => {
+                            module.lost.borrow_mut().insert(a.clone());
+                        }
+                        None if items.is_empty() => module.lost_all.set(true),
+                        None => module.lost.borrow_mut().extend(items.iter().cloned()),
+                    }
+                }
+                declared
+            }
             DeclKind::Palette { name, from, body } => {
                 let pal = self.palette(module, name, from.as_deref(), body)?;
                 module.palettes.borrow_mut().push(pal.clone());
@@ -1129,6 +1146,7 @@ impl<'a> Evaluator<'a> {
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
+            site: None,
             top: false,
             publish: false,
         }
@@ -1258,10 +1276,28 @@ impl<'a> Evaluator<'a> {
         out: &mut Siblings,
     ) {
         for st in stmts {
+            let entry = sc.file() == self.job.source;
+            if entry {
+                sc.site = Some(st.span.line);
+            }
+            let before = self.diags.len();
             if let Err(f) = self.eval_stmt(st, sc, out) {
                 let node = sc.node_name();
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, &node);
+            }
+            if entry {
+                self.mark_site(before, st.span.line);
+            }
+        }
+    }
+
+    /// Notes the entry-file line on each diagnostic since `before` that a library raised.
+    pub(crate) fn mark_site(&mut self, before: usize, line: u32) {
+        let entry = &self.job.source;
+        for d in self.diags.iter_mut().skip(before) {
+            if d.file != *entry && !d.notes.iter().any(|n| crate::is_entry_site(n)) {
+                d.notes.push(format!("in {entry}:{line}"));
             }
         }
     }
@@ -1359,6 +1395,9 @@ impl<'a> Evaluator<'a> {
     }
 
     fn style_named(&mut self, name: &str, home: &Rc<Module>) -> R<Vec<(String, Value)>> {
+        if home.lost(name) && !home.styles.borrow().contains_key(name) {
+            return Err(Fail::reported());
+        }
         let style = home.styles.borrow().get(name).cloned().ok_or_else(|| {
             let names: Vec<String> = home.styles.borrow().keys().cloned().collect();
             let f = fail("E0307", format!("no style `{name}`"))
@@ -1631,6 +1670,9 @@ impl<'a> Evaluator<'a> {
         }
         let known = builtin_takes(verb).is_some();
         if comp.is_none() && !known {
+            if sc.module.lost(verb) {
+                return Err(Fail::reported());
+            }
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
                 .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
                 .note("structure: layer group inside outside mirror repeat grid anchor slot");
@@ -3591,6 +3633,7 @@ impl<'a> Evaluator<'a> {
         let node = owner.to_string();
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
+            None if sc.module.lost(name) => return Vec::new(),
             None => {
                 self.report(
                     fail("E0308", format!("no anim `{name}`"))
@@ -3958,6 +4001,7 @@ impl<'a> Evaluator<'a> {
             Expr::Ident(name) => match self.lookup_ident(name, sc) {
                 Some(Value::Unseen) => return Err(unseen(name)),
                 Some(v) => v,
+                None if sc.module.lost.borrow().contains(name) => return Err(Fail::reported()),
                 None => Value::Ident(name.clone()),
             },
             Expr::Ref(segs) => self.reference(segs, sc)?,
@@ -4329,6 +4373,7 @@ impl<'a> Evaluator<'a> {
         sc: &Scope,
         mut index_depth: usize,
     ) -> R<Value> {
+        let mut named_at = 0;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i + 1 == segs.len();
@@ -4370,17 +4415,38 @@ impl<'a> Evaluator<'a> {
                 return Ok(Value::Num(v));
             }
             let one = self.one_ref(&cur, &label, sc)?;
-            let kids = one.children();
-            let matched: Vec<RefVal> = kids
-                .iter()
-                .filter(|c| c.record.name == seg)
-                .cloned()
-                .collect();
+            let (matched, names): (Vec<RefVal>, Vec<String>) = match &one.record.inner {
+                Some(inner) => {
+                    let region = inner.borrow().region();
+                    let parts = one.parts(seg);
+                    if parts.is_empty()
+                        && let Some(&id) = region.lookup(seg).first()
+                    {
+                        let site = &region.decl(id).site;
+                        return Err(fail(
+                            "E0350",
+                            format!(
+                                "`@{label}.{seg}` is declared at {}:{} and not drawn",
+                                site.file, site.span.line
+                            ),
+                        )
+                        .fix("draw it, or remove the reference"));
+                    }
+                    (parts, region.names().iter().map(|n| n.to_string()).collect())
+                }
+                None => {
+                    if one.holds(seg) {
+                        return Err(group_hop(segs, named_at, i));
+                    }
+                    let kids = one.children();
+                    let names = kids.iter().map(|c| c.record.name.clone()).collect();
+                    (kids.into_iter().filter(|c| c.record.name == seg).collect(), names)
+                }
+            };
             if matched.is_empty() {
                 if last && MEASURES.contains(&seg) {
                     return self.measure(&one, seg, sc);
                 }
-                let names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
                 return Err(fail("E0350", format!("@{label} has no part `{seg}`"))
                     .note(format!(
                         "parts: {}",
@@ -4393,6 +4459,7 @@ impl<'a> Evaluator<'a> {
                     .fix("use one of the listed parts"));
             }
             cur = matched;
+            named_at = i;
             label = format!("{label}.{seg}");
             index_depth = if one.record.inner.is_some() {
                 0
@@ -4555,6 +4622,31 @@ fn component_names(module: &Module) -> BTreeSet<String> {
         .filter(|(_, v)| matches!(v, Value::Component(_)))
         .map(|(name, _)| name.clone())
         .collect()
+}
+
+/// `segs[at]` names a group, layer, or shape, and `segs[i]` a part under it. The fix drops the
+/// hop the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
+fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
+    let written = segs.join(".");
+    let fail = fail(
+        "E0350",
+        format!(
+            "`@{written}` hops through `{}`, which is not an instance or a slot",
+            segs[at]
+        ),
+    );
+    let Some(addr) = identity::hops_from(&segs[at + 1..])
+        .and_then(|hops| identity::skip_hop(&hops[..i - at - 1], &hops[i - at - 1..]))
+    else {
+        return fail.fix("name the part directly");
+    };
+    let scope: Vec<&str> = segs[..at].iter().map(String::as_str).collect();
+    let fix = if scope.is_empty() {
+        format!("write @{addr}")
+    } else {
+        format!("write @{}.{addr}", scope.join("."))
+    };
+    fail.fix(fix)
 }
 
 fn missing_part(label: &str, names: &[String]) -> Fail {

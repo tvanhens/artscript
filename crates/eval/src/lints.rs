@@ -382,13 +382,18 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     let level = manifest.lint_level("off-canvas", LintLevel::Warn);
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();
-    fn walk(
-        n: &Node,
+    fn walk<'n>(
+        n: &'n Node,
         parent: Matrix,
         mut kept: Option<Rect>,
         canvas: Rect,
-        hits: &mut Vec<(String, String, Rect)>,
+        entry: &str,
+        mut site: Option<&'n str>,
+        hits: &mut Vec<(String, String, Rect, Option<&'n str>)>,
     ) {
+        if n.origin.rsplit_once(':').is_some_and(|(f, _)| f == entry) {
+            site = Some(&n.origin);
+        }
         let world = parent * n.transform;
         for r in kept_bounds(n) {
             let r = world.map_rect(r).0;
@@ -415,14 +420,14 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
                         && b.right <= canvas.right
                         && b.bottom <= canvas.bottom)
                     {
-                        hits.push((n.path.clone(), n.origin.clone(), b));
+                        hits.push((n.path.clone(), n.origin.clone(), b, site));
                     }
                 }
             }
             NodeKind::Group { children, .. } => {
                 children
                     .iter()
-                    .for_each(|c| walk(c, world, kept, canvas, hits));
+                    .for_each(|c| walk(c, world, kept, canvas, entry, site, hits));
             }
         }
     }
@@ -430,8 +435,8 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     scene
         .children
         .iter()
-        .for_each(|c| walk(c, Matrix::new_identity(), None, canvas, &mut hits));
-    for (path, origin, b) in hits {
+        .for_each(|c| walk(c, Matrix::new_identity(), None, canvas, file, None, &mut hits));
+    for (path, origin, b, site) in hits {
         let line = origin
             .rsplit(':')
             .next()
@@ -452,20 +457,21 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             Span { line, col: 1 },
             format!("`{path}` {msg}"),
         ) {
-            out.push(
-                d.in_file(src)
-                    .at_node(path)
-                    .with_note(format!(
-                        "bounds {},{} {}x{}",
-                        b.left.round(),
-                        b.top.round(),
-                        b.width().round(),
-                        b.height().round()
-                    ))
-                    .with_fix(
-                        "move or shrink it to fit the canvas, or clip it by nesting under a shape",
-                    ),
-            );
+            let mut d = d
+                .in_file(&src)
+                .at_node(path)
+                .with_note(format!(
+                    "bounds {},{} {}x{}",
+                    b.left.round(),
+                    b.top.round(),
+                    b.width().round(),
+                    b.height().round()
+                ))
+                .with_fix("move or shrink it to fit the canvas, or clip it by nesting under a shape");
+            if let Some(site) = site.filter(|_| src != file) {
+                d = d.with_note(format!("in {site}"));
+            }
+            out.push(d);
         }
     }
     out
