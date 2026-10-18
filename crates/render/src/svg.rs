@@ -727,8 +727,26 @@ fn area_attrs(rect: &Rect) -> String {
 /// A mask on `node` applies in its local space. Without an explicit region, renderers cut the
 /// mask to -10%..120% of the viewport there, which drops a shape placed with `at:`.
 fn masked_area(node: &Node) -> String {
-    let pad = visual_pad(node) + 1.0;
+    let pad = visual_pad(node) + stroke_overshoot(node) + 1.0;
     area_attrs(&node.local_bounds().unwrap_or_default().with_outset((pad, pad)))
+}
+
+/// How far a stroke reaches past the half width that [`Node::local_bounds`] counts: a miter
+/// join up to the default miter limit of 4, a square cap by its diagonal.
+fn stroke_overshoot(node: &Node) -> f32 {
+    let own = match &node.kind {
+        NodeKind::Shape(shape) if let Some(stroke) = &shape.stroke => {
+            let join: f32 = if stroke.join == Join::Miter { 4.0 } else { 1.0 };
+            let cap = if stroke.cap == Cap::Square { std::f32::consts::SQRT_2 } else { 1.0 };
+            stroke.width / 2.0 * (join.max(cap) - 1.0)
+        }
+        _ => 0.0,
+    };
+    let masks = match node.mask.as_deref().map(|m| &m.source) {
+        Some(MaskSource::Nodes(nodes)) => nodes.as_slice(),
+        _ => &[],
+    };
+    node.children().iter().chain(masks).map(stroke_overshoot).fold(own, f32::max)
 }
 
 fn clip_region(clip: &Clip) -> Result<Path, RenderError> {

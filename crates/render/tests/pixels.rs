@@ -254,6 +254,32 @@ fn svg_outside_clip_region_covers_a_shape_placed_away_from_the_origin() {
 }
 
 #[test]
+fn svg_mask_region_covers_a_mitered_stroke_tip() {
+    let mut b = skia_safe::PathBuilder::new();
+    b.move_to((0.0, -30.0));
+    b.line_to((12.0, 10.0));
+    b.line_to((-12.0, 10.0));
+    b.close();
+    let mut node = solid("tip", b.detach(), color(0, 0, 255, 255));
+    node.clip = Some(artscript_ir::Clip { path: circle_at(0.0, 0.0, 2.0), feather: 0.0, invert: true });
+    match &mut node.kind {
+        NodeKind::Shape(shape) => {
+            shape.stroke = Some(artscript_ir::Stroke {
+                paint: Paint::Solid(red()),
+                width: 8.0,
+                cap: artscript_ir::Cap::Butt,
+                join: artscript_ir::Join::Miter,
+                dash: vec![],
+            })
+        }
+        _ => unreachable!(),
+    }
+    let svg = render_svg(&scene(96.0, 96.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let miter = 4.0 / (12.0_f32 / 40.0).atan().sin();
+    assert_mask_region_covers(&svg, -12.0, -30.0 - miter, 12.0, 10.0);
+}
+
+#[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
