@@ -525,14 +525,17 @@ pub fn layer_steps(
     Ok(Some(steps))
 }
 
-/// A filled area in the outlined node's local space, with the coverage that area contributes.
 pub(crate) struct Region {
     pub path: Path,
-    pub alpha: f32,
+    pub coverage: Coverage,
 }
 
-/// Each filled region, filled and stroked at width `2 * width` (round caps and joins).
-/// Drawn with DstOver, so it sits behind `src`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Coverage {
+    Opaque,
+    Translucent,
+}
+
 pub fn outline_geometry(
     backend: Backend,
     src: Image,
@@ -552,22 +555,27 @@ pub fn outline_geometry(
         .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
     let canvas = surface.canvas();
     canvas.draw_image(&src, (0.0, 0.0), None);
-    canvas.save();
     canvas.concat(local_to_px);
-    let mut paint = Paint::default();
-    paint.set_anti_alias(true);
-    paint.set_blend_mode(BlendMode::DstOver);
-    paint.set_stroke_cap(Cap::Round);
-    paint.set_stroke_join(Join::Round);
-    paint.set_stroke_width(width * 2.0);
+    let mut layer = Paint::default();
+    layer.set_blend_mode(BlendMode::DstOver);
+    layer.set_alpha_f(color.a.clamp(0.0, 1.0));
+    canvas.save_layer(&SaveLayerRec::default().paint(&layer));
+    let mut ink = Paint::default();
+    ink.set_anti_alias(true);
+    ink.set_color4f(Color4f { a: 1.0, ..color4(color) }, None);
+    ink.set_stroke_cap(Cap::Round);
+    ink.set_stroke_join(Join::Round);
+    ink.set_stroke_width(width * 2.0);
     for region in &regions {
-        let mut ink = color4(color);
-        ink.a *= region.alpha;
-        paint.set_color4f(ink, None);
-        paint.set_style(Style::Fill);
-        canvas.draw_path(&region.path, &paint);
-        paint.set_style(Style::Stroke);
-        canvas.draw_path(&region.path, &paint);
+        ink.set_style(Style::Fill);
+        canvas.draw_path(&region.path, &ink);
+        ink.set_style(Style::Stroke);
+        canvas.draw_path(&region.path, &ink);
+    }
+    ink.set_style(Style::Fill);
+    ink.set_blend_mode(BlendMode::DstOut);
+    for region in regions.iter().filter(|r| r.coverage == Coverage::Translucent) {
+        canvas.draw_path(&region.path, &ink);
     }
     canvas.restore();
     Ok(surface.image_snapshot())
@@ -575,7 +583,7 @@ pub fn outline_geometry(
 
 pub(crate) fn silhouette(node: &Node) -> Result<Vec<Region>, RenderError> {
     let mut regions = Vec::new();
-    gather(node, &Matrix::new_identity(), 1.0, true, &mut regions)?;
+    gather(node, &Matrix::new_identity(), true, &mut regions)?;
     Ok(regions)
 }
 
@@ -584,16 +592,15 @@ pub(crate) fn silhouette(node: &Node) -> Result<Vec<Region>, RenderError> {
 fn gather(
     node: &Node,
     to_outline: &Matrix,
-    inherited: f32,
     root: bool,
     out: &mut Vec<Region>,
 ) -> Result<(), RenderError> {
-    let alpha = if root {
-        inherited
+    let opacity = if root {
+        1.0
     } else {
-        inherited * node.opacity.clamp(0.0, 1.0)
+        node.opacity.clamp(0.0, 1.0)
     };
-    if alpha <= 0.0 {
+    if opacity <= 0.0 {
         return Ok(());
     }
     let here = if root {
@@ -605,23 +612,21 @@ fn gather(
     match &node.kind {
         NodeKind::Shape(shape) => {
             push_shape(shape, &mut local)?;
-            // An opaque fill already covers every child, and stroking each child's clipped
-            // area again would thicken the antialiased rim the shared edges trace.
-            let opaque = shape.fill.as_ref().is_some_and(|fill| coverage_alpha(fill) >= 1.0);
-            let children = if opaque { &[][..] } else { &shape.children[..] };
+            let fill_holds_children = shape.fill.as_ref().and_then(coverage).is_some();
+            let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
             for child in children {
                 let mut nested = Vec::new();
-                gather(child, &Matrix::new_identity(), 1.0, false, &mut nested)?;
+                gather(child, &Matrix::new_identity(), false, &mut nested)?;
                 local.extend(nested.into_iter().filter_map(|region| {
                     skia_safe::op(&region.path, &shape.geometry, PathOp::Intersect)
                         .filter(|p| !p.is_empty())
-                        .map(|path| Region { path, alpha: region.alpha })
+                        .map(|path| Region { path, coverage: region.coverage })
                 }));
             }
         }
         NodeKind::Group { children, .. } => {
             for child in children {
-                gather(child, &Matrix::new_identity(), 1.0, false, &mut local)?;
+                gather(child, &Matrix::new_identity(), false, &mut local)?;
             }
         }
     }
@@ -631,7 +636,7 @@ fn gather(
             .filter_map(|region| {
                 clip_region(&region.path, clip).map(|path| Region {
                     path,
-                    alpha: region.alpha,
+                    coverage: region.coverage,
                 })
             })
             .collect();
@@ -639,35 +644,32 @@ fn gather(
     for region in local {
         out.push(Region {
             path: region.path.with_transform(&here),
-            alpha: (region.alpha * alpha).clamp(0.0, 1.0),
+            coverage: if opacity < 1.0 {
+                Coverage::Translucent
+            } else {
+                region.coverage
+            },
         });
     }
     Ok(())
 }
 
-/// Fill path, plus the stroke's own filled outline. `gather` adds the shape's children,
-/// clipped to its geometry, because they paint inside it whatever its own fill. It skips
-/// them under an opaque fill, which already covers them.
+/// Fill path, plus the stroke's own filled outline.
 fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
-    if let Some(fill) = &shape.fill {
-        let alpha = coverage_alpha(fill);
-        if alpha > 0.0 && !shape.geometry.is_empty() {
-            out.push(Region {
-                path: shape.geometry.clone(),
-                alpha,
-            });
-        }
+    if let Some(coverage) = shape.fill.as_ref().and_then(coverage)
+        && !shape.geometry.is_empty()
+    {
+        out.push(Region {
+            path: shape.geometry.clone(),
+            coverage,
+        });
     }
-    if let Some(stroke) = &shape.stroke {
-        let alpha = coverage_alpha(&stroke.paint);
-        if alpha > 0.0 {
-            let filled = stroke_fill(&shape.geometry, stroke)?;
-            if !filled.is_empty() {
-                out.push(Region {
-                    path: filled,
-                    alpha,
-                });
-            }
+    if let Some(stroke) = &shape.stroke
+        && let Some(coverage) = coverage(&stroke.paint)
+    {
+        let filled = stroke_fill(&shape.geometry, stroke)?;
+        if !filled.is_empty() {
+            out.push(Region { path: filled, coverage });
         }
     }
     Ok(())
@@ -689,17 +691,24 @@ fn clip_region(path: &Path, clip: &Clip) -> Option<Path> {
     skia_safe::op(path, &clip.path, op).filter(|p| !p.is_empty())
 }
 
-fn coverage_alpha(paint: &IrPaint) -> f32 {
-    match paint {
-        IrPaint::Solid(c) => c.a.clamp(0.0, 1.0),
+fn coverage(paint: &IrPaint) -> Option<Coverage> {
+    let (least, most) = match paint {
+        IrPaint::Solid(c) => (c.a, c.a),
         IrPaint::Linear { stops, .. }
         | IrPaint::Radial { stops, .. }
         | IrPaint::Conic { stops, .. }
         | IrPaint::Field { stops, .. } => stops
             .iter()
-            .map(|stop| stop.color.a)
-            .fold(0.0_f32, f32::max)
-            .clamp(0.0, 1.0),
+            .fold((1.0_f32, 0.0_f32), |(least, most), stop| {
+                (least.min(stop.color.a), most.max(stop.color.a))
+            }),
+    };
+    if most <= 0.0 {
+        None
+    } else if least >= 1.0 {
+        Some(Coverage::Opaque)
+    } else {
+        Some(Coverage::Translucent)
     }
 }
 

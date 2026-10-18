@@ -140,6 +140,82 @@ fn svg_outline_is_a_round_stroked_path() {
     render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).unwrap();
 }
 
+fn glass(outline: bool) -> artscript_ir::Scene {
+    let rect = Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None);
+    let mut node = solid("glass", rect, color(0, 0, 255, 128));
+    if outline {
+        node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    }
+    scene(64.0, 64.0, vec![node])
+}
+
+#[test]
+fn outline_ring_keeps_its_alpha_around_a_translucent_fill() {
+    let png = render_png(&glass(true), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 10, 32), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 32, 54), [0, 0, 0, 255]);
+}
+
+#[test]
+fn outline_shows_nothing_inside_a_translucent_fill() {
+    let outlined = render_png(&glass(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&glass(false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(32, 32), (13, 32), (50, 50)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}
+
+fn translucent_group(outline: bool) -> artscript_ir::Scene {
+    let tinted = solid("tinted", circle_at(24.0, 32.0, 10.0), color(0, 0, 255, 128));
+    let mut faded = solid("faded", circle_at(56.0, 32.0, 10.0), color(255, 0, 0, 255));
+    faded.opacity = 0.5;
+    let mut group = solid("pair", circle_at(0.0, 0.0, 1.0), red());
+    group.kind = NodeKind::Group { isolate: false, children: vec![tinted, faded] };
+    if outline {
+        group.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    }
+    scene(80.0, 64.0, vec![group])
+}
+
+#[test]
+fn outline_around_translucent_children_keeps_its_alpha() {
+    let outlined = render_png(&translucent_group(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&translucent_group(false), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&outlined, 12, 32), [0, 0, 0, 255]);
+    assert_eq!(pixel(&outlined, 67, 32), [0, 0, 0, 255]);
+    for (x, y) in [(24, 32), (56, 32)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}
+
+#[test]
+fn svg_outline_on_a_translucent_fill_is_not_faded() {
+    let svg = render_svg(&glass(true), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let ink = svg.lines().find(|l| l.contains("stroke-linejoin=\"round\"")).expect(&svg);
+    assert!(ink.contains("fill=\"#000000\""), "{svg}");
+    assert!(!ink.contains("opacity"), "{svg}");
+    let body = svg.lines().find(|l| l.contains("fill=\"#0000ff\"")).expect(&svg);
+    let d = body.split("d=\"").nth(1).and_then(|s| s.split('"').next()).expect(&svg);
+    let mask = svg.split("<mask").nth(1).and_then(|s| s.split("</mask>").next()).expect(&svg);
+    assert!(mask.contains(&format!("d=\"{d}\" fill=\"#000000\"")), "{svg}");
+}
+
+#[test]
+fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
+    let rect = Path::rect(skia_safe::Rect::from_xywh(20000.0, -30000.0, 40.0, 40.0), None);
+    let mut node = solid("far", rect, color(0, 0, 255, 128));
+    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    let svg = render_svg(&scene(64.0, 64.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let mask = svg.split("<mask").nth(1).and_then(|s| s.split('>').next()).expect(&svg);
+    let attr = |name: &str| -> f32 {
+        let key = format!(" {name}=\"");
+        mask.split(&key).nth(1).and_then(|s| s.split('"').next()).and_then(|v| v.parse().ok()).expect(&svg)
+    };
+    let (x, y, w, h) = (attr("x"), attr("y"), attr("width"), attr("height"));
+    assert!(x <= 19997.0 && x + w >= 20043.0, "{svg}");
+    assert!(y <= -30003.0 && y + h >= -29957.0, "{svg}");
+}
+
 #[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));

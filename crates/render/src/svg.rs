@@ -9,6 +9,7 @@ use skia_safe::path::{Iter as PathIter, Verb};
 use skia_safe::PathFillType;
 
 use crate::draw::bake_node;
+use crate::effects::{Coverage, Region};
 use crate::gpu::Backend;
 use crate::features::{self, bakes};
 use crate::paint::css_blend;
@@ -163,7 +164,8 @@ impl Writer {
         };
         match last {
             SvgStep::Outline { width, color } => {
-                self.outline_paths(node, *width, *color, depth + 1)?;
+                let oid = format!("{id}-outline{}", steps.len());
+                self.outline_paths(node, *width, *color, &oid, depth + 1)?;
                 self.emit_outlined(scene, node, id, bake_scale, depth, head)
             }
             SvgStep::Filters(effects) => {
@@ -210,26 +212,79 @@ impl Writer {
         Ok(())
     }
 
-    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, depth: usize) -> Result<(), RenderError> {
+    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, id: &str, depth: usize) -> Result<(), RenderError> {
         let regions = crate::effects::silhouette(node)?;
+        if regions.is_empty() {
+            return Ok(());
+        }
+        let translucent: Vec<_> = regions.iter().filter(|r| r.coverage == Coverage::Translucent).collect();
+        let fade_or_mask_as_one = color.a < 1.0 || !translucent.is_empty();
         let pad = "  ".repeat(depth);
-        for region in regions.iter().rev() {
-            let mut ink = color;
-            ink.a = (ink.a * region.alpha).clamp(0.0, 1.0);
-            if ink.a <= 0.0 {
-                continue;
-            }
+        if fade_or_mask_as_one {
             self.body.push_str(&pad);
+            self.body.push_str("<g");
+            if !translucent.is_empty() {
+                self.erase_mask_def(id, &regions, width, &translucent);
+                self.body.push_str(" mask=\"url(#");
+                self.body.push_str(id);
+                self.body.push_str(")\"");
+            }
+            if color.a < 1.0 {
+                self.body.push_str(" opacity=\"");
+                self.body.push_str(&fmt_num(color.a));
+                self.body.push('"');
+            }
+            self.body.push_str(">\n");
+        }
+        let ink = Color { a: 1.0, ..color };
+        let inner = if fade_or_mask_as_one { format!("{pad}  ") } else { pad.clone() };
+        for region in regions.iter().rev() {
+            self.body.push_str(&inner);
             self.body.push_str("<path d=\"");
             self.body.push_str(&path_data(&region.path));
             self.body.push('"');
+            self.body.push_str(fill_rule(&region.path));
             self.color_attrs("fill", ink);
             self.color_attrs("stroke", ink);
             self.body.push_str(" stroke-width=\"");
             self.body.push_str(&fmt_num(width * 2.0));
             self.body.push_str("\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>\n");
         }
+        if fade_or_mask_as_one {
+            self.body.push_str(&pad);
+            self.body.push_str("</g>\n");
+        }
         Ok(())
+    }
+
+    fn erase_mask_def(&mut self, id: &str, regions: &[Region], width: f32, erased: &[&Region]) {
+        let mut ring = *regions[0].path.bounds();
+        for region in &regions[1..] {
+            ring.join(region.path.bounds());
+        }
+        let ring = ring.with_outset((width + 1.0, width + 1.0));
+        let area = format!(
+            "x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+            fmt_num(ring.left),
+            fmt_num(ring.top),
+            fmt_num(ring.width()),
+            fmt_num(ring.height())
+        );
+        self.defs.push_str("    <mask id=\"");
+        self.defs.push_str(id);
+        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+        self.defs.push_str(&area);
+        self.defs.push_str(">\n      <rect ");
+        self.defs.push_str(&area);
+        self.defs.push_str(" fill=\"#ffffff\"/>\n");
+        for region in erased {
+            self.defs.push_str("      <path d=\"");
+            self.defs.push_str(&path_data(&region.path));
+            self.defs.push_str("\" fill=\"#000000\"");
+            self.defs.push_str(fill_rule(&region.path));
+            self.defs.push_str("/>\n");
+        }
+        self.defs.push_str("    </mask>\n");
     }
 
     fn shape(&mut self, scene: &Scene, shape: &Shape, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
@@ -238,9 +293,7 @@ impl Writer {
         self.body.push_str("<path d=\"");
         self.body.push_str(&path_data(&shape.geometry));
         self.body.push('"');
-        if shape.geometry.fill_type() == PathFillType::EvenOdd {
-            self.body.push_str(" fill-rule=\"evenodd\"");
-        }
+        self.body.push_str(fill_rule(&shape.geometry));
         self.paint_attrs(shape.fill.as_ref(), shape.stroke.as_ref(), id);
         if shape.blur > 0.0 {
             let fid = format!("{id}-blur");
@@ -608,6 +661,14 @@ impl Writer {
         }
         self.defs.push_str("</filter>\n");
         true
+    }
+}
+
+fn fill_rule(path: &Path) -> &'static str {
+    if path.fill_type() == PathFillType::EvenOdd {
+        " fill-rule=\"evenodd\""
+    } else {
+        ""
     }
 }
 
