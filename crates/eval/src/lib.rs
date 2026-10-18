@@ -119,7 +119,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     for f in files {
         let parsed = &ev.parsed[f];
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
-        diagnostics.extend(lints::unused(parsed, f, &project.manifest));
+        diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
     let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
     stamp_target(job, &mut off_canvas);

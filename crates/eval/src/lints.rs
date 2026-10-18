@@ -266,17 +266,24 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     }
 }
 
-pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
+/// A library's top-level `let` is an export, like a def, and is never reported.
+pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Vec<Diagnostic> {
     let level = manifest.lint_level("unused", LintLevel::Warn);
     let mut scenes = Vec::new();
     all_scenes(&file.items, &mut |s| scenes.push(s));
     let mut used = HashSet::new();
     idents(file_exprs(file, false), &scenes, &mut used);
     for d in file.decls() {
-        if let DeclKind::Def { body, .. } = &d.kind {
-            body.iter().filter_map(DefItem::fx).for_each(|fx| {
+        match &d.kind {
+            DeclKind::Def { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
                 used.insert(fx.op.clone());
-            });
+            }),
+            DeclKind::Palette {
+                from: Some(parent), ..
+            } => {
+                used.insert(parent.clone());
+            }
+            _ => {}
         }
     }
     let mut out = Vec::new();
@@ -341,9 +348,11 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
             _ => {}
         }
     }
+    let exported = |s: &Scene| library && file.scenes().any(|t| std::ptr::eq(t, s));
     for s in &scenes {
         if let SceneKind::Let { name, .. } = &s.kind
             && !used.contains(name)
+            && !exported(s)
         {
             push(
                 s.span,
