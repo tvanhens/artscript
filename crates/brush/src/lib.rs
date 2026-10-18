@@ -128,7 +128,7 @@ float cover(float d, Mark m) { return saturate(d / m.px + 0.5); }
 /// half-float child read gives the same levels as a float one. The output is premultiplied,
 /// dithered on the last stage only, and snapped to 8-bit levels.
 const FINISH: &str = r#"
-half4 finish(Mark m, float2 c) {
+half4 u_finish(Mark m, float2 c) {
     m.seed = u_seed; m.px = u_px;
     m.paint = u_paint;
     if (u_base > 0.5) {
@@ -163,7 +163,7 @@ half4 main(float2 c) {
     m.len = u_frame.z; m.width = u_frame.w; m.u = m.s / m.len; m.v = r.y / (m.width * .5);
     m.pressure = 1; m.angle = u_dir.x; m.tilt = 0; m.velocity = 1;
     m.edge = e * u_px;
-    return finish(m, c);
+    return u_finish(m, c);
 }
 "#;
 
@@ -188,7 +188,7 @@ half4 main(float2 c) {
     float over = u_rib.y > 0.5 ? 0 : (m.s < 0 ? m.s : max(m.s - m.len, 0));
     m.edge = hw - length(float2(over, m.d));
     m.uv = float2(m.s, m.d);
-    return finish(m, c);
+    return u_finish(m, c);
 }
 "#;
 

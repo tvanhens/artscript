@@ -500,3 +500,19 @@ fn a_same_line_sksl_body_maps_later_lines_to_their_own_column() {
     let newline = "brush b\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return float4(m.paint.rgb, bogus);\n    }\n  \"\"\"\n";
     assert_eq!(at(newline, "E0360", "bogus"), (4, 34));
 }
+
+#[test]
+fn the_frame_owns_only_u_names_so_a_body_may_define_finish() {
+    let lib = (
+        "lib/b.art",
+        "brush b\n  sksl \"\"\"\n  half4 finish(Mark m, float2 c) { return half4(1); }\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n",
+    );
+    ok("@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
+    let lib = (
+        "lib/b.art",
+        "brush b\n  sksl \"\"\"\n  half4 u_finish(Mark m, float2 c) { return half4(1); }\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n",
+    );
+    let d = first("@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib], "E0363");
+    assert!(d.message.contains("`u_finish`"), "{d}");
+    assert_eq!(col(&d), (3, 9), "{d}");
+}
