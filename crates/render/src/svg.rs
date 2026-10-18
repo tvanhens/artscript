@@ -43,7 +43,7 @@ pub fn render_svg(
         w.body.push_str("/>\n");
     }
     for child in &scene.children {
-        w.node(scene, child, bake_scale, 1, None)?;
+        w.node(scene, child, bake_scale, 1, &Pushed::default())?;
     }
     let mut out = String::new();
     out.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"");
@@ -72,19 +72,18 @@ struct Writer {
 }
 
 impl Writer {
-    /// `outer` is a clip in the parent's coordinates that a plain clipped group above pushed
-    /// down. A `clip-path` on a `<g>` isolates it, so such a group clips the children instead.
+    /// `outer` is what a plain clipped group above pushed down, in the parent's coordinates.
     fn node(
         &mut self,
         scene: &Scene,
         node: &Node,
         bake_scale: f32,
         depth: usize,
-        outer: Option<&Path>,
+        outer: &Pushed<'_>,
     ) -> Result<(), RenderError> {
         let pad = "  ".repeat(depth);
         let id = xml_id(&node.path);
-        let outer = outer.map(|path| to_local(path, &node.transform));
+        let outer = outer.to_local(&node.transform);
         if bakes(node) {
             let baked = bake_node(scene, node, bake_scale, self.backend)?;
             self.body.push_str(&pad);
@@ -92,9 +91,11 @@ impl Writer {
             self.body.push_str(&id);
             self.body.push('"');
             self.blend_style(node);
-            if let Some(path) = &outer {
+            if let Some(path) = &outer.region {
                 self.clip_ref(&format!("{id}-clip"), path);
             }
+            let masks: Vec<_> = self.pushed_mask(&id, &outer).into_iter().collect();
+            self.mask_ref(&id, &masks);
             self.body.push_str(">\n");
             self.body.push_str(&pad);
             self.body.push_str("  <image x=\"");
@@ -128,28 +129,32 @@ impl Writer {
             self.body.push('"');
         }
         self.blend_style(node);
-        let pushed = if pushes_clip(node) {
-            intersect(outer.clone(), node.clip.as_ref().map(clip_region).transpose()?)?
+        let pushed = if pushes_clip(node, outer.soft.is_some()) {
+            outer.with(node.clip.as_ref())?
         } else {
             None
         };
-        if let Some(region) = pushed {
+        if let Some(pushed) = pushed {
             self.body.push_str(">\n");
-            self.write_kind(scene, node, &id, bake_scale, depth, Some(&region))?;
+            self.write_kind(scene, node, &id, bake_scale, depth, &pushed)?;
         } else if !has_outline(node) {
-            self.clip_attr(node, &id, outer.as_ref())?;
-            self.mask_attr(scene, node, &id, bake_scale)?;
+            self.clip_attr(node, &id, outer.region.as_ref())?;
+            let mut masks: Vec<_> = self.pushed_mask(&id, &outer).into_iter().collect();
+            self.mask_attr(scene, node, &id, bake_scale, &mut masks)?;
+            self.mask_ref(&id, &masks);
             if let Some(filter) = self.fx_filter(node, &id) {
                 self.body.push_str(" filter=\"url(#");
                 self.body.push_str(&filter);
                 self.body.push_str(")\"");
             }
             self.body.push_str(">\n");
-            self.write_kind(scene, node, &id, bake_scale, depth, None)?;
+            self.write_kind(scene, node, &id, bake_scale, depth, &Pushed::default())?;
         } else {
-            if let Some(path) = &outer {
+            if let Some(path) = &outer.region {
                 self.clip_ref(&format!("{id}-outer"), path);
             }
+            let masks: Vec<_> = self.pushed_mask(&id, &outer).into_iter().collect();
+            self.mask_ref(&id, &masks);
             self.body.push_str(">\n");
             let steps = svg_steps(&node.effects);
             self.emit_outlined(scene, node, &id, bake_scale, depth, &steps)?;
@@ -167,7 +172,7 @@ impl Writer {
         id: &str,
         bake_scale: f32,
         depth: usize,
-        outer: Option<&Path>,
+        outer: &Pushed<'_>,
     ) -> Result<(), RenderError> {
         match &node.kind {
             NodeKind::Group { children, .. } => {
@@ -233,13 +238,15 @@ impl Writer {
             self.body.push_str(&pad);
             self.body.push_str("<g");
             self.clip_attr(node, id, None)?;
-            self.mask_attr(scene, node, id, bake_scale)?;
+            let mut masks = Vec::new();
+            self.mask_attr(scene, node, id, bake_scale, &mut masks)?;
+            self.mask_ref(id, &masks);
             self.body.push_str(">\n");
-            self.write_kind(scene, node, id, bake_scale, depth + 1, None)?;
+            self.write_kind(scene, node, id, bake_scale, depth + 1, &Pushed::default())?;
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
         } else {
-            self.write_kind(scene, node, id, bake_scale, depth, None)?;
+            self.write_kind(scene, node, id, bake_scale, depth, &Pushed::default())?;
         }
         Ok(())
     }
@@ -341,7 +348,7 @@ impl Writer {
             self.body.push_str(&cid);
             self.body.push_str(")\">\n");
             for child in &shape.children {
-                self.node(scene, child, bake_scale, depth + 1, None)?;
+                self.node(scene, child, bake_scale, depth + 1, &Pushed::default())?;
             }
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
@@ -509,65 +516,95 @@ impl Writer {
         self.body.push_str(")\"");
     }
 
-    fn mask_attr(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32) -> Result<(), RenderError> {
-        let soft = node.clip.as_ref().filter(|c| c.feather > 0.0 || c.invert);
-        if soft.is_none() && node.mask.is_none() {
-            return Ok(());
-        }
-        if let Some(clip) = soft {
+    fn mask_attr(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32, masks: &mut Vec<String>) -> Result<(), RenderError> {
+        if let Some(clip) = node.clip.as_ref().filter(|c| c.feather > 0.0 || c.invert) {
             let mid = format!("{id}-soft");
-            self.defs.push_str("    <mask id=\"");
-            self.defs.push_str(&mid);
-            self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
-            self.defs.push_str(&masked_area(node));
-            self.defs.push_str(" mask-type=\"alpha\">\n");
-            if clip.invert {
-                self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
-                self.defs.push_str("      <path d=\"");
-                self.defs.push_str(&path_data(&clip.path));
-                self.defs.push_str("\" fill=\"#000000\"");
-                if clip.feather > 0.0 {
-                    let fid = format!("{id}-softblur");
-                    self.blur_filter(&fid, clip.feather);
-                    self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
-                    self.defs.push_str(")\"");
-                }
-                self.defs.push_str("/>\n");
-            } else {
-                self.defs.push_str("      <path d=\"");
-                self.defs.push_str(&path_data(&clip.path));
-                self.defs.push_str("\" fill=\"#ffffff\"");
-                if clip.feather > 0.0 {
-                    let fid = format!("{id}-softblur");
-                    self.blur_filter(&fid, clip.feather);
-                    self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
-                    self.defs.push_str(")\"");
-                }
-                self.defs.push_str("/>\n");
-            }
-            self.defs.push_str("    </mask>\n");
-            self.body.push_str(" mask=\"url(#");
-            self.body.push_str(&mid);
-            self.body.push_str(")\"");
+            self.soft_mask_def(&mid, clip, &masked_area(node), None);
+            masks.push(mid);
         }
-        if let Some(mask) = &node.mask {
-            if matches!(mask.source, MaskSource::Field { .. }) {
-                return Ok(());
-            }
+        if let Some(mask) = &node.mask
+            && !matches!(mask.source, MaskSource::Field { .. })
+        {
             let mid = format!("{id}-mask");
             self.write_node_mask(scene, node, mask, &mid, bake_scale)?;
-            if soft.is_some() {
-                // The opening tag already carries the soft-clip mask. Nesting happens by
-                // wrapping is not available mid-attribute, so a second mask replaces it.
-                // Callers with both are rare; the soft clip stays in the defs either way.
-            }
-            self.body.push_str(" mask=\"url(#");
-            self.body.push_str(&mid);
-            self.body.push_str(")\"");
+            masks.push(mid);
         }
         Ok(())
+    }
+
+    fn pushed_mask(&mut self, id: &str, pushed: &Pushed<'_>) -> Option<String> {
+        let (clip, to_local) = pushed.soft?;
+        let mid = format!("{id}-pushed");
+        self.soft_mask_def(&mid, clip, EVERYWHERE, matrix_attr(&to_local).as_deref());
+        Some(mid)
+    }
+
+    /// `transform` maps the clip's coordinates to the masked element's, so the blur keeps the
+    /// clip's units.
+    fn soft_mask_def(&mut self, mid: &str, clip: &Clip, area: &str, transform: Option<&str>) {
+        self.defs.push_str("    <mask id=\"");
+        self.defs.push_str(mid);
+        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+        self.defs.push_str(area);
+        self.defs.push_str(" mask-type=\"alpha\">\n");
+        if let Some(t) = transform {
+            self.defs.push_str("      <g transform=\"");
+            self.defs.push_str(t);
+            self.defs.push_str("\">\n");
+        }
+        let fill = if clip.invert {
+            self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+            "#000000"
+        } else {
+            "#ffffff"
+        };
+        self.defs.push_str("      <path d=\"");
+        self.defs.push_str(&path_data(&clip.path));
+        self.defs.push_str("\" fill=\"");
+        self.defs.push_str(fill);
+        self.defs.push('"');
+        if clip.feather > 0.0 {
+            let fid = format!("{mid}blur");
+            self.blur_filter(&fid, clip.feather);
+            self.defs.push_str(" filter=\"url(#");
+            self.defs.push_str(&fid);
+            self.defs.push_str(")\"");
+        }
+        self.defs.push_str("/>\n");
+        if transform.is_some() {
+            self.defs.push_str("      </g>\n");
+        }
+        self.defs.push_str("    </mask>\n");
+    }
+
+    /// An element takes one `mask`, so several masks multiply in one that nests them.
+    fn mask_ref(&mut self, id: &str, masks: &[String]) {
+        let mid = match masks {
+            [] => return,
+            [one] => one.clone(),
+            _ => {
+                let mid = format!("{id}-masks");
+                self.defs.push_str("    <mask id=\"");
+                self.defs.push_str(&mid);
+                self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+                self.defs.push_str(EVERYWHERE);
+                self.defs.push_str(" mask-type=\"alpha\">\n");
+                for mask in masks {
+                    self.defs.push_str("      <g mask=\"url(#");
+                    self.defs.push_str(mask);
+                    self.defs.push_str(")\">\n");
+                }
+                self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+                for _ in masks {
+                    self.defs.push_str("      </g>\n");
+                }
+                self.defs.push_str("    </mask>\n");
+                mid
+            }
+        };
+        self.body.push_str(" mask=\"url(#");
+        self.body.push_str(&mid);
+        self.body.push_str(")\"");
     }
 
     fn write_node_mask(&mut self, scene: &Scene, node: &Node, mask: &Mask, id: &str, bake_scale: f32) -> Result<(), RenderError> {
@@ -581,7 +618,7 @@ impl Writer {
         if let MaskSource::Nodes(nodes) = &mask.source {
             let mut inner = Writer { defs: String::new(), body: String::new(), backend: self.backend };
             for node in nodes {
-                inner.node(scene, node, bake_scale, 3, None)?;
+                inner.node(scene, node, bake_scale, 3, &Pushed::default())?;
             }
             self.defs.push_str(&inner.defs);
             if mask.feather > 0.0 || mask.invert {
@@ -700,19 +737,55 @@ impl Writer {
     }
 }
 
+/// A clip that a plain clipped group pushed down to its children, because a `clip-path` or a
+/// `mask` on a `<g>` isolates it. `region` is a hard clip in the current coordinates. `soft` is
+/// a feathered clip and the matrix from its coordinates to the current ones. Each child
+/// takes the feathered mask on its own, which is exact for one child and close for several.
+#[derive(Clone, Default)]
+struct Pushed<'a> {
+    region: Option<Path>,
+    soft: Option<(&'a Clip, Matrix)>,
+}
+
+impl<'a> Pushed<'a> {
+    fn to_local(&self, transform: &Matrix) -> Self {
+        let inv = transform.invert();
+        Pushed {
+            region: self.region.as_ref().map(|path| inv.map(|inv| path.make_transform(&inv)).unwrap_or_default()),
+            soft: self.soft.map(|(clip, to_local)| (clip, inv.unwrap_or_default() * to_local)),
+        }
+    }
+
+    fn with(&self, clip: Option<&'a Clip>) -> Result<Option<Self>, RenderError> {
+        let hard = clip.filter(|c| c.feather <= 0.0).map(clip_region).transpose()?;
+        let soft = clip.filter(|c| c.feather > 0.0).map(|c| (c, Matrix::new_identity()));
+        let pushed = Pushed {
+            region: intersect(self.region.clone(), hard)?,
+            soft: self.soft.or(soft),
+        };
+        Ok((pushed.region.is_some() || pushed.soft.is_some()).then_some(pushed))
+    }
+}
+
 /// A plain group, clipped or under a pushed clip, whose children blend with what is below it.
-fn pushes_clip(node: &Node) -> bool {
+/// A feathered clip pushes only when no feathered clip above already does.
+fn pushes_clip(node: &Node, soft_above: bool) -> bool {
+    let soft_here = node.clip.as_ref().is_some_and(|clip| clip.feather > 0.0);
     matches!(node.kind, NodeKind::Group { isolate: false, .. })
         && node.opacity >= 1.0
         && node.blend == Blend::Normal
         && node.mask.is_none()
         && node.effects.is_empty()
-        && node.clip.as_ref().is_none_or(|clip| clip.feather <= 0.0)
+        && !(soft_here && soft_above)
         && node
             .children()
             .iter()
-            .any(|child| child.blend != Blend::Normal || pushes_clip(child))
+            .any(|child| child.blend != Blend::Normal || pushes_clip(child, soft_above || soft_here))
 }
+
+/// The region of a mask whose element is not the node it was made for: a pushed clip, or
+/// several masks merged into one.
+const EVERYWHERE: &str = "x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\"";
 
 fn area_attrs(rect: &Rect) -> String {
     format!(
@@ -766,10 +839,6 @@ fn intersect(a: Option<Path>, b: Option<Path>) -> Result<Option<Path>, RenderErr
             .ok_or_else(|| RenderError::Skia("clip intersect".into())),
         (a, b) => Ok(a.or(b)),
     }
-}
-
-fn to_local(path: &Path, transform: &Matrix) -> Path {
-    transform.invert().map(|inv| path.make_transform(&inv)).unwrap_or_default()
 }
 
 fn fill_rule(path: &Path) -> &'static str {
