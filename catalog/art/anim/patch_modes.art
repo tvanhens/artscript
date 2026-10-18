@@ -1,0 +1,20 @@
+# One anim with four patches, one patch mode per shape, over 1s in an 8-frame strip. The four shapes start in the quadrants of the 96x96 canvas.
+# Top left, red 20x20 rect, rest at (24,24): `at` adds to the rest pose, so it slides right along y=24 from x=24 (frame 1) to about x=42 (frame 8).
+# Top right, blue 16x16 rect with rest rot 45 (a diamond in frame 1): `rot` adds, so it turns clockwise to a flat square in frame 5 (45+45=90) and past it, to about 124 degrees in frame 8. It stays at (72,24).
+# Bottom left, green circle r 8 with rest scale 2: `scale` multiplies by 1 down to .5, so it starts as a circle of diameter 32 in frame 1 and shrinks each frame to about diameter 18 in frame 8, staying centered at (24,72).
+# Bottom right, a circle r 8 with rest at (72,72): `abs` sets the position instead of adding, so in frame 1 it is at (48,48) (the canvas center, not the rest spot) and travels to about (80,80) in frame 8.
+# That circle's fill (an ordinary set argument) goes from pale gold in frame 1 to pale red-orange in frame 8.
+@target anim/patch_modes.gif 96x96 fps:8 dur:1s
+
+rect 20x20 at:24,24 fill:p.red stroke:p.ink,1 name:slider
+rect 16x16 at:72,24 rot:45 fill:p.blue stroke:p.ink,1 name:spinner
+circle 8 at:24,72 scale:2 fill:p.green stroke:p.ink,1 name:shrinker
+circle 8 at:72,72 fill:p.gold stroke:p.ink,1 name:setter
+
+anim demo dur:1s
+  .slider at:key(0,0 20,0 ease:linear)
+  .spinner rot:key(0 90 ease:linear)
+  .shrinker scale:key(1 .5 ease:linear)
+  .setter at:abs(key(48,48 84,84 ease:linear)) fill:key(p.gold.3 p.red.3 ease:linear)
+
+play demo

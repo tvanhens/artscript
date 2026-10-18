@@ -1,0 +1,18 @@
+# Four beads on paper, circle radius 20 at x 32, 96, 160, 224. Every instance of def bead carries the def's fx shadow 5,5 blur:2, which runs first. The call site's own fx run after the def's.
+# 1. Blue bead with no call-site fx: a crisp blue circle with a soft blue-gray shadow to the lower right.
+# 2. Green bead with outline 4 at the call site: the same green circle and shadow, plus a crisp dark ink ring around it.
+# 3. Red bead with adjust hue:120 at the call site: the circle is green, and its shadow shifts hue with it, so the shadow is green-gray instead of red-gray.
+# 4. Gold bead with blur 3 at the call site: the circle is soft at its edge and its shadow is blurred along with it.
+@target fx/def_call.png 256x96
+
+def bead size:20 tone:p.blue
+  circle size fill:tone
+  fx shadow 5,5 blur:2
+
+bead at:32,40
+bead at:96,40 tone:p.green
+  fx outline 4 color:p.ink
+bead at:160,40 tone:p.red
+  fx adjust hue:120
+bead at:224,40 tone:p.gold
+  fx blur 3

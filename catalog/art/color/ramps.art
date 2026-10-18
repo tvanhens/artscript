@@ -1,0 +1,54 @@
+# Palettes declared in this file, shown as rows of 20x20 swatches on paper, cells left to right.
+# Row 1 (y 16): garden.peach, a single-color ramp of 5 steps from #f3a2a6. Steps 0..4 go from a deep
+# color on the left to a highlight on the right. The deep end is darker and shifted toward violet; the
+# highlight end is lighter and shifted toward yellow. Step 2 (middle) is the pink base.
+# Row 2 (y 40): garden.leaf, 5 steps from #7db956 with hue:12. Dark left to light right, and the hue
+# rotates a little at each step, so the row reads greener-blue on the left and more yellow on the right.
+# Row 3 (y 64): garden.sky, 7 steps between two endpoints, navy #1b1f3a on the left to orange #f2a65a
+# on the right. Seven distinct swatches that pass through a purple or pink middle, not a gray middle.
+# Row 4 (y 88): night.peach, from `palette night from garden` which overrides peach with a blue-violet
+# #5a4fc0 ramp. 5 steps, dark to light, all blue-violet and clearly unlike row 1.
+# Row 5 (y 112), 6 swatches: garden.peach.line (dark saturated crimson-magenta), garden.leaf.line (dark saturated
+# green), garden.sky.line (very dark indigo), night.leaf.2 (inherited, the same green as the middle of
+# row 2), garden.ink (very dark plum, a color row), night.moon (pale lavender white, a color row
+# that exists only in night).
+@target color/ramps.png 168x136
+@target color/ramps.svg 168x136 profile:vector
+
+palette garden
+  ramp peach #f3a2a6 5
+  ramp leaf #7db956 5 hue:12
+  ramp sky #1b1f3a #f2a65a 7
+  color ink #3d2632
+palette night from garden
+  ramp peach #5a4fc0 5
+  color moon #e6e4f6
+
+rect 20x20 at:14,16 fill:garden.peach.0
+rect 20x20 at:38,16 fill:garden.peach.1
+rect 20x20 at:62,16 fill:garden.peach.2
+rect 20x20 at:86,16 fill:garden.peach.3
+rect 20x20 at:110,16 fill:garden.peach.4
+rect 20x20 at:14,40 fill:garden.leaf.0
+rect 20x20 at:38,40 fill:garden.leaf.1
+rect 20x20 at:62,40 fill:garden.leaf.2
+rect 20x20 at:86,40 fill:garden.leaf.3
+rect 20x20 at:110,40 fill:garden.leaf.4
+rect 20x20 at:14,64 fill:garden.sky.0
+rect 20x20 at:38,64 fill:garden.sky.1
+rect 20x20 at:62,64 fill:garden.sky.2
+rect 20x20 at:86,64 fill:garden.sky.3
+rect 20x20 at:110,64 fill:garden.sky.4
+rect 20x20 at:134,64 fill:garden.sky.5
+rect 20x20 at:158,64 fill:garden.sky.6
+rect 20x20 at:14,88 fill:night.peach.0
+rect 20x20 at:38,88 fill:night.peach.1
+rect 20x20 at:62,88 fill:night.peach.2
+rect 20x20 at:86,88 fill:night.peach.3
+rect 20x20 at:110,88 fill:night.peach.4
+rect 20x20 at:14,112 fill:garden.peach.line
+rect 20x20 at:38,112 fill:garden.leaf.line
+rect 20x20 at:62,112 fill:garden.sky.line
+rect 20x20 at:86,112 fill:night.leaf.2
+rect 20x20 at:110,112 fill:garden.ink
+rect 20x20 at:134,112 fill:night.moon

@@ -1,0 +1,22 @@
+# Components passed as values. def tunic is a red 20x20 rect, def cape is a gold 30x14 rect, and def doll draws a circle head of radius 14 in its tone (default blue) with a parameter `outfit` that defaults to none (draws nothing)
+# and, when set to a component, is placed with `outfit` below the head. doll also has `fx outline 3` in its body, so every instance gets a dark ring about 3 wide around everything it draws.
+# 256x96 canvas, four dolls in a row, each centered in a 64-wide cell.
+# Left to right: doll with the default outfit none (only a blue circle head with a dark ring, nothing below it); doll outfit:tunic (the same head with a red square below it, the ring following the head and square together);
+# doll outfit:cape (the same head with a wider-than-tall gold rect below it, ringed); doll tone:p.green outfit:tunic (green head, the same red square, with a darker green ring).
+@target components/values_fx.png 256x96
+
+def tunic size:20
+  rect 100%,100% fill:p.red
+
+def cape size:30x14
+  rect 100%,100% fill:p.gold
+
+def doll size:56 tone:p.blue outfit:none
+  circle 14 at:0,-14 fill:tone
+  outfit at:0,12
+  fx outline 3
+
+doll at:32,48 name:d1
+doll at:96,48 outfit:tunic name:d2
+doll at:160,48 outfit:cape name:d3
+doll at:224,48 tone:p.green outfit:tunic name:d4

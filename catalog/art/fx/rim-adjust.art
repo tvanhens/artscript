@@ -1,0 +1,28 @@
+# A 4x2 grid on paper, cells 64 px wide, a red circle of radius 22 in every cell, so the original color is the cell 4 circle.
+# Top row is fx rim, a light band along one side that stays inside the circle:
+# 1. rim 5 dir:1,1: a pale lavender band along the lower-right edge only.
+# 2. rim 5 dir:-1,-1: the same band on the upper-left edge only, the mirror of cell 1.
+# 3. rim 6 dir:0,1 in gold: a gold-orange band along the bottom edge only, wider than cell 1.
+# 4. no effect: a plain flat red circle for reference.
+# Bottom row is fx adjust, a whole-circle color change with no edges or bands:
+# 5. adjust hue:120: the circle is solid green.
+# 6. adjust sat:-.9: the circle is a nearly gray brown.
+# 7. adjust light:.3: the circle is very pale pink, much lighter than the red reference.
+# 8. adjust hue:-60 sat:-.3 light:-.15: the circle is a muted dark purple.
+@target fx/rim-adjust.png 256x128
+
+circle 22 at:32,32 fill:p.red
+  fx rim 5 dir:1,1
+circle 22 at:96,32 fill:p.red
+  fx rim 5 dir:-1,-1
+circle 22 at:160,32 fill:p.red
+  fx rim 6 dir:0,1 color:p.gold a:1
+circle 22 at:224,32 fill:p.red
+circle 22 at:32,96 fill:p.red
+  fx adjust hue:120
+circle 22 at:96,96 fill:p.red
+  fx adjust sat:-.9
+circle 22 at:160,96 fill:p.red
+  fx adjust light:.3
+circle 22 at:224,96 fill:p.red
+  fx adjust hue:-60 sat:-.3 light:-.15

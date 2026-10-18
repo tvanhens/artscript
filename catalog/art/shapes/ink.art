@@ -1,0 +1,20 @@
+# Tapered ink on paper, 256x128. Every stroke is dark ink on an open curve, round ends.
+# Top row, left to right: (1) curve with stroke:p.ink,6 and no taper: a uniform thickness 6px stroke along its length.
+# (2) stroke:p.ink,[2 10 2]: a single smooth bulge, thin ends and thick middle, three widths over the length.
+# (3) stroke:p.ink,[2 10 2] taper:.4: the same curve with the ends also thinning to a point.
+# (4) stroke:p.ink,[3 3] taper:0,.8: starts blunt (3px) at the left end and tapers to a point over most of the length
+# toward the right end.
+# Bottom row: (5) taper:.8,0: the mirror, a sharp point at the left end and a blunt right end. (6) stroke:p.ink,[10 2]
+# no taper: a thick start thinning steadily to a thin end. (7) stroke:p.ink,[1 12 1] taper:.5: a fat leaf-shaped
+# stroke pointed at both ends. (8) a wavy 4-point curve with [2 8 2 8] widths: the thickness swells at point 2 and
+# 4 and is thin at points 1 and 3.
+@target shapes/ink.png 256x128
+
+curve -22,8 0,-8 22,8 stroke:p.ink,6 at:32,32
+curve -22,8 0,-8 22,8 stroke:p.ink,[2 10 2] at:96,32
+curve -22,8 0,-8 22,8 stroke:p.ink,[2 10 2] taper:.4 at:160,32
+curve -22,8 0,-8 22,8 stroke:p.ink,[3 3] taper:0,.8 at:224,32
+curve -22,8 0,-8 22,8 stroke:p.ink,[3 3] taper:.8,0 at:32,96
+curve -22,8 0,-8 22,8 stroke:p.ink,[10 2] at:96,96
+curve -22,8 0,-8 22,8 stroke:p.ink,[1 12 1] taper:.5 at:160,96
+curve -24,0 -8,-10 8,10 24,0 stroke:p.ink,[2 8 2 8] at:224,96

@@ -1,0 +1,35 @@
+# A 3x2 grid of cells on paper, 64px pitch. Each cell has a 48x48 backdrop square in mid blue (left half) and gold (right half), and over its middle a red-orange circle (radius 20, #e0574f) drawn with a different `blend:` mode. The circle spans both halves, so each cell shows how the mode treats a blue backdrop and a gold backdrop.
+# Top row, left to right:
+# 1. `multiply`: the circle is darker than both backdrops: dark purple over the blue half, dark red-orange over the gold half.
+# 2. `screen`: the circle is lighter than both backdrops: a pale pink-lavender over blue, a pale peach over gold.
+# 3. `overlay`: the circle follows the backdrop's lightness: its half over blue is a saturated purple and its half over gold is a bright orange, so the two halves differ strongly in hue.
+# Bottom row, left to right:
+# 4. `soft_light`: like overlay but gentler; the circle's half over blue is a muted lavender-purple and its half over gold a muted orange, both close to their backdrop so the circle's edge is low contrast.
+# 5. `add`: the circle is very bright: a near-white pink over blue and near-white yellow over gold.
+# 6. `erase`, with the backdrop squares and the circle inside a `layer` so the circle erases only that layer: the circle punches a round hole through the backdrop, showing paper, so the cell is a blue left half and a gold right half with a paper-colored disc cut out of the middle and no red anywhere.
+@target structure/blend_modes.png 192x128
+
+rect 24x48 at:20,32 fill:p.blue
+rect 24x48 at:44,32 fill:p.gold
+circle 20 at:32,32 fill:#e0574f blend:multiply
+
+rect 24x48 at:84,32 fill:p.blue
+rect 24x48 at:108,32 fill:p.gold
+circle 20 at:96,32 fill:#e0574f blend:screen
+
+rect 24x48 at:148,32 fill:p.blue
+rect 24x48 at:172,32 fill:p.gold
+circle 20 at:160,32 fill:#e0574f blend:overlay
+
+rect 24x48 at:20,96 fill:p.blue
+rect 24x48 at:44,96 fill:p.gold
+circle 20 at:32,96 fill:#e0574f blend:soft_light
+
+rect 24x48 at:84,96 fill:p.blue
+rect 24x48 at:108,96 fill:p.gold
+circle 20 at:96,96 fill:#e0574f blend:add
+
+layer cutout
+  rect 24x48 at:148,96 fill:p.blue
+  rect 24x48 at:172,96 fill:p.gold
+  circle 20 at:160,96 fill:#e0574f blend:erase

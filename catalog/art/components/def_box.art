@@ -1,0 +1,26 @@
+# Two defs, badge (size 40 box) and plate (size 52x24 box), each drawing a rounded rect that fills its box with an ink outline plus a paper-colored dot at the box center whose radius is 25% of the box's smaller side. 256x128 canvas, two rows of four, each centered in its 64x64 cell.
+# Top row, left to right: badge 40 with the default red tone (red 40x40 square, dot radius 10); badge 28 (smaller red square, proportionally smaller dot); plate 52x24 (a wide red rect 52 by 24, dot radius 6 sized from the height, the smaller side);
+# badge 40 tone:p.blue (the same square as cell 1 but blue).
+# Bottom row, left to right: badge size:36 tone:p.green (green square, size given by keyword, smaller than the others); badge 40 red with a small ink dot (radius 4) sitting on the middle of its top edge, placed at the badge's `tip` anchor (0,-size/2);
+# badge 40 tone:p.gold with the same ink dot on the middle of its top edge; badge 40 tone:p.gold with no dot (it matches cell 7 minus the dot).
+@target components/def_box.png 256x128
+
+def badge size:40 tone:p.red
+  rect 100%,100% r:4 fill:tone stroke:p.ink,2
+  circle 25% fill:p.paper
+  anchor tip 0,-size/2
+
+def plate size:52x24 tone:p.red
+  rect 100%,100% r:4 fill:tone stroke:p.ink,2
+  circle 25% fill:p.paper
+
+badge 40 at:32,32 name:b1
+badge 28 at:96,32 name:b2
+plate 52x24 at:160,32 name:b3
+badge 40 at:224,32 tone:p.blue name:b4
+badge size:36 at:32,96 tone:p.green name:b5
+badge 40 at:96,96 name:b6
+circle 4 at:@b6.tip.x,@b6.tip.y fill:p.ink name:m6
+badge 40 at:160,96 tone:p.gold name:b7
+circle 4 at:@b7.tip.cx,@b7.tip.cy fill:p.ink name:m7
+badge 40 at:224,96 tone:p.gold name:b8

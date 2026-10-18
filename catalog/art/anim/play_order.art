@@ -1,0 +1,32 @@
+# Plays, 8-frame strip over 1s. Top row: three circles (r 8, ink outline) at x=24, 48, 72 on y=20, named a, b, c, each with a rest fill of gold.
+# `play to_red` then `play to_blue`: to_red sets fill red on a and b; to_blue sets fill blue on b and c. The last play wins, so in every frame
+# the top row reads left to right: red, blue, blue (b is blue, not red; no frame shows gold).
+# Bottom rows: two squares 12x12 start at x=12, one at y=52 (green, `early`) and one at y=76 (gold, `late`), each slides 72 to the right over .5s.
+# `early` plays at once: the green square slides right in frames 1-4 (x=12, 30, 48, 66), then the anim has ended and it is back at its rest x=12 in frames 5-8.
+# `late` plays with start:.5s: the gold square rests at x=12 in frames 1-5 and slides right in frames 6-8, reaching about x=67 in frame 8.
+@target anim/play_order.gif 96x96 fps:8 dur:1s
+
+circle 8 at:24,20 fill:p.gold stroke:p.ink,1 name:a
+circle 8 at:48,20 fill:p.gold stroke:p.ink,1 name:b
+circle 8 at:72,20 fill:p.gold stroke:p.ink,1 name:c
+rect 12x12 at:12,52 fill:p.green stroke:p.ink,1 name:e
+rect 12x12 at:12,76 fill:p.gold stroke:p.ink,1 name:l
+
+anim to_red dur:1s
+  .a fill:p.red
+  .b fill:p.red
+
+anim to_blue dur:1s
+  .b fill:p.blue
+  .c fill:p.blue
+
+anim early dur:500ms
+  .e at:key(0,0 72,0 ease:linear)
+
+anim late dur:500ms
+  .l at:key(0,0 72,0 ease:linear)
+
+play to_red
+play to_blue
+play early
+play late start:500ms

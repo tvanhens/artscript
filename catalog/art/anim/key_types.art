@@ -1,0 +1,15 @@
+# Interpolated value types, 8 frames over 1s, linear ease (frame 8 is at t=7/8). Each cell is a quadrant of the 96x96 canvas.
+# Top left: a 24x24 rect with an ink outline whose fill goes from red to blue through OKLab: red in frame 1, purple in the middle frames (not gray), mostly blue in frame 8.
+# Top right: a green circle centered at x=72, y=24 that grows from r 4 in frame 1 to about r 14 in frame 8 (a number key).
+# Bottom left: a gold 24x24 rect centered at x=24, y=72 that rotates from 0 to about 79 degrees: upright in frame 1, tilted further each frame (an angle key).
+# Bottom right: a blue circle (r 6) that moves along the diagonal from (60,60) to about (82,82) (a vector key).
+# Center: a pale blue circle r 10 at x=56, y=48 is drawn first; a pale red circle r 10 at x=48, y=48 over it uses blend:key(normal multiply multiply),
+# so the overlap lens is plain pale red in frames 1-4 and a darker purple in frames 5-8: a word steps at once and never fades.
+@target anim/key_types.gif 96x96 fps:8 dur:1s
+
+rect 24x24 at:24,24 fill:key(p.red.3 p.blue.3 ease:linear dur:1s) stroke:p.ink,1
+circle key(4 14 ease:linear dur:1s) at:72,24 fill:p.green stroke:p.ink,1
+rect 24x24 at:24,72 rot:key(0 90 ease:linear dur:1s) fill:p.gold stroke:p.ink,1
+circle 6 at:key(60,60 84,84 ease:linear dur:1s) fill:p.blue stroke:p.ink,1
+circle 10 at:56,48 fill:p.blue.3
+circle 10 at:48,48 fill:p.red.3 blend:key(normal multiply multiply dur:1s)

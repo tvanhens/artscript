@@ -1,0 +1,27 @@
+# Geometry values on paper, 256x128, every shape outlined 2px ink. Left to right, top to bottom:
+# (1) six red circles of radius 5 on a ring of radius 24 around a small dark center dot, placed by polar(24 i*60):
+# a regular hexagon of dots, one dot exactly to the right of the center, the others every 60 degrees (y is down,
+# so the second dot is lower right).
+# (2) vector math: a dark center dot, and a blue circle (radius 8) placed at (10,5)*2, i.e. 20 right and 10 down of
+# the dot; a gold circle (radius 8) placed at the negation -(10,5)*2, i.e. 20 left and 10 up of the dot.
+# (3) top right, percent of the frame: a gold 60x60 square; inside it (clipped to it) a green rect 50%,100% of the
+# square's bounds sits at the square's left half: the left half of the square is green, the right half gold.
+# (4) bottom right, if/then/else: three touching circles in a row, gold, blue, gold, where the radius is
+# if i == 1 then 14 else 8: the blue middle one is clearly the largest, the two gold ones are equal and small.
+@target shapes/values_geometry.png 256x128
+
+let c1 = 32,32
+circle 2 at:c1 fill:p.ink
+each i in 0..6
+  circle 5 at:c1+polar(24 i*60) fill:p.red stroke:p.ink,2
+
+let c2 = 96,32
+circle 2 at:c2 fill:p.ink
+circle 8 at:c2+(10,5)*2 fill:p.blue stroke:p.ink,2
+circle 8 at:c2-(10,5)*2 fill:p.gold stroke:p.ink,2
+
+rect 60x60 at:160,32 fill:p.gold stroke:p.ink,2
+  rect 50%,100% at:-15,0 fill:p.green
+
+each i in 0..3
+  circle if i == 1 then 14 else 8 at:210+i*18,96 fill:if i == 1 then p.blue else p.gold stroke:p.ink,2

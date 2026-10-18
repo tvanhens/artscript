@@ -1,0 +1,19 @@
+# One file, three targets, one anim chosen per target by `clip`. The scene is an ink-outlined 20x20 blue square named box, resting at (32,32) on a 64x64 canvas.
+# clip_select_spin.gif (clip:spin, 8 frames over 1s): the square stays at (32,32) and turns clockwise, upright in frame 1 and about 79 degrees in frame 8; it never moves sideways.
+# clip_select_slide.gif (clip:slide, 8 frames): the square keeps its angle (upright) and slides right along y=32 from x=32 in frame 1 to about x=52 in frame 8.
+# clip_select_pose.png (clip:slide, t:.5s): a still, a single 64x64 image: the upright square drawn halfway through the slide, centered at about x=42, y=32.
+@target anim/clip_select_{c}.gif 64x64 fps:8 dur:1s each c:[spin slide] clip:c
+@target anim/clip_select_pose.png 64x64 t:500ms clip:slide
+
+rect 20x20 at:32,32 fill:p.blue stroke:p.ink,1 name:box
+
+anim spin dur:1s
+  .box rot:key(0 90 ease:linear)
+
+anim slide dur:1s
+  .box at:key(0,0 20,0 ease:linear)
+
+if clip == spin
+  play spin
+if clip == slide
+  play slide

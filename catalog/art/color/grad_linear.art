@@ -1,0 +1,35 @@
+# Linear gradients on paper, three rows of four 40x40 rects, cells left to right. Every gradient runs
+# from gold #e8b33a to deep plum #2b2440 unless noted.
+# Row 1 (y 24): direction words down, up, left, right. Cell 1: gold at the top, plum at the bottom.
+# Cell 2: plum at the top, gold at the bottom. Cell 3: gold at the right edge, plum at the left edge, so
+# gold is on the right. Cell 4: gold at the left edge, plum at the right edge.
+# Row 2 (y 72): angles 0, 90, 45, 180. Cell 1 (0 = right) looks like row 1 cell 4: gold left, plum right.
+# Cell 2 (90 = down) looks like row 1 cell 1: gold top, plum bottom. Cell 3 (45) is diagonal: gold in the
+# top-left corner, plum in the bottom-right corner. Cell 4 (180) is gold on the right, plum on the left.
+# Row 3 (y 120): cell 1 is grad(-20,-20 20,20 gold plum), two points in the shape's local coordinates
+# (origin at the rect's center): a diagonal from gold at the top-left corner to plum at the bottom-right
+# corner, the same look as row 2 cell 3. Cell 2 has stop positions, grad(right gold gold,.5 plum,.5
+# plum): a hard edge at the center, left half solid gold and right half solid plum, with no blend.
+# Cell 3 has three stops going right, red #e0574f at the left edge, gold #e8b33a at .25 and blue #4f7fe0
+# at the right edge: red turns to gold in the first quarter, then gold to blue passes through green and
+# cyan (OKLCH hue interpolation). Cell 4 uses ramp stops, grad(down g.gold.3 g.gold,.3 g.gold.0) with a
+# 5-step ramp of #e8b33a: pale peach-yellow at the top, the base gold at 30 percent down, dark orange-brown
+# at the bottom.
+@target color/grad_linear.png 192x144
+@target color/grad_linear.svg 192x144 profile:vector
+
+palette g
+  ramp gold #e8b33a 5
+
+rect 40x40 at:24,24 fill:grad(down #e8b33a #2b2440)
+rect 40x40 at:72,24 fill:grad(up #e8b33a #2b2440)
+rect 40x40 at:120,24 fill:grad(left #e8b33a #2b2440)
+rect 40x40 at:168,24 fill:grad(right #e8b33a #2b2440)
+rect 40x40 at:24,72 fill:grad(0 #e8b33a #2b2440)
+rect 40x40 at:72,72 fill:grad(90 #e8b33a #2b2440)
+rect 40x40 at:120,72 fill:grad(45 #e8b33a #2b2440)
+rect 40x40 at:168,72 fill:grad(180 #e8b33a #2b2440)
+rect 40x40 at:24,120 fill:grad(-20,-20 20,20 #e8b33a #2b2440)
+rect 40x40 at:72,120 fill:grad(right #e8b33a #e8b33a,.5 #2b2440,.5 #2b2440)
+rect 40x40 at:120,120 fill:grad(right #e0574f #e8b33a,.25 #4f7fe0)
+rect 40x40 at:168,120 fill:grad(down g.gold.3 g.gold,.3 g.gold.0)

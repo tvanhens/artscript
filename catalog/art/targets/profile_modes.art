@@ -1,0 +1,9 @@
+# One vector-only scene through three profiles, each a 64x64 view: a red circle (r 20) with an ink outline at (32,32), over a soft gold halo (a gold circle r 26 at 80% opacity, blur 8).
+# profile_modes_svg.svg (profile:svg) and profile_modes_vector.svg (profile:vector) are the same SVG, rasterized: red circle, ink outline, and a gold glow that fades out smoothly around it.
+# profile_modes_raster.png (profile:raster) shows the same picture drawn directly. In all three the halo is round and fades out, with no hard edge, and the circle outline is crisp.
+@target targets/profile_modes_svg.svg 64x64 profile:svg
+@target targets/profile_modes_vector.svg 64x64 profile:vector
+@target targets/profile_modes_raster.png 64x64 profile:raster
+
+circle 26 at:32,32 fill:p.gold a:.8 blur:8
+circle 20 at:32,32 fill:p.red stroke:p.ink,2

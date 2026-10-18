@@ -1,0 +1,17 @@
+# Two cells side by side on paper, each a blue 72x72 square backdrop with the same content on top: a red 40x40 square left of center
+# and a gold circle (radius 22) right of center that overlaps the right half of the red square and the blue backdrop, drawn with blend:multiply.
+# Left cell is a `layer`: the multiply sees only the layer's own red square, so the gold circle stays pure gold over the blue backdrop
+# and turns dark red-brown only where it overlaps the red square.
+# Right cell is a `group`: the multiply also sees the blue backdrop, so the gold circle is dark (a dark olive green) over the blue backdrop
+# as well as dark where it overlaps the red square. The difference between the two circles' colors over blue is the proof.
+@target structure/layer_group.png 192x96
+
+rect 72x72 at:48,48 fill:p.blue
+layer isolated at:48,48
+  rect 40x40 at:-14,0 fill:p.red
+  circle 22 at:12,0 fill:p.gold blend:multiply
+
+rect 72x72 at:144,48 fill:p.blue
+group shared at:144,48
+  rect 40x40 at:-14,0 fill:p.red
+  circle 22 at:12,0 fill:p.gold blend:multiply

@@ -82,6 +82,8 @@ jobs:
           fi
           printf '%s' "$last_sha" >.claude-review/last_sha
 
+          python3 scripts/visual_review.py "$BASE_SHA" .claude-review/visual
+
           # claude_args is shell-quote parsed, so the schema rides in single quotes.
           schema=$(jq -c . .github/claude-review/schema.json)
           case "$schema" in *"'"*) echo "schema.json must not contain a single quote" >&2; exit 1 ;; esac
@@ -96,7 +98,7 @@ jobs:
             echo "- base_sha: $BASE_SHA"
             echo "- last_sha: $last_sha"
             echo "- reviewer_login: $REVIEWER_LOGIN (your comments carry this author login in threads.json)"
-            echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above)"
+            echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above; visual/index.md lists the catalog goldens this PR changes)"
             echo
             cat .github/claude-review/prompt.md
             echo 'CLAUDE_REVIEW_PROMPT_EOF'

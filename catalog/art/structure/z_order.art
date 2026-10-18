@@ -1,0 +1,19 @@
+# A row of 4 cells on paper, 48px pitch, each a stack of overlapping shapes with an ink outline of 2px; `z:` changes which shape is on top.
+# 1. Default order: a red circle (radius 14) is written first and a blue circle (radius 14) second, centers 14px apart. The blue circle covers the red one where they overlap (blue on top).
+# 2. The same two circles in the same order, but the red one has `z:front`: now the red circle is on top, and the red circle's full outline is visible across the blue one.
+# 3. The same two circles in the same order, but the blue one has `z:behind`: the blue circle is under the red one, so the red circle is on top as in cell 2.
+# 4. Three 22x22 squares written in the order red, blue, green, each offset 8px right and 8px down from the one before, with `z:2`, `z:0`, `z:1`: from bottom to top the stack is blue, green, red, so red is fully visible on top, green overlaps blue, and blue is the lowest, which is the reverse of the written order for red and blue.
+@target structure/z_order.png 192x48
+
+circle 14 at:17,24 fill:p.red stroke:p.ink,2
+circle 14 at:31,24 fill:p.blue stroke:p.ink,2
+
+circle 14 at:65,24 fill:p.red stroke:p.ink,2 z:front
+circle 14 at:79,24 fill:p.blue stroke:p.ink,2
+
+circle 14 at:113,24 fill:p.red stroke:p.ink,2
+circle 14 at:127,24 fill:p.blue stroke:p.ink,2 z:behind
+
+rect 22x22 at:154,16 fill:p.red stroke:p.ink,2 z:2
+rect 22x22 at:162,24 fill:p.blue stroke:p.ink,2 z:0
+rect 22x22 at:170,32 fill:p.green stroke:p.ink,2 z:1

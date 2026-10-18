@@ -1,0 +1,36 @@
+# A 3x2 grid of cells on paper, 64px pitch, each a 48x48 solid square cut by a mask.
+# Top row, left to right:
+# 1. Red square masked by `mask @m1`, a named invisible circle (radius 18): the square shows as a hard-edged red disc, the square's corners are gone.
+# 2. Blue square masked by a noise field `mask simplex(10) > .5`: the square shows as a scatter of hard-edged blue blobs with paper gaps, no soft gradients.
+# 3. Green square masked by a `mask` block holding two circles (radius 12, at the square's local offsets -10,-10 and 10,10: one upper left, one lower right): two separate green discs on paper, nothing between them.
+# Bottom row, left to right:
+# 4. Gold 56x56 square masked by `mask @m4` with `feather:5` on the draw: a gold disc (core radius about 14) whose edge fades softly into paper over about 10px, no hard rim, fully paper before the square's edge.
+# 5. A `layer` holding a red left half and a blue right half (two 24x48 rects), masked by `mask @m5` (a circle, radius 20): one disc split down the middle, red left and blue right, hard edge.
+# 6. Gold 56x56 square clipped by `inside @m6` with `feather:5`: same soft-edged gold disc idea as cell 4, but made by a clip, so the disc fades softly into paper in the same way.
+@target structure/mask.png 192x128
+
+circle 18 at:32,32 name:m1 fill:none
+rect 48x48 at:32,32 fill:p.red
+  mask @m1
+
+rect 48x48 at:96,32 fill:p.blue name:speckle
+  mask simplex(10) > .5
+
+rect 48x48 at:160,32 fill:p.green
+  mask
+    circle 12 at:-10,-10
+    circle 12 at:10,10
+
+circle 14 at:32,96 name:m4 fill:none
+rect 56x56 at:32,96 fill:p.gold feather:5
+  mask @m4
+
+circle 20 at:96,96 name:m5 fill:none
+layer halves
+  rect 24x48 at:84,96 fill:p.red
+  rect 24x48 at:108,96 fill:p.blue
+  mask @m5
+
+circle 14 at:160,96 name:m6 fill:none
+inside @m6 feather:5
+  rect 56x56 at:160,96 fill:p.gold

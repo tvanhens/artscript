@@ -1,0 +1,12 @@
+# Path strings on paper, 192x96, ink outline 2px.
+# Left: a red closed shape from path "M0 0 c10-20 30-20 40 0z" scaled up: an arch (a hump) over a flat base,
+# a half-lens, fill red, with the flat base at the bottom.
+# Middle: a blue triangle from path "M-20 16 L20 16 L0 -20 Z" with three straight sides, point up.
+# Right: an open path "M-24 0 Q-12 -24 0 0 T24 0" stroked 3px ink with no fill, a wave: a hump up then a hump down.
+# SUSPECT: docs say only fill: paints a fill (curve leaves an open stroke-only curve unfilled) vs the open path renders
+# with a gray fill between the wave and its chord
+@target shapes/paths.png 192x96
+
+path "M0 0 c10-20 30-20 40 0z" scale:1.2 at:8,56 fill:p.red stroke:p.ink,2
+path "M-20 16 L20 16 L0 -20 Z" at:96,48 fill:p.blue stroke:p.ink,2
+path "M-24 0 Q-12 -24 0 0 T24 0" at:160,48 stroke:p.ink,3

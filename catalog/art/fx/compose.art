@@ -1,0 +1,31 @@
+# A grid on paper, cells 64 px wide, red circles of radius 20 unless noted. These cells name an effect result with as:, pick an input with of:, and combine inputs with fx merge.
+# Top row, left to right:
+# 1. blur 8 as:soft, then merge soft self a:.5,1: a crisp full-strength red circle with a soft red halo at half strength around it.
+# 2. blur 8 as:soft, then merge self a:.3: a pale red circle at 30% strength with a crisp edge and no halo, since soft is left out of the merge.
+# 3. blur 8 as:soft, adjust hue:120 of:self as:green, merge soft green: a crisp green circle (the shifted original) in front of a soft red halo, so the halo and the disc are different colors.
+# 4. shadow 8,8 blur:2 as:cast, merge cast self a:.4,1: a crisp red circle with a soft purple-gray shadow to the lower right at 40% strength.
+# Bottom row, left to right:
+# 5. This cell is empty. A red circle that runs blur 8 of:@src takes the blue circle named src as its input and replaces its own picture with a blurred copy of it, so no red shows in this cell.
+# 6. The blue circle named src at the middle of the row, crisp, with a soft blue halo around it (the blurred copy from cell 5 lands behind it).
+# 7. adjust sat:-1 as:gray, then merge gray alone: a flat gray circle where the green circle would be, with no green left.
+@target fx/compose.png 256x128
+
+circle 20 at:32,32 fill:p.red
+  fx blur 8 as:soft
+  fx merge soft self a:.5,1
+circle 20 at:96,32 fill:p.red
+  fx blur 8 as:soft
+  fx merge self a:.3
+circle 20 at:160,32 fill:p.red
+  fx blur 8 as:soft
+  fx adjust hue:120 of:self as:green
+  fx merge soft green
+circle 20 at:224,32 fill:p.red
+  fx shadow 8,8 blur:2 as:cast
+  fx merge cast self a:.4,1
+circle 20 at:96,96 fill:p.blue name:src
+circle 20 at:32,96 fill:p.red
+  fx blur 8 of:@src
+circle 20 at:160,96 fill:p.green
+  fx adjust sat:-1 as:gray
+  fx merge gray

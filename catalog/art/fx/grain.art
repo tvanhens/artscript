@@ -1,0 +1,15 @@
+# A row of four gold squares, 52 px, centered at x 32, 96, 160, 224 on paper.
+# 1. No effect: a perfectly flat gold square, no noise.
+# 2. fx grain .15 scale:1: fine-grained pixel noise over the gold, light and dark gold specks only a pixel or two across, same silhouette.
+# 3. fx grain .15 scale:4: the same strength as cell 2 but the noise is coarse and blurry, blotches several pixels across.
+# 4. fx grain .3 scale:2: stronger noise than cell 2, with clearly lighter yellow and darker orange specks about two pixels across.
+# Every square keeps a crisp square outline, and no grain falls on the paper.
+@target fx/grain.png 256x96
+
+rect 52x52 at:32,48 fill:p.gold
+rect 52x52 at:96,48 fill:p.gold name:g0
+  fx grain .15 scale:1
+rect 52x52 at:160,48 fill:p.gold name:g1
+  fx grain .15 scale:4
+rect 52x52 at:224,48 fill:p.gold name:g2
+  fx grain .3 scale:2

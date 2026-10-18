@@ -1,0 +1,35 @@
+# SVG output (profile:svg, shown as rasterized by resvg), a 3x2 grid of cells on paper, 64px pitch, each a 48x48 area.
+# Top row, left to right:
+# 1. A blue left half and a gold right half backdrop with a red-orange circle (radius 20, #e0574f) drawn with `blend:multiply`: the circle is dark purple over blue and dark red-orange over gold.
+# 2. The same backdrop with the circle drawn with `blend:screen`: the circle is pale pink-lavender over blue and pale peach over gold.
+# 3. A green 48x48 square with an ink outline holding a red circle (radius 16) pushed against its right edge: the circle is cut off flat at the square's right edge.
+# Bottom row, left to right:
+# 4. A blue 48x48 square masked by `mask @m4`, an invisible circle (radius 20): a hard-edged blue disc.
+# 5. A blue 48x48 square masked by the noise field `mask simplex(10) > .5`: a scatter of blue blobs with paper gaps, same idea as the raster mask fixture.
+# 6. A gold 48x48 square masked by a `mask` block of two circles (radius 12, at local offsets -10,-10 and 10,10): two separate gold discs, one upper left and one lower right.
+# SUSPECT: cells 4 and 6 (shape masks) should show a full disc, but the upper-left part is cut off flat at the canvas y=83 line, which is the <mask> default region (-10% of the 128px viewport in the masked rect's local space, no x/y/width/height written) clipping above the rect's origin.
+# SUSPECT: `feather:` with a shape mask on a profile:svg target writes an invalid <g <filter ...> tag inside <mask> and the SVG does not parse, so this fixture has no feathered cell.
+@target structure/svg_bake.svg 192x128 profile:svg
+
+rect 24x48 at:20,32 fill:p.blue
+rect 24x48 at:44,32 fill:p.gold
+circle 20 at:32,32 fill:#e0574f blend:multiply
+
+rect 24x48 at:84,32 fill:p.blue
+rect 24x48 at:108,32 fill:p.gold
+circle 20 at:96,32 fill:#e0574f blend:screen
+
+rect 48x48 at:160,32 fill:p.green stroke:p.ink,2
+  circle 16 at:20,0 fill:p.red
+
+circle 20 at:32,96 name:m4 fill:none
+rect 48x48 at:32,96 fill:p.blue
+  mask @m4
+
+rect 48x48 at:96,96 fill:p.blue name:speckle
+  mask simplex(10) > .5
+
+rect 48x48 at:160,96 fill:p.gold
+  mask
+    circle 12 at:-10,-10
+    circle 12 at:10,10

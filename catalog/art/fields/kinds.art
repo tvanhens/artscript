@@ -1,0 +1,9 @@
+# Four 64x64 squares side by side on a 256x64 canvas, each a different noise field with feature size 16 and seed 1, mapped through the blue ramp.
+# Left to right: simplex (finest, high-contrast winding blobs), perlin (smoother, larger soft blobs), worley (round bright cells separated by dark seams),
+# value (soft, low-contrast blobs). All four are clearly different textures, none is a flat color, each fills its full square with no gaps.
+@target fields/kinds.png 256x64
+
+rect 64x64 at:32,32 fill:simplex(16 seed:1) -> p.blue name:a
+rect 64x64 at:96,32 fill:perlin(16 seed:1) -> p.blue name:b
+rect 64x64 at:160,32 fill:worley(16 seed:1) -> p.blue name:c
+rect 64x64 at:224,32 fill:value(16 seed:1) -> p.blue name:d

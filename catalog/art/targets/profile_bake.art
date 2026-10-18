@@ -1,0 +1,9 @@
+# A scene with raster-only effects, drawn two ways at 64x64. Both show a blue circle (r 22) centered at (32,32) with a gold rim band along its lower-right edge and fine grain speckle over the fill.
+# profile_bake.svg (profile:svg): the SVG writer bakes the circle to an embedded raster tile, and the view shows the rim and grain; the circle edge is not ragged.
+# profile_bake.png (profile:raster): the same scene drawn directly. Both views show the same circle with a visible gold rim on the lower-right and speckled grain.
+@target targets/profile_bake.svg 64x64 profile:svg
+@target targets/profile_bake.png 64x64 profile:raster
+
+circle 22 at:32,32 fill:p.blue name:ball
+  fx rim 10 dir:1,1 color:#ffd24a a:1
+  fx grain .1

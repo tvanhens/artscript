@@ -1,0 +1,27 @@
+# Node keys at rot scale skew pivot a on paper, 256x128. Every cell draws a red 36x20 rect outlined 2px ink, plus a
+# small dark ink dot marking the node's at: position, so the transform is readable. Four cells per row, left to right, top to bottom:
+# (1) plain: horizontal rect, centered on the dot. (2) rot:30: the rect tilted clockwise 30 degrees about the dot.
+# (3) scale:1.5,0.7: the rect wider (54 px) and flatter (14 px) than cell 1, still centered on the dot.
+# (4) skew:30,0: the rect is a parallelogram leaning to the right, top edge shifted right of the bottom edge.
+# Second row has four cells: (5) rot:45 pivot:-18,0: the rect swings 45 degrees clockwise about its left end, so the left end stays
+# at the dot and the rect extends down and to the right from it. (6) a:.4: the same rect at 40 percent opacity,
+# pale pink with a gray outline, both faded. (7) two blue circles side by side, the left fully opaque, the right with a:.5, so the right one is
+# a clearly paler, see-through blue than the left. (8) z:behind: a red circle declared after a
+# blue circle that overlaps it but z:behind puts it under, so the blue circle covers part of the red one and only a red crescent shows on the right.
+@target shapes/transforms.png 256x128
+
+rect 36x20 at:32,32 fill:p.red stroke:p.ink,2
+circle 2 at:32,32 fill:p.ink
+rect 36x20 rot:30 at:96,32 fill:p.red stroke:p.ink,2
+circle 2 at:96,32 fill:p.ink
+rect 36x20 scale:1.5,.7 at:160,32 fill:p.red stroke:p.ink,2
+circle 2 at:160,32 fill:p.ink
+rect 36x20 skew:30,0 at:224,32 fill:p.red stroke:p.ink,2
+circle 2 at:224,32 fill:p.ink
+rect 36x20 rot:45 pivot:-18,0 at:36,80 fill:p.red stroke:p.ink,2
+circle 2 at:36,80 fill:p.ink
+rect 36x20 a:.4 at:96,96 fill:p.red stroke:p.ink,2
+circle 14 at:152,96 fill:p.blue
+circle 14 at:168,96 fill:p.blue a:.5
+circle 14 at:216,96 fill:p.blue
+circle 14 at:224,96 z:behind fill:p.red

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 const BLESS: &str = "ARTSCRIPT_BLESS";
@@ -184,6 +184,9 @@ fn catalog_matches_its_goldens() {
     }
     fs::copy(root.join("artscript.toml"), work.join("artscript.toml")).unwrap();
 
+    let fmt = Command::new(env!("CARGO_BIN_EXE_artscript")).args(["fmt", "--check"]).current_dir(&work).output().unwrap();
+    assert_eq!(fmt.status.code(), Some(0), "run `artscript fmt` in catalog/\n{}", String::from_utf8_lossy(&fmt.stdout));
+
     let mut args = vec!["build", "--backend", "cpu"];
     if let Some(glob) = &only {
         args.extend(["--only", glob]);
@@ -197,9 +200,15 @@ fn catalog_matches_its_goldens() {
         String::from_utf8_lossy(&built.stderr)
     );
 
+    let manifest: serde_json::Value =
+        serde_json::from_slice(&fs::read(work.join("build/art-manifest.json")).unwrap()).unwrap();
     let mut outputs = BTreeSet::new();
-    files_under(&work.join("build"), &work.join("build"), &mut outputs);
-    outputs.remove("art-manifest.json");
+    for entry in manifest["outputs"].as_array().unwrap() {
+        let (path, source) = (entry["path"].as_str().unwrap(), entry["source"].as_str().unwrap());
+        let stem = source.strip_prefix("art/").and_then(|s| s.strip_suffix(".art")).unwrap();
+        assert!(path.starts_with(stem), "{source}: output {path} must start with `{stem}` so a golden names its fixture");
+        outputs.insert(path.to_string());
+    }
     let expected: BTreeSet<String> = outputs.iter().map(|o| golden_name(o)).collect();
 
     let _ = fs::remove_dir_all(&diff_dir);
