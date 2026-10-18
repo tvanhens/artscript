@@ -104,6 +104,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("anim", include_str!("../../../docs/topics/anim.md")),
     ("checks", include_str!("../../../docs/topics/checks.md")),
     ("cli", include_str!("../../../docs/topics/cli.md")),
+    ("manifest", include_str!("../../../docs/topics/manifest.md")),
     ("craft", include_str!("../../../docs/topics/craft.md")),
 ];
 
@@ -375,9 +376,7 @@ fn explain(project: &Project, file: &Path) -> u8 {
     report(ev.diagnostics, true, false)
 }
 
-const INIT_MANIFEST: &str = r#"[project]
-name = "art"
-out  = "assets"
+const INIT_MANIFEST: &str = r#"out  = "assets"
 lib  = ["lib"]
 std  = "0.1"
 
@@ -410,8 +409,10 @@ fn init(cwd: &Path) -> u8 {
         );
         return 1;
     }
+    let name = cwd.file_name().map_or("art".into(), |n| n.to_string_lossy());
+    let manifest = format!("[project]\nname = {}\n{INIT_MANIFEST}", toml::Value::String(name.into()));
     let files = [
-        ("artscript.toml", INIT_MANIFEST),
+        ("artscript.toml", manifest.as_str()),
         ("lib/palette/house.art", INIT_PALETTE),
         ("art/hello.art", INIT_ART),
     ];

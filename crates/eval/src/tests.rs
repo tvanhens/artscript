@@ -4095,18 +4095,53 @@ fn manifest_errors_point_at_the_bad_line() {
     use crate::{LintLevel, Manifest};
 
     let manifest = Manifest::parse("[lint]\nraw-color = \"off\"\nunused = \"error\"\n").unwrap();
-    assert_eq!(manifest.lint_level("raw-color", LintLevel::Warn), LintLevel::Off);
-    assert_eq!(manifest.lint_level("unused", LintLevel::Warn), LintLevel::Error);
+    assert_eq!(manifest.lint_level("raw-color"), LintLevel::Off);
+    assert_eq!(manifest.lint_level("unused"), LintLevel::Error);
     for (src, line, col) in [
         ("[project]\nname = \"x\"\n\n[lint]\nraw-color = \"loud\"\n", 5, 13),
         ("[project]\n\n[lint]\nunused = 1\n", 4, 10),
-        ("name = \"x\"\nlint = 1\n", 2, 8),
+        ("\nlint = 1\n", 2, 8),
         ("[project]\nname = \"x\"\n\n[lint\nraw-color = \"warn\"\n", 4, 6),
     ] {
         let err = Manifest::parse(src).unwrap_err();
         assert_eq!(err.code, "E0200");
         assert_eq!((err.span.line, err.span.col), (line, col), "{src:?}: {}", err.message);
     }
+}
+
+#[test]
+fn manifest_rejects_what_it_would_otherwise_ignore() {
+    use crate::Manifest;
+
+    for (src, line, says) in [
+        ("[lint]\noffcanvas = \"off\"\n", 2, "no lint `offcanvas`"),
+        ("[project]\nnmae = \"x\"\n", 2, "no key `nmae`"),
+        ("[defaults]\npallete = \"p\"\n", 2, "no key `pallete`"),
+        ("[lints]\nunused = \"off\"\n", 1, "unknown field `lints`"),
+        ("[build]\nbackends = \"cpu\"\n", 2, "unknown field `backends`"),
+        ("[defaults]\nbg = \"red\"\n", 2, "bg"),
+        ("[defaults]\nscale = [1, \"2\"]\n", 2, "scale"),
+        ("[defaults]\nscale = 0\n", 2, "scale"),
+        ("[project]\nlib = [1]\n", 2, "lib"),
+        ("[project]\nout = 1\n", 2, "out"),
+    ] {
+        let err = Manifest::parse(src).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert_eq!(err.span.line, line, "{src:?}: {}", err.message);
+        assert!(err.message.contains(says), "{src:?}: {}", err.message);
+    }
+    let ok = Manifest::parse("[defaults]\nbg = \"#f4f1ea\"\nscale = 2\n").unwrap();
+    assert_eq!((ok.bg.as_deref(), ok.scale), (Some("#f4f1ea"), vec![2.0]));
+}
+
+#[test]
+fn manifest_palette_must_be_in_a_lib_root() {
+    let manifest = "[project]\nlib = [\"lib\"]\n\n[defaults]\npalette = \"palette/nope\"\n";
+    let err = Project::from_sources(manifest, Default::default()).unwrap_err();
+    assert_eq!((err.code.as_str(), err.span.line), ("E0200", 5), "{}", err.message);
+    assert!(err.message.contains("palette/nope"), "{}", err.message);
+    let files = [("lib/palette/nope.art".to_string(), "palette nope\n  color a #000000\n".to_string())];
+    assert!(Project::from_sources(manifest, files.into()).is_ok());
 }
 
 #[test]
@@ -4676,6 +4711,47 @@ fn an_unknown_key_on_a_builtin_verb_is_e0321() {
 }
 
 #[test]
+fn paint_on_a_boolean_operand_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\n\
+         def _dot fill:#000000\n  circle 3 fill:fill\n\
+         subtract fill:#88aaff name:wall\n  rect 60,60 at:32,32\n  ellipse 20,6 at:32,14 fill:#33aa33 a:.5\n  \
+         each i in 0..2\n    circle 3 at:10*i,50 blend:screen\n      fx glow 2\n  _dot fill:#ffffff\n\
+         union at:10,10\n  circle 4 stroke:#000000,2\n",
+        &[],
+    );
+    let mut found: Vec<(u32, String, String)> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0321")
+        .map(|d| (d.span.line, d.message.clone(), d.fix.clone().unwrap_or_default()))
+        .collect();
+    found.sort();
+    found.dedup();
+    let wall = "to paint over the result, draw it in `inside @wall`";
+    let ignored = |key: &str, verb: &str| {
+        format!("{key} on an operand of `{verb}` is ignored; an operand gives only its geometry")
+    };
+    let want = [
+        (6, ignored("`a:`", "subtract"), wall),
+        (6, ignored("`fill:`", "subtract"), wall),
+        (8, ignored("`blend:`", "subtract"), wall),
+        (9, ignored("`fx glow`", "subtract"), wall),
+        (
+            12,
+            ignored("`stroke:`", "union"),
+            "to paint over the result, name the `union` and draw it in `inside @<name>`",
+        ),
+    ];
+    assert_eq!(
+        found,
+        want.map(|(l, m, f)| (l, m, f.to_string())),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn a_group_passes_its_paint_keys_to_its_children() {
     let s = scene("@target t.png 64x64\ngroup g fill:#ff0000\n  circle 4 name:a\n  circle 4 fill:#0000ff name:b\n");
     assert_eq!(fill_hex(node(&s, "a")), "#ff0000");
@@ -5106,4 +5182,57 @@ fn a_path_is_closed_only_when_every_subpath_ends_in_z() {
     let bare = shape(&s, "bare");
     assert!(bare.fill.is_none());
     assert!(bare.stroke.is_some(), "an open path gets the open-curve default stroke");
+}
+
+#[test]
+fn a_failure_under_each_loop_copy_is_reported_once() {
+    let ev = run_with(
+        "@target t.png 64x64\n\ndef dot r:6\n  circle r fill:#000 name:disc\n\neach i in 0..3\n  dot at:12+i*20,32 name:d\n    rect 4,20 fill:#000\n",
+        &[],
+    );
+    let d = &ev.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0330", "d.0"));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
+}
+
+#[test]
+fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
+    let ev = run_with(
+        "@target t.png 64x64\n\ndef dot r:6\n  circle r fill:#000 name:disc\n  pointy 3\n\neach i in 0..3\n  dot at:12+i*20,32 name:d\n",
+        &[],
+    );
+    let d = &ev.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].span.line), ("E0301", 5));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
+}
+
+#[test]
+fn a_gif_names_each_failing_loop_copy_once() {
+    let src = "@target t.gif 20x20 bg:#ffffff dur:1s fps:4\ndef dot k:0\n  circle 2\n  assert t > k\neach i in 0..3\n  dot k:i*.25 name:d\n";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let mut named: Vec<String> = Vec::new();
+    for d in sampled.diagnostics.iter().filter(|d| d.code == "C0101") {
+        named.push(d.node.clone());
+        for n in d.notes.iter().filter_map(|n| n.strip_prefix("also in ")) {
+            named.extend(n.split(", ").map(String::from));
+        }
+    }
+    named.sort();
+    assert_eq!(named, ["d.0", "d.1", "d.2"], "{}", show(&sampled.diagnostics));
+}
+
+#[test]
+fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
+    let src = "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\ndef dot r:6\n  circle r fill:#000 name:disc\n  pointy 3\neach i in 0..3\n  dot at:12+i*20,32 name:d\n";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let d = &sampled.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
