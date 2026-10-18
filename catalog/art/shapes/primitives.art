@@ -1,0 +1,17 @@
+# A 3x2 grid of filled primitives on paper, one per cell, each with a dark ink outline 2px. Cell centers are
+# (32,32), (96,32), (160,32) on the top row and (32,96), (96,96), (160,96) on the bottom row:
+# top row: a red 48x36 rect with 8px rounded corners; a blue circle of radius 20; a green ellipse with radii 26 wide and
+# 14 tall, so 52x28 overall.
+# bottom row: a gold hexagon of circumradius 22 with 3px rounded corners, pointy-top (a vertex at the top and bottom,
+# vertical flat sides left and right); a red 5-point star of outer radius 24 and inner radius half of that, with one
+# point straight up; a blue blob of base radius 22 (seed 4, wobble .2), an irregular rounded outline about the size of
+# the circle.
+@target shapes/primitives.png 192x128
+@target shapes/primitives.svg 192x128 profile:vector
+
+rect 48x36 r:8 at:32,32 fill:p.red stroke:p.ink,2
+circle 20 at:96,32 fill:p.blue stroke:p.ink,2
+ellipse 26,14 at:160,32 fill:p.green stroke:p.ink,2
+poly 6 r:22 round:3 at:32,96 fill:p.gold stroke:p.ink,2
+star 5 r:24 inner:.5 at:96,96 fill:p.red stroke:p.ink,2
+blob 22 seed:4 wobble:.2 at:160,96 name:blob fill:p.blue stroke:p.ink,2

@@ -1,0 +1,52 @@
+# Geometry values on paper, 256x192, every shape outlined 2px ink. Left to right, top to bottom:
+# (1) six red circles of radius 5 on a ring of radius 24 around a small dark center dot, placed by polar(24 i*60):
+# a regular hexagon of dots, one dot exactly to the right of the center, the others every 60 degrees (y is down,
+# so the second dot is lower right).
+# (2) vector math: a dark center dot, and a blue circle (radius 8) placed at (10,5)*2, i.e. 20 right and 10 down of
+# the dot; a gold circle (radius 8) placed at the negation -(10,5)*2, i.e. 20 left and 10 up of the dot.
+# (3) third column, top row, percent of the frame: a gold 60x60 square at 160,32; inside it a green child rect
+# 50%,120% of the square's bounds (30x72) at:-15,0 would overflow the square by 6px above and below, but it is clipped
+# to the square: the left half (x 130..160) is green, the right half gold, and no green shows outside the square.
+# Undocumented, current behavior: the green child covers the inner half of the parent's 2px ink stroke along the left,
+# top, and bottom edges, so the outline looks thinner (about 1px) there than on the right edge.
+# (4) second row, right, if/then/else: three touching circles in a row, gold, blue, gold, where the radius is
+# if i == 1 then 14 else 8: the blue middle one is clearly the largest, the two gold ones are equal and small.
+# (5) second row, left, rand and pick with site seeds: six circles named dot at x = 14, 44, 74, 104, 134, 164 on y 96,
+# each with radius rand(4 12) (between 4 and 12) and fill pick of red, blue, gold, green. Current draw, left to right:
+# green, blue, blue, blue, red, red fills; the first five have outer radii of 9 to 10 px including the outline, the
+# sixth is the smallest, outer radius 5 px. Each iteration has its own site seed, so the values differ from circle to
+# circle; the same source draws the same values on every build.
+# (6) third row, left, angles: three 24x10 red rects at x 24, 56, 88 on y 160. The first has rot:.25turn and the second
+# rot:90: both stand vertical (10 wide, 24 tall) and look identical. The third has rot:30deg: tilted clockwise 30
+# degrees from horizontal.
+# (7) third row, right, math functions: a blue circle at (130,160) with radius lerp(4 20 .5), which is 12; a gold circle
+# of radius 8 at x clamp(300 160 180), which is 180, on y 160; a green circle of radius 8 at (214, 160+sin(30)*24),
+# which is (214,172).
+@target shapes/values_geometry.png 256x192
+
+let c1 = 32,32
+circle 2 at:c1 fill:p.ink
+each i in 0..6
+  circle 5 at:c1+polar(24 i*60) fill:p.red stroke:p.ink,2
+
+let c2 = 96,32
+circle 2 at:c2 fill:p.ink
+circle 8 at:c2+(10,5)*2 fill:p.blue stroke:p.ink,2
+circle 8 at:c2-(10,5)*2 fill:p.gold stroke:p.ink,2
+
+rect 60x60 at:160,32 fill:p.gold stroke:p.ink,2
+  rect 50%,120% at:-15,0 fill:p.green
+
+each i in 0..3
+  circle if i == 1 then 14 else 8 at:210+i*18,96 fill:if i == 1 then p.blue else p.gold stroke:p.ink,2
+
+each i in 0..6
+  circle rand(4 12) at:14+i*30,96 fill:pick([p.red p.blue p.gold p.green]) stroke:p.ink,2 name:dot
+
+rect 24x10 rot:90deg at:24,160 fill:p.red stroke:p.ink,2
+rect 24x10 rot:90 at:56,160 fill:p.red stroke:p.ink,2
+rect 24x10 rot:30deg at:88,160 fill:p.red stroke:p.ink,2
+
+circle lerp(4 20 .5) at:130,160 fill:p.blue stroke:p.ink,2
+circle 8 at:clamp(300 160 180),160 fill:p.gold stroke:p.ink,2
+circle 8 at:214,160+sin(30)*24 fill:p.green stroke:p.ink,2

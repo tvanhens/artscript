@@ -32,6 +32,18 @@ These are never blocking: style, naming, structure preferences, speculative perf
 - A blocking finding you post this run goes in `blocking` with `thread_id` null.
 - Do not approve, request changes, or post a top-level comment. The gate step owns the summary.
 
+## Visual goldens
+
+`.claude-review/visual/index.md` lists every golden under `catalog/golden/` that this PR adds, changes, or deletes, with its fixture and a review sheet. A changed golden's sheet is `base | head | diff`, and the diff paints changed pixels red. An added or deleted golden's sheet is that one view. Do this for every row, also on a re-review when the row's golden changed since `last_sha`.
+
+1. Read the fixture's header comment. It is the spec for the image.
+2. Open the sheet with the Read tool and look at it.
+3. Apply the "Visual goldens" rule in `AGENTS.md`.
+
+`.claude-review/visual/required.txt` lists the goldens this run must review. List every golden you checked in `goldens_reviewed`. The check fails when a golden in `required.txt` is missing from it, so review all of them before you answer.
+
+A golden is a binary file and takes no inline comment. Anchor a visual finding on the fixture's first line when the fixture is in the PR diff. Otherwise anchor it on the changed code line that most likely made the change. Its failure scenario names the golden, the cell, what the spec or the code change says the cell should show, and what the image shows.
+
 ## First review (`last_sha` is empty)
 
 Review the full diff against the base: `git diff <base_sha>...HEAD`. Read the surrounding code where the diff alone does not show the behavior.
@@ -53,3 +65,4 @@ Do these in order.
 - `blocking`: every blocking finding open at HEAD, new and carried over. Empty means the check passes.
 - `resolve_thread_ids`: ids from `threads.json` only. Never list an id that is also in `blocking`.
 - `nonblocking_count`: how many non-blocking observations you made, posted or not.
+- `goldens_reviewed`: every golden whose sheet you opened and checked, by its path in `visual/index.md`.

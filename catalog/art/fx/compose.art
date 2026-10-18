@@ -1,0 +1,32 @@
+# A grid on paper, cells 64 px wide, red circles of radius 16 unless noted. These cells name an effect result with as:, pick an input with of:, and combine inputs with fx merge.
+# Top row, left to right:
+# 1. blur 5 as:soft, then merge soft self a:.5,1: a crisp full-strength red circle with a soft red halo at half strength around it.
+# 2. blur 5 as:soft, then merge self a:.3: a pale red circle at 30% strength with a crisp edge and no halo, since soft is left out of the merge.
+# 3. blur 5 as:soft, adjust hue:120 of:self as:green, merge soft green: a crisp green circle (the shifted original) in front of a soft red halo, so the halo and the disc are different colors.
+# 4. shadow 8,8 blur:2 as:cast, merge cast self a:.4,1: a crisp red circle with a soft purple-gray shadow to the lower right at 40% strength.
+# Bottom row, left to right:
+# 5. Empty. A red circle at x=32 that runs `blur 5 of:@src` takes the blue circle named src as its input, so its own picture is replaced by a blurred copy of src and no red shows at x=32.
+# 6. The blue circle named src at x=96, with the blurred copy from cell 5 composited on top of it. The red node is written after src, so its copy draws over the crisp blue circle: a blue circle with a soft blue halo, whose edge is softened by the copy over it.
+# Undocumented, current behavior: an `of:@node` output replaces the node's own picture and lands at that node's position (x=96, not the red node's x=32), and src still draws itself. Bottom-row circles sit at y=90 so no halo is cut by the canvas edge.
+# 7. Gray circle at x=160: adjust sat:-1 as:gray, then merge gray alone: a flat gray circle where the green circle would be, with no green left.
+@target fx/compose.png 256x128
+
+circle 16 at:32,32 fill:p.red
+  fx blur 5 as:soft
+  fx merge soft self a:.5,1
+circle 16 at:96,32 fill:p.red
+  fx blur 5 as:soft
+  fx merge self a:.3
+circle 16 at:160,32 fill:p.red
+  fx blur 5 as:soft
+  fx adjust hue:120 of:self as:green
+  fx merge soft green
+circle 16 at:224,32 fill:p.red
+  fx shadow 8,8 blur:2 as:cast
+  fx merge cast self a:.4,1
+circle 16 at:96,90 fill:p.blue name:src
+circle 16 at:32,90 fill:p.red
+  fx blur 5 of:@src
+circle 16 at:160,90 fill:p.green
+  fx adjust sat:-1 as:gray
+  fx merge gray

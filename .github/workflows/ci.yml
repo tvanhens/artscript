@@ -38,6 +38,12 @@ jobs:
           key: ${{ matrix.gate }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.run }}
+      - if: failure() && matrix.gate == 'test'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diff
+          path: target/visual-diff/
+          if-no-files-found: ignore
 
   fuzz:
     runs-on: ubuntu-24.04

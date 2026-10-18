@@ -1,0 +1,7 @@
+# `scale:1,2` writes two PNGs from one 64x64 scene: scale_2x.png (64x64) and scale_2x@2x.png (128x128).
+# Both show the same picture: a red circle (r 20) with a thick ink outline centered on the canvas, and a gold 16x16 square in its center.
+# In the @2x image every shape is twice as large in pixels and the outline is twice as thick, and the picture is otherwise identical (same proportions, same centered layout).
+@target targets/scale_2x.png 64x64 scale:1,2
+
+circle 20 at:32,32 fill:p.red stroke:p.ink,3
+rect 16x16 at:32,32 fill:p.gold

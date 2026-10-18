@@ -1,0 +1,15 @@
+# Rect corners and sharp versus rounded polygons, on paper, 192x128, each shape with a 2px dark ink outline.
+# Top row, left to right: a red 48x36 rect with square corners; a blue 48x36 rect with r:12 so all four corners are
+# visibly rounded; a green 48x36 rect with r:12,12,0,0 so only the two top corners are rounded and the two bottom
+# corners are square.
+# Bottom row, left to right: a gold triangle (poly 3) pointing up with sharp corners; a red pentagon with sharp
+# corners and one vertex at the top; a blue 8-point star with a deep notch (inner radius 0.3 of the outer) so the
+# points are thin spikes.
+@target shapes/corners.png 192x128
+
+rect 48x36 at:32,32 fill:p.red stroke:p.ink,2
+rect 48x36 r:12 at:96,32 fill:p.blue stroke:p.ink,2
+rect 48x36 r:12,12,0,0 at:160,32 fill:p.green stroke:p.ink,2
+poly 3 r:24 at:32,96 fill:p.gold stroke:p.ink,2
+poly 5 r:24 at:96,96 fill:p.red stroke:p.ink,2
+star 8 r:26 inner:.3 at:160,96 fill:p.blue stroke:p.ink,2

@@ -1,0 +1,38 @@
+# SVG output (profile:svg, shown as rasterized by resvg), cells on paper, three on the top row and four on the bottom, 64px pitch, each a 48x48 area.
+# Top row, left to right:
+# 1. A blue left half and a gold right half backdrop with a red-orange circle (radius 20, #e0574f) drawn with `blend:multiply`: the circle is dark purple over blue and dark red-orange over gold.
+# 2. The same backdrop with the circle drawn with `blend:screen`: the circle is pale pink-lavender over blue and pale peach over gold.
+# 3. A green 48x48 square with an ink outline holding a red circle (radius 16) pushed against its right edge: the circle is cut off flat at the square's right edge.
+# Bottom row, left to right (four cells):
+# 4. A blue 48x48 square masked by `mask @m4`, an invisible circle (radius 20): a hard-edged blue disc of radius 20 centered at (32,96), round on every side.
+# 5. A blue 48x48 square masked by the noise field `mask simplex(10) > .5`: a scatter of blue blobs with paper gaps, same idea as the raster mask fixture.
+# 6. A gold 48x48 square masked by a `mask` block of two circles (radius 12, at local offsets -10,-10 and 10,10): two separate gold discs of radius 12, one upper left and one lower right, both full circles.
+# 7. A gold 48x48 square masked by `mask @m7`, an invisible circle (radius 20), with `feather:5` on the draw: a gold disc centered at (224,96) that fades softly into paper with no hard rim: solid gold out to r 6, about half strength at the radius-20 edge, and paper by r 24 where the square ends.
+@target structure/svg_bake.svg 256x128 profile:svg
+
+rect 24x48 at:20,32 fill:p.blue
+rect 24x48 at:44,32 fill:p.gold
+circle 20 at:32,32 fill:#e0574f blend:multiply
+
+rect 24x48 at:84,32 fill:p.blue
+rect 24x48 at:108,32 fill:p.gold
+circle 20 at:96,32 fill:#e0574f blend:screen
+
+rect 48x48 at:160,32 fill:p.green stroke:p.ink,2
+  circle 16 at:20,0 fill:p.red
+
+circle 20 at:32,96 name:m4 fill:none
+rect 48x48 at:32,96 fill:p.blue
+  mask @m4
+
+rect 48x48 at:96,96 fill:p.blue name:speckle
+  mask simplex(10) > .5
+
+rect 48x48 at:160,96 fill:p.gold
+  mask
+    circle 12 at:-10,-10
+    circle 12 at:10,10
+
+circle 20 at:224,96 name:m7 fill:none
+rect 48x48 at:224,96 fill:p.gold feather:5
+  mask @m7

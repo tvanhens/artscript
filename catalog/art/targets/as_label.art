@@ -1,0 +1,10 @@
+# `as:` labels each target and the file reads it as `target`, so one file draws two different 64x64 PNGs.
+# as_label_a.png (as:a): one green circle (r 20) with an ink outline, centered at (32,32).
+# as_label_b.png (as:b): one gold 36x36 square with an ink outline, centered at (32,32).
+@target targets/as_label_a.png 64x64 as:a
+@target targets/as_label_b.png 64x64 as:b
+
+if target == a
+  circle 20 at:32,32 fill:p.green stroke:p.ink,2
+if target == b
+  rect 36x36 at:32,32 fill:p.gold stroke:p.ink,2

@@ -1,0 +1,15 @@
+# Path strings on paper, 192x96, ink outline 2px. Undocumented, current behavior: path points are drawn in their own
+# coordinates, not re-centered on at:, so each at: translates the path's own origin.
+# Left: a red closed shape from path "M0 0 c10-20 30-20 40 0z" scaled 1.2 at 8,56: an arch (a hump) over a flat base,
+# a half-lens, fill red, with the flat base at the bottom.
+# Middle: a blue triangle from path "M-20 16 L20 16 L0 -20 Z" at 96,48 with three straight sides, point up.
+# Right: an open path "M-24 0 Q-12 -24 0 0 T24 0" at 160,32 stroked 3px ink with fill:none, a wave: a hump up then a
+# hump down.
+# Below it: the same wave path at 160,72 without fill:none, stroked 3px ink.
+# An open path with no fill: is not closed and not filled. It shows only the wave stroke, the same as the wave above it, with no gray between the wave and its chord.
+@target shapes/paths.png 192x96
+
+path "M0 0 c10-20 30-20 40 0z" scale:1.2 at:8,56 fill:p.red stroke:p.ink,2
+path "M-20 16 L20 16 L0 -20 Z" at:96,48 fill:p.blue stroke:p.ink,2
+path "M-24 0 Q-12 -24 0 0 T24 0" at:160,32 fill:none stroke:p.ink,3
+path "M-24 0 Q-12 -24 0 0 T24 0" at:160,72 stroke:p.ink,3

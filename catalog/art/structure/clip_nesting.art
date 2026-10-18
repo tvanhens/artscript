@@ -1,0 +1,42 @@
+# A 4x2 grid of cells on paper, 48px pitch, each showing a blue circle (radius 16) that is a child of a parent shape, offset toward the parent's right edge.
+# Top row, left to right:
+# 1. Parent is a red 36x36 square with ink outline. The blue circle is cut off flat at the square's right edge (nothing blue outside the square).
+# 2. Parent is a `fill:none` rect with a 2px ink stroke. The blue circle is still cut off flat at the frame's right edge: a fill-less parent is a clip frame.
+# 3. Parent is a gold circle whose fill is half transparent (fill alpha 50%, so paper shows through it). The blue circle is clipped to the parent's round edge and stays a solid, opaque blue.
+# 4. Parent is a red 36x36 square, and the child is a `group` holding the blue circle; it is still clipped at the square's right edge.
+# Bottom row, left to right:
+# 5. A red 36x36 square (ink outline) with `inside @frame`: a green circle drawn inside the square, cut off at the square's right edge.
+# 6. A red 36x36 square (ink outline) with `outside @frame2`: a green circle drawn outside the square; the part of the circle over the square is cut away,
+# so only a green sliver 6px wide (x 90 to 96) shows to the right of the square's right edge and the square stays solid red.
+# 7. A gold ellipse parent (radii 22,16, x 98 to 142) holding a blue circle (radius 10, at the ellipse center, x 110 to 130) that lies fully inside it, and a small red circle (radius 6, centered at x=130 on the blue circle's right edge) as the blue circle's child.
+# The red is cut by the blue circle's round edge at x=130, so only a red half-disc (x 124 to 130) shows inside the blue circle's right side, and no red lies on the gold; the ellipse's edge cuts nothing.
+# 8. A gold 36x36 rect parent with r:10 round corners and a blue circle child placed at its top-right corner; the blue is cut off along the rounded corner, not at the square bounding box.
+@target structure/clip_nesting.png 192x96
+
+rect 36x36 at:24,24 fill:p.red stroke:p.ink,2
+  circle 16 at:16,0 fill:p.blue
+
+rect 36x36 at:72,24 fill:none stroke:p.ink,2
+  circle 16 at:16,0 fill:p.blue
+
+circle 18 at:120,24 fill:#e8b33a80
+  circle 16 at:16,0 fill:p.blue
+
+rect 36x36 at:168,24 fill:p.red stroke:p.ink,2
+  group
+    circle 16 at:16,0 fill:p.blue
+
+rect 36x36 at:24,72 fill:p.red stroke:p.ink,2 name:frame
+inside @frame
+  circle 16 at:40,72 fill:p.green
+
+rect 36x36 at:72,72 fill:p.red stroke:p.ink,2 name:frame2
+outside @frame2
+  circle 16 at:80,72 fill:p.green
+
+ellipse 22,16 at:120,72 fill:p.gold
+  circle 10 at:0,0 fill:p.blue
+    circle 6 at:10,0 fill:p.red
+
+rect 36x36 r:10 at:168,72 fill:p.gold
+  circle 16 at:16,-16 fill:p.blue

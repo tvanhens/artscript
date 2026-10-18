@@ -31,6 +31,22 @@ A PR description records why its design choice was made. Replace an earlier choi
 
 - Flag a failure that is lost, reported twice, or reported at the wrong file or line. Do not flag the wording of a fix hint, or which frame's notes a diagnostic that spans several frames keeps. A change to either of those is not a drift finding. The docs may keep the old wording.
 
+### Visual goldens
+
+- `catalog/golden/` holds locked images of the catalog fixtures in `catalog/art/`. Each fixture's header comment says what its image must show. The review job writes a sheet for each golden the PR adds, changes, or deletes, and lists them in `.claude-review/visual/index.md`. Look at every sheet.
+- Flag a changed golden that the PR does not account for: no change in the PR draws it differently, and the PR description does not name it. An unexplained change is a regression until the author says otherwise.
+- Flag a golden that contradicts its fixture's comment or the card, such as a child the comment says is clipped that spills past its parent. This holds for a new golden too.
+- Flag a fixture comment that the PR rewrites to describe a wrong image.
+- Flag a deleted golden whose feature no other fixture still draws, unless the PR removes the feature.
+- Do not flag a change that the PR intends and that matches the fixture's comment.
+
+## When the `visual` test fails
+
+- `cargo test -p artscript --test visual` compares the catalog with its goldens. A failure writes a `golden | actual | diff` sheet for each changed golden to `target/visual-diff/`. CI uploads the sheets as the `visual-diff` artifact.
+- Open every sheet. If a change is a regression, fix the code.
+- If every change is intended, run `ARTSCRIPT_BLESS=1 cargo test -p artscript --test visual`, commit `catalog/golden/`, and name each changed golden and the reason in the PR description.
+- A new language feature gets a fixture. See `catalog/README.md`.
+
 ## When `claude-review` fails
 
 - Wait for the check with `gh pr checks <pr> --watch`. A review takes a few minutes.
@@ -39,4 +55,5 @@ A PR description records why its design choice was made. Replace an earlier choi
 - Each push is re-reviewed. The reviewer resolves a thread when the code is fixed or it accepts your reply.
 - To have a reply re-evaluated with no code change, run `gh run rerun <run-id> --failed`.
 - The check says "did not run" when the review crashed or was skipped. Rerun it the same way.
+- The check fails when the reviewer did not review every golden this PR changes. Rerun it the same way.
 - Do not resolve threads by hand or edit `.github/claude-review/` to get a pass.

@@ -1,0 +1,32 @@
+# Radial and conic gradients on paper, two rows of four 40x40 cells, cells left to right.
+# Undocumented, current behavior: radial's default r is the half-diagonal of the bounds (about 28.3 for a
+# 40x40 cell), so plum is reached only in the corners. Undocumented, current behavior: the conic sweep
+# starts at 3 o'clock (right) and runs clockwise: bottom, left, top.
+# Row 1 (y 24), radial. Cell 1: radial(gold #e8b33a, plum #2b2440): gold center, dusty rose (#814762) at
+# the edge midpoints, plum only in the corners; circular bands. Cell 2: the same with at:.3,.3, so the
+# gold center sits 12 units from the left and top edges; plum shows only toward the bottom-right corner.
+# Cell 3: at:.3,.3 r:20, the same center but plum is reached 20 units out: a smaller gold spot, and solid
+# plum beyond 20 units from the center, about 40 percent of the cell (the right and bottom sides).
+# Cell 4: radial(#fff6d8 #e0574f,.4 fade(#e0574f 0)) on a plum #2b2440 square: a cream center, red at 40
+# percent of the half-diagonal, then fading to transparent. The edge midpoints are red-plum (#9e4449) at
+# partial alpha, and the corners are near plum.
+# Row 2 (y 72), conic. Cell 1: conic(red #e0574f, blue #4f7fe0): red directly right of the center and just
+# below that line, magenta-pink at the bottom and left, violet at the top, blue just above the right-hand
+# line, with a hard seam from blue to red along the line to the right. Cell 2: conic of red #e0574f, gold
+# #e8b33a, blue #4f7fe0: red at the right (3 o'clock), gold at the left (9 o'clock), blue just above the
+# right-hand line, orange across the bottom right, green and cyan across the top, with the same seam.
+# Cell 3: conic(gold gold,.5 plum,.5 plum): a hard split along the horizontal line through the center,
+# solid gold on the bottom half and solid plum on the top half. Cell 4: the same colors as cell 2 on a
+# circle of radius 20, so the sectors are clipped round.
+@target color/grad_radial_conic.png 192x104
+@target color/grad_radial_conic.svg 192x104 profile:svg
+
+rect 40x40 at:24,24 fill:radial(#e8b33a #2b2440)
+rect 40x40 at:72,24 fill:radial(#e8b33a #2b2440 at:.3,.3)
+rect 40x40 at:120,24 fill:radial(#e8b33a #2b2440 at:.3,.3 r:20)
+rect 40x40 at:168,24 fill:#2b2440
+rect 40x40 at:168,24 fill:radial(#fff6d8 #e0574f,.4 fade(#e0574f 0))
+rect 40x40 at:24,72 fill:conic(#e0574f #4f7fe0)
+rect 40x40 at:72,72 fill:conic(#e0574f #e8b33a #4f7fe0)
+rect 40x40 at:120,72 fill:conic(#e8b33a #e8b33a,.5 #2b2440,.5 #2b2440)
+circle 20 at:168,72 fill:conic(#e0574f #e8b33a #4f7fe0)

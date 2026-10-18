@@ -1,0 +1,20 @@
+# Curve options on paper, 256x128. Open curves are stroked dark ink 3px with no fill.
+# Top row, control points (-24,12) (0,-16) (24,12) relative to each cell's at:, left to right: (1) an open curve, a
+# smooth arch from the left point to the right point; (2) the same points with tension:0, so the path is straight
+# segments forming a sharp peak; (3) tension:1, a boxier arch with a flat top and shoulders, bulging wider than cell 1.
+# Bottom row, closed curves use points (-22,14) (0,-18) (22,14): (4) closed, filled red with 2px ink outline, a smooth
+# rounded triangle-like blob; (5) closed with tension:0 and no round, a sharp-cornered red triangle; (6) closed with
+# tension:0 round:8, the same triangle with its three corners visibly rounded, filled blue.
+# (7) the fourth bottom-row cell: an open curve built from the list variable pts of four points (-20,10) (-8,-14)
+# (8,14) (20,-10), a smooth S-shaped wave, stroked ink 3px with no fill.
+@target shapes/curves.png 256x128
+
+let pts = [-20,10 -8,-14 8,14 20,-10]
+
+curve -24,12 0,-16 24,12 stroke:p.ink,3 at:42,32
+curve -24,12 0,-16 24,12 tension:0 stroke:p.ink,3 at:128,32
+curve -24,12 0,-16 24,12 tension:1 stroke:p.ink,3 at:214,32
+curve -22,14 0,-18 22,14 closed fill:p.red stroke:p.ink,2 at:42,96
+curve -22,14 0,-18 22,14 closed tension:0 fill:p.red stroke:p.ink,2 at:104,96
+curve -22,14 0,-18 22,14 closed tension:0 round:8 fill:p.blue stroke:p.ink,2 at:166,96
+curve pts stroke:p.ink,3 at:226,96

@@ -18,3 +18,5 @@ artscript-eval.workspace = true
 [dev-dependencies]
 gif = "0.13"
 color_quant = "1.1"
+png = "0.18"
+resvg = { version = "0.48", default-features = false, features = ["raster-images"] }

@@ -1,0 +1,30 @@
+# Circles of radius 22 to 24 on paper. finish surface (rim of width w at alpha a in ink, plus grain of strength s and scale c) is applied with fx surface.
+# Top row, left to right:
+# 1. A flat red circle with no effect, for reference.
+# 2. fx surface with defaults: the red circle has a faint darker band along its lower-right edge and fine speckled grain.
+# 3. fx surface width:8 a:1 strength:.3 scale:4: a strong dark band 8 px wide on the lower right and heavy coarse blotchy grain, much stronger than cell 2.
+# 4. fx surface then fx outline 4 in ink: the cell 2 look with a crisp dark ring around it, drawn last.
+# Bottom row, two cells, the 1st centered at x 64 and the 2nd at x 160, each a blue circle of radius 24 holding a small gold circle offset up-left:
+# 5. fx surface width:8 a:1 on the parent: the blue circle gets a dark lower-right band and grain, and the gold circle shares the parent's grain but has no dark rim band on its own lower-right edge. Undocumented, current behavior: fx run on the node's rendered subtree, so the child is grained too.
+# 6. The same lines written out (fx rim 8 dir:1,1 color ink a:1 and fx grain .1 scale:2): the picture matches cell 5 in structure: a banded grainy blue circle, with the gold circle grained and no dark band on it.
+@target fx/finish.png 256x128
+
+finish surface width:4 a:.5 strength:.1 scale:2
+  fx rim width dir:1,1 color:p.ink a:a
+  fx grain strength scale:scale
+
+circle 22 at:32,32 fill:p.red name:plain
+circle 22 at:96,32 fill:p.red name:default
+  fx surface
+circle 22 at:160,32 fill:p.red name:tuned
+  fx surface width:8 a:1 strength:.3 scale:4
+circle 22 at:224,32 fill:p.red name:ringed
+  fx surface
+  fx outline 4 color:p.ink
+circle 24 at:64,96 fill:p.blue name:parent
+  fx surface width:8 a:1
+  circle 10 at:-4,-4 fill:p.gold name:kid
+circle 24 at:160,96 fill:p.blue name:written
+  fx rim 8 dir:1,1 color:p.ink a:1
+  fx grain .1 scale:2
+  circle 10 at:-4,-4 fill:p.gold name:kid2

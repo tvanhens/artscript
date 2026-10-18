@@ -1,0 +1,27 @@
+# Color literal forms on paper, three rows of four 40x28 cells, cells left to right.
+# Row 1 (y 20): hex forms, on a dark plum #2b2440 band across the full width (y 6 to 34).
+# Cell 1 is #f55, 3 digits, solid coral red. Cell 2 is #5f58, 4 digits, a green at about half alpha, so
+# it shows as a dull green darker than a solid green because the plum shows through. Cell 3 is #e8b33a,
+# 6 digits, solid gold. Cell 4 is #4f7fe080, 8 digits, a blue at half alpha, also dulled by the plum.
+# Row 2 (y 56): oklch(L C H) at equal chroma .15. Cell 1 oklch(.5 .15 30) is a dark brick red. Cell 2
+# oklch(.7 .15 30) is a lighter salmon of the same hue. Cell 3 oklch(.7 .15 140) is a medium green.
+# Cell 4 oklch(.7 .15 260) is a medium sky blue. Cells 2 to 4 have about equal lightness.
+# Row 3 (y 92): ramp base against its steps. Cell 1 is p.red (the ramp base), cell 2 is p.red.2, and
+# they are the same red. Cell 3 is p.red.0 (deep, a dark magenta-plum) and cell 4 is p.red.4 (highlight,
+# a lighter orange-salmon).
+@target color/literals.png 192x112
+@target color/literals.svg 192x112 profile:vector
+
+rect 192x28 at:96,20 fill:#2b2440
+rect 40x28 at:24,20 fill:#f55
+rect 40x28 at:72,20 fill:#5f58
+rect 40x28 at:120,20 fill:#e8b33a
+rect 40x28 at:168,20 fill:#4f7fe080
+rect 40x28 at:24,56 fill:oklch(.5 .15 30)
+rect 40x28 at:72,56 fill:oklch(.7 .15 30)
+rect 40x28 at:120,56 fill:oklch(.7 .15 140)
+rect 40x28 at:168,56 fill:oklch(.7 .15 260)
+rect 40x28 at:24,92 fill:p.red
+rect 40x28 at:72,92 fill:p.red.2
+rect 40x28 at:120,92 fill:p.red.0
+rect 40x28 at:168,92 fill:p.red.4

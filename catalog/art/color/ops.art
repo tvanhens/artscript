@@ -1,0 +1,44 @@
+# Color functions on paper, five rows of five 28x24 cells, cells left to right.
+# Row 1 (y 20): shade(#4f9fd0 k) for k = -2, -1, 0, 1, 2. A ramp of one blue: darkest and most violet at
+# the left, the middle cell is the plain base blue #4f9fd0, lightest at the right. The change is
+# monotonic from dark to light. Undocumented, current behavior: the light end drifts toward cyan.
+# Row 2 (y 52): mix(#e0574f #4f7fe0 t) for t = 0, .25, .5, .75, 1. The first cell is red, the last is
+# blue, and the three between are a smooth red to blue blend (middle is a muted purple).
+# Row 3 (y 84): fade(#f8f4e8 a) for a = 1, .75, .5, .25, 0 over a dark plum #2b2440 band that spans the
+# whole width of the row (y 72 to 96). The first cell is solid cream, each next cell is more see-through
+# so it looks closer to the plum, and the last cell is invisible, only the plum band shows there.
+# Row 4 (y 116): line(c) for c = #e0574f, #e8b33a, #5fb05a, #4f7fe0, #f3a2a6. Each result is darker than
+# its input: near-black maroon #360016, dark orange-brown, near-black teal-green, deep indigo, raspberry.
+# Undocumented, current behavior: each hue is rotated toward blue-violet, and only the low-chroma input
+# gains chroma, so the docs' "more saturated" does not hold for the others.
+# Row 5 (y 148): shade(p.red k) for k = -2, -1, 0, 1, 2 on the palette ramp member p.red: the same
+# dark-to-light order as row 1, the middle cell is p.red itself.
+@target color/ops.png 192x160
+@target color/ops.svg 192x160 profile:vector
+
+rect 28x24 at:24,20 fill:shade(#4f9fd0 -2)
+rect 28x24 at:60,20 fill:shade(#4f9fd0 -1)
+rect 28x24 at:96,20 fill:shade(#4f9fd0 0)
+rect 28x24 at:132,20 fill:shade(#4f9fd0 1)
+rect 28x24 at:168,20 fill:shade(#4f9fd0 2)
+rect 28x24 at:24,52 fill:mix(#e0574f #4f7fe0 0)
+rect 28x24 at:60,52 fill:mix(#e0574f #4f7fe0 .25)
+rect 28x24 at:96,52 fill:mix(#e0574f #4f7fe0 .5)
+rect 28x24 at:132,52 fill:mix(#e0574f #4f7fe0 .75)
+rect 28x24 at:168,52 fill:mix(#e0574f #4f7fe0 1)
+rect 192x24 at:96,84 fill:#2b2440
+rect 28x24 at:24,84 fill:fade(#f8f4e8 1)
+rect 28x24 at:60,84 fill:fade(#f8f4e8 .75)
+rect 28x24 at:96,84 fill:fade(#f8f4e8 .5)
+rect 28x24 at:132,84 fill:fade(#f8f4e8 .25)
+rect 28x24 at:168,84 fill:fade(#f8f4e8 0)
+rect 28x24 at:24,116 fill:line(#e0574f)
+rect 28x24 at:60,116 fill:line(#e8b33a)
+rect 28x24 at:96,116 fill:line(#5fb05a)
+rect 28x24 at:132,116 fill:line(#4f7fe0)
+rect 28x24 at:168,116 fill:line(#f3a2a6)
+rect 28x24 at:24,148 fill:shade(p.red -2)
+rect 28x24 at:60,148 fill:shade(p.red -1)
+rect 28x24 at:96,148 fill:shade(p.red 0)
+rect 28x24 at:132,148 fill:shade(p.red 1)
+rect 28x24 at:168,148 fill:shade(p.red 2)

@@ -1,0 +1,10 @@
+# A scene with raster-only effects, drawn two ways at 64x64. Both show a blue (79,127,224) circle (r 22) centered at (32,32) with a rim crescent along its lower-right edge and fine grain speckle over the fill.
+# The rim is a muted khaki crescent about 10px wide that peaks at (187,180,140) at the edge toward the lower right and fades into the blue toward the upper left; it is not the gold #ffd24a given in the fx. Undocumented, current behavior: the rim color is blended with the fill, so the written color does not show at full strength.
+# profile_bake.svg (profile:svg): the SVG writer bakes the circle to an embedded raster tile, and the view shows the rim and grain; the circle edge is not ragged.
+# profile_bake.png (profile:raster): the same scene drawn directly. Both views show the same circle with the khaki rim on the lower-right and speckled grain.
+@target targets/profile_bake.svg 64x64 profile:svg
+@target targets/profile_bake.png 64x64 profile:raster
+
+circle 22 at:32,32 fill:p.blue name:ball
+  fx rim 10 dir:1,1 color:#ffd24a a:1
+  fx grain .1

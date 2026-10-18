@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Turns Claude's structured review into the check result. Exit 1 iff the review
-# did not run or `blocking` is non-empty.
+# did not run, `blocking` is non-empty, or a golden in visual/required.txt was not reviewed.
 set -euo pipefail
 
 : "${REPO:?}" "${PR_NUMBER:?}" "${HEAD_SHA:?}"
@@ -54,6 +54,16 @@ while IFS= read -r id; do
 done < <(jq -r '.resolve_thread_ids[]' <<<"$OUT")
 
 blocking_count=$(jq '.blocking | length' <<<"$OUT")
+
+# A review that skipped a golden does not cover HEAD, so the next run reviews those goldens again.
+unreviewed=()
+if [[ -f "$CONTEXT_DIR/visual/required.txt" ]]; then
+  while IFS= read -r golden; do
+    unreviewed+=("$golden")
+  done < <(jq -r '.goldens_reviewed[]' <<<"$OUT" | sort -u | comm -23 "$CONTEXT_DIR/visual/required.txt" -)
+fi
+covered=$HEAD_SHA
+((${#unreviewed[@]} == 0)) || covered=$(cat "$CONTEXT_DIR/last_sha" 2>/dev/null || true)
 thread_url() {
   jq -r --arg id "$1" '[.[] | select(.id == $id)][0].comments[0].url // empty' "$CONTEXT_DIR/threads.json"
 }
@@ -61,12 +71,12 @@ thread_url() {
 body=$(mktemp)
 errors=()
 {
-  echo "<!-- claude-review:sha=$HEAD_SHA -->"
+  echo "<!-- claude-review:covered=$covered -->"
   echo "### 🤖 Claude review of \`${HEAD_SHA:0:7}\`"
   echo
   jq -r '.summary' <<<"$OUT"
   echo
-  if ((blocking_count == 0)); then
+  if ((blocking_count == 0 && ${#unreviewed[@]} == 0)); then
     echo "✅ No blocking findings."
   else
     echo "🔴 **$blocking_count blocking finding(s).** Fix the code, or reply on the thread with a concrete reason, then push. To re-evaluate a reply without a code change, run \`gh run rerun <run-id> --failed\`."
@@ -89,6 +99,13 @@ errors=()
       errors+=("::error file=$(esc_prop "$path"),line=$line::$(esc_data "$title")")
     done
   fi
+  if ((${#unreviewed[@]} > 0)); then
+    echo
+    echo "🔴 **${#unreviewed[@]} golden(s) not reviewed.** Rerun with \`gh run rerun <run-id> --failed\`."
+    echo
+    printf -- "- \`%s\`\n" "${unreviewed[@]}"
+    errors+=("::error::$(esc_data "${#unreviewed[@]} golden(s) not reviewed")")
+  fi
   echo
   echo "Non-blocking observations: $(jq -r '.nonblocking_count' <<<"$OUT")"
 } >"$body"
@@ -97,7 +114,7 @@ cat "$body" >>"$SUMMARY_FILE"
 
 # A comment failure must not change the verdict, so it only warns.
 existing=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
-  --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]") and (.body | contains("<!-- claude-review:sha="))) | .id' \
+  --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]") and (.body | test("<!-- claude-review:(sha|covered)="))) | .id' \
   | tail -n1) || existing=""
 if [[ -n "$existing" ]]; then
   gh api -X PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$body" >/dev/null \
@@ -122,4 +139,4 @@ done < <(jq -r '.blocking[] | select(.thread_id != null) | [.thread_id, (.failur
 
 [[ ${#errors[@]} -eq 0 ]] || printf '%s\n' "${errors[@]}"
 
-((blocking_count == 0))
+((blocking_count == 0 && ${#unreviewed[@]} == 0))
