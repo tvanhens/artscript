@@ -160,7 +160,7 @@ pub(crate) struct Scope {
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
     /// Where an `fx` line under a taken `if` goes: the draw or def that owns this block.
-    branch_fx: Option<Rc<RefCell<Vec<ast::Fx>>>>,
+    branch_fx: Option<Rc<RefCell<Vec<BranchFx>>>>,
     /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
     pub site: Option<u32>,
     provisional: Option<Rc<Provisional>>,
@@ -240,7 +240,7 @@ impl Scope {
     }
 
     /// Gives this block's `fx` lines under a taken `if` to a fresh list the owner lowers.
-    fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<ast::Fx>>> {
+    fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<BranchFx>>> {
         let fx = Rc::new(RefCell::new(Vec::new()));
         self.branch_fx = Some(fx.clone());
         fx
@@ -251,7 +251,10 @@ impl Scope {
             fail("E0101", "`fx` under this `if` has no draw or def to apply to")
                 .fix("indent the `if` directly under the shape, group, def, or component call")
         })?;
-        fx.borrow_mut().push(line.clone());
+        fx.borrow_mut().push(BranchFx {
+            line: line.clone(),
+            env: self.env.clone(),
+        });
         Ok(())
     }
 
@@ -407,14 +410,29 @@ fn is_copy_index(seg: &str) -> bool {
     !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit())
 }
 
-/// A block's direct `fx` lines and those under its taken `if`s, merged by line. One block is one file.
+/// An `fx` line under a taken `if`, with the bindings in effect where the branch reached it.
+struct BranchFx {
+    line: ast::Fx,
+    env: Vec<(String, Value)>,
+}
+
+/// A block's direct `fx` lines and those under its taken `if`s, merged by line, each with the
+/// scope it evaluates in. One block is one file.
 fn in_source_order<'a>(
     direct: impl Iterator<Item = &'a ast::Fx>,
-    branch: &'a [ast::Fx],
-) -> impl Iterator<Item = &'a ast::Fx> {
-    let mut all: Vec<&ast::Fx> = direct.chain(branch).collect();
-    all.sort_by_key(|f| f.span);
-    all.into_iter()
+    branch: &'a [BranchFx],
+    scope: &Scope,
+) -> Vec<(&'a ast::Fx, Scope)> {
+    let mut all: Vec<(&ast::Fx, Scope)> = direct
+        .map(|line| (line, scope.clone()))
+        .chain(branch.iter().map(|b| {
+            let mut sc = scope.clone();
+            sc.env = b.env.clone();
+            (&b.line, sc)
+        }))
+        .collect();
+    all.sort_by_key(|(line, _)| line.span);
+    all
 }
 
 fn holds_play(scenes: &[Scene]) -> bool {
@@ -2157,11 +2175,10 @@ impl<'a> Evaluator<'a> {
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &branch_fx, sc);
         }
-        let sites: Vec<FxSite> = in_source_order(body.fx(), &branch_fx)
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
+        let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
+        let sites: Vec<FxSite> = lines
+            .iter()
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
@@ -2363,8 +2380,11 @@ impl<'a> Evaluator<'a> {
     }
 
     /// The `fx` lines under a taken `if`, known only once the operand's block has run.
-    fn report_operand_fx(&mut self, of: &OperandOf, fx: &[ast::Fx], sc: &Scope) {
-        let ignored = fx.iter().map(|f| (format!("`fx {}`", f.op), f.span)).collect();
+    fn report_operand_fx(&mut self, of: &OperandOf, fx: &[BranchFx], sc: &Scope) {
+        let ignored = fx
+            .iter()
+            .map(|b| (format!("`fx {}`", b.line.op), b.line.span))
+            .collect();
         self.report_operand_ignored(of, ignored, sc);
     }
 
@@ -3077,15 +3097,11 @@ impl<'a> Evaluator<'a> {
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &call_fx, sc);
         }
-        let sites: Vec<FxSite> = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx)
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
-            .chain(in_source_order(block.fx(), &call_fx).map(|line| FxSite {
-                line,
-                scope: &call_sc,
-            }))
+        let mut lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
+        lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
+        let sites: Vec<FxSite> = lines
+            .iter()
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
