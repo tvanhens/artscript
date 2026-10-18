@@ -4,3 +4,5 @@
 .claude-review/
 /bench/out
 /bench/comment.md
+decisions.tsv
+.audit/
