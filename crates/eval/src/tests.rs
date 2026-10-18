@@ -885,6 +885,15 @@ fn palette_rows_evaluate_to_colors_and_ramps() {
 }
 
 #[test]
+fn node_names_may_take_reserved_words_and_read_back_qualified() {
+    let s = scene(
+        "@target t.png 64x64\ndef face\n  ellipse 4.5,7 fill:#888888 name:mask\nface at:32,32 name:f\n  .mask fill:#ff0000\n\
+         circle 2 at:@f.mask.cx,10 name:if\nassert @f.mask.cx ~= 32\nassert @if.cx ~= 32\n",
+    );
+    assert_eq!(fill_hex(node(&s, "f.mask")), "#ff0000");
+}
+
+#[test]
 fn palette_rows_may_take_reserved_names_and_read_back_qualified() {
     let s = scene(
         "@target t.png 10x10 bg:shroom.backdrop\npalette shroom\n  ramp cap #e0453a 5\n  color backdrop #1d2b53\n  color if #ff00ff\n\

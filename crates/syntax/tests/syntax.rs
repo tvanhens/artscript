@@ -922,6 +922,15 @@ fn a_palette_row_may_be_named_with_a_reserved_word() {
 }
 
 #[test]
+fn a_node_name_may_be_a_reserved_word() {
+    for word in ["mask", "fx", "if", "backdrop", "t"] {
+        must_parse(&format!(
+            "ellipse 4.5,7 at:32,32 name:{word}\nassert @{word}.cx ~= 32\n"
+        ));
+    }
+}
+
+#[test]
 fn a_def_parameter_cannot_be_a_reserved_word() {
     for word in ["fx", "mask", "slot", "finish"] {
         let e = one_error(&format!("def cup {word}:1\n  circle 4\n"));

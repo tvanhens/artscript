@@ -1270,6 +1270,16 @@ impl<'a> Parser<'a> {
                 span,
             };
         }
+        if key == "name"
+            && let Some(Tok::Kw(k)) = self.cur().map(|t| t.kind.clone())
+        {
+            self.bump();
+            return Named {
+                key,
+                value: Expr::Ident(k.as_str().to_string()),
+                span,
+            };
+        }
         if key == "name" && self.cur().is_some_and(|t| matches!(t.kind, Tok::LBrace)) {
             self.bump();
             let inner = self.parse_tuple();
