@@ -522,7 +522,7 @@ fn stamp_target(job: &TargetJob, diags: &mut [Diagnostic]) {
 fn note_magnitude(d: &Diagnostic) -> Option<f64> {
     let mut best = None;
     for note in &d.notes {
-        if is_site_note(note) {
+        if is_site_note(note) || note.starts_with("also in ") {
             continue;
         }
         for token in note.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')) {
