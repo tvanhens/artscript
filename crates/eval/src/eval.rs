@@ -2625,14 +2625,13 @@ impl<'a> Evaluator<'a> {
                 (p, None, true)
             }
             "curve" => {
-                let values: Vec<Value> = match a.pos.as_slice() {
-                    [Value::List(xs)] => xs.as_ref().clone(),
-                    _ if a.pos.iter().any(|v| matches!(v, Value::List(_))) => {
-                        return Err(fail("E0320", "`curve` takes points, or one list of points")
-                            .fix("write `curve pts` or `curve [each k in 0..n -> x,y]`"));
+                let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
+                for v in &a.pos {
+                    match v {
+                        Value::List(xs) => values.extend(xs.iter().cloned()),
+                        point => values.push(point.clone()),
                     }
-                    _ => a.pos.clone(),
-                };
+                }
                 let mut pts = Vec::with_capacity(values.len());
                 for v in &values {
                     let (x, y) = v

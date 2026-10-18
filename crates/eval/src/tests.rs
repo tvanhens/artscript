@@ -631,12 +631,6 @@ fn each_expr_respects_e0306() {
         "{}",
         show(&huge.diagnostics)
     );
-    let mixed = run_with("@target t.png 10x10\ncurve [0,0 10,0] 20,0\n", &[]);
-    assert!(
-        mixed.diagnostics.iter().any(|d| d.code == "E0320"),
-        "{}",
-        show(&mixed.diagnostics)
-    );
 }
 
 #[test]
@@ -6152,4 +6146,55 @@ fn a_vector_key_that_is_not_a_vector_names_the_key() {
         assert_eq!(d.message, message, "{line}");
         assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
     }
+}
+
+#[test]
+fn concat_joins_lists_and_ranges_in_order() {
+    scene(
+        "@target t.png 10x10\nexpect concat([1 2] [3]) == [1 2 3]\nexpect concat(0..2 [5] 7..9) == [0 1 5 7 8]\nexpect concat([0,0 1,1] [2,2]) == [0,0 1,1 2,2]\nexpect concat([] [1]) == [1]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn concat_reports_what_is_not_a_list() {
+    for (call, message, fix) in [
+        (
+            "concat([1] 2)",
+            "`concat` argument 2 must be a list, got a number",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        (
+            "concat([1] 3,4)",
+            "`concat` argument 2 must be a list, got a vector like 4,2",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        ("concat([1])", "`concat` joins two or more lists", "write `concat(a b)`"),
+        ("concat()", "`concat` joins two or more lists", "write `concat(a b)`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 10x10\nlet xs = {call}\ncircle 1\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{call}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{call}");
+    }
+}
+
+#[test]
+fn a_curve_takes_points_and_lists_of_points_in_order() {
+    let geometry = |src: &str| {
+        let s = scene(&format!("@target t.png 80x80\nlet pts = [10,10 50,10]\n{src} name:c\n"));
+        shape(&s, "c").geometry.to_svg()
+    };
+    let literal = geometry("curve 10,10 50,10 50,50 0,50");
+    assert_eq!(geometry("curve pts 50,50 0,50"), literal);
+    assert_eq!(geometry("curve 10,10 [50,10 50,50] 0,50"), literal);
+    assert_eq!(geometry("curve concat(pts [50,50 0,50])"), literal);
+    assert_eq!(geometry("curve pts [50,50] [0,50]"), literal);
+    assert_eq!(geometry("curve [10,10 50,10 50,50 0,50]"), literal);
+}
+
+#[test]
+fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
+    let ev = run_with("@target t.png 80x80\nlet pts = [10,10 50,10]\ncurve pts red\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
 }

@@ -7,7 +7,7 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 | rect | `rect 40x20 r:4` (or `r:4,4,0,0` per corner; any other count is E0320) |
 | circle, ellipse | `circle 12`, `ellipse 20,12` (radii) |
 | poly, star | `poly 6 r:20 round:3`, `star 5 r:20 inner:.5` (at most 100000 points; a count that is not finite or is larger is E0320) |
-| curve | `curve 0,0 20,-15 40,0`, or `curve pts` when `pts` is one list of points. `closed` fills, `tension:.5`. `round:r` on a closed curve at `tension:0` |
+| curve | `curve 0,0 20,-15 40,0`. Each positional is a point or a list of points, flattened in order, so `curve pts` and `curve pts 50,50 0,50` both work. Anything else is E0320. `closed` fills, `tension:.5`. `round:r` on a closed curve at `tension:0` |
 | blob | `blob 30 seed:4 wobble:.2` organic closed shape |
 | path | `path "M0 0 c10-20 30-20 40 0z"`. A path is closed only when every subpath ends in `Z` or `z`. Otherwise it is open like a curve without `closed` |
 | copy | `copy @body at:-20,-8` reuses a named node's outline |
