@@ -8,7 +8,7 @@ use artscript_ir::{
 use skia_safe::path::{Iter as PathIter, Verb};
 use skia_safe::{PathFillType, PathOp, Rect};
 
-use crate::draw::bake_node;
+use crate::draw::{bake_node, visual_pad};
 use crate::effects::{Coverage, Region};
 use crate::gpu::Backend;
 use crate::features::{self, bakes};
@@ -294,14 +294,7 @@ impl Writer {
         for region in &regions[1..] {
             ring.join(region.path.bounds());
         }
-        let ring = ring.with_outset((width + 1.0, width + 1.0));
-        let area = format!(
-            "x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
-            fmt_num(ring.left),
-            fmt_num(ring.top),
-            fmt_num(ring.width()),
-            fmt_num(ring.height())
-        );
+        let area = area_attrs(&ring.with_outset((width + 1.0, width + 1.0)));
         self.defs.push_str("    <mask id=\"");
         self.defs.push_str(id);
         self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
@@ -525,7 +518,9 @@ impl Writer {
             let mid = format!("{id}-soft");
             self.defs.push_str("    <mask id=\"");
             self.defs.push_str(&mid);
-            self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" mask-type=\"alpha\">\n");
+            self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+            self.defs.push_str(&masked_area(node));
+            self.defs.push_str(" mask-type=\"alpha\">\n");
             if clip.invert {
                 self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
                 self.defs.push_str("      <path d=\"");
@@ -562,7 +557,7 @@ impl Writer {
                 return Ok(());
             }
             let mid = format!("{id}-mask");
-            self.write_node_mask(scene, mask, &mid, bake_scale)?;
+            self.write_node_mask(scene, node, mask, &mid, bake_scale)?;
             if soft.is_some() {
                 // The opening tag already carries the soft-clip mask. Nesting happens by
                 // wrapping is not available mid-attribute, so a second mask replaces it.
@@ -575,10 +570,12 @@ impl Writer {
         Ok(())
     }
 
-    fn write_node_mask(&mut self, scene: &Scene, mask: &Mask, id: &str, bake_scale: f32) -> Result<(), RenderError> {
+    fn write_node_mask(&mut self, scene: &Scene, node: &Node, mask: &Mask, id: &str, bake_scale: f32) -> Result<(), RenderError> {
         self.defs.push_str("    <mask id=\"");
         self.defs.push_str(id);
-        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" mask-type=\"");
+        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+        self.defs.push_str(&masked_area(node));
+        self.defs.push_str(" mask-type=\"");
         self.defs.push_str(if mask.luminance { "luminance" } else { "alpha" });
         self.defs.push_str("\">\n");
         if let MaskSource::Nodes(nodes) = &mask.source {
@@ -715,6 +712,41 @@ fn pushes_clip(node: &Node) -> bool {
             .children()
             .iter()
             .any(|child| child.blend != Blend::Normal || pushes_clip(child))
+}
+
+fn area_attrs(rect: &Rect) -> String {
+    format!(
+        "x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+        fmt_num(rect.left),
+        fmt_num(rect.top),
+        fmt_num(rect.width()),
+        fmt_num(rect.height())
+    )
+}
+
+/// A mask on `node` applies in its local space. Without an explicit region, renderers cut the
+/// mask to -10%..120% of the viewport there, which drops a shape placed with `at:`.
+fn masked_area(node: &Node) -> String {
+    let pad = visual_pad(node) + stroke_overshoot(node) + 1.0;
+    area_attrs(&node.local_bounds().unwrap_or_default().with_outset((pad, pad)))
+}
+
+/// How far a stroke reaches past the half width that [`Node::local_bounds`] counts: a miter
+/// join up to the default miter limit of 4, a square cap by its diagonal.
+fn stroke_overshoot(node: &Node) -> f32 {
+    let own = match &node.kind {
+        NodeKind::Shape(shape) if let Some(stroke) = &shape.stroke => {
+            let join: f32 = if stroke.join == Join::Miter { 4.0 } else { 1.0 };
+            let cap = if stroke.cap == Cap::Square { std::f32::consts::SQRT_2 } else { 1.0 };
+            stroke.width / 2.0 * (join.max(cap) - 1.0)
+        }
+        _ => 0.0,
+    };
+    let masks = match node.mask.as_deref().map(|m| &m.source) {
+        Some(MaskSource::Nodes(nodes)) => nodes.as_slice(),
+        _ => &[],
+    };
+    node.children().iter().chain(masks).map(stroke_overshoot).fold(own, f32::max)
 }
 
 fn clip_region(clip: &Clip) -> Result<Path, RenderError> {

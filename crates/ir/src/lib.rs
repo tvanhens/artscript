@@ -275,14 +275,15 @@ impl Node {
         }
     }
 
-    /// Visual bounds in this node's parent coordinates: geometry plus half the stroke width,
-    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored; see
-    /// [`Node::outer_bounds`] for the extent they draw.
+    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the
+    /// transform. Effects are ignored; see [`Node::outer_bounds`] for the extent they draw.
     pub fn bounds(&self) -> Option<Rect> {
-        Some(self.transform.map_rect(self.local_bounds()?).0)
+        self.local_bounds().map(|local| self.transform.map_rect(local).0)
     }
 
-    fn local_bounds(&self) -> Option<Rect> {
+    /// Visual bounds in this node's own coordinates: geometry plus half the stroke width,
+    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
+    pub fn local_bounds(&self) -> Option<Rect> {
         let local = match &self.kind {
             NodeKind::Shape(s) => shape_bounds(s),
             NodeKind::Group { children, .. } => union_bounds(children),

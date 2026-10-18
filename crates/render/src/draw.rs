@@ -509,7 +509,7 @@ fn huge_rect() -> Rect {
     Rect::from_ltrb(-100000.0, -100000.0, 100000.0, 100000.0)
 }
 
-fn visual_pad(node: &Node) -> f32 {
+pub(crate) fn visual_pad(node: &Node) -> f32 {
     let mut pad = 0.0_f32;
     for effect in &node.effects {
         let extra = match &effect.op {

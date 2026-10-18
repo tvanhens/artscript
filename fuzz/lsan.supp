@@ -1,0 +1,2 @@
+# LeakSanitizer on macOS reports the std::thread that libFuzzer starts for its RSS limit.
+leak:std::__1::thread::thread

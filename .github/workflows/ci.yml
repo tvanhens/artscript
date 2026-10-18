@@ -39,9 +39,32 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: ${{ matrix.run }}
 
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libfontconfig-dev libfreetype-dev
+      - run: rustup toolchain install nightly --profile minimal --no-self-update
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: fuzz
+          workspaces: fuzz
+          cache-all-crates: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo +nightly install cargo-fuzz --locked
+      - run: GEN_SEEDS=16 python3 fuzz/seeds.py
+      - name: Replay the fuzz seeds
+        run: |
+          cd fuzz
+          for t in $(cargo +nightly fuzz list); do
+            mkdir -p "corpus/$t"
+            cargo +nightly fuzz run "$t" "corpus/$t" -- -runs=0 -timeout=0 -rss_limit_mb=4096
+          done
+
   ci:
-    needs: gate
+    needs: [gate, fuzz]
     if: always()
     runs-on: ubuntu-24.04
     steps:
-      - run: test "${{ needs.gate.result }}" = success
+      - run: test "${{ needs.gate.result }}" = success && test "${{ needs.fuzz.result }}" = success
