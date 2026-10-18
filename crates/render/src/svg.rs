@@ -2,11 +2,11 @@
 //! PNG tile of that whole subtree.
 
 use artscript_ir::{
-    Cap, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint,
-    Path, Point, Profile, Scene, Shape, Stop, Stroke,
+    Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
+    NodeKind, Paint, Path, Point, Profile, Scene, Shape, Stop, Stroke,
 };
 use skia_safe::path::{Iter as PathIter, Verb};
-use skia_safe::PathFillType;
+use skia_safe::{PathFillType, PathOp, Rect};
 
 use crate::draw::bake_node;
 use crate::effects::{Coverage, Region};
@@ -43,7 +43,7 @@ pub fn render_svg(
         w.body.push_str("/>\n");
     }
     for child in &scene.children {
-        w.node(scene, child, bake_scale, 1)?;
+        w.node(scene, child, bake_scale, 1, None)?;
     }
     let mut out = String::new();
     out.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"");
@@ -72,9 +72,19 @@ struct Writer {
 }
 
 impl Writer {
-    fn node(&mut self, scene: &Scene, node: &Node, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+    /// `outer` is a clip in the parent's coordinates that a plain clipped group above pushed
+    /// down. A `clip-path` on a `<g>` isolates it, so such a group clips the children instead.
+    fn node(
+        &mut self,
+        scene: &Scene,
+        node: &Node,
+        bake_scale: f32,
+        depth: usize,
+        outer: Option<&Path>,
+    ) -> Result<(), RenderError> {
         let pad = "  ".repeat(depth);
         let id = xml_id(&node.path);
+        let outer = outer.map(|path| to_local(path, &node.transform));
         if bakes(node) {
             let baked = bake_node(scene, node, bake_scale, self.backend)?;
             self.body.push_str(&pad);
@@ -82,6 +92,9 @@ impl Writer {
             self.body.push_str(&id);
             self.body.push('"');
             self.blend_style(node);
+            if let Some(path) = &outer {
+                self.clip_ref(&format!("{id}-clip"), path);
+            }
             self.body.push_str(">\n");
             self.body.push_str(&pad);
             self.body.push_str("  <image x=\"");
@@ -115,8 +128,16 @@ impl Writer {
             self.body.push('"');
         }
         self.blend_style(node);
-        if !has_outline(node) {
-            self.clip_attr(node, &id);
+        let pushed = if pushes_clip(node) {
+            intersect(outer.clone(), node.clip.as_ref().map(clip_region).transpose()?)?
+        } else {
+            None
+        };
+        if let Some(region) = pushed {
+            self.body.push_str(">\n");
+            self.write_kind(scene, node, &id, bake_scale, depth, Some(&region))?;
+        } else if !has_outline(node) {
+            self.clip_attr(node, &id, outer.as_ref())?;
             self.mask_attr(scene, node, &id, bake_scale)?;
             if let Some(filter) = self.fx_filter(node, &id) {
                 self.body.push_str(" filter=\"url(#");
@@ -124,8 +145,11 @@ impl Writer {
                 self.body.push_str(")\"");
             }
             self.body.push_str(">\n");
-            self.write_kind(scene, node, &id, bake_scale, depth)?;
+            self.write_kind(scene, node, &id, bake_scale, depth, None)?;
         } else {
+            if let Some(path) = &outer {
+                self.clip_ref(&format!("{id}-outer"), path);
+            }
             self.body.push_str(">\n");
             let steps = svg_steps(&node.effects);
             self.emit_outlined(scene, node, &id, bake_scale, depth, &steps)?;
@@ -136,11 +160,19 @@ impl Writer {
         Ok(())
     }
 
-    fn write_kind(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+    fn write_kind(
+        &mut self,
+        scene: &Scene,
+        node: &Node,
+        id: &str,
+        bake_scale: f32,
+        depth: usize,
+        outer: Option<&Path>,
+    ) -> Result<(), RenderError> {
         match &node.kind {
             NodeKind::Group { children, .. } => {
                 for child in children {
-                    self.node(scene, child, bake_scale, depth + 1)?;
+                    self.node(scene, child, bake_scale, depth + 1, outer)?;
                 }
             }
             NodeKind::Shape(shape) => self.shape(scene, shape, id, bake_scale, depth + 1)?,
@@ -200,14 +232,14 @@ impl Writer {
             let pad = "  ".repeat(depth + 1);
             self.body.push_str(&pad);
             self.body.push_str("<g");
-            self.clip_attr(node, id);
+            self.clip_attr(node, id, None)?;
             self.mask_attr(scene, node, id, bake_scale)?;
             self.body.push_str(">\n");
-            self.write_kind(scene, node, id, bake_scale, depth + 1)?;
+            self.write_kind(scene, node, id, bake_scale, depth + 1, None)?;
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
         } else {
-            self.write_kind(scene, node, id, bake_scale, depth)?;
+            self.write_kind(scene, node, id, bake_scale, depth, None)?;
         }
         Ok(())
     }
@@ -316,7 +348,7 @@ impl Writer {
             self.body.push_str(&cid);
             self.body.push_str(")\">\n");
             for child in &shape.children {
-                self.node(scene, child, bake_scale, depth + 1)?;
+                self.node(scene, child, bake_scale, depth + 1, None)?;
             }
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
@@ -465,15 +497,22 @@ impl Writer {
         self.defs.push_str("/></clipPath>\n");
     }
 
-    fn clip_attr(&mut self, node: &Node, id: &str) {
-        let Some(clip) = &node.clip else { return };
-        if clip.feather > 0.0 || clip.invert {
-            return;
+    fn clip_attr(&mut self, node: &Node, id: &str, outer: Option<&Path>) -> Result<(), RenderError> {
+        let own = node
+            .clip
+            .as_ref()
+            .filter(|clip| clip.feather <= 0.0 && !clip.invert)
+            .map(|clip| clip.path.clone());
+        if let Some(path) = intersect(own, outer.cloned())? {
+            self.clip_ref(&format!("{id}-clip"), &path);
         }
-        let cid = format!("{id}-clip");
-        self.clip_path_def(&cid, &clip.path);
+        Ok(())
+    }
+
+    fn clip_ref(&mut self, cid: &str, path: &Path) {
+        self.clip_path_def(cid, path);
         self.body.push_str(" clip-path=\"url(#");
-        self.body.push_str(&cid);
+        self.body.push_str(cid);
         self.body.push_str(")\"");
     }
 
@@ -545,7 +584,7 @@ impl Writer {
         if let MaskSource::Nodes(nodes) = &mask.source {
             let mut inner = Writer { defs: String::new(), body: String::new(), backend: self.backend };
             for node in nodes {
-                inner.node(scene, node, bake_scale, 3)?;
+                inner.node(scene, node, bake_scale, 3, None)?;
             }
             self.defs.push_str(&inner.defs);
             if mask.feather > 0.0 || mask.invert {
@@ -662,6 +701,43 @@ impl Writer {
         self.defs.push_str("</filter>\n");
         true
     }
+}
+
+/// A plain group, clipped or under a pushed clip, whose children blend with what is below it.
+fn pushes_clip(node: &Node) -> bool {
+    matches!(node.kind, NodeKind::Group { isolate: false, .. })
+        && node.opacity >= 1.0
+        && node.blend == Blend::Normal
+        && node.mask.is_none()
+        && node.effects.is_empty()
+        && node.clip.as_ref().is_none_or(|clip| clip.feather <= 0.0)
+        && node
+            .children()
+            .iter()
+            .any(|child| child.blend != Blend::Normal || pushes_clip(child))
+}
+
+fn clip_region(clip: &Clip) -> Result<Path, RenderError> {
+    if !clip.invert {
+        return Ok(clip.path.clone());
+    }
+    Path::rect(Rect::from_xywh(-10000.0, -10000.0, 20000.0, 20000.0), None)
+        .op(&clip.path, PathOp::Difference)
+        .ok_or_else(|| RenderError::Skia("outside clip".into()))
+}
+
+fn intersect(a: Option<Path>, b: Option<Path>) -> Result<Option<Path>, RenderError> {
+    match (a, b) {
+        (Some(a), Some(b)) => a
+            .op(&b, PathOp::Intersect)
+            .map(Some)
+            .ok_or_else(|| RenderError::Skia("clip intersect".into())),
+        (a, b) => Ok(a.or(b)),
+    }
+}
+
+fn to_local(path: &Path, transform: &Matrix) -> Path {
+    transform.invert().map(|inv| path.make_transform(&inv)).unwrap_or_default()
 }
 
 fn fill_rule(path: &Path) -> &'static str {

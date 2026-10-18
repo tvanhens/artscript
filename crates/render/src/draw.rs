@@ -1,4 +1,4 @@
-//! Canvas walk. A node that needs isolation, a mask, a clip, an effect, or a non-default
+//! Canvas walk. A node that needs isolation, a mask, a soft clip, an effect, or a non-default
 //! composite is drawn into a layer. Effects see the clipped and masked content.
 
 use std::cell::RefCell;
@@ -233,7 +233,7 @@ pub fn draw_node(
             canvas.restore();
         }
     } else {
-        draw_kind(canvas, node, ctx, world)?;
+        draw_clipped(canvas, node, ctx, world)?;
     }
 
     canvas.restore();
@@ -320,7 +320,7 @@ fn needs_layer(node: &Node) -> bool {
         || node.blend != Blend::Normal
         || !node.effects.is_empty()
         || node.mask.is_some()
-        || node.clip.is_some()
+        || node.clip.as_ref().is_some_and(|c| c.feather > 0.0)
         || matches!(node.kind, NodeKind::Group { isolate: true, .. })
 }
 
