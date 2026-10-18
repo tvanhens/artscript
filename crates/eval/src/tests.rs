@@ -3552,6 +3552,39 @@ fn at_takes_an_anchor_through_an_instance() {
 }
 
 #[test]
+fn an_anim_offset_adds_to_an_anchor_rest_at() {
+    let s = scene(concat!(
+        "@target t.png 100x100 t:.5s\n",
+        "anim bob dur:1s\n",
+        "  .dot at:key(0,0 0,-10 ease:linear)\n",
+        "group name:body at:30,40\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "circle 2 at:@body.neck name:dot\n",
+        "play bob\n",
+    ));
+    near(at(node(&s, "dot")), (30.0, 29.0));
+}
+
+#[test]
+fn an_anim_offset_on_a_node_rest_at_reports_the_node_once() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 40x40\n",
+            "anim bob dur:1s\n",
+            "  .dot at:key(0,0 0,-10)\n",
+            "rect 10x10 name:body\n",
+            "circle 2 at:@body name:dot\n",
+            "play bob\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.code.starts_with('E')).collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(errors[0].message.contains("`at:@body` is a node, not a point"), "{}", errors[0]);
+}
+
+#[test]
 fn at_names_the_node_when_the_reference_is_not_a_point() {
     let ev = run_with(
         "@target t.png 40x40\nrect 10x10 name:body\ncircle 2 at:@body\n",

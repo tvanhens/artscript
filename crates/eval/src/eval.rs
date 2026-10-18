@@ -458,6 +458,10 @@ fn blend_arg(
                 Coord::Num(default_at.0),
                 Coord::Num(default_at.1),
             ));
+            // A rest `at:` that is still a reference names a node, and `transform` reports it.
+            if matches!(base, Value::Ref(_)) {
+                return Ok(());
+            }
             let base = ground_percent_rest(&base, value, frame, sc)?;
             let sum = arith(Arith::Add, &base, value).map_err(|m| fail("E0320", m))?;
             a.named.push(("at".into(), sum));
@@ -1683,6 +1687,11 @@ impl<'a> Evaluator<'a> {
         statics.sort_by(win);
         for p in statics {
             a.named.extend(p.named.iter().cloned());
+        }
+        if let Some(Value::Ref(r)) = a.get("at").cloned()
+            && let Ok((x, y)) = self.anchor_point(&r, sc)
+        {
+            a.named.push(("at".into(), Value::Vec2(Coord::Num(x), Coord::Num(y))));
         }
         let rest = a.named.len();
         let mut chans: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_some()).collect();
