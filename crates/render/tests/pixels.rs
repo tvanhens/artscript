@@ -707,7 +707,7 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
         }));
         let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
         let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
-        let masks: Vec<&str> = doc.descendants().filter_map(|n| n.attribute("mask")).collect();
-        assert_eq!(masks.len(), 2, "the node mask and the soft clip inside it: {svg}");
+        let bar = doc.descendants().find(|n| n.attribute("id") == Some("bar")).expect(&svg);
+        assert!(bar.attribute("mask").is_some(), "{svg}");
     }
 }

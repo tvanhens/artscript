@@ -170,6 +170,17 @@ pub struct RefVal {
     pub source: Option<usize>,
     /// `canvas`: the canvas rect itself.
     pub canvas: Option<Rect>,
+    pub extent: Extent,
+}
+
+/// Which box a node reference measures.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Extent {
+    /// Geometry plus half the stroke width (`@x`).
+    Visual,
+    /// Everything the node draws, effects included, in canvas coordinates (`@x.outer`). It is
+    /// a box, so the ref's silhouette is that box too.
+    Outer(Rect),
 }
 
 impl RefVal {
@@ -179,6 +190,9 @@ impl RefVal {
 
     /// Bounds in the coordinates that `view` maps canvas coordinates into.
     pub fn bounds_in(&self, view: &Matrix) -> Option<Rect> {
+        if let Extent::Outer(r) = self.extent {
+            return Some(view.map_rect(r).0);
+        }
         if let Some(c) = self.canvas {
             return Some(view.map_rect(c).0);
         }
@@ -191,7 +205,7 @@ impl RefVal {
     }
 
     pub fn geom_bounds_in(&self, view: &Matrix) -> Option<Rect> {
-        if self.canvas.is_some() || self.record.anchor.is_some() {
+        if self.canvas.is_some() || self.record.anchor.is_some() || self.extent != Extent::Visual {
             return self.bounds_in(view);
         }
         let node = self.record.node.as_ref()?;
@@ -200,6 +214,9 @@ impl RefVal {
 
     /// Union of the node's shape geometries in canvas coordinates.
     pub fn silhouette(&self) -> Path {
+        if let Extent::Outer(r) = self.extent {
+            return Path::rect(r, None);
+        }
         if let Some(c) = self.canvas {
             return Path::rect(c, None);
         }
@@ -299,6 +316,7 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
         record: entry.record.borrow().clone(),
         source: Some(Rc::as_ptr(&entry.record) as usize),
         canvas: None,
+        extent: Extent::Visual,
     }
 }
 

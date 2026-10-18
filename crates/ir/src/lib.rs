@@ -4,6 +4,8 @@
 //! and jitter already applied). Gradients carry dense sRGB stops already interpolated in OKLCH,
 //! so backends interpolate linearly between neighbouring stops and still match each other.
 
+use std::collections::HashMap;
+
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
 mod retained;
@@ -273,7 +275,8 @@ impl Node {
         }
     }
 
-    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the transform.
+    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the
+    /// transform. Effects are ignored; see [`Node::outer_bounds`] for the extent they draw.
     pub fn bounds(&self) -> Option<Rect> {
         self.local_bounds().map(|local| self.transform.map_rect(local).0)
     }
@@ -281,22 +284,139 @@ impl Node {
     /// Visual bounds in this node's own coordinates: geometry plus half the stroke width,
     /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
     pub fn local_bounds(&self) -> Option<Rect> {
-        let mut local = match &self.kind {
-            NodeKind::Shape(s) => {
-                let mut r = s.geometry.compute_tight_bounds();
-                if let Some(st) = &s.stroke {
-                    r.outset((st.width / 2.0, st.width / 2.0));
-                }
-                if r.is_empty() && s.geometry.is_empty() { None } else { Some(r) }
-            }
+        let local = match &self.kind {
+            NodeKind::Shape(s) => shape_bounds(s),
             NodeKind::Group { children, .. } => union_bounds(children),
         }?;
+        self.cut_to_kept(local)
+    }
+
+    /// [`Node::local_bounds`] with each stroke measured by the outline it fills, so miter joins
+    /// and square caps count.
+    fn local_ink(&self) -> Option<Rect> {
+        let local = match &self.kind {
+            NodeKind::Shape(s) => shape_ink(s),
+            NodeKind::Group { children, .. } => join_all(
+                children
+                    .iter()
+                    .map(|c| Some(c.transform.map_rect(c.local_ink()?).0))
+                    .collect::<Vec<_>>(),
+            ),
+        }?;
+        self.cut_to_kept(local)
+    }
+
+    fn cut_to_kept(&self, mut local: Rect) -> Option<Rect> {
         for kept in self.kept_bounds() {
             if !local.intersect(kept) {
                 return None;
             }
         }
         Some(local)
+    }
+
+    /// Drawn extent in this node's parent coordinates: [`Node::bounds`] grown by what the
+    /// shape's `blur:` and the node's effects paint past it. Effects run after the node's own
+    /// clip and mask, so those cut the content and not the effects. `find` returns a node by
+    /// path with its parent's world transform, for effects that read another node (`of:@x`).
+    pub fn outer_bounds<'n>(
+        &self,
+        parent_world: &Matrix,
+        find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+    ) -> Option<Rect> {
+        self.outer(parent_world, find, &mut Vec::new())
+    }
+
+    /// `visiting` holds the nodes being measured, as render's draw does: a node that reads
+    /// itself through an effect input draws nothing there.
+    fn outer<'n>(
+        &self,
+        parent_world: &Matrix,
+        find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+        visiting: &mut Vec<String>,
+    ) -> Option<Rect> {
+        if visiting.contains(&self.path) {
+            return None;
+        }
+        visiting.push(self.path.clone());
+        let world = *parent_world * self.transform;
+        let local = self.outer_local(&world, find, visiting);
+        visiting.pop();
+        Some(self.transform.map_rect(local?).0)
+    }
+
+    /// Folds the effect chain the way render's `effects::chain` does. A positive outline ends
+    /// a chain segment: after it, `self` is the outlined layer and earlier `as:` names are gone.
+    fn outer_local<'n>(
+        &self,
+        world: &Matrix,
+        find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+        visiting: &mut Vec<String>,
+    ) -> Option<Rect> {
+        let content = match &self.kind {
+            NodeKind::Shape(s) => grow(shape_ink(s), blur_reach(s.blur, 1.0)),
+            NodeKind::Group { children, .. } => join_all(
+                children
+                    .iter()
+                    .map(|c| c.outer(world, find, visiting))
+                    .collect::<Vec<_>>(),
+            ),
+        };
+        let mut source = content.and_then(|r| self.cut_to_kept(r));
+        let mut current = source;
+        let mut named: HashMap<&str, Option<Rect>> = HashMap::new();
+        let mut env = InputEnv {
+            world,
+            find,
+            visiting,
+        };
+        for effect in &self.effects {
+            if let EffectOp::Outline { width, .. } = effect.op
+                && width > 0.0
+            {
+                let traced = self.local_ink().map(|r| r.with_outset((width, width)));
+                current = join(current, traced);
+                source = current;
+                named.clear();
+                continue;
+            }
+            let input = env.resolve(&effect.input, current, source, &named);
+            current = match &effect.op {
+                EffectOp::Blur { sigma } => grow(input, blur_reach(*sigma, 1.0)),
+                EffectOp::Glow { radius, color } => {
+                    join(input, grow(input, blur_reach(*radius, color.a)))
+                }
+                EffectOp::Shadow {
+                    dx,
+                    dy,
+                    blur,
+                    color,
+                } => join(
+                    input,
+                    grow(
+                        input.map(|r| r.with_offset((*dx, *dy))),
+                        blur_reach(*blur, color.a),
+                    ),
+                ),
+                EffectOp::Merge { inputs, alphas } => join_all(
+                    inputs
+                        .iter()
+                        .enumerate()
+                        .filter(|(i, _)| alphas.get(*i).copied().unwrap_or(1.0) > 0.0)
+                        .map(|(_, i)| env.resolve(i, input, source, &named))
+                        .collect::<Vec<_>>(),
+                ),
+                EffectOp::Inner { .. }
+                | EffectOp::Rim { .. }
+                | EffectOp::Adjust { .. }
+                | EffectOp::Grain { .. }
+                | EffectOp::Outline { .. } => input,
+            };
+            if let Some(name) = &effect.name {
+                named.insert(name, current);
+            }
+        }
+        current
     }
 
     /// Local bounds this node's `inside` clip and node mask keep, grown by three feather sigmas.
@@ -322,8 +442,159 @@ impl Node {
 }
 
 pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
-    nodes.iter().filter_map(Node::bounds).reduce(|mut a, b| {
+    join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
+}
+
+/// Geometry plus half the stroke width.
+fn shape_bounds(s: &Shape) -> Option<Rect> {
+    let mut r = s.geometry.compute_tight_bounds();
+    if let Some(st) = &s.stroke {
+        r.outset((st.width / 2.0, st.width / 2.0));
+    }
+    if r.is_empty() && s.geometry.is_empty() {
+        None
+    } else {
+        Some(r)
+    }
+}
+
+/// Geometry joined with the outline its stroke fills, at Skia's default miter limit as render
+/// draws it. A dash only removes ink, so it is ignored.
+fn shape_ink(s: &Shape) -> Option<Rect> {
+    let plain = shape_bounds(s)?;
+    let Some(st) = s.stroke.as_ref().filter(|st| st.width > 0.0) else {
+        return Some(plain);
+    };
+    let mut paint = skia_safe::Paint::default();
+    paint.set_style(skia_safe::paint::Style::Stroke);
+    paint.set_stroke_width(st.width);
+    paint.set_stroke_cap(match st.cap {
+        Cap::Round => skia_safe::paint::Cap::Round,
+        Cap::Butt => skia_safe::paint::Cap::Butt,
+        Cap::Square => skia_safe::paint::Cap::Square,
+    });
+    paint.set_stroke_join(match st.join {
+        Join::Round => skia_safe::paint::Join::Round,
+        Join::Miter => skia_safe::paint::Join::Miter,
+        Join::Bevel => skia_safe::paint::Join::Bevel,
+    });
+    let mut filled = skia_safe::PathBuilder::new();
+    skia_safe::path_utils::fill_path_with_paint(
+        &s.geometry,
+        &paint,
+        &mut filled,
+        None::<&Rect>,
+        None::<Matrix>,
+    );
+    join(Some(plain), Some(filled.snapshot().compute_tight_bounds()).filter(|r| !r.is_empty()))
+}
+
+struct InputEnv<'a, 'f, 'n> {
+    world: &'a Matrix,
+    find: &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+    visiting: &'a mut Vec<String>,
+}
+
+impl InputEnv<'_, '_, '_> {
+    /// `None` is an input that draws nothing, as an unknown `as:` name does in render.
+    fn resolve(
+        &mut self,
+        input: &EffectInput,
+        current: Option<Rect>,
+        source: Option<Rect>,
+        named: &HashMap<&str, Option<Rect>>,
+    ) -> Option<Rect> {
+        match input {
+            EffectInput::Previous => current,
+            EffectInput::Source => source,
+            EffectInput::Named(name) => named.get(name.as_str()).copied().flatten(),
+            EffectInput::Node(path) => {
+                let (node, parent_world) = (self.find)(path)?;
+                let canvas = parent_world
+                    .map_rect(node.outer(&parent_world, self.find, self.visiting)?)
+                    .0;
+                Some(self.world.invert()?.map_rect(canvas).0)
+            }
+        }
+    }
+}
+
+/// The least alpha an 8-bit pixel stores as nonzero: output rounds to the nearest of 255 steps.
+const INK: f64 = 0.5 / 255.0;
+
+/// How far past an edge a Gaussian blur of `sigma`, drawn at `alpha`, still inks a pixel.
+/// Outside a box, the worst case is a half-plane edge, whose blurred alpha at distance `d` is
+/// `alpha * Q(d / sigma)`, with `Q` the Gaussian upper tail; the reach is where that falls
+/// below [`INK`]. `None` when the blurred copy inks nothing.
+pub fn blur_reach(sigma: f32, alpha: f32) -> Option<f32> {
+    let alpha = f64::from(alpha.clamp(0.0, 1.0));
+    if alpha <= INK {
+        return None;
+    }
+    if sigma <= 0.0 || !sigma.is_finite() {
+        return Some(0.0);
+    }
+    Some((f64::from(sigma) * upper_tail_inverse(INK / alpha)) as f32)
+}
+
+/// Smallest `x >= 0` with `Q(x) <= p`, by bisection, so the result is the same on every run.
+fn upper_tail_inverse(p: f64) -> f64 {
+    let (mut lo, mut hi) = (0.0_f64, 40.0_f64);
+    if upper_tail(lo) <= p {
+        return 0.0;
+    }
+    for _ in 0..80 {
+        let mid = 0.5 * (lo + hi);
+        if upper_tail(mid) > p {
+            lo = mid
+        } else {
+            hi = mid
+        }
+    }
+    hi
+}
+
+/// Gaussian upper tail `Q(x) = erfc(x / sqrt 2) / 2` for `x >= 0`, through the Chebyshev
+/// fit of `erfc` from Numerical Recipes (fractional error below 1.2e-7).
+fn upper_tail(x: f64) -> f64 {
+    let z = x / std::f64::consts::SQRT_2;
+    let t = 1.0 / (1.0 + 0.5 * z);
+    let poly = -1.265_512_23
+        + t * (1.000_023_68
+            + t * (0.374_091_96
+                + t * (0.096_784_18
+                    + t * (-0.186_288_06
+                        + t * (0.278_868_07
+                            + t * (-1.135_203_98
+                                + t * (1.488_515_87 + t * (-0.822_152_23 + t * 0.170_872_77))))))));
+    0.5 * t * (-z * z + poly).exp()
+}
+
+fn grow(r: Option<Rect>, reach: Option<f32>) -> Option<Rect> {
+    Some(r?.with_outset((reach?, reach?)))
+}
+
+fn join(a: Option<Rect>, b: Option<Rect>) -> Option<Rect> {
+    join_all([a, b])
+}
+
+fn join_all(rects: impl IntoIterator<Item = Option<Rect>>) -> Option<Rect> {
+    rects.into_iter().flatten().reduce(|mut a, b| {
         a.join(b);
         a
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::blur_reach;
+
+    #[test]
+    fn blur_reach_matches_the_gaussian_quantile() {
+        let near = |a: f32, b: f64| (f64::from(a) - b).abs() < 1e-4;
+        assert!(near(blur_reach(1.0, 1.0).unwrap(), 2.884_402_7));
+        assert!(near(blur_reach(10.0, 0.4).unwrap() / 10.0, 2.582_669_4));
+        assert_eq!(blur_reach(0.0, 1.0), Some(0.0));
+        assert_eq!(blur_reach(8.0, 0.4 / 255.0), None);
+    }
 }
