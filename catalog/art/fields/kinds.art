@@ -1,8 +1,7 @@
 # Four 64x64 squares side by side on a 256x64 canvas, each a different noise field with feature size 16 and seed:1, mapped through the blue ramp.
 # Left to right: simplex (finest, high-contrast winding blobs), perlin (smoother, larger soft blobs), worley (round bright cells separated by dark seams),
 # value (soft, low-contrast blobs). All four are clearly different textures, each fills its full square with no gaps.
-# Nodes do not share noise even with the same seed (#128), so the four textures differ by node as well as by kind.
-# KNOWN BUG #127: the simplex cell (left) renders about 24 percent of its area as one flat color, clipped. When fixed, it should show full-range blobs with no flat patches.
+# The simplex cell reaches the full dark and light ends of the ramp, with no flat patches. All four use seed:1 at the same size, so the textures differ by kind alone.
 @target fields/kinds.png 256x64
 
 rect 64x64 at:32,32 fill:simplex(16 seed:1) -> p.blue name:a

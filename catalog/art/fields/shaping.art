@@ -1,8 +1,7 @@
 # Eight 64x64 squares in two rows of four on a 256x128 canvas, all simplex fields through the green ramp, so only the field settings differ.
-# Top row, left to right: feature size 8 (fine, many small blobs), feature size 32 (coarse, about six dark blobs per square), oct:1 at size 24 (smooth, no fine detail), oct:5 at size 24 (smooth blobs with extra small-scale grain on top; separate nodes never share noise (#128), so the blob positions differ from the oct:1 cell).
-# Bottom row, left to right: fbm(simplex(24)) (layered, grainy detail), ridged(simplex(24)) (sharp bright creases/ridges instead of soft blobs),
+# Top row, left to right: feature size 8 (fine, many small blobs), feature size 32 (coarse, about six dark blobs per square), oct:1 at size 24 (smooth, no fine detail), oct:5 at size 24 (the same blob layout as the oct:1 cell, since the same seed gives the same noise, with extra small-scale grain on top). The simplex cells reach the full dark and light ends of the ramp, with no flat patches.
+# Bottom row, left to right: fbm(simplex(24)) (layered, grainy detail, the same layout as the oct:5 cell above), ridged(simplex(24)) (sharp bright creases/ridges instead of soft blobs),
 # simplex(24)*worley(24) (a product: darker overall than the plain simplex cells, since multiplying shrinks values), simplex(24 seed:2) (the two seed cells differ from each other in arrangement).
-# KNOWN BUG #127: the simplex cells (top row, and bottom-right) render about 24 percent of their area flat, clipped. When fixed, they should show full-range blobs with no flat patches.
 @target fields/shaping.png 256x128
 
 rect 64x64 at:32,32 fill:simplex(8 seed:1) -> p.green name:a

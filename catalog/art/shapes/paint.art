@@ -4,7 +4,7 @@
 # thick 6px ink outline.
 # (4) circle r18 with fill:p.green stroke:3 (width only): the ring is 3px of dark green, line(p.green), not ink and not
 # the fill green; the inside is p.green.
-# Bottom row: (5) circle r18 filled blue with blur:6: a soft disc with fuzzy edge, no crisp boundary. (6) the same
+# Bottom row: (5) circle r18 filled blue with blur:4: a soft disc with fuzzy edge, no crisp boundary. (6) the same
 # circle with blur:0, crisp edge, for contrast. (7) a green 40x40 rect with name:j1 jitter:1.5,60: the outline is
 # visibly wobbly, not a straight-sided square: amplitude 1.5px, wavelength 60px, so the edges bend in a few gentle
 # curves. (8) the same rect with name:j2 jitter:3,12: amplitude 3px, wavelength 12px, so the outline is visibly rougher
@@ -15,7 +15,7 @@ circle 18 at:32,32 fill:p.red
 circle 18 at:96,32 fill:none stroke:p.ink,4
 circle 18 at:160,32 fill:p.gold stroke:p.ink,6
 circle 18 at:224,32 fill:p.green stroke:3
-circle 18 at:32,96 fill:p.blue blur:6
+circle 18 at:32,96 fill:p.blue blur:4
 circle 18 at:96,96 fill:p.blue blur:0
 rect 40x40 at:160,96 fill:p.green name:j1 jitter:1.5,60
 rect 40x40 at:224,96 fill:p.green name:j2 jitter:3,12

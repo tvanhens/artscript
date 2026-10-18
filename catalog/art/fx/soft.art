@@ -2,12 +2,12 @@
 # Top row, left to right:
 # 1. fx blur 5: a red circle with no crisp edge, its rim a soft red gradient fading into paper.
 # 2. fx shadow 6,6 blur:2: a crisp blue square with a pale lavender-gray copy of itself (the default shadow color at 35% alpha) offset 6 px down and right, nearly sharp, visible only along the bottom and right sides. It is pale, not dark.
-# 3. fx glow 12 in gold: a crisp dark ink circle surrounded by a soft pale gold halo on every side that fades to paper.
+# 3. fx glow 6 in gold: a crisp dark ink circle surrounded by a soft pale gold halo on every side that fades to paper.
 # 4. fx inner 0,6 (dark ink at a:.7): a green circle with a dark green band along its top inside edge that fades downward. The bottom half stays plain green and nothing is drawn outside the circle.
 # Bottom row, left to right:
 # 5. fx blur 1: a red circle whose edge is only slightly soft, clearly crisper than cell 1.
-# 6. fx shadow 0,0 blur:10 in red: a crisp blue square (28x28) with a red halo of blur 6 on all four sides, evenly spread, with no offset. The halo ends before x=124, so it does not touch cell 7, and the canvas edge does not cut it.
-# 7. fx glow 10 in gold at a:.3: a dark ink circle with a gold halo much fainter than cell 3, barely visible.
+# 6. fx shadow 0,0 blur:6 in red: a crisp blue square (28x28) with a red halo of blur 6 on all four sides, evenly spread, with no offset. The halo ends before x=128, so it does not touch cell 7, and the canvas edge does not cut it.
+# 7. fx glow 6 in gold at a:.3: a dark ink circle with a gold halo much fainter than cell 3, barely visible.
 # 8. fx inner 0,6 in blue: a green circle with a blue band along its top inside edge, the bottom half plain green.
 # The same file as an SVG (profile:svg) draws cells 1, 2, 5 and 6 with native SVG filters (blur uses feGaussianBlur, shadow uses feDropShadow) and bakes cells 3, 4, 7 and 8 (glow, inner) to image tiles, so the SVG view shows the same eight cells, within a slight softness difference.
 @target fx/soft.png 256x128
@@ -17,15 +17,15 @@ circle 18 at:32,32 fill:p.red
   fx blur 5
 rect 36x36 at:96,32 fill:p.blue
   fx shadow 6,6 blur:2
-circle 16 at:160,32 fill:p.ink
-  fx glow 12 color:p.gold a:1
+circle 12 at:160,32 fill:p.ink
+  fx glow 6 color:p.gold a:1
 circle 18 at:224,32 fill:p.green
   fx inner 0,6 blur:3 color:p.ink a:.7
 circle 18 at:32,92 fill:p.red
   fx blur 1
 rect 28x28 at:96,92 fill:p.blue
   fx shadow 0,0 blur:6 color:p.red a:1
-circle 16 at:160,92 fill:p.ink
-  fx glow 10 color:p.gold a:.3
+circle 12 at:160,92 fill:p.ink
+  fx glow 6 color:p.gold a:.3
 circle 18 at:224,92 fill:p.green
   fx inner 0,6 blur:3 color:p.blue

@@ -6,8 +6,7 @@
 # Right: an open path "M-24 0 Q-12 -24 0 0 T24 0" at 160,32 stroked 3px ink with fill:none, a wave: a hump up then a
 # hump down.
 # Below it: the same wave path at 160,72 without fill:none, stroked 3px ink.
-# KNOWN BUG #126: an open path gets a closed gray fill between the wave and its chord. When fixed, it should show only
-# the wave stroke, same as the wave above it.
+# An open path with no fill: is not closed and not filled. It shows only the wave stroke, the same as the wave above it, with no gray between the wave and its chord.
 @target shapes/paths.png 192x96
 
 path "M0 0 c10-20 30-20 40 0z" scale:1.2 at:8,56 fill:p.red stroke:p.ink,2
