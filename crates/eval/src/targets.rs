@@ -54,6 +54,8 @@ pub struct TargetJob {
     pub matrix: Vec<(String, MatrixValue)>,
     pub size: (f32, f32),
     pub bg: Option<Expr>,
+    /// The canvas crops a larger scene, so `off-canvas` stays quiet for this target.
+    pub viewport: bool,
     /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
     pub pivot: Option<Expr>,
     pub profile: Profile,
@@ -200,6 +202,10 @@ fn time_literal(e: &Expr) -> Option<f64> {
     }
 }
 
+const TARGET_KEYS: [&str; 9] = [
+    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot",
+];
+
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
     let Some(raw_path) = d.path.clone() else {
         return Err(
@@ -214,6 +220,33 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
         },
         _ => return Err(size_error(d.span)),
     };
+    let mut viewport = false;
+    for arg in &d.args[1..] {
+        match arg {
+            Expr::Ident(w) if w == "viewport" => viewport = true,
+            other => {
+                let msg = match other {
+                    Expr::Ident(w) => format!("unknown target word `{w}`"),
+                    _ => "`@target` takes only the word `viewport` after the size".to_string(),
+                };
+                return Err(Diagnostic::error("E0206", d.span, msg)
+                    .with_fix("remove it, or write `viewport`"));
+            }
+        }
+    }
+    if let Some(n) = d
+        .named
+        .iter()
+        .find(|n| !TARGET_KEYS.contains(&n.key.as_str()))
+    {
+        return Err(
+            Diagnostic::error("E0206", d.span, format!("unknown target key `{}`", n.key))
+                .with_fix(format!(
+                    "use one of {}, or the bare word `viewport`",
+                    TARGET_KEYS.join(", ")
+                )),
+        );
+    }
     let named = |k: &str| d.named.iter().find(|n| n.key == k).map(|n| &n.value);
     let scales: Vec<f32> = match named("scale") {
         None => project.manifest.scale.clone(),
@@ -386,6 +419,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 matrix,
                 size,
                 bg: named("bg").cloned(),
+                viewport,
                 pivot: named("pivot").cloned(),
                 profile,
                 bake_scale,

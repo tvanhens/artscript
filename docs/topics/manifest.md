@@ -47,4 +47,4 @@ Every table and key is optional, and a missing key takes the default named below
 | `unused` | L0103 | an imported or private name that nothing reads (see `targets`) |
 | `positional-seed` | L0104 | an unnamed statement whose randomness comes from its position (see `fields`) |
 
-Each lint is `warn` unless the table sets it. The levels are `off`, `info`, `warn`, and `error`. `off` drops the lint. `info` prints it and keeps exit code 0. `warn` makes `build` and `check` exit 3, unless `build --allow-warnings` is set. `error` makes them exit 2. A compile error still exits 1. A full-bleed scene that draws past the canvas edge on purpose sets `off-canvas = "off"`.
+Each lint is `warn` unless the table sets it. The levels are `off`, `info`, `warn`, and `error`. `off` drops the lint. `info` prints it and keeps exit code 0. `warn` makes `build` and `check` exit 3, unless `build --allow-warnings` is set. `error` makes them exit 2. A compile error still exits 1. A scene that draws past the canvas edge on purpose marks its target `@target <path> <W>x<H> viewport` (see `targets`); `off-canvas = "off"` turns the lint off for every target.
