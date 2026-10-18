@@ -3367,6 +3367,20 @@ fn a_file_that_binds_p_itself_keeps_its_own_p() {
 }
 
 #[test]
+fn an_entry_file_top_level_let_p_keeps_its_own_p_in_its_defs() {
+    let src = format!(
+        "@target t.png 100x100 palette:elite\n{ELITE}\nlet p = hollow\n\
+         def mine\n  rect 10x10 fill:p.sky name:a\n\
+         mine name:m\nrect 10x10 fill:p.sky name:r\n"
+    );
+    let ev = palette_run(&src, &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "r")), "#333333");
+    assert_eq!(fill_hex(node(&s, "m.a")), "#333333");
+}
+
+#[test]
 fn an_instance_palette_that_is_not_a_palette_is_e0320() {
     let src = format!(
         "@target t.png 40x40\nuse d {{ swatch }}\nswatch name:ok\nswatch palette:#ff0000 name:bad\n\n{ELITE}"

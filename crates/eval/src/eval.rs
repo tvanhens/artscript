@@ -1431,10 +1431,7 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -3588,10 +3585,7 @@ impl<'a> Evaluator<'a> {
                     Err(_) => Value::None,
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
