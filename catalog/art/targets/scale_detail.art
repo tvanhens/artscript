@@ -1,0 +1,12 @@
+# `scale:1,2` with `{w}` in the path writes two PNGs from one 64x32 canvas: scale_detail_64.png (64x32) and scale_detail_128.png (128x64), with no @2x suffix.
+# Each shows two red circles (r 10) with ink outlines on the paper background, centered at (16,16) on the left and (48,16) on the right.
+# The left circle comes from a def that divides its outline by `scale`, so its outline is 2 pixels thick in both images.
+# The right circle has a fixed 2 canvas unit outline, so it is 2 pixels thick in scale_detail_64 and 4 pixels thick in scale_detail_128.
+# In scale_detail_64 the two circles look the same. In scale_detail_128 the left outline is half as thick as the right one.
+@target targets/scale_detail_{w}.png 64x32 scale:1,2
+
+def ring r:10 width:2
+  circle r fill:p.red stroke:p.ink,width/scale
+
+ring at:16,16 name:fixed_px
+circle 10 at:48,16 fill:p.red stroke:p.ink,2
