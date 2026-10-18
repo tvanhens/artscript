@@ -4538,3 +4538,19 @@ fn a_field_below_a_threshold_masks_the_complement() {
     let mismatched = above.iter().zip(&below).filter(|(a, b)| (*a + *b - 255).abs() > 2).count();
     assert!(mismatched < 16, "{mismatched} pixels are in both masks or neither");
 }
+
+#[test]
+fn an_off_patch_on_one_copy_hides_that_copy_and_counts_as_a_match() {
+    let def = "@target t.png 64x64\ndef comp4\n  repeat 5\n    circle 3 at:10,0 name:dot8\n";
+    for src in [
+        format!("{def}comp4 name:b at:32,32\n  .dot8.1 off\n"),
+        format!("{def}anim hide dur:1s\n  .dot8.1 off\ncomp4 name:b at:32,32\n  play hide\n"),
+        format!("{def}anim hide dur:1s\n  .b.dot8.1 off\ncomp4 name:b at:32,32\nplay hide\n"),
+    ] {
+        let s = scene(&src);
+        for i in [0, 2, 3, 4] {
+            node(&s, &format!("b.dot8.{i}"));
+        }
+        assert!(!paths(&s).iter().any(|p| p == "b.dot8.1"), "{src}\n{:?}", paths(&s));
+    }
+}
