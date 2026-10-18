@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 
 use artscript_ir::{
-    Clip, Color, Effect, EffectInput, EffectOp, Node, NodeKind, Paint as IrPaint, Path, Shape,
-    Stroke,
+    Clip, Color, Effect, EffectInput, EffectOp, Mask, MaskSource, Node, NodeKind, Paint as IrPaint,
+    Path, Shape, Stroke,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
@@ -641,6 +641,9 @@ fn gather(
             })
             .collect();
     }
+    if let Some(mask) = &node.mask {
+        local = mask_regions(local, mask)?;
+    }
     for region in local {
         out.push(Region {
             path: region.path.with_transform(&here),
@@ -652,6 +655,41 @@ fn gather(
         });
     }
     Ok(())
+}
+
+/// A node mask cuts each region to the mask's own regions. A field or inverted mask keeps the
+/// whole region, marked translucent because the mask can lower its alpha anywhere.
+fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, RenderError> {
+    let nodes = match &mask.source {
+        MaskSource::Nodes(nodes) if !mask.invert => nodes,
+        _ => {
+            return Ok(regions
+                .into_iter()
+                .map(|region| Region { coverage: Coverage::Translucent, ..region })
+                .collect());
+        }
+    };
+    let mut kept = Vec::new();
+    for node in nodes {
+        gather(node, &Matrix::new_identity(), false, &mut kept)?;
+    }
+    Ok(regions
+        .iter()
+        .flat_map(|region| {
+            kept.iter().filter_map(move |k| {
+                skia_safe::op(&region.path, &k.path, PathOp::Intersect)
+                    .filter(|p| !p.is_empty())
+                    .map(|path| Region {
+                        path,
+                        coverage: if region.coverage == Coverage::Opaque && k.coverage == Coverage::Opaque {
+                            Coverage::Opaque
+                        } else {
+                            Coverage::Translucent
+                        },
+                    })
+            })
+        })
+        .collect())
 }
 
 /// Fill path, plus the stroke's own filled outline.
