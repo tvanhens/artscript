@@ -15,7 +15,7 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 | mirror | `mirror x` draws its block and the block flipped across x = 0 |
 | repeat, grid | `repeat 8 rot:45`, `grid 4x3 gap:8` (`i`, `row`, `col` in the block). `cell:20x20` sets the cell size, which is otherwise the first copy's bounds. A copy reads references in its own cell. Without `cell:`, the first copy sets the pitch, so it cannot read a position from outside the grid (E0352) |
 
-Any node takes `at: rot: scale: skew: pivot: a:` (opacity), `blend:` (`multiply screen overlay soft_light add erase` …), `z:behind|front|N`, `name:`, `style:`. `scale:` and `skew:` take a number or a vector, a skew stays strictly between -90 and 90 degrees, and the transform must be finite; anything else is E0320.
+Any node takes `at: rot: scale: skew: pivot: a:` (opacity), `blend:` (`multiply screen overlay soft_light add erase` …), `z:behind|front|N`, `name:`, `style:`. `scale:` and `skew:` take a number or a vector, a skew stays strictly between -90 and 90 degrees, and the transform must be finite; anything else is E0320. A key that a built-in verb does not read is E0321, and the fix names the closest key it does read.
 
 Paint keys:
 

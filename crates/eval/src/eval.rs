@@ -80,16 +80,35 @@ const NODE_KEYS: &[&str] = &[
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
-/// How many positional items a built-in verb reads, after a layer or group name,
-/// `closed`, and mirror's `x` or `y` are set aside. `None` when `verb` is not built in.
-fn builtin_takes(verb: &str) -> Option<usize> {
-    Some(match verb {
-        "rect" | "circle" | "ellipse" | "poly" | "star" | "path" | "blob" | "copy" | "inside"
-        | "outside" | "repeat" | "grid" => 1,
-        "subtract" | "union" | "intersect" | "xor" | "layer" | "group" | "mirror" => 0,
-        "curve" => usize::MAX,
-        _ => return None,
-    })
+const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur"];
+
+struct Builtin {
+    takes: usize,
+    keys: &'static [&'static str],
+}
+
+impl Builtin {
+    fn of(verb: &str) -> Option<Builtin> {
+        let (takes, keys): (usize, &[&str]) = match verb {
+            "rect" => (1, &["r", "jitter", "seed"]),
+            "circle" | "ellipse" | "path" | "copy" => (1, &["jitter", "seed"]),
+            "poly" => (1, &["r", "round", "jitter", "seed"]),
+            "star" => (1, &["r", "inner", "round", "jitter", "seed"]),
+            "blob" => (1, &["points", "wobble", "jitter", "seed"]),
+            "curve" => (usize::MAX, &["tension", "round", "jitter", "seed"]),
+            "subtract" | "union" | "intersect" | "xor" => (0, &["jitter", "seed"]),
+            "repeat" => (1, &["step"]),
+            "grid" => (1, &["gap", "cell"]),
+            "inside" | "outside" => (1, &[]),
+            "layer" | "group" | "mirror" => (0, &[]),
+            _ => return None,
+        };
+        Some(Builtin { takes, keys })
+    }
+
+    fn all_keys(&self) -> impl Iterator<Item = &'static str> {
+        [NODE_KEYS, PAINT_KEYS, self.keys].into_iter().flatten().copied()
+    }
 }
 
 pub(crate) struct Instance {
@@ -1711,8 +1730,8 @@ impl<'a> Evaluator<'a> {
         if matches!(comp, Some(None)) {
             return Ok(());
         }
-        let known = builtin_takes(verb).is_some();
-        if comp.is_none() && !known {
+        let builtin = Builtin::of(verb);
+        if comp.is_none() && builtin.is_none() {
             if sc.module.lost(verb) {
                 return Err(Fail::reported());
             }
@@ -1754,10 +1773,15 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .collect();
         if comp.is_none()
-            && let Some(takes) = builtin_takes(verb)
-            && pos_exprs.len() > takes
+            && let Some(b) = &builtin
         {
-            return Err(self.extra_positional(verb, takes, &pos_exprs, sc));
+            if pos_exprs.len() > b.takes {
+                return Err(self.extra_positional(verb, b.takes, &pos_exprs, sc));
+            }
+            let (file, node) = (sc.file().to_string(), sc.node_name());
+            for n in named.iter().filter(|n| !b.all_keys().any(|k| k == n.key)) {
+                self.report(unknown_key(verb, b, &n.key), &file, st.span, &node);
+            }
         }
         let key = sc.node_key(st.span);
         let path = key.to_string();
@@ -4818,10 +4842,41 @@ fn family_error(label: &str, entries: &[RefVal], owner: &Key) -> Fail {
 }
 
 fn is_paint_key(k: &str) -> bool {
-    matches!(
-        k,
-        "fill" | "stroke" | "cap" | "join" | "dash" | "taper" | "blur"
-    )
+    PAINT_KEYS.contains(&k)
+}
+
+fn unknown_key(verb: &str, b: &Builtin, key: &str) -> Fail {
+    let f = fail("E0321", format!("`{verb}` has no key `{key}`"));
+    let near = b
+        .all_keys()
+        .map(|k| (osa_distance(key, k), k))
+        .min_by_key(|(d, _)| *d)
+        .filter(|(d, _)| *d <= (key.len() + 1) / 3);
+    match near {
+        Some((_, k)) => f.fix(format!("did you mean `{k}:`?")),
+        None => f
+            .note(format!("keys: {}", b.all_keys().collect::<Vec<_>>().join(", ")))
+            .fix("use one of the listed keys"),
+    }
+}
+
+fn osa_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let mut d = vec![vec![0; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    d[0] = (0..=b.len()).collect();
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            d[i][j] = (d[i - 1][j] + 1).min(d[i][j - 1] + 1).min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
+            }
+        }
+    }
+    d[a.len()][b.len()]
 }
 
 fn mask_below(f: &artscript_ir::Field, t: f64) -> Value {
