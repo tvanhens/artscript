@@ -1580,7 +1580,7 @@ impl<'a> Evaluator<'a> {
     ) -> Rc<RefCell<Record>> {
         record.path = key.to_string();
         record.key = key.clone();
-        record.home = Some(sc.names.clone());
+        record.home = Some(Rc::downgrade(&sc.names));
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
         let name = sc.names.borrow().region().decl(decl).name.clone();
