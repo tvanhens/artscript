@@ -142,6 +142,9 @@ pub(crate) struct Host {
 #[derive(Clone)]
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
+    /// Def parameters whose default is a brush, by their index in `env`. A call on one is
+    /// checked against the default's declaration whatever the instance bound.
+    pub brush_params: Rc<Vec<(usize, Rc<BrushVal>)>>,
     pub module: Rc<Module>,
     owner: Key,
     parent: Key,
@@ -1261,6 +1264,7 @@ impl<'a> Evaluator<'a> {
         let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
+            brush_params: Rc::default(),
             module: module.clone(),
             owner: Key::root(),
             parent: Key::root(),
@@ -3044,11 +3048,15 @@ impl<'a> Evaluator<'a> {
         let mut def_scope = self.module_scope(&module);
         def_scope.palette = palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
+        let mut brush_params = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
             let default = self.expr(&p.value, &dsc);
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
+            if let Ok(Value::Brush(b)) = &default {
+                brush_params.push((env.len(), b.clone()));
+            }
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
                     if let Ok(d) = &default
@@ -3144,6 +3152,7 @@ impl<'a> Evaluator<'a> {
             sc.depth + 1,
         );
         body_scope.env = env;
+        body_scope.brush_params = Rc::new(brush_params);
         body_scope.module = module;
         body_scope.ids = def_ids;
         body_scope.inst = Some(inst.clone());

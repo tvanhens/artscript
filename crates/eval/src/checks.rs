@@ -140,6 +140,7 @@ impl Evaluator<'_> {
         let mut rsc = sc.clone();
         rsc.module = module;
         rsc.env = Vec::new();
+        rsc.brush_params = Rc::default();
         for p in &rule.params {
             let v = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => v.clone(),

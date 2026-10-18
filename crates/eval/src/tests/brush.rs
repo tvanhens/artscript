@@ -186,6 +186,26 @@ fn a_def_takes_a_brush_parameter_and_recalls_it_with_overrides() {
 }
 
 #[test]
+fn a_call_on_a_brush_parameter_is_checked_against_its_default_for_every_instance() {
+    let stone = (
+        "lib/stone.art",
+        "use brushes { dry }\ndef stone size:20 brush:dry\n  rect size fill:#ff0000 brush:brush(scal:.5) name:base\n",
+    );
+    for instances in ["stone at:30,50 brush:none name:a\n", "stone at:30,50 brush:none name:a\nstone at:70,50 name:b\n"] {
+        let ds = errors(&format!("@target t.png 100x100\nuse stone\n{instances}"), &[LIB, stone]);
+        let d = ds.iter().find(|d| d.code == "E0361").unwrap_or_else(|| panic!("{instances}: {}", show(&ds)));
+        assert!(d.message.contains("no parameter `scal`"), "{d}");
+        assert_eq!((d.file.as_str(), d.span.line), ("lib/stone.art", 3), "{d}");
+    }
+    let lib = ("lib/stone.art", "use brushes { dry }\ndef stone size:20 brush:dry\n  rect size fill:#ff0000 brush:brush(strength:nope) name:base\n");
+    let ds = errors("@target t.png 100x100\nuse stone\nstone at:30,50 brush:none name:a\n", &[LIB, lib]);
+    assert!(ds.iter().any(|d| d.code == "E0361" && d.message.contains("expects a number, got a word")), "the argument is evaluated and checked: {}", show(&ds));
+    let lib = ("lib/stone.art", "def stone size:20 tone:none\n  rect size fill:tone(a:1) name:base\n");
+    let ds = errors("@target t.png 100x100\nuse stone\nstone at:30,50 name:a\n", &[lib]);
+    assert!(ds.iter().any(|d| d.message.contains("unknown function `tone`")), "{}", show(&ds));
+}
+
+#[test]
 fn a_layer_brush_reaches_a_def_body_through_the_inherited_style() {
     let box_lib = ("lib/boxy.art", "def boxy size:20\n  rect size fill:#ff0000 name:face\n");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nuse boxy\nlayer back brush:dry\n  boxy at:50,50 name:a\nboxy at:20,20 name:b\n", &[LIB, box_lib]);

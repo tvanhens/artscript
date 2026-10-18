@@ -326,7 +326,6 @@ impl Evaluator<'_> {
         })
     }
 
-    /// `NAME(k:v ...)` where `NAME` resolved to a brush.
     pub(crate) fn call_brush(
         &mut self,
         b: &BrushVal,
@@ -334,6 +333,30 @@ impl Evaluator<'_> {
         named: &[Named],
         sc: &Scope,
     ) -> R<Value> {
+        let (pos, nm) = self.brush_args(args, named, sc)?;
+        Ok(Value::Brush(Rc::new(b.with(&pos, &nm)?)))
+    }
+
+    /// `brush(k:v ...)` on a def parameter whose default is a brush. The arguments are checked
+    /// against the default whatever the instance bound, so every instance reports the same
+    /// errors, and then applied to the bound brush. A bound `none` stays `none`.
+    pub(crate) fn call_brush_param(
+        &mut self,
+        default: &BrushVal,
+        bound: Option<Value>,
+        args: &[Expr],
+        named: &[Named],
+        sc: &Scope,
+    ) -> R<Value> {
+        let (pos, nm) = self.brush_args(args, named, sc)?;
+        default.with(&pos, &nm)?;
+        Ok(match bound {
+            Some(Value::Brush(b)) => Value::Brush(Rc::new(b.with(&pos, &nm)?)),
+            _ => Value::None,
+        })
+    }
+
+    fn brush_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<(Vec<Value>, Vec<(String, Value)>)> {
         let mut pos = Vec::with_capacity(args.len());
         for e in args {
             pos.push(self.expr(e, sc)?);
@@ -342,7 +365,7 @@ impl Evaluator<'_> {
         for n in named {
             nm.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
-        Ok(Value::Brush(Rc::new(b.with(&pos, &nm)?)))
+        Ok((pos, nm))
     }
 
     /// The `brush:` value as an ordered stack. A bare word that is not a brush names the nearest
