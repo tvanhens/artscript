@@ -9,7 +9,7 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 | poly, star | `poly 6 r:20 round:3`, `star 5 r:20 inner:.5` (at most 100000 points; a count that is not finite or is larger is E0320) |
 | curve | `curve 0,0 20,-15 40,0`, or `curve pts` when `pts` is one list of points. `closed` fills, `tension:.5`. `round:r` on a closed curve at `tension:0` |
 | blob | `blob 30 seed:4 wobble:.2` organic closed shape |
-| path | `path "M0 0 c10-20 30-20 40 0z"` |
+| path | `path "M0 0 c10-20 30-20 40 0z"`. A path is closed only when every subpath ends in `Z` or `z`. Otherwise it is open like a curve without `closed` |
 | copy | `copy @body at:-20,-8` reuses a named node's outline |
 | booleans | `subtract`, `union`, `intersect`, `xor` with shape operands as children, first minus the rest |
 | mirror | `mirror x` draws its block and the block flipped across x = 0 |
