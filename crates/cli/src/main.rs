@@ -361,7 +361,7 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
             artscript_eval::sample(project, job).diagnostics
         } else {
-            artscript_eval::evaluate(project, job).diagnostics
+            artscript_eval::evaluate_outputs(project, job).diagnostics
         };
         diags.extend(frame_diags);
     }

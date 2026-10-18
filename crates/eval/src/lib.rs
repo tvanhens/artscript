@@ -53,7 +53,7 @@ pub struct Evaluation {
 }
 
 /// What a scene exposes to the program that places its image, in canvas units.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rig {
     /// The `pivot:` point, `None` when the target has no `pivot:`.
     pub pivot: Option<(f64, f64)>,
@@ -107,10 +107,7 @@ impl OutputScenes {
 pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
     let mut scales: Vec<f32> = Vec::new();
     for out in &job.outputs {
-        let scale = match out.format {
-            Format::Png => out.scale,
-            Format::Svg | Format::Gif => job.bake_scale,
-        };
+        let scale = job.sample_scale(out);
         if !scales.contains(&scale) {
             scales.push(scale);
         }

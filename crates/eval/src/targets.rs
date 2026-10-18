@@ -66,6 +66,14 @@ pub struct TargetJob {
 }
 
 impl TargetJob {
+    /// The scale `out` is drawn from: a PNG output's own `scale:`, else the job's `bake_scale`.
+    pub fn sample_scale(&self, out: &OutputSpec) -> f32 {
+        match out.format {
+            Format::Png => out.scale,
+            Format::Svg | Format::Gif => self.bake_scale,
+        }
+    }
+
     /// What the file reads as `scale`: a PNG output's own scale, which `evaluate_outputs` sets as the
     /// job's `bake_scale`, and 1 for an SVG or GIF.
     pub fn draw_scale(&self) -> f64 {
