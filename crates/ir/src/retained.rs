@@ -44,10 +44,9 @@ fn fill_bytes(fill: &Fill) -> u64 {
     paint_bytes(&fill.paint) + vec_bytes(&fill.marks, mark_bytes)
 }
 
-/// The program text is shared through its `Arc`, so it is counted by the first mark that holds it
-/// and by none other; every mark counts its own uniforms and origin.
+/// The program text is shared with eval's declaration through its `Arc`, so no scene owns it.
 fn mark_bytes(mark: &AreaMark) -> u64 {
-    vec_bytes(&mark.stage.uniforms, |(name, _)| str_bytes(name)) + str_bytes(&mark.stage.origin)
+    vec_bytes(&mark.stage.uniforms, |(name, _)| str_bytes(name))
 }
 
 fn stroke_bytes(stroke: &Stroke) -> u64 {

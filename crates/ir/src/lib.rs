@@ -154,8 +154,6 @@ pub struct Stage {
     pub uniforms: Vec<(String, UniformValue)>,
     /// The site seed, reduced to 32 bits. Render derives the shader's seed uniforms from it.
     pub seed: u32,
-    /// `file:line` of the brush declaration, for internal errors.
-    pub origin: String,
 }
 
 #[derive(Clone, Debug)]

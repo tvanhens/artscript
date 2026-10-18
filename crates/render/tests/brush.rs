@@ -18,7 +18,6 @@ fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformV
         program: Arc::new(program),
         uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
         seed,
-        origin: "test:1".into(),
     }
 }
 

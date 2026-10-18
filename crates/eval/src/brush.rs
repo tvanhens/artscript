@@ -20,8 +20,6 @@ use crate::value::{Kind, Value};
 /// A `brush` declaration after `check` accepted its program. Shared by every value made from it.
 pub struct BrushDecl {
     pub name: String,
-    /// `file:line` of the declaration.
-    pub origin: String,
     /// Declared uniforms in head order.
     pub params: Vec<(String, UniformKind)>,
     pub program: Arc<Program>,
@@ -318,7 +316,6 @@ impl Evaluator<'_> {
         Ok(BrushVal {
             decl: Rc::new(BrushDecl {
                 name: name.to_string(),
-                origin: format!("{}:{}", module.path, span.line),
                 params: decl_params,
                 program: Arc::new(program),
             }),
@@ -456,7 +453,6 @@ impl Evaluator<'_> {
                             .map(|((n, _), u)| (n.clone(), *u))
                             .collect(),
                         seed: (seed ^ (seed >> 32)) as u32,
-                        origin: b.decl.origin.clone(),
                     },
                     dir_deg: b.place.dir_deg as f32,
                     cos_sin: [rad.cos() as f32, rad.sin() as f32],

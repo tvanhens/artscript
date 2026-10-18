@@ -55,7 +55,6 @@ fn a_brush_declares_a_value_and_a_fill_gets_one_mark_per_stage() {
     assert_eq!(a[0].stage.uniforms[0], ("strength".into(), UniformValue::Float(0.5)));
     assert_eq!(a[0].dir_deg, 0.0);
     assert_eq!(a[0].reach, 0.0);
-    assert_eq!(a[0].stage.origin, "lib/brushes.art:1");
     let b = marks(&s, "b");
     assert_eq!(b.len(), 2);
     assert_eq!(b[0].stage.uniforms[0].1, UniformValue::Float(0.5));
@@ -319,7 +318,7 @@ fn std_brushes_import_like_any_library_and_a_shadowing_file_is_refused() {
     assert_eq!(marks(&s, "a")[0].dir_deg, -8.0);
     assert_eq!(marks(&s, "b").len(), 2);
     let s = ok("@target t.png 100x100\nuse std/brushes as b\nrect 40x40 at:30,50 fill:#ff0000 brush:b.chip name:a\n", &[]);
-    assert!(marks(&s, "a")[0].stage.origin.starts_with("std/brushes.art:"));
+    assert_eq!(marks(&s, "a").len(), 1);
     let d = first("@target t.png 100x100\nuse std/nope { x }\n", &[], "E0210");
     assert!(d.notes.iter().any(|n| n.contains("std/brushes")), "{d}");
     assert!(d.fix.as_deref().unwrap().contains("artscript std"), "{d}");
