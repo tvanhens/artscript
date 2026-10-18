@@ -160,9 +160,41 @@ fn check_json_reports_failed_asserts_with_exit_2() {
 }
 
 #[test]
-fn monk_gif_frames_match_the_sampled_palette() {
-    let dir = fixture("gif");
-    let built = artscript(&dir, &["build", "--only", "character/moss_monk_*.gif", "--backend", "cpu"]);
+fn gif_frames_match_the_sampled_palette() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gif-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gif\"\nout = \"assets\"\nlib = []\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/orb.art"),
+        "@target orb_{c}.gif 96x96 bg:#f1ede4 fps:24 each c:[spin pulse] clip:c
+
+palette p
+  ramp moss #6f8f4e 5
+  color ink #2b2440
+
+group at:48,48 name:orb
+  circle 30 fill:grad(down p.moss.3 p.moss.1)
+  ellipse 12,6 at:-10,-14 fill:p.moss.4 a:.8 blur:3
+  circle 5 at:12,0 fill:p.ink
+
+anim spin dur:500ms loop
+  .orb rot:key(0 180 360)
+anim pulse dur:300ms
+  .orb scale:key(1 1.2 1)
+
+if clip == spin
+  play spin
+if clip == pulse
+  play pulse
+",
+    )
+    .unwrap();
+    let built = artscript(&dir, &["build", "--backend", "cpu"]);
     assert_eq!(built.status.code(), Some(0), "{}", text(&built));
     let project = artscript_eval::load(&dir).unwrap();
     let plan = artscript_eval::plan(&project);
@@ -175,7 +207,7 @@ fn monk_gif_frames_match_the_sampled_palette() {
                 .any(|o| o.format == artscript_eval::Format::Gif)
         })
         .collect();
-    assert_eq!(jobs.len(), 3, "idle, blink and yawn");
+    assert_eq!(jobs.len(), 2, "spin and pulse");
     for job in jobs {
         let sampled = artscript_eval::sample(&project, job);
         let bad: Vec<_> = sampled
@@ -189,8 +221,8 @@ fn monk_gif_frames_match_the_sampled_palette() {
         let mut reader = gif::DecodeOptions::new()
             .read_info(std::io::Cursor::new(&bytes))
             .unwrap();
-        assert_eq!(reader.width(), 512);
-        assert_eq!(reader.height(), 512);
+        assert_eq!(reader.width(), 96);
+        assert_eq!(reader.height(), 96);
         let expect_repeat = if sampled.loops {
             gif::Repeat::Infinite
         } else {
@@ -206,7 +238,7 @@ fn monk_gif_frames_match_the_sampled_palette() {
                 artscript_render::Backend::Cpu,
             )
             .unwrap();
-            assert_eq!((w, h), (512, 512));
+            assert_eq!((w, h), (96, 96));
             rasters.push(px);
         }
         let flat: Vec<u8> = rasters.iter().flatten().copied().collect();
@@ -219,7 +251,7 @@ fn monk_gif_frames_match_the_sampled_palette() {
                 "frame {seen} {}",
                 job.outputs[0].path
             );
-            assert_eq!((frame.width, frame.height), (512, 512));
+            assert_eq!((frame.width, frame.height), (96, 96));
             assert!(frame.palette.is_none(), "one global palette");
             let src = &rasters[seen];
             assert_eq!(frame.buffer.len(), src.len() / 4);
@@ -541,7 +573,7 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
         "@target taper.png 256x256 scale:1,2",
     ] {
         fs::write(dir.join("art/taper.art"), format!("{target}\n{curve}")).unwrap();
-        let out = artscript(&dir, &["build", "--backend", "cpu"]);
+        let out = artscript(&dir, &["build", "--only", "taper.png", "--backend", "cpu"]);
         assert!(out.status.success(), "{target}: {}", text(&out));
         builds.push(fs::read(dir.join("assets/taper.png")).unwrap());
     }
