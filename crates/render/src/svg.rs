@@ -551,7 +551,9 @@ impl Writer {
         self.defs.push_str(mid);
         self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
         self.defs.push_str(area);
-        self.defs.push_str(" mask-type=\"alpha\">\n");
+        self.defs.push_str(" mask-type=\"");
+        self.defs.push_str(if clip.invert { "luminance" } else { "alpha" });
+        self.defs.push_str("\">\n");
         if let Some(t) = transform {
             self.defs.push_str("      <g transform=\"");
             self.defs.push_str(t);

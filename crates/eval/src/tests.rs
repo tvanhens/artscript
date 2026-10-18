@@ -4383,6 +4383,17 @@ fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
 }
 
 #[test]
+fn an_svg_outside_block_masks_by_luminance_so_its_black_hole_hides() {
+    for feather in ["", " feather:2"] {
+        let s = scene(&format!("@target t.svg 60x40\ncircle 10 at:30,20 fill:none name:hole\noutside @hole{feather}\n  rect 60x40 at:30,20 fill:#80c0ff\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let mask = svg.lines().find(|l| l.contains("<mask")).unwrap_or_else(|| panic!("no mask in {svg}"));
+        assert!(svg.contains("fill=\"#000000\""), "outside{feather}: no black hole: {svg}");
+        assert!(mask.contains("mask-type=\"luminance\""), "outside{feather}: an alpha mask keeps the black hole: {svg}");
+    }
+}
+
+#[test]
 fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     let s = scene(
         "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
