@@ -4224,9 +4224,6 @@ impl<'a> Evaluator<'a> {
                     .unwrap_or(Value::None),
             );
         }
-        if name == "scale" {
-            return Some(Value::Num(self.job.draw_scale()));
-        }
         if name == "t" {
             return Some(Value::Num(self.local_time()));
         }
@@ -4249,6 +4246,7 @@ impl<'a> Evaluator<'a> {
             return Some(v);
         }
         match name {
+            "scale" => Some(Value::Num(self.job.draw_scale())),
             "true" => Some(Value::Bool(true)),
             "false" => Some(Value::Bool(false)),
             "none" => Some(Value::None),

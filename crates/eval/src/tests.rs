@@ -5480,3 +5480,21 @@ fn each_scale_has_the_rig_its_own_scene_placed() {
     assert_eq!(out.at(1.0).unwrap().rig.pivot, Some((10.0, 15.0)));
     assert_eq!(out.at(2.0).unwrap().rig.pivot, Some((10.0, 20.0)));
 }
+
+#[test]
+fn a_let_named_scale_wins_over_the_output_scale() {
+    let out = outputs("@target t.png 40x40 scale:2\nlet scale = 3\ncircle scale name:c\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 2.0, "c"), 6.0);
+}
+
+#[test]
+fn a_library_let_named_scale_wins_inside_its_own_defs() {
+    let ev = run_with(
+        "@target t.png 40x40 scale:2\nuse lib/dots\ndot name:d\n",
+        &[("lib/dots.art", "let scale = 3\ndef dot\n  circle scale name:c\n")],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(shape(&s, "d.c").geometry.compute_tight_bounds().width(), 6.0);
+}
