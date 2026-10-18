@@ -3,7 +3,7 @@
 | kind | examples |
 |---|---|
 | number | `12`, `.5`, `-3` (canvas units) |
-| percent | `50%` of the current frame (the canvas, a parent shape's bounds, or a def's `size` box) |
+| percent | `50%` of the current frame (the canvas, a parent shape's bounds, a moved group's box around its origin, or a def's `size` box) |
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | time | `200ms`, `2s`, a bare number in a time position is seconds |
 | vector / size | `14,0` (no spaces around the comma), `256x256`. A vector is a size, so `rect w,h` sizes from variables. `rect w x h` is E0321 |

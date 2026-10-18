@@ -1663,6 +1663,7 @@ impl<'a> Evaluator<'a> {
         )
     }
 
+    /// Returns `None` when a live `off` hides the node, else how many named args the anims appended.
     fn land(
         &mut self,
         a: &mut Args,
@@ -1671,7 +1672,7 @@ impl<'a> Evaluator<'a> {
         frame: Rect,
         sc: &Scope,
         path: &str,
-    ) -> bool {
+    ) -> Option<usize> {
         let win = |a: &&PendingPatch, b: &&PendingPatch| {
             b.origin_depth
                 .cmp(&a.origin_depth)
@@ -1682,6 +1683,7 @@ impl<'a> Evaluator<'a> {
         for p in statics {
             a.named.extend(p.named.iter().cloned());
         }
+        let rest = a.named.len();
         let mut chans: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_some()).collect();
         chans.sort_by(win);
         let mut hide = false;
@@ -1715,7 +1717,31 @@ impl<'a> Evaluator<'a> {
                 );
             }
         }
-        hide
+        (!hide).then_some(a.named.len() - rest)
+    }
+
+    /// A container with `at:` in its rest pose centers its children's frame on its origin.
+    /// An anim offset moves the container and leaves that frame alone.
+    fn child_frame(
+        &mut self,
+        a: &Args,
+        animated: usize,
+        default_at: (f64, f64),
+        frame: Rect,
+        sc: &Scope,
+        with_rot: bool,
+    ) -> R<Rect> {
+        let rest = Args {
+            pos: a.pos.clone(),
+            named: a.named[..a.named.len() - animated].to_vec(),
+        };
+        let (m, _) = self.transform(&rest, default_at, frame, sc, with_rot)?;
+        let local = inverse(&m).map_rect(frame).0;
+        Ok(if rest.get("at").is_some() {
+            size_box(local.width() as f64, local.height() as f64)
+        } else {
+            local
+        })
     }
 
     fn eval_node(&mut self, st: &Scene, draw: &Draw, sc: &mut Scope, out: &mut Siblings) -> R<()> {
@@ -1843,12 +1869,12 @@ impl<'a> Evaluator<'a> {
         } else {
             (0.0, 0.0)
         };
-        if self.land(&mut a, &arrival.own, default_at, frame, sc, &path) {
+        let Some(animated) = self.land(&mut a, &arrival.own, default_at, frame, sc, &path) else {
             if let Some(comp) = &comp {
                 self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
             return Ok(());
-        }
+        };
         self.expand_style(&mut a, sc, &path)?;
         let origin = format!("{}:{}", sc.file(), st.span.line);
         if let Some(comp) = comp {
@@ -1907,8 +1933,9 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let mut node;
         let mut record = None;
+        let body_frame;
         if group_like {
-            let local_frame = inverse(&m).map_rect(frame).0;
+            let local_frame = self.child_frame(&a, animated, default_at, frame, sc, verb != "repeat")?;
             let mut inner = sc.child(key.clone(), local_frame, world);
             inner.style = child_style;
             let mut clip = None;
@@ -1971,8 +1998,10 @@ impl<'a> Evaluator<'a> {
                 },
             );
             node.clip = clip;
+            body_frame = inner.frame;
         } else {
             let inner_world = world;
+            let mut operand_frame = None;
             let (geometry, knots, closed) = match verb {
                 "subtract" | "union" | "intersect" | "xor" => {
                     let op = match verb {
@@ -1981,7 +2010,8 @@ impl<'a> Evaluator<'a> {
                         "intersect" => BoolOp::Intersect,
                         _ => BoolOp::Xor,
                     };
-                    let local_frame = inverse(&m).map_rect(frame).0;
+                    let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
+                    operand_frame = Some(local_frame);
                     let mut inner = sc.child(key.clone(), local_frame, inner_world);
                     inner.operand_of = Some(Rc::new(OperandOf {
                         verb: verb.to_string(),
@@ -2070,13 +2100,12 @@ impl<'a> Evaluator<'a> {
                     None,
                 ));
             }
-            if !matches!(verb, "subtract" | "union" | "intersect" | "xor")
-                && body.scenes().next().is_some()
-            {
-                let gb = match &node.kind {
-                    NodeKind::Shape(s) => geom::bounds(&s.geometry),
-                    _ => Rect::new_empty(),
-                };
+            let gb = match &node.kind {
+                NodeKind::Shape(s) => geom::bounds(&s.geometry),
+                _ => Rect::new_empty(),
+            };
+            body_frame = operand_frame.unwrap_or(gb);
+            if operand_frame.is_none() && body.scenes().next().is_some() {
                 let mut inner = sc.child(key.clone(), gb, inner_world);
                 inner.style = child_style;
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
@@ -2095,7 +2124,7 @@ impl<'a> Evaluator<'a> {
             })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
-        self.mask(&mut node, &a, body.mask(), sc, world, &key)?;
+        self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
@@ -2126,12 +2155,14 @@ impl<'a> Evaluator<'a> {
         matches!(self.binding(verb, sc), Some(Value::Component(_))) || identity::calls_def(verb)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn mask(
         &mut self,
         node: &mut Node,
         a: &Args,
         mask: Option<&ast::Mask>,
         sc: &Scope,
+        frame: Rect,
         world: Matrix,
         key: &Key,
     ) -> R<()> {
@@ -2140,7 +2171,7 @@ impl<'a> Evaluator<'a> {
         let source = match mask {
             None => None,
             Some(ast::Mask::Block(body)) => {
-                let mut inner = sc.child(mask_key.clone(), sc.frame, world);
+                let mut inner = sc.child(mask_key.clone(), frame, world);
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
             Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
@@ -3004,7 +3035,7 @@ impl<'a> Evaluator<'a> {
             }))
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
-        self.mask(&mut node, &node_args, block.mask(), &call_sc, world, &key)?;
+        self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
         rec.borrow_mut().node = Some(node.clone());
         *inst.record.borrow_mut() = Some(rec.clone());
@@ -3323,7 +3354,7 @@ impl<'a> Evaluator<'a> {
         }
         self.seed_node(sc.file(), &key);
         let mut a = self.eval_args(&[], named, sc, 0)?;
-        if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path) {
+        if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path).is_none() {
             mark_used(&inst);
             let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
             self.admit_scope(&scope, arrival.forward.clone(), &path);
