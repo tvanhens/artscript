@@ -440,7 +440,12 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
         .only
         .iter()
         .filter(|g| !plan.jobs.iter().any(|j| matches(j, g)))
-        .filter(|g| !plan.diagnostics.iter().any(|d| glob_match(g, &d.file)))
+        .filter(|g| {
+            !plan
+                .diagnostics
+                .iter()
+                .any(|d| d.severity == Severity::Error && glob_match(g, &d.file))
+        })
         .map(|g| {
             Diagnostic::error("E0200", Span::default(), format!("`--only '{g}'` matches no target"))
                 .with_fix("match an entry file such as `art/x.art` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories")
