@@ -247,6 +247,20 @@ fn sksl_errors_land_on_the_body_line_and_column_in_the_library() {
 }
 
 #[test]
+fn calling_a_lost_brush_stays_quiet_at_every_use_site() {
+    let bad = (
+        "lib/house.art",
+        "brush bad a:1\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, zz); }\n  \"\"\"\nlet wall = bad(a:2)\n",
+    );
+    let ds = errors(
+        "@target t.png 100x100\nuse house { bad wall }\nrect 20x20 at:20,20 fill:#ff0000 brush:bad name:a\nrect 20x20 at:50,20 fill:#ff0000 brush:bad(a:3) name:b\nrect 20x20 at:80,20 fill:#ff0000 brush:wall name:c\nlet w = bad(a:2)\n",
+        &[bad],
+    );
+    assert_eq!(ds.len(), 1, "only the SkSL error: {}", show(&ds));
+    assert_eq!((ds[0].code.as_str(), ds[0].file.as_str()), ("E0360", "lib/house.art"), "{}", ds[0]);
+}
+
+#[test]
 fn a_frame_error_lands_on_the_sksl_keyword_and_an_unused_brush_is_still_checked() {
     let bad = ("lib/bad.art", "brush bad strength:.5\n  sksl \"\"\"\n    float f(float x) { return x; }\n  \"\"\"\n");
     let ds = errors("@target t.png 100x100\nuse bad\nrect 40x40 at:50,50 fill:#ff0000 name:a\n", &[bad]);

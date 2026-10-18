@@ -1044,7 +1044,9 @@ impl<'a> Evaluator<'a> {
             }) if !entry => {
                 let sc = self.module_scope(module);
                 self.begin_seed(&module.path, Key::binding(name));
-                let v = self.expr(value, &sc)?;
+                let v = self.expr(value, &sc).inspect_err(|_| {
+                    module.lost.borrow_mut().insert(name.clone());
+                })?;
                 module.define(name, v);
                 return Ok(());
             }

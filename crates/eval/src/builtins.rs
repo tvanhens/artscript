@@ -6,7 +6,7 @@ use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use artscript_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
-use crate::eval::{Evaluator, R, Scope, fail, unseen};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
@@ -351,6 +351,7 @@ impl Evaluator<'_> {
                 )
                 .fix("use geometric checks such as inside, gap or level"));
             }
+            other if sc.module.lost(other) => return Err(Fail::reported()),
             other => {
                 return Err(fail("E0302", format!("unknown function `{other}`"))
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
