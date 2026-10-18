@@ -285,9 +285,12 @@ fn node_filter(path: &str, env: &FxEnv<'_>) -> Result<Option<ImageFilter>, Rende
         return Ok(Some(image_filters::empty()));
     };
     let place = inv * parent;
-    let local = node.bounds().unwrap_or_else(|| Rect::from_wh(1.0, 1.0));
+    let index = &env.ctx.index;
+    let local = node
+        .outer_bounds(&parent, &|p| Some((index.node(p)?, index.parent_world(p))))
+        .unwrap_or_else(|| Rect::from_wh(1.0, 1.0));
     let (mut cull, _) = place.map_rect(local);
-    cull.outset((64.0, 64.0));
+    cull.outset((2.0, 2.0));
     if cull.is_empty() {
         cull = Rect::from_xywh(-1.0, -1.0, 2.0, 2.0);
     }

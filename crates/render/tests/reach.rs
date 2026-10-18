@@ -1,6 +1,6 @@
 mod common;
 
-use artscript_ir::{EffectOp, Matrix, Node, NodeKind, Path, Rect};
+use artscript_ir::{Effect, EffectInput, EffectOp, Mask, MaskSource, Matrix, Node, NodeKind, Path, Rect};
 use artscript_render::{Backend, render_rgba};
 use common::{color, effect, scene, solid};
 
@@ -159,4 +159,48 @@ fn a_faint_glow_reaches_less_than_a_full_one() {
     };
     assert!(at(26).left > at(255).left);
     assert_eq!(at(0), Rect::from_xywh(100.0, 100.0, 40.0, 40.0));
+}
+
+#[test]
+fn an_input_node_keeps_its_whole_glow() {
+    let mut glowing = solid(
+        "b",
+        Path::rect(Rect::from_xywh(190.0, 190.0, 20.0, 20.0), None),
+        color(0, 0, 255, 255),
+    );
+    glowing.effects.push(effect(EffectOp::Glow {
+        radius: 40.0,
+        color: color(255, 255, 0, 255),
+    }));
+    let mut masked = solid(
+        "m",
+        Path::rect(Rect::from_xywh(195.0, 195.0, 10.0, 10.0), None),
+        color(0, 0, 255, 255),
+    );
+    masked.mask = Some(Box::new(Mask {
+        source: MaskSource::Nodes(vec![glowing]),
+        luminance: false,
+        feather: 0.0,
+        invert: false,
+    }));
+    let reader = Node {
+        path: "c".into(),
+        kind: NodeKind::Group {
+            isolate: true,
+            children: vec![],
+        },
+        effects: vec![Effect {
+            op: EffectOp::Merge {
+                inputs: vec![EffectInput::Node("b".into())],
+                alphas: vec![1.0],
+            },
+            input: EffectInput::Previous,
+            name: None,
+        }],
+        ..solid("c", Path::new(), color(0, 0, 0, 0))
+    };
+    let (w, _, px) =
+        render_rgba(&scene(400.0, 400.0, vec![masked, reader]), 1.0, Backend::Cpu).unwrap();
+    let alpha = px[((200 * w + 280) * 4 + 3) as usize];
+    assert!(alpha > 0, "the glow of @b is cut 70 units past its edge");
 }
