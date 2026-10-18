@@ -9,7 +9,7 @@
 
 <p align="center">
   <b>Art assets your LLM can write, read, and fix.</b><br>
-  A compact language for vector illustration, and a CLI that builds it to PNG, SVG, and GIF.
+  A compact language for procedural art, and a CLI that builds it to PNG, SVG, and GIF.
 </p>
 
 <p align="center">
