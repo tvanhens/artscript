@@ -274,9 +274,9 @@ impl Node {
     }
 
     /// Visual bounds in this node's parent coordinates: geometry plus half the stroke width,
-    /// union of children for groups. Clips, masks and effects are ignored.
+    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
     pub fn bounds(&self) -> Option<Rect> {
-        let local = match &self.kind {
+        let mut local = match &self.kind {
             NodeKind::Shape(s) => {
                 let mut r = s.geometry.compute_tight_bounds();
                 if let Some(st) = &s.stroke {
@@ -286,7 +286,33 @@ impl Node {
             }
             NodeKind::Group { children, .. } => union_bounds(children),
         }?;
+        for kept in self.kept_bounds() {
+            if !local.intersect(kept) {
+                return None;
+            }
+        }
         Some(self.transform.map_rect(local).0)
+    }
+
+    /// Local bounds this node's `inside` clip and node mask keep, grown by three feather sigmas.
+    /// `outside`, inverted masks, and field masks keep everything.
+    pub fn kept_bounds(&self) -> impl Iterator<Item = Rect> + '_ {
+        let clip = self.clip.as_ref().filter(|c| !c.invert).map(|c| {
+            c.path
+                .compute_tight_bounds()
+                .with_outset((3.0 * c.feather, 3.0 * c.feather))
+        });
+        let mask = self
+            .mask
+            .as_ref()
+            .filter(|m| !m.invert)
+            .and_then(|m| match &m.source {
+                MaskSource::Nodes(nodes) => {
+                    union_bounds(nodes).map(|r| r.with_outset((3.0 * m.feather, 3.0 * m.feather)))
+                }
+                MaskSource::Field { .. } => None,
+            });
+        clip.into_iter().chain(mask)
     }
 }
 
