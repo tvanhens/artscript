@@ -1,0 +1,63 @@
+@target catacombs.png 1920x1080 bg:crypt.void scale:1,.5
+
+palette crypt
+  ramp stone #6f6a78 5
+  ramp moss #5d7a4a 5
+  ramp bone #d9cdb4 5
+  ramp torch #f0a23c 5
+  ramp cold #5f8fd0 5
+  color void #0d0b12
+  color ink #1b1722
+
+def _tile v:0
+  rect 60x60 fill:grad(35 crypt.stone.3 crypt.stone,.5 crypt.stone.1) name:slab
+    each i in 0..12
+      circle rand(1 2.4) at:rand(-30 30),rand(-30 30) fill:crypt.stone.0 a:.4 name:pit
+    if v == 1
+      ellipse 18,8 at:rand(-16 16),rand(-16 16) fill:crypt.moss a:.7 blur:2 name:lichen
+    if v == 2
+      curve -24,-10 -6,4 10,-2 22,14 stroke:crypt.stone.0,2 taper:.3 a:.6
+    fx rim 2 color:crypt.stone.4 a:.4
+    fx grain .04 scale:1.6
+    fx outline 1.5 color:crypt.ink
+
+def _prop
+  ellipse 50,14 at:0,60 fill:crypt.void a:.5 blur:8
+  rect 60x110 at:0,0 fill:grad(0 crypt.bone.3 crypt.bone,.5 crypt.bone.1) name:urn
+    ellipse 18,40 at:-14,-10 fill:crypt.bone.4 a:.5 blur:6
+    fx grain .04 scale:1.8
+    fx outline 3 color:crypt.ink
+
+def _actor
+  ellipse 30,10 at:0,44 fill:crypt.void a:.5 blur:6
+  circle 34 fill:grad(down crypt.cold.3 crypt.cold.1) name:body
+    circle 6 at:-10,-6 fill:crypt.ink
+    circle 6 at:10,-6 fill:crypt.ink
+    fx rim 4 dir:1,1 color:crypt.cold.4 a:.5
+    fx outline 4 color:crypt.ink
+
+layer floor
+  each r in 0..17
+    each c in 0..30
+      _tile r+c-floor((r+c)/3)*3 at:32+c*64,32+r*63 name:tile
+
+layer props
+  each i in 0..9
+    _prop at:160+i*200,300+(i-floor(i/3)*3)*240 name:prop
+
+layer actors
+  each i in 0..6
+    _actor at:260+i*280,560+(i-floor(i/2)*2)*160 name:actor
+
+layer shadow_light blend:multiply
+  rect 1920x1080 at:960,540 fill:radial(fade(crypt.void 0) fade(crypt.void .7),.7 crypt.void r:1100)
+
+layer torch_light blend:add
+  rect 1920x1080 at:960,540 fill:none
+    each i in 0..5
+      circle 260 at:-760+i*380,-260 fill:radial(fade(crypt.torch.3 .45) fade(crypt.torch .15),.5 fade(crypt.torch 0) r:260) name:torch
+
+layer cold_light blend:screen
+  rect 1920x1080 at:960,540 fill:none
+    each i in 0..4
+      circle 320 at:-560+i*400,280 fill:radial(fade(crypt.cold.3 .3) fade(crypt.cold 0) r:320) blur:12 name:cold

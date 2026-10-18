@@ -8,8 +8,8 @@ use std::collections::{HashMap, HashSet};
 use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
-    BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, Image,
-    ImageFilter, Paint, Rect, RuntimeEffect, TileMode, image_filters,
+    BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
+    Image, ImageFilter, Paint, Rect, RoundOut, RuntimeEffect, TileMode, image_filters,
 };
 
 use crate::gpu::{self, Backend};
@@ -211,13 +211,15 @@ pub fn draw_node(
         path: node.path.clone(),
     };
 
+    let parent_to_px = canvas.local_to_device_as_3x3();
     canvas.save();
     canvas.concat(&node.transform);
     let world = parent_world * node.transform;
 
     if needs_layer(node) {
         if let Some(steps) = effects::layer_steps(&node.effects, &FxEnv { ctx, world })? {
-            paint_layer_steps(canvas, node, ctx, world, steps)?;
+            let reach = reach_px(node, ctx, &parent_world, &parent_to_px, &steps);
+            paint_layer_steps(canvas, node, ctx, world, reach, steps)?;
         } else {
             let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
             let mut paint = Paint::default();
@@ -246,9 +248,13 @@ fn paint_layer_steps(
     node: &Node,
     ctx: &DrawCtx<'_>,
     world: Matrix,
+    reach: Option<IRect>,
     mut steps: Vec<effects::LayerStep>,
 ) -> Result<(), RenderError> {
-    let Some(bounds) = canvas.device_clip_bounds() else {
+    let Some(bounds) = canvas.device_clip_bounds().and_then(|clip| match reach {
+        Some(reach) => IRect::intersect(&clip, &dither_aligned(clip, reach)),
+        None => Some(clip),
+    }) else {
         return Ok(());
     };
     if bounds.is_empty() {
@@ -296,6 +302,65 @@ fn paint_layer_steps(
     );
     canvas.restore();
     Ok(())
+}
+
+/// Skia antialiases a path that reaches past the device differently, so the layer also covers
+/// [`path_extent`]: every path stays inside it and draws as it would on a layer over the whole clip.
+fn reach_px(
+    node: &Node,
+    ctx: &DrawCtx<'_>,
+    parent_world: &Matrix,
+    parent_to_px: &Matrix,
+    steps: &[effects::LayerStep],
+) -> Option<IRect> {
+    let index = &ctx.index;
+    let mut reach =
+        node.outer_bounds(parent_world, &|p| Some((index.node(p)?, index.parent_world(p))))?;
+    let ring = steps
+        .iter()
+        .map(|step| match step {
+            effects::LayerStep::Outline { width, .. } => *width,
+            effects::LayerStep::Filter(_) => 0.0,
+        })
+        .fold(0.0_f32, f32::max);
+    if let Some(paths) = path_extent(node) {
+        reach.join(node.transform.map_rect(paths.with_outset((ring, ring))).0);
+    }
+    let px: IRect = parent_to_px.map_rect(reach).0.round_out();
+    Some(px.with_outset((2, 2)))
+}
+
+/// The bounds Skia culls the paths under `node` by, in `node`'s space: control points, not the
+/// curve, and strokes grown by half their width times the default miter limit of 4.
+fn path_extent(node: &Node) -> Option<Rect> {
+    let own = match &node.kind {
+        NodeKind::Shape(shape) => {
+            let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
+            let pad = stroke + shape.blur * 3.0;
+            Some(shape.geometry.bounds().with_outset((pad, pad)))
+        }
+        NodeKind::Group { .. } => None,
+    };
+    let masks = match node.mask.as_ref().map(|m| &m.source) {
+        Some(MaskSource::Nodes(nodes)) => &nodes[..],
+        _ => &[],
+    };
+    node.children()
+        .iter()
+        .chain(masks)
+        .filter_map(|child| Some(child.transform.map_rect(path_extent(child)?).0))
+        .chain(own)
+        .reduce(|mut a, b| {
+            a.join(b);
+            a
+        })
+}
+
+/// Moves `reach`'s top-left corner out to a whole period of Skia's 8x8 ordered dither from the
+/// clip's corner, so a layer dithers its pixels as a layer over the whole clip would.
+fn dither_aligned(clip: IRect, reach: IRect) -> IRect {
+    let snap = |from: i32, to: i32| from + (to - from).max(0) / 8 * 8;
+    IRect::new(snap(clip.left, reach.left), snap(clip.top, reach.top), reach.right, reach.bottom)
 }
 
 fn rasterize_layer(
