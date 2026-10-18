@@ -978,6 +978,16 @@ fn a_def_parameter_cannot_be_a_reserved_word() {
 }
 
 #[test]
+fn target_is_reserved() {
+    for src in ["let target = 1\n", "def cup target:1\n  circle 4\n"] {
+        let e = one_error(src);
+        assert_eq!(e.code, "E0105", "{src}");
+        assert_eq!(e.message, "`target` is reserved");
+    }
+    must_parse("@target a.png 8x8 as:hero\nif target == hero\n  circle 4\n");
+}
+
+#[test]
 fn fill_starts_an_ordinary_draw() {
     assert_eq!(
         node(&must_parse("fill #fff\n")),
