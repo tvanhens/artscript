@@ -3,12 +3,9 @@
 # 1. A blue circle with a thick dark navy ring of even width, crisp on both sides.
 # 2. A blue circle with a red ring (color:p.red), same width as cell 1.
 # 3. fx blur 3 then outline: the blue circle is soft, its edge fading into the ring, but the ring's outer edge is crisp. The ring is not blurred.
-# KNOWN BUG #123: the earlier blur paints over the ring, so the ring is lightened and soft. When fixed, the ring is unchanged by the blur: a crisp full-strength dark ring of even width, as documented.
 # 4. fx shadow 8,8 blur:2 then outline: a blue square with a crisp dark ring on all four sides and a soft blue-gray shadow to the lower right. The ring has no soft edge and no offset copy.
-# KNOWN BUG #123: the earlier shadow paints over the ring. When fixed, the ring is unchanged by the shadow: crisp and dark on all four sides, with no offset copy.
 # Bottom row, left to right:
 # 5. fx glow in gold then outline: a blue circle with a crisp dark ring and a pale gold halo fading outward beyond the ring. The ring is unchanged by the glow.
-# KNOWN BUG #123: the earlier glow paints over the ring: the ring renders from (97,69,67) at its inner edge to (59,39,69) at its outer edge instead of one uniform p.ink. When fixed, the ring is the unchanged dark ring color and the glow shows only beyond it.
 # 6. A circle with a translucent blue fill (pale blue-lavender over paper) and a dark ink ring. The ring is full strength and no ring ink shows through the inside of the circle.
 # 7. A parent circle with fill:none holding a green circle on the left and a gold circle on the right that overlap. One dark ink ring wraps the union of the two, with no ring line across the overlap.
 # 8. A gold circle with a thick red stroke. A dark ink ring surrounds the red stroke on its outside, the gold interior is clean.

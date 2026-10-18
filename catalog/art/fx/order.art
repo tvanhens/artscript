@@ -1,7 +1,6 @@
 # A 4x2 grid on paper, cells 64 px wide, circles of radius 16. Several fx sit on one node and run in written order, so swapping two lines changes the picture.
 # Top row, left to right:
 # 1. fx blur 4 then outline 4 in dark ink: the blue body is soft at its edge but the ring around it is crisp and dark.
-# KNOWN BUG #123: the blurred body paints over the ring and lightens it across its whole width. When fixed, the ring is crisp, full-strength dark ink, and only the body is soft.
 # 2. fx outline 4 then blur 4: the ring is blurred along with the body, so the whole circle is a soft blue disc with a blurry dark halo and no crisp edge.
 # 3. fx rim 6 dir:1,1 in gold, then adjust hue:120: the body is red (hue shifted from blue) and the lower-right rim band is shifted too, so it reads teal.
 # 4. fx adjust hue:120, then rim 6 dir:1,1 in gold: the body is the same red, and the lower-right rim band stays gold-orange because it was added after the shift.
