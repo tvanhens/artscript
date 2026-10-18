@@ -4993,3 +4993,20 @@ fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
     assert_eq!((d[0].code.as_str(), d[0].span.line), ("E0301", 5));
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
+
+#[test]
+fn the_worst_frame_ignores_the_nodes_in_an_also_in_note() {
+    use artscript_syntax::ast::Span;
+    let gap = |n: &str| {
+        Diagnostic::error("C0101", Span { line: 2, col: 1 }, "gap")
+            .in_file("art/t.art")
+            .at_node("row1")
+            .with_note(format!("gap is {n}"))
+    };
+    let out = super::aggregate_frames(&[
+        (0.0, vec![gap("1").with_note("also in row11, row12")]),
+        (0.5, vec![gap("3")]),
+    ]);
+    assert_eq!(out.len(), 1);
+    assert!(out[0].notes.iter().any(|n| n.contains("worst at 0.5s")), "{:?}", out[0].notes);
+}
