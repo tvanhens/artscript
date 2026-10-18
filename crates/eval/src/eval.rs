@@ -2862,6 +2862,17 @@ impl<'a> Evaluator<'a> {
                         .fix("remove the dash, or add `on:fill` to the brush");
                     return Err(at_key(self, f, &["dash", "brush"]));
                 }
+                if !stroke_stack.is_empty() {
+                    for k in ["cap", "join"] {
+                        if let Some(span) = site(&[k]) {
+                            let f = fail("E0362", format!("`{k}:` on a brushed stroke"))
+                                .note("a brushed stroke has round ends and corners, and the brush shapes its ends")
+                                .fix(format!("remove `{k}:`, or add `on:fill` to the brush"));
+                            self.report(f, &file, span, &node);
+                            return Err(Fail::reported());
+                        }
+                    }
+                }
                 let explicit = a.num("seed").map(|s| s as u64);
                 (
                     self.area_marks(&fill_stack, key, explicit, &file),

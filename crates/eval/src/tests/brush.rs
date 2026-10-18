@@ -232,6 +232,21 @@ fn a_dash_on_a_brushed_stroke_is_e0362_at_the_dash() {
 }
 
 #[test]
+fn cap_and_join_on_a_brushed_stroke_are_e0362_at_the_key_and_inherited_ones_do_nothing() {
+    let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 brush:dry cap:butt name:a\n", &[LIB], "E0362");
+    assert!(d.message.contains("`cap:` on a brushed stroke"), "{d}");
+    assert_eq!(col(&d), (3, 49), "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 join:bevel brush:dry name:a\n", &[LIB], "E0362");
+    assert!(d.message.contains("`join:` on a brushed stroke"), "{d}");
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nlayer back cap:butt join:bevel brush:dry\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:a\n", &[LIB]);
+    assert_eq!(ribbon(&s, "a").marks.len(), 1, "inherited cap and join do nothing");
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry(on:fill) cap:butt name:a\n", &[LIB]);
+    assert!(shape(&s, "a").stroke.is_some(), "a plain stroke keeps cap");
+    let s = ok("@target t.png 100x100\ncurve 0,0 50,20 90,0 stroke:#000000,2 cap:butt join:bevel name:a\n", &[]);
+    assert!(shape(&s, "a").stroke.is_some());
+}
+
+#[test]
 fn an_inherited_brush_reaches_a_stroke_only_node_as_a_ribbon() {
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nlayer back brush:dry\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:line\n", &[LIB]);
     assert_eq!(ribbon(&s, "line").marks.len(), 1);
