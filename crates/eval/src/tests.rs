@@ -4427,6 +4427,166 @@ fn off_canvas_measures_a_shape_after_an_inside_clip() {
     assert_eq!(hits.len(), 1, "{}", show(&hits));
 }
 
+const CUT_FX: &str = "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:#4af name:bar\n  fx glow 12\n";
+
+#[test]
+fn off_canvas_measures_what_effects_draw() {
+    let plain = off_canvas_hits(
+        "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\nrect 40x10 at:32,8 fill:#4af name:bar\n",
+    );
+    assert!(plain.is_empty(), "{}", show(&plain));
+
+    let hits = off_canvas_hits(CUT_FX);
+    let nodes: Vec<&str> = hits.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["r", "bar"], "{}", show(&hits));
+    assert_eq!(hits[0].span.line, 2);
+    assert_eq!(hits[1].span.line, 4);
+}
+
+#[test]
+fn off_canvas_measures_an_effect_that_reads_another_node() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 40x10 at:32,8 fill:#4af name:bar\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 12 of:@bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "dot");
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 40 of:@dot\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 10x20 at:30,30 fill:#4af name:r\n  fx outline 3\n\
+         rect 40x10 at:50,70 fill:#4af name:g\n  fx glow 4 a:1\n\
+         rect 10x10 at:70,20 fill:#4af name:s\n  fx shadow 0,6 blur:2 color:#000\n\
+         circle 1 at:@r.outer.right,@r.outer.bottom name:pr\n\
+         circle 1 at:@r.right,@r.bottom name:vr\n\
+         circle 1 at:@g.outer.left,@g.outer.bottom name:pg\n\
+         circle 1 at:@g.left,@g.bottom name:vg\n\
+         circle 1 at:@s.outer.top,@s.outer.bottom name:ps\n",
+    );
+    let glow = 4.0 * 2.884_402_7;
+    let shadow = 2.0 * 2.884_402_7;
+    near(at(node(&s, "pr")), (38.0, 43.0));
+    near(at(node(&s, "vr")), (35.0, 40.0));
+    near(at(node(&s, "pg")), (30.0 - glow, 75.0 + glow));
+    near(at(node(&s, "vg")), (30.0, 75.0));
+    near(at(node(&s, "ps")), (15.0, 31.0 + shadow));
+}
+
+#[test]
+fn inside_outer_fails_where_plain_inside_passes() {
+    let ev = run_with(
+        &format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"),
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "C0101"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+
+    let ev = run_with(&format!("{CUT_FX}assert inside(@bar.outer canvas)\n"), &[]);
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
+    assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(failed[0].span.line, 6);
+
+    let ev = run_with(&format!("{CUT_FX}assert @bar.outer.top >= 0\n"), &[]);
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
+    assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(
+        failed[0]
+            .notes
+            .iter()
+            .any(|n| n.starts_with("bar.outer.top = -")),
+        "{:?}",
+        failed[0].notes
+    );
+}
+
+#[test]
+fn outer_follows_an_effect_that_reads_another_node() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 40x10 at:50,30 fill:#4af name:bar\n\
+         circle 4 at:50,70 fill:#4af name:dot\n  fx glow 4 a:1 of:@bar\n\
+         circle 1 at:@dot.outer.cx,@dot.outer.top name:probe\n",
+    );
+    near(at(node(&s, "probe")), (50.0, 25.0 - 4.0 * 2.884_402_7));
+
+    let ev = run_with(&format!("{CUT_FX}assert @bar.outer.foo > 0\n"), &[]);
+    assert!(
+        ev.diagnostics
+            .iter()
+            .any(|d| d.code == "E0350" && d.message.contains("`.outer.foo`")),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
+fn copy_of_an_outer_ref_is_its_box() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 63.0, 58.0));
+}
+
+#[test]
+fn a_part_named_outer_wins_over_the_outer_extent() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         def badge\n  circle 10 fill:#4af name:outer\n  circle 2 at:0,30 fill:#4af name:pin\n\
+         badge at:50,40 name:b\n  fx glow 8\n\
+         circle 1 at:@b.outer.cx,@b.outer.bottom name:probe\n",
+    );
+    near(at(node(&s, "probe")), (50.0, 50.0));
+}
+
+#[test]
+fn a_cut_group_glow_is_reported_once_at_the_group() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x10 at:0,0 fill:#4af name:a\n  rect 10x4 at:0,2 fill:#4af name:b\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "g");
+    assert_eq!(hits[0].span.line, 2);
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x30 at:0,0 fill:#4af name:a\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "a");
+}
+
+#[test]
+fn an_ancestor_clip_cuts_a_glow_and_the_node_s_own_clip_does_not() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x\n  rect 20x10 at:32,40 fill:#4af name:bar\n    fx glow 12\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x name:clip\n  fx glow 12\n  rect 20x10 at:32,40 fill:#4af name:bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "clip");
+}
+
 #[test]
 fn a_clipped_group_is_measured_inside_its_clip_and_mask() {
     let ev = run_with(
