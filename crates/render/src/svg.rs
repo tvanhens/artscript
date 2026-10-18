@@ -511,66 +511,53 @@ impl Writer {
 
     fn mask_attr(&mut self, scene: &Scene, node: &Node, id: &str, bake_scale: f32) -> Result<(), RenderError> {
         let soft = node.clip.as_ref().filter(|c| c.feather > 0.0 || c.invert);
-        if soft.is_none() && node.mask.is_none() {
-            return Ok(());
-        }
-        if let Some(clip) = soft {
-            let mid = format!("{id}-soft");
-            self.defs.push_str("    <mask id=\"");
-            self.defs.push_str(&mid);
-            self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
-            self.defs.push_str(&masked_area(node));
-            self.defs.push_str(" mask-type=\"alpha\">\n");
-            if clip.invert {
-                self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+        let soft_id = match soft {
+            Some(clip) => {
+                let mid = format!("{id}-soft");
+                let blur = (clip.feather > 0.0).then(|| format!("{id}-softblur"));
+                if let Some(fid) = &blur {
+                    self.blur_filter(fid, clip.feather);
+                }
+                self.defs.push_str("    <mask id=\"");
+                self.defs.push_str(&mid);
+                self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+                self.defs.push_str(&masked_area(node));
+                self.defs.push_str(" mask-type=\"alpha\">\n");
+                if clip.invert {
+                    self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+                }
                 self.defs.push_str("      <path d=\"");
                 self.defs.push_str(&path_data(&clip.path));
-                self.defs.push_str("\" fill=\"#000000\"");
-                if clip.feather > 0.0 {
-                    let fid = format!("{id}-softblur");
-                    self.blur_filter(&fid, clip.feather);
+                self.defs.push_str(if clip.invert { "\" fill=\"#000000\"" } else { "\" fill=\"#ffffff\"" });
+                if let Some(fid) = &blur {
                     self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
+                    self.defs.push_str(fid);
                     self.defs.push_str(")\"");
                 }
-                self.defs.push_str("/>\n");
-            } else {
-                self.defs.push_str("      <path d=\"");
-                self.defs.push_str(&path_data(&clip.path));
-                self.defs.push_str("\" fill=\"#ffffff\"");
-                if clip.feather > 0.0 {
-                    let fid = format!("{id}-softblur");
-                    self.blur_filter(&fid, clip.feather);
-                    self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
-                    self.defs.push_str(")\"");
-                }
-                self.defs.push_str("/>\n");
+                self.defs.push_str("/>\n    </mask>\n");
+                Some(mid)
             }
-            self.defs.push_str("    </mask>\n");
-            self.body.push_str(" mask=\"url(#");
-            self.body.push_str(&mid);
-            self.body.push_str(")\"");
-        }
-        if let Some(mask) = &node.mask {
-            if matches!(mask.source, MaskSource::Field { .. }) {
-                return Ok(());
+            None => None,
+        };
+        let node_mask = node.mask.as_ref().filter(|mask| matches!(mask.source, MaskSource::Nodes(_)));
+        let mid = match node_mask {
+            Some(mask) => {
+                let mid = format!("{id}-mask");
+                self.write_node_mask(scene, node, mask, &mid, bake_scale, soft_id.as_deref())?;
+                mid
             }
-            let mid = format!("{id}-mask");
-            self.write_node_mask(scene, node, mask, &mid, bake_scale)?;
-            if soft.is_some() {
-                // The opening tag already carries the soft-clip mask. Nesting happens by
-                // wrapping is not available mid-attribute, so a second mask replaces it.
-                // Callers with both are rare; the soft clip stays in the defs either way.
-            }
-            self.body.push_str(" mask=\"url(#");
-            self.body.push_str(&mid);
-            self.body.push_str(")\"");
-        }
+            None => match soft_id {
+                Some(mid) => mid,
+                None => return Ok(()),
+            },
+        };
+        self.body.push_str(" mask=\"url(#");
+        self.body.push_str(&mid);
+        self.body.push_str(")\"");
         Ok(())
     }
 
-    fn write_node_mask(&mut self, scene: &Scene, node: &Node, mask: &Mask, id: &str, bake_scale: f32) -> Result<(), RenderError> {
+    fn write_node_mask(&mut self, scene: &Scene, node: &Node, mask: &Mask, id: &str, bake_scale: f32, soft: Option<&str>) -> Result<(), RenderError> {
         self.defs.push_str("    <mask id=\"");
         self.defs.push_str(id);
         self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
@@ -584,20 +571,24 @@ impl Writer {
                 inner.node(scene, node, bake_scale, 3, None)?;
             }
             self.defs.push_str(&inner.defs);
+            if let Some(soft) = soft {
+                self.defs.push_str("      <g mask=\"url(#");
+                self.defs.push_str(soft);
+                self.defs.push_str(")\">\n");
+            }
             if mask.feather > 0.0 || mask.invert {
                 let fid = format!("{id}-fx");
-                self.defs.push_str("      <g");
-                if mask.feather > 0.0 || mask.invert {
-                    self.mask_effect_filter(&fid, mask.feather, mask.invert);
-                    self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
-                    self.defs.push_str(")\"");
-                }
-                self.defs.push_str(">\n");
+                self.mask_effect_filter(&fid, mask.feather, mask.invert);
+                self.defs.push_str("      <g filter=\"url(#");
+                self.defs.push_str(&fid);
+                self.defs.push_str(")\">\n");
                 self.defs.push_str(&inner.body);
                 self.defs.push_str("      </g>\n");
             } else {
                 self.defs.push_str(&inner.body);
+            }
+            if soft.is_some() {
+                self.defs.push_str("      </g>\n");
             }
         }
         self.defs.push_str("    </mask>\n");
