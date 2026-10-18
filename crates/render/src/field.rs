@@ -73,6 +73,70 @@ float worley2(float2 p, float2 sd) {
     }
     return clamp(1.0 - m, 0.0, 1.0);
 }
+
+float value2w(float2 p, float2 n, float2 sd) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float a = hash21(mod(i, n) + sd);
+    float b = hash21(mod(i + float2(1.0, 0.0), n) + sd);
+    float c = hash21(mod(i + float2(0.0, 1.0), n) + sd);
+    float d = hash21(mod(i + float2(1.0, 1.0), n) + sd);
+    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float perlin2w(float2 p, float2 n, float2 sd) {
+    float2 i = floor(p);
+    float2 f = fract(p);
+    float2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+    float n00 = dot(grad2(mod(i, n), sd), f);
+    float n10 = dot(grad2(mod(i + float2(1.0, 0.0), n), sd), f - float2(1.0, 0.0));
+    float n01 = dot(grad2(mod(i + float2(0.0, 1.0), n), sd), f - float2(0.0, 1.0));
+    float n11 = dot(grad2(mod(i + float2(1.0, 1.0), n), sd), f - float2(1.0, 1.0));
+    float v = mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
+    return clamp(0.5 + 0.5 * v * 1.41421356, 0.0, 1.0);
+}
+
+// Simplex on the lattice v(i, j) = (i + s*j, j). A step of n.y in y is the lattice
+// step (-k, n.y) when s*n.y is the integer k, so folding the cell index by that step
+// makes the field periodic.
+float2 simplexw_fold(float2 i, float2 n, float k) {
+    float m = floor(i.y / n.y);
+    return float2(mod(i.x + m * k, n.x), i.y - m * n.y);
+}
+
+float simplex2w(float2 p, float2 n, float2 sd, float k, float s, float r2, float amp) {
+    float2 uv = float2(p.x - s * p.y, p.y);
+    float2 i0 = floor(uv);
+    float2 f0 = fract(uv);
+    float2 o1 = (f0.x > f0.y) ? float2(1.0, 0.0) : float2(0.0, 1.0);
+    float2 i1 = i0 + o1;
+    float2 i2 = i0 + 1.0;
+    float2 d0 = p - float2(i0.x + s * i0.y, i0.y);
+    float2 d1 = p - float2(i1.x + s * i1.y, i1.y);
+    float2 d2 = p - float2(i2.x + s * i2.y, i2.y);
+    float3 w = max(r2 - float3(dot(d0, d0), dot(d1, d1), dot(d2, d2)), 0.0);
+    float3 v = w * w * w * w * float3(
+        dot(grad2(simplexw_fold(i0, n, k), sd), d0),
+        dot(grad2(simplexw_fold(i1, n, k), sd), d1),
+        dot(grad2(simplexw_fold(i2, n, k), sd), d2)
+    );
+    return clamp(0.5 + amp * (v.x + v.y + v.z), 0.0, 1.0);
+}
+
+float worley2w(float2 p, float2 n, float2 sd) {
+    float2 i = floor(p);
+    float m = 1.5;
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            float2 g = i + float2(float(x), float(y));
+            float2 c = mod(g, n) + sd;
+            float2 fp = float2(hash21(c), hash21(c + float2(19.19, 7.13)));
+            m = min(m, length(g + fp - p));
+        }
+    }
+    return clamp(1.0 - m, 0.0, 1.0);
+}
 "#;
 
 pub enum FieldUse<'a> {
@@ -95,14 +159,14 @@ pub fn field_shader(field: &Field, use_: FieldUse<'_>) -> Result<Shader, RenderE
             let ret = if as_luma { "half4(a, a, a, 1.0)" } else { "half4(a)" };
             (
                 format!(
-                    "half4 main(float2 p) {{\n  float v = clamp({root}(p), 0.0, 1.0);\n  {step}\n  return {ret};\n}}\n"
+                    "half4 main(float2 p) {{\n  float v = clamp({root}(p, 0.0), 0.0, 1.0);\n  {step}\n  return {ret};\n}}\n"
                 ),
                 None,
             )
         }
         FieldUse::Stops(stops) => (
             format!(
-                "uniform shader ramp;\nhalf4 main(float2 p) {{\n  float v = clamp({root}(p), 0.0, 1.0);\n  return ramp.eval(float2(v * 255.0, 0.0));\n}}\n"
+                "uniform shader ramp;\nhalf4 main(float2 p) {{\n  float v = clamp({root}(p, 0.0), 0.0, 1.0);\n  return ramp.eval(float2(v * 255.0, 0.0));\n}}\n"
             ),
             Some(ramp_shader(stops)?),
         ),
@@ -134,22 +198,42 @@ impl Gen {
         match field {
             Field::Const(v) => {
                 let name = self.fresh();
-                self.src.push_str(&format!("float {name}(float2 p) {{ return {v:.8}; }}\n"));
+                self.src.push_str(&format!("float {name}(float2 p, float oct) {{ return {v:.8}; }}\n"));
                 name
             }
-            Field::Noise { kind, scale, seed } => {
+            Field::Noise { kind, scale, seed, wrap } => {
                 let name = self.fresh();
                 let scale = if *scale == 0.0 { 0.0001 } else { *scale };
                 let (lo, hi) = seed_pair(*seed);
+                let sd = format!("float2({lo:.1}, {hi:.1})");
                 let func = match kind {
                     NoiseKind::Value => "value2",
                     NoiseKind::Perlin => "perlin2",
                     NoiseKind::Simplex => "simplex2",
                     NoiseKind::Worley => "worley2",
                 };
-                self.src.push_str(&format!(
-                    "float {name}(float2 p) {{ return {func}(p / {scale:.8}, float2({lo:.1}, {hi:.1})); }}\n"
-                ));
+                let call = match wrap {
+                    None => format!("{func}(p / {scale:.8}, {sd})"),
+                    Some([wx, wy]) => {
+                        let (nx, ny) = ((wx / scale).round().max(1.0), (wy / scale).round().max(1.0));
+                        // Half a cell keeps the seam off the lattice lines, and the golden
+                        // fraction per octave keeps an fbm's octaves from sharing a lattice
+                        // phase there, which made the seam the steepest line of every tile.
+                        let q = format!("p * float2({:.8}, {:.8}) + 0.5 + oct * 0.38196601", nx / wx, ny / wy);
+                        let n = format!("float2({nx:.1}, {ny:.1})");
+                        match kind {
+                            NoiseKind::Simplex => {
+                                let k = (ny / 2.0).floor();
+                                let s = k / ny;
+                                let r2 = 1.0 / ((1.0 - s) * (1.0 - s) + 1.0);
+                                let amp = 35.0 * std::f32::consts::SQRT_2 * (0.5 / r2).powf(4.5);
+                                format!("simplex2w({q}, {n}, {sd}, {k:.1}, {s:.8}, {r2:.8}, {amp:.8})")
+                            }
+                            _ => format!("{func}w({q}, {n}, {sd})"),
+                        }
+                    }
+                };
+                self.src.push_str(&format!("float {name}(float2 p, float oct) {{ return {call}; }}\n"));
                 name
             }
             Field::Fbm { base, octaves, ridged } => {
@@ -158,13 +242,13 @@ impl Gen {
                 let mut body = String::from("float sum = 0.0;\n  float norm = 0.0;\n");
                 let n = *octaves;
                 if n == 0 {
-                    self.src.push_str(&format!("float {name}(float2 p) {{ return 0.0; }}\n"));
+                    self.src.push_str(&format!("float {name}(float2 p, float oct) {{ return 0.0; }}\n"));
                     return name;
                 }
                 let mut amp = 1.0_f32;
                 for i in 0..n {
                     let freq = 2.0_f32.powi(i as i32);
-                    body.push_str(&format!("  float v{i} = {inner}(p * {freq:.1});\n"));
+                    body.push_str(&format!("  float v{i} = {inner}(p * {freq:.1}, oct + {i}.0);\n"));
                     if *ridged {
                         body.push_str(&format!("  v{i} = 1.0 - abs(2.0 * v{i} - 1.0);\n"));
                     }
@@ -172,7 +256,7 @@ impl Gen {
                     amp *= 0.5;
                 }
                 self.src.push_str(&format!(
-                    "float {name}(float2 p) {{\n  {body}  return norm == 0.0 ? 0.0 : sum / norm;\n}}\n"
+                    "float {name}(float2 p, float oct) {{\n  {body}  return norm == 0.0 ? 0.0 : sum / norm;\n}}\n"
                 ));
                 name
             }
@@ -180,11 +264,11 @@ impl Gen {
                 let inner = self.emit(inner);
                 let name = self.fresh();
                 let expr = match op {
-                    FieldFn::Abs => format!("abs({inner}(p))"),
-                    FieldFn::Neg => format!("-{inner}(p)"),
-                    FieldFn::Clamp => format!("clamp({inner}(p), 0.0, 1.0)"),
+                    FieldFn::Abs => format!("abs({inner}(p, oct))"),
+                    FieldFn::Neg => format!("-{inner}(p, oct)"),
+                    FieldFn::Clamp => format!("clamp({inner}(p, oct), 0.0, 1.0)"),
                 };
-                self.src.push_str(&format!("float {name}(float2 p) {{ return {expr}; }}\n"));
+                self.src.push_str(&format!("float {name}(float2 p, float oct) {{ return {expr}; }}\n"));
                 name
             }
             Field::Binary(op, a, b) => {
@@ -192,14 +276,14 @@ impl Gen {
                 let b = self.emit(b);
                 let name = self.fresh();
                 let expr = match op {
-                    FieldOp::Add => format!("{a}(p) + {b}(p)"),
-                    FieldOp::Sub => format!("{a}(p) - {b}(p)"),
-                    FieldOp::Mul => format!("{a}(p) * {b}(p)"),
-                    FieldOp::Div => format!("({b}(p) == 0.0 ? 0.0 : {a}(p) / {b}(p))"),
-                    FieldOp::Min => format!("min({a}(p), {b}(p))"),
-                    FieldOp::Max => format!("max({a}(p), {b}(p))"),
+                    FieldOp::Add => format!("{a}(p, oct) + {b}(p, oct)"),
+                    FieldOp::Sub => format!("{a}(p, oct) - {b}(p, oct)"),
+                    FieldOp::Mul => format!("{a}(p, oct) * {b}(p, oct)"),
+                    FieldOp::Div => format!("({b}(p, oct) == 0.0 ? 0.0 : {a}(p, oct) / {b}(p, oct))"),
+                    FieldOp::Min => format!("min({a}(p, oct), {b}(p, oct))"),
+                    FieldOp::Max => format!("max({a}(p, oct), {b}(p, oct))"),
                 };
-                self.src.push_str(&format!("float {name}(float2 p) {{ return {expr}; }}\n"));
+                self.src.push_str(&format!("float {name}(float2 p, float oct) {{ return {expr}; }}\n"));
                 name
             }
         }

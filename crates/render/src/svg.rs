@@ -947,7 +947,7 @@ fn svg_steps(effects: &[Effect]) -> Vec<SvgStep<'_>> {
     let mut start: Option<usize> = None;
     for (i, effect) in effects.iter().enumerate() {
         match &effect.op {
-            EffectOp::Outline { width, color } if *width > 0.0 => {
+            EffectOp::Outline { width, color, .. } if *width > 0.0 => {
                 if let Some(s) = start.take() {
                     steps.push(SvgStep::Filters(&effects[s..i]));
                 }

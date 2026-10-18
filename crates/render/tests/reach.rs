@@ -143,11 +143,22 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
     let outline = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
+        sides: artscript_ir::Sides::ALL,
     });
     let loose = covers("outline", &outline);
     assert!(
         loose <= 1.0,
         "outline: the extent lies {loose} px past the ink"
+    );
+    let top_only = with(EffectOp::Outline {
+        width: 3.0,
+        color: color(0, 0, 0, 255),
+        sides: artscript_ir::Sides { top: true, right: false, bottom: false, left: false },
+    });
+    let loose = covers("outline on one side", &top_only);
+    assert!(
+        loose <= 1.0,
+        "outline on one side: the extent lies {loose} px past the ink"
     );
 }
 
@@ -243,6 +254,7 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
         outlined.effects.push(effect(EffectOp::Outline {
             width: 4.0,
             color: color(255, 0, 0, 255),
+            sides: artscript_ir::Sides::ALL,
         }));
         covers(&format!("{name} outline"), &outlined);
     }

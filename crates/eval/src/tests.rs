@@ -3231,6 +3231,207 @@ fn an_instance_seed_that_is_not_a_number_is_e0320() {
     assert_eq!(d.span.line, 4);
 }
 
+const PALETTE_MANIFEST: &str = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[defaults]\npalette = \"palette/house\"\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\npositional-seed = \"off\"\n";
+
+const HOUSE: &str = "palette house\n  color sky #111111\n";
+
+const ELITE: &str = "palette elite\n  color sky #222222\n\npalette hollow\n  color sky #333333\n";
+
+const PAINT_LIB: &str = "\
+palette inner
+  color sky #333333
+
+def swatch
+  rect 10x10 fill:p.sky name:a
+
+def eye iris:p.sky
+  circle 5 fill:iris name:i
+
+def holder
+  slot top
+
+def wrap
+  swatch name:s
+  swatch palette:inner name:t
+";
+
+fn palette_project(manifest: &str, src: &str, libs: &[(&str, &str)]) -> Project {
+    let mut files = vec![
+        ("art/t.art".to_string(), src.to_string()),
+        ("lib/palette/house.art".to_string(), HOUSE.to_string()),
+    ];
+    files.extend(libs.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    Project::from_sources(manifest, files.into_iter().collect()).unwrap()
+}
+
+fn palette_run(src: &str, libs: &[(&str, &str)]) -> Evaluation {
+    let p = palette_project(PALETTE_MANIFEST, src, libs);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    evaluate(&p, &plan.jobs[0])
+}
+
+fn palette_scene(src: &str) -> Scene {
+    let src = format!("{src}\n{ELITE}");
+    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    ev.scene.unwrap()
+}
+
+#[test]
+fn an_instance_palette_recolors_the_def_body_and_its_parameter_defaults() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { swatch eye }\n\
+         swatch name:plain\nswatch palette:elite name:swapped\n\
+         eye name:plain_eye\neye palette:elite name:swapped_eye\n",
+    );
+    assert_eq!(fill_hex(node(&s, "plain.a")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "plain_eye.i")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped_eye.i")), "#222222");
+}
+
+#[test]
+fn an_argument_written_at_the_call_keeps_the_callers_palette() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { eye }\neye palette:elite iris:p.sky name:e\n",
+    );
+    assert_eq!(fill_hex(node(&s, "e.i")), "#111111");
+}
+
+#[test]
+fn a_target_palette_recolors_every_draw_under_it() {
+    let s = palette_scene(
+        "@target t.png 100x100 palette:elite\nuse d { swatch holder }\n\
+         rect 4x4 fill:p.sky name:direct\nswatch name:inst\n\
+         each i in 0..2\n  rect 4x4 fill:p.sky name:looped\n\
+         if true\n  rect 4x4 fill:p.sky name:cond\n\
+         holder name:h\n  top:\n    rect 4x4 fill:p.sky name:filled\n",
+    );
+    for path in ["direct", "inst.a", "looped.0", "looped.1", "cond", "h.top.filled"] {
+        assert_eq!(fill_hex(node(&s, path)), "#222222", "{path}");
+    }
+}
+
+#[test]
+fn an_instance_palette_reaches_slot_content_written_in_the_caller() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { holder }\n\
+         holder palette:elite name:h\n  top:\n    rect 4x4 fill:p.sky name:filled\n\
+         holder name:g\n  top:\n    rect 4x4 fill:p.sky name:filled\n",
+    );
+    assert_eq!(fill_hex(node(&s, "h.top.filled")), "#222222");
+    assert_eq!(fill_hex(node(&s, "g.top.filled")), "#111111");
+}
+
+#[test]
+fn an_inner_instance_palette_replaces_an_outer_one() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { wrap swatch }\n\
+         wrap palette:elite name:w\nswatch palette:hollow name:x\n",
+    );
+    assert_eq!(fill_hex(node(&s, "w.s.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "w.t.a")), "#333333");
+    assert_eq!(fill_hex(node(&s, "x.a")), "#333333");
+
+    let s = palette_scene(
+        "@target t.png 100x100 palette:elite\nuse d { swatch }\n\
+         swatch name:outer\nswatch palette:hollow name:inner\n",
+    );
+    assert_eq!(fill_hex(node(&s, "outer.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "inner.a")), "#333333");
+}
+
+#[test]
+fn a_file_that_binds_p_itself_keeps_its_own_p() {
+    let libs = [
+        (
+            "lib/own.art",
+            "palette p\n  color sky #444444\ndef mine\n  rect 10x10 fill:p.sky name:a\n",
+        ),
+        (
+            "lib/imp.art",
+            "use palette/house as p\ndef theirs\n  rect 10x10 fill:p.sky name:a\n",
+        ),
+    ];
+    let src = format!(
+        "@target t.png 100x100 palette:elite\nuse own {{ mine }}\nuse imp {{ theirs }}\n\
+         mine name:m\nmine palette:elite name:n\ntheirs palette:elite name:t\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "m.a")), "#444444");
+    assert_eq!(fill_hex(node(&s, "n.a")), "#444444");
+    assert_eq!(fill_hex(node(&s, "t.a")), "#111111");
+}
+
+#[test]
+fn an_entry_file_top_level_let_p_keeps_its_own_p_in_its_defs() {
+    let src = format!(
+        "@target t.png 100x100 palette:elite\n{ELITE}\nlet p = hollow\n\
+         def mine\n  rect 10x10 fill:p.sky name:a\n\
+         mine name:m\nrect 10x10 fill:p.sky name:r\n"
+    );
+    let ev = palette_run(&src, &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "r")), "#333333");
+    assert_eq!(fill_hex(node(&s, "m.a")), "#333333");
+}
+
+#[test]
+fn an_instance_palette_that_is_not_a_palette_is_e0320() {
+    let src = format!(
+        "@target t.png 40x40\nuse d {{ swatch }}\nswatch name:ok\nswatch palette:#ff0000 name:bad\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    let d = diag(&ev, "E0320");
+    assert_eq!((d.span.line, d.file.as_str()), (4, "art/t.art"));
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:elite")));
+}
+
+#[test]
+fn a_target_palette_that_is_not_a_palette_is_reported_at_the_target() {
+    let ev = palette_run("@target t.png 40x40 palette:3\nrect 4x4 fill:p.sky name:r\n", &[]);
+    let d = diag(&ev, "E0206");
+    assert_eq!((d.span.line, d.file.as_str()), (1, "art/t.art"));
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:")));
+}
+
+#[test]
+fn a_palette_passed_as_a_module_parameter_hints_at_the_palette_key() {
+    let lib = "def blob_t pal:p\n  rect 10x10 fill:pal.sky name:a\n";
+    let src = format!(
+        "@target t.png 40x40\nuse d {{ blob_t }}\nblob_t pal:elite name:b\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &[("lib/d.art", lib)]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 3);
+    let fix = d.fix.as_deref().unwrap();
+    assert!(fix.contains("palette:elite"), "{fix}");
+    assert!(!fix.contains(".art"), "{fix}");
+}
+
+#[test]
+fn a_palette_key_counts_as_reading_the_palette_it_names() {
+    let manifest = PALETTE_MANIFEST.replace("unused = \"off\"\n", "");
+    let src = "@target t.png 40x40 palette:elite\nuse d { swatch }\nuse palette/elite as elite\nuse palette/hollow as hollow\nswatch palette:hollow name:s\n";
+    let libs = [
+        ("lib/palette/elite.art", "palette elite\n  color sky #222222\n"),
+        ("lib/palette/hollow.art", "palette hollow\n  color sky #333333\n"),
+        ("lib/d.art", PAINT_LIB),
+    ];
+    let p = palette_project(&manifest, src, &libs);
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0103"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
 #[test]
 fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
     let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");
@@ -3578,6 +3779,84 @@ fn a_reference_through_a_group_names_the_key() {
     scene(
         "@target t.png 40x40\ngroup name:body\n  rect 10x10\n  anchor neck 5,7\nassert @body.neck.x ~= 5\n",
     );
+}
+
+#[test]
+fn at_takes_an_anchor_reference_like_its_x_and_y() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "group name:body at:30,20 rot:90\n",
+        "  rect 10x10\n",
+        "  anchor neck 5,7\n",
+        "circle 2 at:@body.neck name:a\n",
+        "circle 2 at:@body.neck.x,@body.neck.y name:b\n",
+        "group at:10,10 rot:30 scale:2\n",
+        "  circle 2 at:@body.neck name:c\n",
+        "  circle 2 at:@body.neck.x,@body.neck.y name:d\n",
+    ));
+    near(at(node(&s, "a")), (23.0, 25.0));
+    let b = at(node(&s, "b"));
+    near(at(node(&s, "a")), (f64::from(b.0), f64::from(b.1)));
+    let (c, d) = (at(node(&s, "c")), at(node(&s, "d")));
+    near(c, (f64::from(d.0), f64::from(d.1)));
+    assert!(c.0.abs() + c.1.abs() > 1.0, "{c:?}");
+}
+
+#[test]
+fn at_takes_an_anchor_through_an_instance() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "def hero\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "hero at:40,50 name:hero\n",
+        "circle 2 at:@hero.neck name:a\n",
+    ));
+    near(at(node(&s, "a")), (40.0, 44.0));
+}
+
+#[test]
+fn an_anim_offset_adds_to_an_anchor_rest_at() {
+    let s = scene(concat!(
+        "@target t.png 100x100 t:.5s\n",
+        "anim bob dur:1s\n",
+        "  .dot at:key(0,0 0,-10 ease:linear)\n",
+        "group name:body at:30,40\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "circle 2 at:@body.neck name:dot\n",
+        "play bob\n",
+    ));
+    near(at(node(&s, "dot")), (30.0, 29.0));
+}
+
+#[test]
+fn an_anim_offset_on_a_node_rest_at_reports_the_node_once() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 40x40\n",
+            "anim bob dur:1s\n",
+            "  .dot at:key(0,0 0,-10)\n",
+            "rect 10x10 name:body\n",
+            "circle 2 at:@body name:dot\n",
+            "play bob\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.code.starts_with('E')).collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(errors[0].message.contains("`at:@body` is a node, not a point"), "{}", errors[0]);
+}
+
+#[test]
+fn at_names_the_node_when_the_reference_is_not_a_point() {
+    let ev = run_with(
+        "@target t.png 40x40\nrect 10x10 name:body\ncircle 2 at:@body\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("`at:@body` is a node, not a point"), "{d}");
+    assert!(d.fix.as_deref().unwrap_or("").contains("at:@body.neck"), "{d}");
 }
 
 #[test]
@@ -5089,6 +5368,15 @@ fn copy_of_an_outer_ref_is_its_box() {
 }
 
 #[test]
+fn the_outer_extent_grows_only_on_the_sides_an_outline_draws() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3 sides:top,left\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 60.0, 55.0));
+}
+
+#[test]
 fn a_part_named_outer_wins_over_the_outer_extent() {
     let s = scene(
         "@target t.png 100x100\n\
@@ -5348,6 +5636,77 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
 
+fn outline_sides(src: &str) -> artscript_ir::Sides {
+    let s = scene(&format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {src}\n"));
+    node(&s, "c")
+        .effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Outline { sides, .. } => Some(sides),
+            _ => None,
+        })
+        .expect("outline")
+}
+
+#[test]
+fn outline_sides_names_the_sides_it_draws_on() {
+    use artscript_ir::Sides;
+    assert_eq!(outline_sides(""), Sides::ALL);
+    assert_eq!(outline_sides("sides:top"), Sides { top: true, right: false, bottom: false, left: false });
+    assert_eq!(
+        outline_sides("sides:top,left"),
+        Sides { top: true, right: false, bottom: false, left: true }
+    );
+    assert_eq!(outline_sides("sides:left,top"), outline_sides("sides:top,left"));
+    assert_eq!(outline_sides("sides:top,right,bottom,left"), Sides::ALL);
+}
+
+#[test]
+fn outline_sides_rejects_what_is_not_a_side_word() {
+    for bad in ["sides:up", "sides:top,lef", "sides:3", "sides:[]", "sides:#ff0000", "sides:\"top\""] {
+        let ev = run_with(
+            &format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {bad}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("sides"), "{bad}: {d}");
+    }
+}
+
+fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
+    match &shape(s, path).fill {
+        Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
+        other => panic!("{path} has fill {other:?}"),
+    }
+}
+
+#[test]
+fn wrap_sets_a_period_per_axis_on_a_noise_field() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 20x20 fill:simplex(16 wrap:64) -> [#000 #fff] name:a\n\
+         rect 20x20 fill:worley(16 wrap:64,32) -> [#000 #fff] name:b\n\
+         rect 20x20 fill:value(16) -> [#000 #fff] name:c\n",
+    );
+    assert_eq!(noise_wrap(&s, "a"), Some([64.0, 64.0]));
+    assert_eq!(noise_wrap(&s, "b"), Some([64.0, 32.0]));
+    assert_eq!(noise_wrap(&s, "c"), None);
+}
+
+#[test]
+fn a_wrap_that_is_not_a_positive_number_or_pair_is_e0320_at_its_line() {
+    for bad in ["wrap:tile", "wrap:0", "wrap:-64", "wrap:64,0", "wrap:50%"] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\ncircle 10 name:spacer\nrect 20x20 fill:perlin(16 {bad}) -> [#000 #fff] name:a\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("wrap"), "{bad}: {d}");
+    }
+}
+
 #[test]
 fn fx_under_a_taken_if_applies_to_the_draw_in_source_order() {
     let src = |on: bool| {
@@ -5497,4 +5856,13 @@ fn a_library_let_named_scale_wins_inside_its_own_defs() {
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
     assert_eq!(shape(&s, "d.c").geometry.compute_tight_bounds().width(), 6.0);
+}
+
+#[test]
+fn a_patch_under_an_instance_palette_reads_that_palette() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { swatch }\nswatch palette:elite name:s\n  .a fill:p.sky\n  fx grain .1\nswatch name:u\n  .a fill:p.sky\n",
+    );
+    assert_eq!(fill_hex(node(&s, "s.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "u.a")), "#111111");
 }

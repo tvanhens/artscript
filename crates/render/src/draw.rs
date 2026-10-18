@@ -275,15 +275,9 @@ fn paint_layer_steps(
             effects::LayerStep::Filter(filter) => {
                 effects::apply_image_filter(ctx.backend, image, &local_to_px, filter)?
             }
-            effects::LayerStep::Outline { width, color, cover_halo_past } => effects::outline_geometry(
-                ctx.backend,
-                image,
-                &local_to_px,
-                node,
-                width,
-                color,
-                cover_halo_past,
-            )?,
+            effects::LayerStep::Outline(outline) => {
+                effects::outline_geometry(ctx.backend, image, &local_to_px, node, outline)?
+            }
         };
     }
     canvas.save();
@@ -317,7 +311,7 @@ fn reach_px(
     let ring = steps
         .iter()
         .map(|step| match step {
-            effects::LayerStep::Outline { width, .. } => *width,
+            effects::LayerStep::Outline(outline) => outline.width,
             effects::LayerStep::Filter(_) => 0.0,
         })
         .fold(0.0_f32, f32::max);

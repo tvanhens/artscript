@@ -64,6 +64,7 @@ fn paint_feature(node: &Node, paint: &Paint, fill: bool, out: &mut Vec<Unsupport
 
 fn effect_feature(op: &EffectOp) -> Option<&'static str> {
     match op {
+        EffectOp::Outline { sides, .. } if !sides.is_all() => Some("fx outline sides"),
         EffectOp::Inner { .. } => Some("fx inner"),
         EffectOp::Rim { .. } => Some("fx rim"),
         EffectOp::Grain { .. } => Some("fx grain"),

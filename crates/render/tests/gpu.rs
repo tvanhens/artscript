@@ -21,7 +21,7 @@ fn decode(png: &[u8]) -> (i32, i32, Vec<u8>) {
 
 fn layered_scene() -> artscript_ir::Scene {
     let mut ringed = solid("ringed", circle_at(50.0, 60.0, 24.0), red());
-    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255) }));
+    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let mut soft = solid("soft", circle_at(110.0, 60.0, 24.0), color(0, 90, 220, 255));
     soft.opacity = 0.6;
     scene(160.0, 120.0, vec![ringed, soft])
