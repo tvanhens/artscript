@@ -1,0 +1,44 @@
+# Brushed strokes as ribbons, 256x256 on paper: six full-width wavy strokes, 8 to 10 px wide, from
+# x 12 to 244, dipping at x 90 and rising at x 170, then a bottom row of three cells.
+# Rows 1 to 3 (y 20, 52, 84), ink with bristle at strength .3, .6, .95: row 1 is nearly solid with a
+# few flecks at its ends, row 2 has thin paper streaks along it and ragged ends, row 3 breaks into
+# streaks all along with frayed, gappy ends.
+# Row 4 (y 116), ink with bristle and pressure:[.2 1 .4 .9] on the four points: sparse and gappy at
+# the left end, solid around x 90, gappy again near x 170, solid at the right end.
+# Row 5 (y 148), red with a hatch brush declared in this file and angle:[0 90] tilt:[0 1]: dark and
+# light stripes 3 px apart that run along the stroke at the left and turn until they run across it
+# at the right, while the whole stroke fades from full red to a quarter.
+# Row 6 (y 180), blue with dry at strength .6: paper streaks along the stroke, a notch where a
+# fresh pass starts, and the paint thinning toward the right.
+# Bottom row (y 200 to 248). Left (x 16 to 84): an ink bristle stroke that rises, falls and rises
+# again, crossing its own first leg; at the crossing the ribbon reads as one stroke, with no edge
+# of one leg showing through the other, and both ends are ragged. Middle (x 120 to 168): a 48x32
+# closed rect outline in ink bristle, 6 px wide with round corners, with a small rag at its
+# top-left corner, where the contour starts and ends. Right (x 196 to 244): a 48x32 rect whose
+# gold fill breaks into dry's horizontal streaks inside a green dry ribbon outline, 5 px wide.
+# Every ribbon has round caps; nothing is drawn past a stroke's half width.
+# The .svg target uses profile:svg: brushed nodes are baked into raster tiles, so each cell looks
+# like the PNG's.
+@target brush/stroke.png 256x256
+@target brush/stroke.svg 256x256 profile:svg
+
+use std/brushes { bristle dry }
+
+# Stripes 3 units apart, rotated by the angle channel, fading as tilt rises.
+brush hatch
+  sksl """
+  float4 shade(Mark m) {
+    float2 q = rot(m.uv, m.angle);
+    float line = step(.5, fract(q.y / 3));
+    return float4(m.paint.rgb, cover(m.edge, m) * mix(.2, 1, line) * mix(1, .25, m.tilt));
+  }
+  """
+
+each i, s in [.3 .6 .95]
+  curve 12,20+i*32 90,10+i*32 170,30+i*32 244,20+i*32 stroke:p.ink,8 brush:bristle(strength:s) name:strength
+curve 12,116 90,106 170,126 244,116 stroke:p.ink,8 brush:bristle pressure:[.2 1 .4 .9] name:pressure
+curve 12,148 90,138 170,158 244,148 stroke:p.red.2,10 brush:hatch angle:[0 90] tilt:[0 1] name:hatched
+curve 12,180 90,170 170,190 244,180 stroke:p.blue.2,10 brush:dry(strength:.6) name:dried
+curve 16,244 50,204 84,244 60,200 24,236 stroke:p.ink,7 brush:bristle name:loop
+rect 48x32 at:144,224 fill:none stroke:p.ink,6 brush:bristle name:outline
+rect 48x32 at:220,224 fill:p.gold.2 stroke:p.green.2,5 brush:dry(strength:.6) name:both
