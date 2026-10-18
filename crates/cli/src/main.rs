@@ -2,6 +2,30 @@
 //!
 //! `docs` prints the core language card and an index of topics. `docs <topic>...` prints the card and those topic files.
 
+#![deny(clippy::print_stdout, clippy::print_stderr)]
+
+/// `print!`, `println!` and `eprintln!` that drop the text once the reader closes the pipe, so the command still exits with its own code.
+macro_rules! out {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = write!(std::io::stdout(), $($t)*);
+    }};
+}
+
+macro_rules! outln {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($t)*);
+    }};
+}
+
+macro_rules! errln {
+    ($($t:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), $($t)*);
+    }};
+}
+
 mod build;
 
 use std::fs;
@@ -54,11 +78,11 @@ fn main() -> ExitCode {
             None => docs(&args[1..]),
         },
         Some("--version" | "-V") => {
-            println!("artscript {}", artscript_eval::VERSION);
+            outln!("artscript {}", artscript_eval::VERSION);
             0
         }
         Some("--help" | "-h" | "help") | None => {
-            println!("{USAGE}");
+            outln!("{USAGE}");
             0
         }
         Some(other) => usage_error(&format!("unknown command `{other}`")),
@@ -85,8 +109,8 @@ const TOPICS: &[(&str, &str)] = &[
 
 fn docs(names: &[String]) -> u8 {
     if names.is_empty() {
-        print!("{CARD}\n{}", topic_index());
-        println!("\nRun `artscript docs <topic> [topic...]` and name every topic the task touches in one call.");
+        out!("{CARD}\n{}", topic_index());
+        outln!("\nRun `artscript docs <topic> [topic...]` and name every topic the task touches in one call.");
         return 0;
     }
     let mut bodies = Vec::new();
@@ -94,12 +118,12 @@ fn docs(names: &[String]) -> u8 {
         match TOPICS.iter().find(|(n, _)| n == name) {
             Some((_, body)) => bodies.push(*body),
             None => {
-                eprintln!("error: unknown docs topic `{name}`\n\n{}", topic_index());
+                errln!("error: unknown docs topic `{name}`\n\n{}", topic_index());
                 return 1;
             }
         }
     }
-    print!("{CARD}\n{}", bodies.join("\n"));
+    out!("{CARD}\n{}", bodies.join("\n"));
     0
 }
 
@@ -119,7 +143,7 @@ fn topic_index() -> String {
 }
 
 fn usage_error(msg: &str) -> u8 {
-    eprintln!("error: {msg}\n\n{USAGE}");
+    errln!("error: {msg}\n\n{USAGE}");
     1
 }
 
@@ -193,7 +217,7 @@ fn parse_fmt(args: &[String]) -> Result<(bool, Vec<String>), String> {
 
 fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
     let Some(root) = find_root(cwd) else {
-        eprintln!(
+        errln!(
             "{}",
             Diagnostic::error(
                 "E0200",
@@ -207,7 +231,7 @@ fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
     match load(&root) {
         Ok(p) => f(&p),
         Err(d) => {
-            eprintln!("{d}");
+            errln!("{d}");
             1
         }
     }
@@ -221,10 +245,10 @@ pub(crate) fn report(mut diags: Vec<Diagnostic>, allow_warnings: bool, json: boo
         (&a.file, a.span.line, a.span.col).cmp(&(&b.file, b.span.line, b.span.col))
     });
     if json {
-        println!("{}", serde_json::json!({ "diagnostics": diags }));
+        outln!("{}", serde_json::json!({ "diagnostics": diags }));
     } else {
         for d in &diags {
-            eprintln!("{d}\n");
+            errln!("{d}\n");
         }
     }
     exit_code(&diags, allow_warnings)
@@ -287,7 +311,7 @@ fn fmt(project: &Project, cwd: &Path, check: bool, files: &[String]) -> u8 {
                             .in_file(rel),
                     );
                 } else {
-                    println!("formatted {rel}");
+                    outln!("formatted {rel}");
                 }
             }
             Ok(_) => {}
@@ -296,7 +320,7 @@ fn fmt(project: &Project, cwd: &Path, check: bool, files: &[String]) -> u8 {
     }
     if check {
         for rel in &dirty {
-            println!("{rel}");
+            outln!("{rel}");
         }
     }
     let code = report(diags, false, false);
@@ -332,7 +356,7 @@ fn explain(project: &Project, file: &Path) -> u8 {
         if !own.is_empty() {
             return report(own, false, false);
         }
-        eprintln!(
+        errln!(
             "{}",
             Diagnostic::error(
                 "E0200",
@@ -346,7 +370,7 @@ fn explain(project: &Project, file: &Path) -> u8 {
     };
     let ev = artscript_eval::evaluate(project, job);
     if let Some(scene) = &ev.scene {
-        print!("{}", artscript_eval::explain(scene, &ev.seeded));
+        out!("{}", artscript_eval::explain(scene, &ev.seeded));
     }
     report(ev.diagnostics, true, false)
 }
@@ -375,7 +399,7 @@ const INIT_ART: &str =
 
 fn init(cwd: &Path) -> u8 {
     if cwd.join("artscript.toml").exists() {
-        eprintln!(
+        errln!(
             "{}",
             Diagnostic::error(
                 "E0200",
@@ -399,10 +423,10 @@ fn init(cwd: &Path) -> u8 {
         if let Some(dir) = path.parent()
             && let Err(e) = fs::create_dir_all(dir).and_then(|_| fs::write(&path, body))
         {
-            eprintln!("error: cannot write {rel}: {e}");
+            errln!("error: cannot write {rel}: {e}");
             return 1;
         }
-        println!("created {rel}");
+        outln!("created {rel}");
     }
     0
 }

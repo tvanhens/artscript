@@ -807,3 +807,23 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_closed_output_pipe_keeps_the_exit_code() {
+    let dir = fixture("closed-pipe", &[]);
+    let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
+    fs::write(dir.join("art/t.art"), format!("@target t.png 64x64\n{art}")).unwrap();
+    for args in [&["build"][..], &["check"], &["check", "--json"]] {
+        let mut child = Command::new(env!("CARGO_BIN_EXE_artscript"))
+            .args(args)
+            .current_dir(&dir)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        drop(child.stdout.take());
+        drop(child.stderr.take());
+        assert_eq!(child.wait().unwrap().code(), Some(1), "{args:?}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}

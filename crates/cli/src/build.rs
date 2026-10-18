@@ -541,7 +541,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
     }
     for path in old.keys().filter(|p| !new.contains_key(*p)) {
         let _ = fs::remove_file(out_dir.join(path));
-        println!("removed stale {path}");
+        outln!("removed stale {path}");
     }
     let manifest = json!({ "version": 1, "outputs": new.into_values().collect::<Vec<_>>() });
     let text = serde_json::to_string_pretty(&manifest).unwrap_or_default() + "\n";
@@ -549,7 +549,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
         let _ = fs::create_dir_all(&out_dir).and_then(|_| fs::write(&manifest_path, text));
     }
     let written: usize = outcomes.iter().map(|(_, o)| o.outputs.len()).sum();
-    println!(
+    outln!(
         "built {} target(s), {written} output(s) in {}",
         outcomes.len(),
         project.manifest.out
