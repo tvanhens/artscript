@@ -5284,3 +5284,62 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
+
+#[test]
+fn fx_under_a_taken_if_applies_to_the_draw_in_source_order() {
+    let src = |on: bool| {
+        format!(
+            "@target t.png 100x100\nlet on = {on}\ncircle 10 name:c\n  fx shadow 0,4\n  if on\n    fx blur 2\n  else\n    fx glow 3\n  fx outline 3\n"
+        )
+    };
+    let s = scene(&src(true));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Blur", "Outline"]);
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx shadow 0,4\n  fx blur 2\n  fx outline 3\n",
+    );
+    assert_eq!(fx_debug(&s, "c"), fx_debug(&written, "c"));
+    let s = scene(&src(false));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Glow", "Outline"]);
+
+    let s = scene(
+        "@target t.png 100x100\nlet on = false\nlayer l\n  circle 10 name:c\n  if on\n    fx blur 2\n  else if true\n    if true\n      fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "l")), ["Outline"]);
+    assert!(node(&s, "c").effects.is_empty());
+}
+
+#[test]
+fn fx_under_an_if_in_a_def_body_or_call_block_applies_to_the_instance() {
+    let s = scene(
+        "@target t.png 100x100\nlet on = true\ndef badge glow:false\n  circle 10\n  fx shadow 0,4\n  if glow\n    fx glow 3\nbadge name:a\nbadge glow:true name:b\n  if on\n    fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "a")), ["Shadow"]);
+    assert_eq!(fx_ops(node(&s, "b")), ["Shadow", "Glow", "Outline"]);
+}
+
+#[test]
+fn fx_under_an_if_reads_the_lets_of_its_branch() {
+    let s = scene(
+        "@target t.png 100x100\nlet w = 1\ncircle 10 name:c\n  if true\n    let w = 5\n    fx blur w\ndef badge\n  circle 4\n  if true\n    let w = 5\n    fx blur w\nbadge name:a\nbadge name:b\n  if true\n    let w = 5\n    fx glow w\n",
+    );
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx blur 5\ndef badge\n  circle 4\n  fx blur 5\nbadge name:a\nbadge name:b\n  fx glow 5\n",
+    );
+    for path in ["c", "a", "b"] {
+        assert_eq!(fx_debug(&s, path), fx_debug(&written, path), "{path}");
+    }
+}
+
+#[test]
+fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\nsubtract name:wall\n  rect 60,60 at:32,32\n  circle 10 at:32,32\n    if true\n      fx glow 2\n",
+        &[],
+    );
+    let d = diag(&ev, "E0321");
+    assert_eq!(
+        d.message,
+        "`fx glow` on an operand of `subtract` is ignored; an operand gives only its geometry"
+    );
+    assert_eq!(d.span.line, 6);
+}

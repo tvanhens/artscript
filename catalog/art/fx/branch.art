@@ -1,0 +1,16 @@
+# `fx` lines under an `if` or `else` directly under a draw apply to that draw when the branch is taken, at their line among its other `fx`. Two 128x64 targets, `as:a` and `as:b`, each with two blue circles of radius 20 at (32,32) and (96,32).
+# branch_a.png (as:a), left: the `if` branch is taken, so the circle is red (blue shifted by hue:120) with a dark brown outline, the ink shifted with it. Right: the `if` runs before the rim, so the circle is the same red and its lower-right rim band stays gold-orange.
+# branch_b.png (as:b), left: the `else` branch is taken, so the circle is gray (sat:-1) with a gray-black outline. Right: no branch is taken, so the circle stays blue with a gold lower-right rim band.
+@target fx/branch_a.png 128x64 as:a
+@target fx/branch_b.png 128x64 as:b
+
+circle 20 at:32,32 fill:p.blue
+  fx outline 3 color:p.ink
+  if target == a
+    fx adjust hue:120
+  else
+    fx adjust sat:-1
+circle 20 at:96,32 fill:p.blue
+  if target == a
+    fx adjust hue:120
+  fx rim 6 dir:1,1 color:p.gold a:1

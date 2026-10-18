@@ -227,6 +227,7 @@ impl<'a> Printer<'a> {
                     self.draw_item(item, indent + 1);
                 }
             }
+            SceneKind::Fx(f) => self.fx(f, indent),
         }
     }
 
