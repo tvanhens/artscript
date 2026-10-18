@@ -5,6 +5,7 @@ use std::rc::Rc;
 
 use artscript_ir::Field;
 
+use crate::brush::BrushVal;
 use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
@@ -74,6 +75,8 @@ pub enum Value {
     Module(Rc<Module>),
     Ref(Rc<RefVal>),
     Rule(Rc<RuleDef>),
+    /// A `brush` declaration with its uniform values and placement bound.
+    Brush(Rc<BrushVal>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.
     Unseen,
@@ -97,6 +100,7 @@ pub enum Kind {
     Module,
     Ref,
     Rule,
+    Brush,
     Unseen,
 }
 
@@ -118,6 +122,7 @@ impl fmt::Display for Kind {
             Kind::Module => "a module",
             Kind::Ref => "a node reference",
             Kind::Rule => "a rule",
+            Kind::Brush => "a brush",
             Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
@@ -144,6 +149,7 @@ impl Value {
             Value::Module(_) => Kind::Module,
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
+            Value::Brush(_) => Kind::Brush,
             Value::Unseen => Kind::Unseen,
         }
     }
@@ -292,6 +298,7 @@ impl Value {
             Value::Module(m) => m.path.clone(),
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
+            Value::Brush(b) => format!("brush {}", b.decl.name),
             Value::Unseen => "unseen".into(),
         }
     }
@@ -411,6 +418,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::None, Value::None) => true,
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
+        (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,
         (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {

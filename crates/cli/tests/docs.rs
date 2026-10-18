@@ -95,3 +95,20 @@ fn docs_rejects_flags() {
     let out = artscript(&["docs", "--all"]);
     assert_eq!(out.status.code(), Some(1));
 }
+
+#[test]
+fn std_lists_the_bundled_libraries_and_prints_one_to_fork() {
+    let list = artscript(&["std"]);
+    assert_eq!(list.status.code(), Some(0));
+    assert_eq!(String::from_utf8(list.stdout).unwrap(), "std/brushes\n");
+    for name in ["brushes", "std/brushes"] {
+        let out = artscript(&["std", name]);
+        assert_eq!(out.status.code(), Some(0), "{name}");
+        let text = String::from_utf8(out.stdout).unwrap();
+        assert!(text.starts_with("# std/brushes:"), "{name}: {text}");
+        assert!(text.contains("\nbrush dry ") && text.contains("\nbrush chip "), "{name}");
+    }
+    let missing = artscript(&["std", "nope"]);
+    assert_eq!(missing.status.code(), Some(1));
+    assert!(String::from_utf8(missing.stderr).unwrap().contains("bundled: std/brushes"));
+}

@@ -118,13 +118,7 @@ fn cache_key(project: &Project, job: &TargetJob, backend: Backend) -> String {
     for dep in dependencies(project, &job.source) {
         buf.extend_from_slice(dep.as_bytes());
         buf.push(0);
-        buf.extend_from_slice(
-            project
-                .files
-                .get(&dep)
-                .map(String::as_bytes)
-                .unwrap_or_default(),
-        );
+        buf.extend_from_slice(project.source(&dep).map(str::as_bytes).unwrap_or_default());
         buf.push(0);
     }
     buf.extend_from_slice(project.manifest_src.as_bytes());

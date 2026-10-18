@@ -6198,3 +6198,5 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
     let d = diag(&ev, "E0320");
     assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
 }
+
+mod brush;

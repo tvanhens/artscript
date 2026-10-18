@@ -57,6 +57,7 @@ dependencies = [
 name = "artscript-eval"
 version = "0.1.0"
 dependencies = [
+ "artscript-brush",
  "artscript-ir",
  "artscript-render",
  "artscript-syntax",

@@ -27,6 +27,8 @@ pub struct Module {
     /// A failed `use` without an item list could have bound any name.
     pub lost_all: Cell<bool>,
     pub binds_p: Cell<bool>,
+    /// From the bundled standard library, not the author's files. Lints leave it alone.
+    pub bundled: bool,
 }
 
 impl Module {
@@ -42,6 +44,7 @@ impl Module {
             lost: RefCell::new(BTreeSet::new()),
             lost_all: Cell::new(false),
             binds_p: Cell::new(false),
+            bundled: false,
         }
     }
 

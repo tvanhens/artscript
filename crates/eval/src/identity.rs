@@ -119,6 +119,8 @@ enum Use {
     Blob,
     Jitter,
     Grain,
+    /// A brush stage on one paint slot: `#brush.fill.0`.
+    Brush(&'static str, u32),
 }
 
 #[derive(Clone, Default, PartialEq, Eq, Hash, Debug)]
@@ -293,6 +295,11 @@ impl Key {
         self.with_tail(|t| t.used = Some(Use::Grain))
     }
 
+    /// The seed key of brush stage `stage` on the `slot` paint of this node.
+    pub fn brush(&self, slot: &'static str, stage: u32) -> Key {
+        self.with_tail(|t| t.used = Some(Use::Brush(slot, stage)))
+    }
+
     fn with_tail(&self, f: impl FnOnce(&mut Tail)) -> Key {
         let mut tail = self.tail.as_deref().cloned().unwrap_or_default();
         f(&mut tail);
@@ -328,6 +335,7 @@ impl Key {
                 Some(Use::Blob) => s.push_str("\0blob"),
                 Some(Use::Jitter) => s.push_str("#jitter"),
                 Some(Use::Grain) => s.push_str("#grain"),
+                Some(Use::Brush(slot, stage)) => s.push_str(&format!("#brush.{slot}.{stage}")),
                 None => {}
             }
         }

@@ -37,8 +37,18 @@ impl Evaluator<'_> {
         if func == "key" {
             return self.key_call(args, named, sc);
         }
-        match sc.module.global(func) {
+        let bound = sc
+            .env
+            .iter()
+            .rev()
+            .find(|(k, _)| k == func)
+            .map(|(_, v)| v.clone())
+            .or_else(|| sc.module.global(func));
+        match bound {
             Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
+            Some(Value::Brush(b)) => return self.call_brush(&b, args, named, sc),
+            // A parameter that may hold a brush or `none`: `brush:tool(scale:.5)` stays `none`.
+            Some(Value::None) if args.is_empty() && !named.is_empty() => return Ok(Value::None),
             Some(Value::Unseen) => return Err(unseen(func)),
             _ => {}
         }

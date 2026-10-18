@@ -15,6 +15,7 @@ use artscript_syntax::ast::{
 };
 use artscript_syntax::{Diagnostic, format_expr};
 
+use crate::brush::{BrushVal, Slot};
 use crate::checks::{CheckState, Pending as CheckPending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
@@ -80,10 +81,10 @@ const NODE_KEYS: &[&str] = &[
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
-const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur"];
+const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush"];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "a", "blend",
 ];
 
 struct Builtin {
@@ -889,7 +890,7 @@ impl<'a> Evaluator<'a> {
         self.diags.push(d.in_file(file).at_node(node));
     }
 
-    fn begin_seed(&mut self, file: &str, key: Key) {
+    pub(crate) fn begin_seed(&mut self, file: &str, key: Key) {
         self.seed_file = file.to_string();
         self.seed_key = key;
         self.seed_count = 0;
@@ -970,8 +971,7 @@ impl<'a> Evaluator<'a> {
         }
         let src = self
             .project
-            .files
-            .get(file)
+            .source(file)
             .ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
         match artscript_syntax::parse(src) {
             Ok(f) => {
@@ -997,7 +997,9 @@ impl<'a> Evaluator<'a> {
         }
         let parsed = self.parse(file)?;
         self.loading.push(file.to_string());
-        let module = Rc::new(Module::new(file));
+        let mut module = Module::new(file);
+        module.bundled = self.project.is_bundled(file);
+        let module = Rc::new(module);
         if let Some(pal) = self.project.manifest.palette.clone()
             && let Some(pfile) = self.project.resolve_use(&pal)
             && pfile != file
@@ -1144,16 +1146,13 @@ impl<'a> Evaluator<'a> {
                 module.anims.borrow_mut().insert(name.clone(), anim);
                 Ok(())
             }
-            DeclKind::Light { .. } | DeclKind::Brush { .. } => {
-                let what = match &decl.kind {
-                    DeclKind::Light { .. } => "light (Phase 2)",
-                    _ => "brush (Phase 2)",
-                };
-                Err(
-                    fail("E0390", format!("{what} is not yet implemented in v0.1"))
-                        .fix("remove the declaration, or use built-in fields and fx lines"),
-                )
+            DeclKind::Brush { name, params, sksl } => {
+                self.declare_brush(module, name, params, sksl.as_ref(), decl.span)
             }
+            DeclKind::Light { .. } => Err(
+                fail("E0390", "light (Phase 2) is not yet implemented in v0.1")
+                    .fix("remove the declaration, or use built-in fields and fx lines"),
+            ),
         }
     }
 
@@ -1169,15 +1168,18 @@ impl<'a> Evaluator<'a> {
             Some(f) => f,
             None if self.project.files.contains_key(&rooted) => rooted,
             None => {
-                return Err(fail("E0210", format!("no library `{path}`"))
-                    .note(format!(
-                        "libraries: {}",
-                        self.project.library_names().join(", ")
-                    ))
-                    .fix(format!(
+                let f = fail("E0210", format!("no library `{path}`")).note(format!(
+                    "libraries: {}",
+                    self.project.library_names().join(", ")
+                ));
+                return Err(if path.starts_with("std/") {
+                    f.fix("`std/` names only the bundled libraries; `artscript std` lists them")
+                } else {
+                    f.fix(format!(
                         "create `{}/{path}.art`, or fix the path",
                         self.project.manifest.lib[0]
-                    )));
+                    ))
+                });
             }
         };
         let parsed = self.parse(&target)?;
@@ -1197,10 +1199,13 @@ impl<'a> Evaluator<'a> {
         let styles = m.styles.borrow().clone();
         let finishes = m.finishes.borrow().clone();
         let anims = m.anims.borrow().clone();
+        // A declaration the library already reported as failed stays quiet at its use sites here.
+        let lost = m.lost.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
                 module.bind(&k, v);
             }
+            module.lost.borrow_mut().extend(lost);
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
             }
@@ -1216,6 +1221,10 @@ impl<'a> Evaluator<'a> {
             let mut found = false;
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
                 module.bind(item, v.clone());
+                found = true;
+            }
+            if lost.contains(item) {
+                module.lost.borrow_mut().insert(item.clone());
                 found = true;
             }
             if !item.starts_with('_')
@@ -2160,14 +2169,17 @@ impl<'a> Evaluator<'a> {
             } else {
                 stroke_expr(named, expanded_style.as_deref(), sc)
             };
+            let brush_site = named.iter().find(|n| n.key == "brush").map(|n| n.span);
             let shape = self.paint_shape(
                 &a,
                 geometry,
                 knots.as_deref(),
                 closed,
-                &sc.style,
+                sc,
                 &world,
                 stroke_src.as_ref(),
+                &key,
+                brush_site,
             )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(id) = decl {
@@ -2693,16 +2705,22 @@ impl<'a> Evaluator<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    /// `brush_site` is the span of this line's own `brush:` key. A brush error is reported there;
+    /// an inherited brush's error lands on the statement with a note.
+    #[allow(clippy::too_many_arguments)]
     fn paint_shape(
         &mut self,
         a: &Args,
         geometry: Path,
         knots: Option<&[P]>,
         closed: bool,
-        style: &[(String, Value)],
+        sc: &Scope,
         world: &Matrix,
         stroke_src: Option<&Expr>,
+        key: &Key,
+        brush_site: Option<Span>,
     ) -> R<Shape> {
+        let style: &[(String, Value)] = &sc.style;
         let pick = |k: &str| {
             a.get(k).cloned().or_else(|| {
                 style
@@ -2781,10 +2799,55 @@ impl<'a> Evaluator<'a> {
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
+        let marks = match pick("brush") {
+            None => Vec::new(),
+            Some(bv) => {
+                let (file, node) = (sc.file().to_string(), sc.node_name());
+                let at_brush = |this: &mut Self, f: Fail| -> Fail {
+                    match brush_site {
+                        Some(span) => {
+                            this.report(f, &file, span, &node);
+                            Fail::reported()
+                        }
+                        None => f.note("the brush is inherited from an enclosing line or style"),
+                    }
+                };
+                let stack = match self.brush_stack(&bv, sc) {
+                    Ok(stack) => stack,
+                    Err(f) => return Err(at_brush(self, f)),
+                };
+                let reaches = |slot: Slot| stack.iter().any(|b| b.place.on.is_none_or(|on| on == slot));
+                if width.is_some() && reaches(Slot::Stroke) {
+                    let f = fail("E0362", "brushed strokes are not implemented yet")
+                        .note("a brush applies to every paint slot the node has; this node has a stroke")
+                        .fix("add `on:fill` to the brush, or draw the outline as its own node");
+                    return Err(at_brush(self, f));
+                }
+                let fill_stack: Vec<Rc<BrushVal>> = stack
+                    .iter()
+                    .filter(|b| fill.is_some() && b.place.on.is_none_or(|on| on == Slot::Fill))
+                    .cloned()
+                    .collect();
+                if fill_stack.is_empty() && brush_site.is_some() && !stack.is_empty() {
+                    let f = fail("E0362", "`brush:` on a node with no paint to brush")
+                        .note(if fill.is_none() { "this node has no fill" } else { "the brush is narrowed to a slot this node does not have" })
+                        .fix("give the node a fill, or remove `brush:`");
+                    return Err(at_brush(self, f));
+                }
+                if blur > 0.0 && !fill_stack.is_empty() {
+                    let f = fail("E0362", "`blur:` on a brushed shape")
+                        .fix("blur the parent instead: wrap the node in a `group` with `fx blur`");
+                    return Err(at_brush(self, f));
+                }
+                let explicit = a.num("seed").map(|s| s as u64);
+                self.area_marks(&fill_stack, key, explicit, &file)
+            }
+        };
+        let fill = fill.map(|paint| IrFill { paint, marks });
         let Some(width) = width else {
             return Ok(Shape {
                 geometry,
-                fill: fill.map(IrFill::plain),
+                fill,
                 stroke: None,
                 blur,
                 children: vec![],
@@ -2843,7 +2906,7 @@ impl<'a> Evaluator<'a> {
         };
         Ok(Shape {
             geometry,
-            fill: fill.map(IrFill::plain),
+            fill,
             stroke: Some(Stroke {
                 paint,
                 width: w as f32,
@@ -5175,7 +5238,7 @@ fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
     }
 }
 
-fn osa_distance(a: &str, b: &str) -> usize {
+pub(crate) fn osa_distance(a: &str, b: &str) -> usize {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
     let mut d = vec![vec![0; b.len() + 1]; a.len() + 1];
     for (i, row) in d.iter_mut().enumerate() {
