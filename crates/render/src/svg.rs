@@ -176,13 +176,45 @@ impl Writer {
         outer: &Pushed<'_>,
     ) -> Result<(), RenderError> {
         match &node.kind {
-            NodeKind::Group { children, .. } => {
+            NodeKind::Group { children, .. } if outer.region.is_none() && outer.soft.is_none() => {
                 for child in children {
                     self.node(scene, child, bake_scale, depth + 1, outer)?;
                 }
             }
+            NodeKind::Group { children, .. } => {
+                let joins = |child: &Node| child.blend == Blend::Normal && !pushes_clip(child, outer.soft.is_some());
+                for run in children.chunk_by(|a, b| joins(a) && joins(b)) {
+                    if joins(&run[0]) {
+                        self.pushed_run(scene, run, bake_scale, depth + 1, outer)?;
+                    } else {
+                        self.node(scene, &run[0], bake_scale, depth + 1, outer)?;
+                    }
+                }
+            }
             NodeKind::Shape(shape) => self.shape(scene, shape, id, bake_scale, depth + 1)?,
         }
+        Ok(())
+    }
+
+    /// Normal children composite the same inside a `<g>` as outside one, so a run of them takes
+    /// the pushed clip as a whole. Each child fading on its own would show the lower ones
+    /// through the upper ones in a feathered edge.
+    fn pushed_run(&mut self, scene: &Scene, run: &[Node], bake_scale: f32, depth: usize, outer: &Pushed<'_>) -> Result<(), RenderError> {
+        let pad = "  ".repeat(depth);
+        let id = format!("{}-run", xml_id(&run[0].path));
+        self.body.push_str(&pad);
+        self.body.push_str("<g");
+        if let Some(path) = &outer.region {
+            self.clip_ref(&format!("{id}-clip"), path);
+        }
+        let masks: Vec<_> = self.pushed_mask(&id, outer).into_iter().collect();
+        self.mask_ref(&id, &masks);
+        self.body.push_str(">\n");
+        for child in run {
+            self.node(scene, child, bake_scale, depth + 1, &Pushed::default())?;
+        }
+        self.body.push_str(&pad);
+        self.body.push_str("</g>\n");
         Ok(())
     }
 
@@ -772,8 +804,8 @@ impl Writer {
 
 /// A clip that a plain clipped group pushed down to its children, because a `clip-path` or a
 /// `mask` on a `<g>` isolates it. `region` is a hard clip in the current coordinates. `soft` is
-/// a feathered clip and the matrix from its coordinates to the current ones. Each child
-/// takes the feathered mask on its own, which is exact for one child and close for several.
+/// a feathered clip and the matrix from its coordinates to the current ones. Each blended child
+/// takes the feathered mask on its own, which is close in the edge where it overlaps a sibling.
 #[derive(Clone, Default)]
 struct Pushed<'a> {
     region: Option<Path>,

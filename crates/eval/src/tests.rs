@@ -4385,6 +4385,18 @@ fn an_svg_feathered_inside_block_masks_its_blended_child_not_the_block() {
 }
 
 #[test]
+fn an_svg_feathered_inside_block_masks_its_overlapping_normal_children_as_one() {
+    let s = scene("@target t.svg 40x20 bg:#ffffff\nrect 20x20 at:10,10 fill:none name:frame\ninside @frame feather:2\n  rect 40x20 at:20,10 fill:#ff0000 name:under\n  rect 40x20 at:20,10 fill:#0000ff name:over\n  rect 4x4 at:5,2 fill:#80c0ff blend:multiply name:shade\n");
+    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let lines: Vec<_> = svg.lines().collect();
+    let at = |name: &str| lines.iter().position(|l| l.contains(&format!("{name}\""))).unwrap_or_else(|| panic!("no {name} in {svg}"));
+    let (under, over) = (at("under"), at("over"));
+    assert!(lines[under - 1].contains("<g mask="), "the run has no mask of its own: {svg}");
+    assert!(lines[under..=over].iter().all(|l| !l.contains("mask=")), "each normal child fades on its own, so the lower one shows through: {svg}");
+    assert!(lines[at("shade")].contains("mask="), "the blended child lost the mask: {svg}");
+}
+
+#[test]
 fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
     for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
         let s = scene(&format!("@target t.svg 40x20\nrect 30x20 at:15,10 fill:none name:frame\n{clip}\n  rect 40x20 at:20,10 fill:#80c0ff\n"));
