@@ -3237,8 +3237,10 @@ const HOUSE: &str = "palette house\n  color sky #111111\n";
 
 const ELITE: &str = "palette elite\n  color sky #222222\n\npalette hollow\n  color sky #333333\n";
 
-/// Library defs written against the manifest palette `p`.
 const PAINT_LIB: &str = "\
+palette inner
+  color sky #333333
+
 def swatch
   rect 10x10 fill:p.sky name:a
 
@@ -3250,7 +3252,7 @@ def holder
 
 def wrap
   swatch name:s
-  swatch palette:hollow name:t
+  swatch palette:inner name:t
 ";
 
 fn palette_project(manifest: &str, src: &str, libs: &[(&str, &str)]) -> Project {
@@ -5590,4 +5592,13 @@ fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
         "`fx glow` on an operand of `subtract` is ignored; an operand gives only its geometry"
     );
     assert_eq!(d.span.line, 6);
+}
+
+#[test]
+fn a_patch_under_an_instance_palette_reads_that_palette() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { swatch }\nswatch palette:elite name:s\n  .a fill:p.sky\n  fx grain .1\nswatch name:u\n  .a fill:p.sky\n",
+    );
+    assert_eq!(fill_hex(node(&s, "s.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "u.a")), "#111111");
 }

@@ -100,6 +100,12 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let loaded = ev.diags.len();
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
+    if let Some(e) = &job.palette {
+        match ev.target_palette(e, &sc) {
+            Ok(v) => sc.palette = Some(v),
+            Err(f) => ev.report(f, &job.source, job.span, ""),
+        }
+    }
     let scenes: Vec<_> = file.scenes().cloned().collect();
     ev.collect_entry(&scenes, &mut sc);
     let children = ev.eval_block_nodes(file.scenes(), &mut sc);

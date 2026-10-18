@@ -279,7 +279,11 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     let mut scenes = Vec::new();
     all_scenes(&file.items, &mut |s| scenes.push(s));
     let mut used = HashSet::new();
-    idents(file_exprs(file, false), &scenes, &mut used);
+    let mut exprs = file_exprs(file, false);
+    for d in &file.directives {
+        named(&d.named, &mut exprs);
+    }
+    idents(exprs, &scenes, &mut used);
     for d in file.decls() {
         match &d.kind {
             DeclKind::Def { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
