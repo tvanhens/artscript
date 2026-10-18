@@ -80,6 +80,18 @@ const NODE_KEYS: &[&str] = &[
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
+/// How many positional items a built-in verb reads, after a layer or group name,
+/// `closed`, and mirror's `x` or `y` are set aside. `None` when `verb` is not built in.
+fn builtin_takes(verb: &str) -> Option<usize> {
+    Some(match verb {
+        "rect" | "circle" | "ellipse" | "poly" | "star" | "path" | "blob" | "copy" | "inside"
+        | "outside" | "repeat" | "grid" => 1,
+        "subtract" | "union" | "intersect" | "xor" | "layer" | "group" | "mirror" => 0,
+        "curve" => usize::MAX,
+        _ => return None,
+    })
+}
+
 pub(crate) struct Instance {
     pub def_name: String,
     fills: Vec<Fill>,
@@ -1617,29 +1629,7 @@ impl<'a> Evaluator<'a> {
         if matches!(comp, Some(None)) {
             return Ok(());
         }
-        let known = matches!(
-            verb,
-            "rect"
-                | "circle"
-                | "ellipse"
-                | "poly"
-                | "star"
-                | "curve"
-                | "path"
-                | "blob"
-                | "copy"
-                | "subtract"
-                | "union"
-                | "intersect"
-                | "xor"
-                | "layer"
-                | "group"
-                | "inside"
-                | "outside"
-                | "mirror"
-                | "repeat"
-                | "grid"
-        );
+        let known = builtin_takes(verb).is_some();
         if comp.is_none() && !known {
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
                 .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
@@ -1668,6 +1658,22 @@ impl<'a> Evaluator<'a> {
             .then(|| args.first().and_then(ident_of).map(str::to_string))
             .flatten();
         let comp = comp.flatten();
+        let skip = usize::from(positional_name.is_some());
+        let pos_exprs: Vec<Expr> = args
+            .iter()
+            .skip(skip)
+            .filter(|e| {
+                !(matches!(ident_of(e), Some("closed"))
+                    || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y"))))
+            })
+            .cloned()
+            .collect();
+        if comp.is_none()
+            && let Some(takes) = builtin_takes(verb)
+            && pos_exprs.len() > takes
+        {
+            return Err(self.extra_positional(verb, takes, &pos_exprs, sc));
+        }
         let key = sc.node_key(st.span);
         let path = key.to_string();
         let decl = sc.decl_at(st.span);
@@ -1693,18 +1699,8 @@ impl<'a> Evaluator<'a> {
             p.named.iter().any(|(k, _)| k == "stroke")
         });
         self.seed_node(sc.file(), &key);
-        let skip = usize::from(positional_name.is_some());
         let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
-        let pos_exprs: Vec<Expr> = args
-            .iter()
-            .skip(skip)
-            .filter(|e| {
-                !(matches!(ident_of(e), Some("closed"))
-                    || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y"))))
-            })
-            .cloned()
-            .collect();
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
         let centered = CENTERED.contains(&verb);
         let group_like = matches!(
@@ -2105,6 +2101,30 @@ impl<'a> Evaluator<'a> {
             out.push(m);
         }
         out
+    }
+
+    fn extra_positional(&mut self, verb: &str, takes: usize, items: &[Expr], sc: &Scope) -> Fail {
+        let extra = format_expr(&items[takes]);
+        let takes_text = match takes {
+            0 => "no positional items".to_string(),
+            1 => "1 positional item".to_string(),
+            n => format!("{n} positional items"),
+        };
+        let f = fail(
+            "E0321",
+            format!("`{verb}` takes {takes_text}, so `{extra}` is extra"),
+        );
+        let sized = matches!(verb, "rect" | "grid" | "ellipse")
+            && matches!(self.expr(&items[0], sc), Ok(Value::Num(_)));
+        if sized {
+            f.note("a vector `w,h` is a size").fix(format!(
+                "write `{verb} {},{}`",
+                format_expr(&items[0]),
+                format_expr(&items[items.len() - 1])
+            ))
+        } else {
+            f.fix(format!("remove `{extra}`, or pass it as key:value"))
+        }
     }
 
     fn repeat(

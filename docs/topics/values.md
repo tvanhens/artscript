@@ -6,7 +6,7 @@
 | percent | `50%` of the current frame (the canvas, a parent shape's bounds, or a def's `size` box) |
 | angle | `30deg`, `.25turn`, bare numbers in `rot:` are degrees |
 | time | `200ms`, `2s`, a bare number in a time position is seconds |
-| vector / size | `14,0` (no spaces around the comma), `256x256` |
+| vector / size | `14,0` (no spaces around the comma), `256x256`. A vector is a size, so `rect w,h` sizes from variables. `rect w x h` is E0321 |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base) |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
 | reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas` |
