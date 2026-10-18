@@ -508,6 +508,10 @@ fn blend_arg(
                 Coord::Num(default_at.0),
                 Coord::Num(default_at.1),
             ));
+            // A rest `at:` that is still a reference names a node, and `transform` reports it.
+            if matches!(base, Value::Ref(_)) {
+                return Ok(());
+            }
             let base = ground_percent_rest(&base, value, frame, sc)?;
             let sum = arith(Arith::Add, &base, value).map_err(|m| fail("E0320", m))?;
             a.named.push(("at".into(), sum));
@@ -1591,6 +1595,7 @@ impl<'a> Evaluator<'a> {
             frame.height() as f64,
         );
         let at = match a.get("at") {
+            Some(Value::Ref(r)) => self.anchor_point(r, sc)?,
             Some(v) => {
                 let (x, y) = v.pair().ok_or_else(|| {
                     fail(
@@ -1746,6 +1751,11 @@ impl<'a> Evaluator<'a> {
         statics.sort_by(win);
         for p in statics {
             a.named.extend(p.named.iter().cloned());
+        }
+        if let Some(Value::Ref(r)) = a.get("at").cloned()
+            && let Ok((x, y)) = self.anchor_point(&r, sc)
+        {
+            a.named.push(("at".into(), Value::Vec2(Coord::Num(x), Coord::Num(y))));
         }
         let rest = a.named.len();
         let mut chans: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_some()).collect();
@@ -4638,6 +4648,24 @@ impl<'a> Evaluator<'a> {
             ),
         )
         .fix("give the grid a `cell:` size, such as `cell:20x20`"))
+    }
+
+    /// `at:@body.neck`: the anchor's position in the current local frame, the same point
+    /// `at:@body.neck.x,@body.neck.y` reads.
+    fn anchor_point(&mut self, r: &RefVal, sc: &Scope) -> R<(f64, f64)> {
+        let (Some(p), None) = (r.record.anchor, r.canvas) else {
+            return Err(
+                fail("E0320", format!("`at:@{}` is a node, not a point", r.label)).fix(format!(
+                    "name an anchor such as `at:@{0}.neck`, or write `at:@{0}.cx,@{0}.cy`",
+                    r.label
+                )),
+            );
+        };
+        self.outside_copy(r, sc)?;
+        let p = self.view(sc).map_point(p);
+        let (x, y) = (f64::from(p.x), f64::from(p.y));
+        self.note(format!("{} = {},{}", r.label, num(x), num(y)));
+        Ok((x, y))
     }
 
     pub fn measure(&mut self, r: &RefVal, m: &str, sc: &Scope) -> R<Value> {
