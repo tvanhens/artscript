@@ -136,6 +136,8 @@ pub(crate) struct Scope {
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
+    /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
+    pub site: Option<u32>,
     top: bool,
     publish: bool,
 }
@@ -1129,6 +1131,7 @@ impl<'a> Evaluator<'a> {
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
+            site: None,
             top: false,
             publish: false,
         }
@@ -1258,10 +1261,28 @@ impl<'a> Evaluator<'a> {
         out: &mut Siblings,
     ) {
         for st in stmts {
+            let entry = sc.file() == self.job.source;
+            if entry {
+                sc.site = Some(st.span.line);
+            }
+            let before = self.diags.len();
             if let Err(f) = self.eval_stmt(st, sc, out) {
                 let node = sc.node_name();
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, &node);
+            }
+            if entry {
+                self.mark_site(before, st.span.line);
+            }
+        }
+    }
+
+    /// Notes the entry-file line on each diagnostic since `before` that a library raised.
+    pub(crate) fn mark_site(&mut self, before: usize, line: u32) {
+        let entry = &self.job.source;
+        for d in self.diags.iter_mut().skip(before) {
+            if d.file != *entry && !d.notes.iter().any(|n| crate::is_entry_site(n)) {
+                d.notes.push(format!("in {entry}:{line}"));
             }
         }
     }

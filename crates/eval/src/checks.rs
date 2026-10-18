@@ -70,9 +70,13 @@ impl Evaluator<'_> {
     pub(crate) fn run_checks(&mut self, list: &Rc<RefCell<Vec<Pending>>>) {
         let pending: Vec<Pending> = list.borrow_mut().drain(..).collect();
         for p in pending {
+            let before = self.diags.len();
             if let Err(f) = self.run_check(&p.stmt, &p.scope) {
                 let file = p.scope.file().to_string();
                 self.report(f, &file, p.stmt.span, &p.scope.node_name());
+            }
+            if let Some(line) = p.scope.site {
+                self.mark_site(before, line);
             }
         }
     }
