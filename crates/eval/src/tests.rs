@@ -4481,19 +4481,37 @@ fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
 
 #[test]
 fn inside_outer_fails_where_plain_inside_passes() {
-    let ev = run_with(&format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"), &[]);
-    assert!(ev.diagnostics.iter().all(|d| d.code != "C0101"), "{}", show(&ev.diagnostics));
+    let ev = run_with(
+        &format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"),
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "C0101"),
+        "{}",
+        show(&ev.diagnostics)
+    );
 
     let ev = run_with(&format!("{CUT_FX}assert inside(@bar.outer canvas)\n"), &[]);
-    let failed: Vec<_> = ev.diagnostics.iter().filter(|d| d.code.starts_with('C')).collect();
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
     assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
     assert_eq!(failed[0].span.line, 6);
 
     let ev = run_with(&format!("{CUT_FX}assert @bar.outer.top >= 0\n"), &[]);
-    let failed: Vec<_> = ev.diagnostics.iter().filter(|d| d.code.starts_with('C')).collect();
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
     assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
     assert!(
-        failed[0].notes.iter().any(|n| n.starts_with("bar.outer.top = -")),
+        failed[0]
+            .notes
+            .iter()
+            .any(|n| n.starts_with("bar.outer.top = -")),
         "{:?}",
         failed[0].notes
     );
@@ -4511,7 +4529,9 @@ fn outer_follows_an_effect_that_reads_another_node() {
 
     let ev = run_with(&format!("{CUT_FX}assert @bar.outer.foo > 0\n"), &[]);
     assert!(
-        ev.diagnostics.iter().any(|d| d.code == "E0350" && d.message.contains("`.outer.foo`")),
+        ev.diagnostics
+            .iter()
+            .any(|d| d.code == "E0350" && d.message.contains("`.outer.foo`")),
         "{}",
         show(&ev.diagnostics)
     );

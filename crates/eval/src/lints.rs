@@ -385,8 +385,17 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     }
     impl<'n> Walk<'n, '_> {
         /// `kept` is what the ancestors' clips and masks keep, in canvas coordinates.
-        fn node(&mut self, n: &'n Node, parent: Matrix, kept: Option<Rect>, mut site: Option<&'n str>) -> bool {
-            if n.origin.rsplit_once(':').is_some_and(|(f, _)| f == self.entry) {
+        fn node(
+            &mut self,
+            n: &'n Node,
+            parent: Matrix,
+            kept: Option<Rect>,
+            mut site: Option<&'n str>,
+        ) -> bool {
+            if n.origin
+                .rsplit_once(':')
+                .is_some_and(|(f, _)| f == self.entry)
+            {
                 site = Some(&n.origin);
             }
             match &n.kind {
@@ -413,7 +422,13 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             }
         }
 
-        fn measure(&mut self, n: &'n Node, parent: Matrix, kept: Option<Rect>, site: Option<&'n str>) -> bool {
+        fn measure(
+            &mut self,
+            n: &'n Node,
+            parent: Matrix,
+            kept: Option<Rect>,
+            site: Option<&'n str>,
+        ) -> bool {
             let Some(b) = n.outer_bounds(&parent, self.find) else {
                 return false;
             };
@@ -424,7 +439,8 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
                 return false;
             }
             let c = self.canvas;
-            let inside = b.left >= c.left && b.top >= c.top && b.right <= c.right && b.bottom <= c.bottom;
+            let inside =
+                b.left >= c.left && b.top >= c.top && b.right <= c.right && b.bottom <= c.bottom;
             if !inside {
                 self.hits.push((n.path.clone(), n.origin.clone(), b, site));
             }
@@ -434,7 +450,12 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     let mut paths = HashMap::new();
     index(&scene.children, Matrix::new_identity(), &mut paths);
     let find = |p: &str| paths.get(p).copied();
-    let mut walk = Walk { canvas, entry: file, find: &find, hits: Vec::new() };
+    let mut walk = Walk {
+        canvas,
+        entry: file,
+        find: &find,
+        hits: Vec::new(),
+    };
     for c in &scene.children {
         walk.node(c, Matrix::new_identity(), None, None);
     }

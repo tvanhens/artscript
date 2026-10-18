@@ -1586,7 +1586,9 @@ impl<'a> Evaluator<'a> {
         record.home = Some(sc.names.clone());
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
-        self.placed.borrow_mut().insert(rec.borrow().path.clone(), rec.clone());
+        self.placed
+            .borrow_mut()
+            .insert(rec.borrow().path.clone(), rec.clone());
         let name = sc.names.borrow().region().decl(decl).name.clone();
         sc.names.borrow_mut().register(
             decl,
@@ -4388,18 +4390,26 @@ impl<'a> Evaluator<'a> {
             None => r.bounds().ok_or_else(no_ink)?,
             Some(node) => {
                 let placed = self.placed.borrow();
-                let records: Vec<(&str, std::cell::Ref<'_, Record>)> =
-                    placed.iter().map(|(p, rec)| (p.as_str(), rec.borrow())).collect();
+                let records: Vec<(&str, std::cell::Ref<'_, Record>)> = placed
+                    .iter()
+                    .map(|(p, rec)| (p.as_str(), rec.borrow()))
+                    .collect();
                 let nodes: HashMap<&str, (&Node, Matrix)> = records
                     .iter()
                     .filter_map(|(p, rec)| Some((*p, (rec.node.as_ref()?, rec.parent_world))))
                     .collect();
                 let find = |p: &str| nodes.get(p).copied();
-                let local = node.outer_bounds(&r.record.parent_world, &find).ok_or_else(no_ink)?;
+                let local = node
+                    .outer_bounds(&r.record.parent_world, &find)
+                    .ok_or_else(no_ink)?;
                 r.record.parent_world.map_rect(local).0
             }
         };
-        Ok(RefVal { label: format!("{label}.outer"), extent: Extent::Outer(rect), ..r.clone() })
+        Ok(RefVal {
+            label: format!("{label}.outer"),
+            extent: Extent::Outer(rect),
+            ..r.clone()
+        })
     }
 
     fn reference(&mut self, segs: &[String], sc: &Scope) -> R<Value> {

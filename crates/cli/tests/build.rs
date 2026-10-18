@@ -785,11 +785,24 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
         .unwrap()
         .iter()
         .filter(|d| d["code"] == "L0102")
-        .map(|d| (d["node"].as_str().unwrap().to_string(), d["span"]["line"].as_u64().unwrap()))
+        .map(|d| {
+            (
+                d["node"].as_str().unwrap().to_string(),
+                d["span"]["line"].as_u64().unwrap(),
+            )
+        })
         .collect();
-    assert_eq!(cut, [("r".to_string(), 2), ("bar".to_string(), 4)], "{json}");
+    assert_eq!(
+        cut,
+        [("r".to_string(), 2), ("bar".to_string(), 4)],
+        "{json}"
+    );
 
-    fs::write(dir.join("art/t.art"), art.replace("inside(@bar canvas margin:3)", "inside(@bar.outer canvas)")).unwrap();
+    fs::write(
+        dir.join("art/t.art"),
+        art.replace("inside(@bar canvas margin:3)", "inside(@bar.outer canvas)"),
+    )
+    .unwrap();
     let out = artscript(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let _ = fs::remove_dir_all(&dir);
