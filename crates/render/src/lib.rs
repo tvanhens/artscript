@@ -8,6 +8,7 @@ mod gif;
 mod gpu;
 mod mark;
 mod paint;
+mod ribbon;
 mod sdf;
 mod svg;
 mod text;
