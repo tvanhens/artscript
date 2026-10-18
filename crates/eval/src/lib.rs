@@ -21,7 +21,7 @@ mod seed;
 pub mod targets;
 mod value;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
@@ -49,6 +49,16 @@ pub struct Evaluation {
     pub plays: Vec<PlayMark>,
     /// Node keys that drew a key-derived seed. `explain` prints `seed` on these.
     pub seeded: BTreeSet<String>,
+    pub rig: Rig,
+}
+
+/// What a scene exposes to the program that places its image, in canvas units.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Rig {
+    /// The `pivot:` point, `None` when the target has no `pivot:`.
+    pub pivot: Option<(f64, f64)>,
+    /// Every anchor the scene placed, keyed by the path an author writes after `@`.
+    pub anchors: BTreeMap<String, (f64, f64)>,
 }
 
 pub struct Frame {
@@ -83,6 +93,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
                 diagnostics: ev.diags,
                 plays: Vec::new(),
                 seeded: BTreeSet::new(),
+                rig: Rig::default(),
             };
         }
     };
@@ -106,6 +117,17 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         None => ev
             .background
             .or_else(|| project.manifest.bg.as_deref().and_then(Rgba::hex)),
+    };
+    let pivot = job.pivot.as_ref().and_then(|e| match ev.pivot(e, &sc) {
+        Ok(p) => Some(p),
+        Err(f) => {
+            ev.report(f, &job.source, job.span, "");
+            None
+        }
+    });
+    let rig = Rig {
+        pivot,
+        anchors: scope::placed_anchors(&sc.names),
     };
     let scene = Scene {
         width: job.size.0,
@@ -138,6 +160,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics,
         plays,
         seeded,
+        rig,
     }
 }
 

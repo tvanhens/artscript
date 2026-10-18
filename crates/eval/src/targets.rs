@@ -56,6 +56,8 @@ pub struct TargetJob {
     pub bg: Option<Expr>,
     /// The canvas crops a larger scene, so `off-canvas` stays quiet for this target.
     pub viewport: bool,
+    /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
+    pub pivot: Option<Expr>,
     pub profile: Profile,
     /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, else the target's highest scale.
     /// An SVG samples at this scale. A PNG output samples at its own `scale:` instead.
@@ -200,7 +202,9 @@ fn time_literal(e: &Expr) -> Option<f64> {
     }
 }
 
-const TARGET_KEYS: [&str; 8] = ["scale", "as", "fps", "dur", "t", "clip", "bg", "profile"];
+const TARGET_KEYS: [&str; 9] = [
+    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot",
+];
 
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
     let Some(raw_path) = d.path.clone() else {
@@ -316,6 +320,12 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
         )
         .with_fix("end the path with .png, .svg or .gif"));
     };
+    if format == Format::Gif && named("pivot").is_some() {
+        return Err(
+            Diagnostic::error("E0206", d.span, "`pivot:` needs a .png or .svg target")
+                .with_fix("remove `pivot:`; pivots are for png and svg targets"),
+        );
+    }
     let (profile_word, explicit) = match named("profile") {
         None => (project.manifest.profile.as_str(), false),
         Some(Expr::Ident(s)) => (s.as_str(), true),
@@ -410,6 +420,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 size,
                 bg: named("bg").cloned(),
                 viewport,
+                pivot: named("pivot").cloned(),
                 profile,
                 bake_scale,
                 outputs,

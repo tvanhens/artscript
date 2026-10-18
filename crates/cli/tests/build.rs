@@ -719,6 +719,101 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
 }
 
 #[test]
+fn check_limits_itself_to_the_selected_entries_and_their_libraries() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-checksel-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art/sub")).unwrap();
+    fs::create_dir_all(dir.join("lib/kit")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"sel\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(
+        dir.join("art/a.art"),
+        "@target a.png 8x8\nuse kit/cell { cell }\n\ncell at:4,4\n",
+    )
+    .unwrap();
+    fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect (\n").unwrap();
+    fs::write(
+        dir.join("art/c.art"),
+        "@target c.png 8x8\nrect 4x4\nassert false\n",
+    )
+    .unwrap();
+    let check = |args: &[&str]| {
+        let out = artscript(&dir, &[&["check"], args].concat());
+        (out.status.code(), text(&out))
+    };
+
+    let (code, err) = check(&[]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("art/b.art"), "{err}");
+
+    for args in [
+        &["art/a.art"][..],
+        &["--only", "art/a*"],
+        &["--only=art/a.art"],
+        &["--only", "a.png"],
+    ] {
+        let (code, err) = check(args);
+        assert_eq!(code, Some(0), "{args:?}: {err}");
+        assert!(
+            !err.contains("art/b.art") && !err.contains("art/c.art"),
+            "{args:?}: {err}"
+        );
+    }
+    let out = artscript(&dir.join("art/sub"), &["check", "../a.art"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+
+    let (code, err) = check(&["art/b.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("art/b.art") && !err.contains("matches no target"),
+        "{err}"
+    );
+    let (code, err) = check(&["art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+    let (code, err) = check(&["art/a.art", "art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+
+    let (code, err) = check(&["--only", "art/zzz/*"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("`--only 'art/zzz/*'` matches no target") && !err.contains("art/b.art"),
+        "{err}"
+    );
+    let (code, err) = check(&["art/a.art", "--only", "art/zzz/*"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("matches no target"), "{err}");
+
+    let (code, err) = check(&["nope.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("cannot read `nope.art`") && err.contains("usage:"),
+        "{err}"
+    );
+    let (code, err) = check(&["--bogus"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("unknown flag `--bogus`"), "{err}");
+
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect (\n").unwrap();
+    let (code, err) = check(&["art/a.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("lib/kit/cell.art"), "{err}");
+    let (code, err) = check(&["art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(!err.contains("lib/kit/cell.art"), "{err}");
+
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(dir.join("art/n.art"), "rect 4x4\n").unwrap();
+    let (code, err) = check(&["art/n.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("`art/n.art` has no @target"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_library_diagnostic_names_each_target_that_reached_it() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-libsite-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
@@ -881,4 +976,99 @@ fn init_names_the_project_after_its_folder() {
     assert_eq!(manifest.name, folder);
     let out = artscript(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}
+
+fn rig_project(tag: &str, art: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"rig\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("art/main.art"), art).unwrap();
+    dir
+}
+
+fn entry(dir: &Path, path: &str) -> serde_json::Value {
+    manifest(dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["path"] == path)
+        .unwrap_or_else(|| panic!("no manifest entry for {path}"))
+        .clone()
+}
+
+#[test]
+fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
+    let dir = rig_project(
+        "rig",
+        "@target x.png 64x64 scale:1,2 pivot:@body.neck\n\
+         @target y.svg 64x64 pivot:50%,100%\n\n\
+         def doll\n  circle 8\n  anchor neck 0,-10\n  anchor _hidden 3,3\n\n\
+         doll at:30,40 name:body\n",
+    );
+    let first = artscript(&dir, &["build"]);
+    assert_eq!(first.status.code(), Some(0), "{}", text(&first));
+    let one = entry(&dir, "x.png");
+    assert_eq!(one["pivot"], serde_json::json!([30, 30]));
+    assert_eq!(one["anchors"], serde_json::json!({ "body.neck": [30, 30] }));
+    let two = entry(&dir, "x@2x.png");
+    assert_eq!(two["pivot"], serde_json::json!([60, 60]));
+    assert_eq!(two["anchors"], serde_json::json!({ "body.neck": [60, 60] }));
+    let svg = entry(&dir, "y.svg");
+    assert_eq!(svg["pivot"], serde_json::json!([32, 64]));
+    assert_eq!(svg["anchors"], one["anchors"]);
+
+    let bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
+    let second = artscript(&dir, &["build"]);
+    assert_eq!(second.status.code(), Some(0), "{}", text(&second));
+    assert_eq!(fs::read(dir.join("assets/art-manifest.json")).unwrap(), bytes);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_target_without_pivot_writes_null_and_a_gif_writes_neither_key() {
+    let dir = rig_project(
+        "rig-none",
+        "@target a.png 8x8\n@target b.gif 8x8 bg:#ffffff dur:1s\nrect 4x4\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let png = entry(&dir, "a.png");
+    assert_eq!(png["pivot"], serde_json::Value::Null);
+    assert_eq!(png["anchors"], serde_json::json!({}));
+    let gif = entry(&dir, "b.gif");
+    assert!(gif.get("pivot").is_none() && gif.get("anchors").is_none(), "{gif}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_pivot_that_is_not_a_point_is_e0206() {
+    let cases = [
+        (
+            "@target a.png 8x8 pivot:@body\ncircle 4 name:body\n",
+            "is a node, not a point",
+        ),
+        (
+            "@target a.png 8x8 pivot:red\ncircle 4\n",
+            "`pivot:` needs a point",
+        ),
+        (
+            "@target a.gif 8x8 bg:#ffffff dur:1s pivot:4,4\ncircle 4\n",
+            "`pivot:` needs a .png or .svg target",
+        ),
+    ];
+    for (i, (art, message)) in cases.into_iter().enumerate() {
+        let dir = rig_project(&format!("rig-bad{i}"), art);
+        for cmd in ["check", "build"] {
+            let out = artscript(&dir, &[cmd]);
+            let err = text(&out);
+            assert_eq!(out.status.code(), Some(1), "{cmd} {art}: {err}");
+            assert!(err.contains("E0206") && err.contains(message), "{cmd} {art}: {err}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
