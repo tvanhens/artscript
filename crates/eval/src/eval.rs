@@ -1665,7 +1665,7 @@ impl<'a> Evaluator<'a> {
         )
     }
 
-    /// Returns `None` when a live `off` hides the node, else how many named args are the rest pose.
+    /// Returns `None` when a live `off` hides the node, else how many named args the anims appended.
     fn land(
         &mut self,
         a: &mut Args,
@@ -1719,7 +1719,7 @@ impl<'a> Evaluator<'a> {
                 );
             }
         }
-        (!hide).then_some(rest)
+        (!hide).then_some(a.named.len() - rest)
     }
 
     /// A container with `at:` in its rest pose centers its children's frame on its origin.
@@ -1727,7 +1727,7 @@ impl<'a> Evaluator<'a> {
     fn child_frame(
         &mut self,
         a: &Args,
-        rest: usize,
+        animated: usize,
         default_at: (f64, f64),
         frame: Rect,
         sc: &Scope,
@@ -1735,7 +1735,7 @@ impl<'a> Evaluator<'a> {
     ) -> R<Rect> {
         let rest = Args {
             pos: a.pos.clone(),
-            named: a.named[..rest].to_vec(),
+            named: a.named[..a.named.len() - animated].to_vec(),
         };
         let (m, _) = self.transform(&rest, default_at, frame, sc, with_rot)?;
         let local = inverse(&m).map_rect(frame).0;
@@ -1871,7 +1871,7 @@ impl<'a> Evaluator<'a> {
         } else {
             (0.0, 0.0)
         };
-        let Some(rest) = self.land(&mut a, &arrival.own, default_at, frame, sc, &path) else {
+        let Some(animated) = self.land(&mut a, &arrival.own, default_at, frame, sc, &path) else {
             if let Some(comp) = &comp {
                 self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
@@ -1937,7 +1937,7 @@ impl<'a> Evaluator<'a> {
         let mut record = None;
         let body_frame;
         if group_like {
-            let local_frame = self.child_frame(&a, rest, default_at, frame, sc, verb != "repeat")?;
+            let local_frame = self.child_frame(&a, animated, default_at, frame, sc, verb != "repeat")?;
             let mut inner = sc.child(key.clone(), local_frame, world);
             inner.style = child_style;
             let mut clip = None;
@@ -2012,7 +2012,7 @@ impl<'a> Evaluator<'a> {
                         "intersect" => BoolOp::Intersect,
                         _ => BoolOp::Xor,
                     };
-                    let local_frame = self.child_frame(&a, rest, default_at, frame, sc, true)?;
+                    let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
                     operand_frame = Some(local_frame);
                     let mut inner = sc.child(key.clone(), local_frame, inner_world);
                     inner.operand_of = Some(Rc::new(OperandOf {

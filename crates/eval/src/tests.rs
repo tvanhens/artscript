@@ -4689,6 +4689,17 @@ fn a_child_with_no_at_sits_at_its_moved_group_s_origin() {
 }
 
 #[test]
+fn a_style_before_at_keeps_the_moved_group_s_frame() {
+    scene(
+        "@target t.png 64x64\n\
+         style ink stroke:#000000,2\n\
+         group style:ink at:48,48 name:g\n  circle 5 fill:#000000 name:dot\n\
+         assert @dot.cx == 48\n\
+         assert @dot.cy == 48\n",
+    );
+}
+
+#[test]
 fn a_mask_with_no_at_in_a_moved_group_covers_its_content() {
     scene(
         "@target t.png 64x64\n\
