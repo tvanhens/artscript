@@ -257,6 +257,17 @@ fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
 }
 
 #[test]
+fn an_earlier_effect_that_stays_inside_the_shape_keeps_the_outlined_edge() {
+    let unchanged = EffectOp::Adjust { hue: 0.0, sat: 0.0, light: 0.0 };
+    let plain = render_png(&haloed(None, true), 1.0, Backend::Cpu).unwrap();
+    let adjusted = render_png(&haloed(Some(unchanged), true), 1.0, Backend::Cpu).unwrap();
+    for x in 8..20 {
+        let (got, want) = (pixel(&adjusted, x, 32), pixel(&plain, x, 32));
+        assert!(got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1), "at {x},32 got {got:?}, want {want:?}");
+    }
+}
+
+#[test]
 fn svg_outline_ring_is_drawn_again_over_an_earlier_blur_or_shadow() {
     for halo in [blur(), drop_shadow()] {
         let svg = render_svg(&haloed(Some(halo), true), Profile::Svg, 1.0, Backend::Cpu).unwrap();

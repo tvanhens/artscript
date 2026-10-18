@@ -203,8 +203,22 @@ impl Writer {
         match last {
             SvgStep::Outline { width, color } => {
                 let oid = format!("{id}-outline{}", steps.len());
-                self.outline_paths(node, *width, *color, &oid, bake_scale, depth + 1)?;
-                self.emit_outlined(scene, node, id, bake_scale, depth, head)
+                let halo = paints_a_halo(head);
+                let inked = head
+                    .iter()
+                    .filter_map(|s| match s {
+                        SvgStep::Outline { width, .. } => Some(*width),
+                        SvgStep::Filters(_) => None,
+                    })
+                    .fold(0.0, f32::max);
+                let behind = if halo { Side::Inside { reach: inked } } else { Side::Whole };
+                let regions = crate::effects::silhouette(node, &Matrix::scale((bake_scale, bake_scale)))?;
+                self.outline_paths(&regions, *width, *color, &oid, behind, depth + 1);
+                self.emit_outlined(scene, node, id, bake_scale, depth, head)?;
+                if halo {
+                    self.outline_paths(&regions, *width, *color, &format!("{oid}-over"), Side::Outside { reach: inked }, depth + 1);
+                }
+                Ok(())
             }
             SvgStep::Filters(effects) => {
                 let pad = "  ".repeat(depth + 1);
@@ -252,19 +266,19 @@ impl Writer {
         Ok(())
     }
 
-    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
-        let regions = crate::effects::silhouette(node, &Matrix::scale((bake_scale, bake_scale)))?;
+    fn outline_paths(&mut self, regions: &[Region], width: f32, color: Color, id: &str, side: Side, depth: usize) {
         if regions.is_empty() {
-            return Ok(());
+            return;
         }
         let translucent: Vec<_> = regions.iter().filter(|r| r.coverage == Coverage::Translucent).collect();
-        let fade_or_mask_as_one = color.a < 1.0 || !translucent.is_empty();
+        let masked = side != Side::Whole || !translucent.is_empty();
+        let fade_or_mask_as_one = color.a < 1.0 || masked;
         let pad = "  ".repeat(depth);
         if fade_or_mask_as_one {
             self.body.push_str(&pad);
             self.body.push_str("<g");
-            if !translucent.is_empty() {
-                self.erase_mask_def(id, &regions, width, &translucent);
+            if masked {
+                self.ring_mask_def(id, regions, width, side);
                 self.body.push_str(" mask=\"url(#");
                 self.body.push_str(id);
                 self.body.push_str(")\"");
@@ -294,10 +308,9 @@ impl Writer {
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
         }
-        Ok(())
     }
 
-    fn erase_mask_def(&mut self, id: &str, regions: &[Region], width: f32, erased: &[&Region]) {
+    fn ring_mask_def(&mut self, id: &str, regions: &[Region], width: f32, side: Side) {
         let mut ring = *regions[0].path.bounds();
         for region in &regions[1..] {
             ring.join(region.path.bounds());
@@ -307,14 +320,36 @@ impl Writer {
         self.defs.push_str(id);
         self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
         self.defs.push_str(&area);
-        self.defs.push_str(">\n      <rect ");
-        self.defs.push_str(&area);
-        self.defs.push_str(" fill=\"#ffffff\"/>\n");
-        for region in erased {
+        self.defs.push_str(">\n");
+        if !matches!(side, Side::Inside { .. }) {
+            self.defs.push_str("      <rect ");
+            self.defs.push_str(&area);
+            self.defs.push_str(" fill=\"#ffffff\"/>\n");
+        }
+        let translucent = || regions.iter().filter(|r| r.coverage == Coverage::Translucent);
+        let marks: Vec<(&Region, &str, f32)> = match side {
+            Side::Whole => translucent().map(|r| (r, "#000000", 0.0)).collect(),
+            Side::Inside { reach } => regions
+                .iter()
+                .map(|r| (r, "#ffffff", reach))
+                .chain(translucent().map(|r| (r, "#000000", 0.0)))
+                .collect(),
+            Side::Outside { reach } => regions.iter().map(|r| (r, "#000000", reach)).collect(),
+        };
+        for (region, ink, grow) in marks {
             self.defs.push_str("      <path d=\"");
             self.defs.push_str(&path_data(&region.path));
-            self.defs.push_str("\" fill=\"#000000\"");
+            self.defs.push_str("\" fill=\"");
+            self.defs.push_str(ink);
+            self.defs.push('"');
             self.defs.push_str(fill_rule(&region.path));
+            if grow > 0.0 {
+                self.defs.push_str(" stroke=\"");
+                self.defs.push_str(ink);
+                self.defs.push_str("\" stroke-width=\"");
+                self.defs.push_str(&fmt_num(grow * 2.0));
+                self.defs.push_str("\" stroke-linecap=\"round\" stroke-linejoin=\"round\"");
+            }
             self.defs.push_str("/>\n");
         }
         self.defs.push_str("    </mask>\n");
@@ -680,11 +715,7 @@ impl Writer {
     }
 
     fn write_fx_filter(&mut self, effects: &[Effect], fid: &str) -> bool {
-        let usable: Vec<&Effect> = effects
-            .iter()
-            .filter(|e| matches!(e.op, EffectOp::Blur { .. } | EffectOp::Shadow { .. }))
-            .filter(|e| !matches!(e.input, EffectInput::Node(_)))
-            .collect();
+        let usable = svg_filter_effects(effects);
         if usable.is_empty() {
             return false;
         }
@@ -855,8 +886,27 @@ fn fill_rule(path: &Path) -> &'static str {
     }
 }
 
+fn svg_filter_effects(effects: &[Effect]) -> Vec<&Effect> {
+    effects
+        .iter()
+        .filter(|e| matches!(e.op, EffectOp::Blur { .. } | EffectOp::Shadow { .. }))
+        .filter(|e| !matches!(e.input, EffectInput::Node(_)))
+        .collect()
+}
+
+fn paints_a_halo(steps: &[SvgStep<'_>]) -> bool {
+    steps.iter().any(|s| matches!(s, SvgStep::Filters(effects) if !svg_filter_effects(effects).is_empty()))
+}
+
 fn has_outline(node: &Node) -> bool {
     node.effects.iter().any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0))
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Whole,
+    Inside { reach: f32 },
+    Outside { reach: f32 },
 }
 
 enum SvgStep<'a> {

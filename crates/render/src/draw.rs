@@ -271,9 +271,15 @@ fn paint_layer_steps(
             effects::LayerStep::Filter(filter) => {
                 effects::apply_image_filter(ctx.backend, image, &local_to_px, filter)?
             }
-            effects::LayerStep::Outline { width, color } => {
-                effects::outline_geometry(ctx.backend, image, &local_to_px, node, width, color)?
-            }
+            effects::LayerStep::Outline { width, color, cover_halo_past } => effects::outline_geometry(
+                ctx.backend,
+                image,
+                &local_to_px,
+                node,
+                width,
+                color,
+                cover_halo_past,
+            )?,
         };
     }
     canvas.save();
