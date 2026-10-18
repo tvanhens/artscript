@@ -4302,3 +4302,24 @@ fn off_canvas_measures_a_shape_after_an_inside_clip() {
     );
     assert_eq!(hits.len(), 1, "{}", show(&hits));
 }
+
+#[test]
+fn a_clipped_group_is_measured_inside_its_clip_and_mask() {
+    let ev = run_with(
+        "@target t.png 64x64\ncircle 10 at:32,32 fill:#4af name:disc\ninside @disc name:clip\n  rect 4x60 at:32,40 fill:#222 name:bar\nassert inside(@clip canvas margin:3)\nassert @clip.h == 20\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+
+    let ev = run_with(
+        "@target t.png 64x64\ngroup at:32,32 name:cell\n  mask\n    rect 20x20 at:0,0 fill:#fff\n  rect 4x60 at:0,8 fill:#222 name:bar\nassert inside(@cell canvas margin:3)\nassert @cell.h == 20\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+
+    let ev = run_with(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\noutside @x name:clip\n  rect 4x60 at:32,32 fill:#222 name:bar\nassert @clip.h == 60\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}

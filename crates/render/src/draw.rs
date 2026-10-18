@@ -531,6 +531,11 @@ fn visual_pad(node: &Node) -> f32 {
     }
     if let Some(mask) = &node.mask {
         pad = pad.max(mask.feather * 3.0);
+        if let MaskSource::Nodes(nodes) = &mask.source {
+            for n in nodes {
+                pad = pad.max(visual_pad(n));
+            }
+        }
     }
     for child in node.children() {
         pad = pad.max(visual_pad(child));

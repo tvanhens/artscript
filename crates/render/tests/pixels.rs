@@ -462,3 +462,21 @@ fn svg_circle_stays_on_its_radius() {
     }
     assert!(ends > 4, "{d}");
 }
+
+#[test]
+fn a_baked_svg_tile_keeps_a_blurred_mask_fringe() {
+    let mut edge = solid("m", Path::rect(skia_safe::Rect::from_xywh(22.0, 22.0, 20.0, 20.0), None), red());
+    if let NodeKind::Shape(shape) = &mut edge.kind {
+        shape.blur = 4.0;
+    }
+    let mut cell = solid("bar", Path::rect(skia_safe::Rect::from_xywh(12.0, 2.0, 40.0, 60.0), None), red());
+    cell.effects.push(effect(EffectOp::Grain { strength: 0.05, scale: 1.0, seed: 1 }));
+    cell.mask = Some(Box::new(artscript_ir::Mask {
+        source: artscript_ir::MaskSource::Nodes(vec![edge]),
+        luminance: false,
+        feather: 0.0,
+        invert: false,
+    }));
+    let svg = render_svg(&scene(64.0, 64.0, vec![cell]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<image x=\"10\" y=\"10\" width=\"44\" height=\"44\""), "{svg}");
+}

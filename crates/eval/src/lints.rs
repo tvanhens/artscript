@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect, union_bounds};
+use artscript_ir::{Matrix, Node, NodeKind, Rect};
 use artscript_syntax::ast::{
     Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
     SwatchKind,
@@ -355,27 +355,6 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
     out
 }
 
-/// Local bounds a node's `inside` clip and node mask keep, grown by three feather sigmas.
-/// `outside`, inverted masks, and field masks keep everything.
-fn kept_bounds(n: &Node) -> impl Iterator<Item = Rect> + '_ {
-    let clip = n.clip.as_ref().filter(|c| !c.invert).map(|c| {
-        c.path
-            .compute_tight_bounds()
-            .with_outset((3.0 * c.feather, 3.0 * c.feather))
-    });
-    let mask = n
-        .mask
-        .as_ref()
-        .filter(|m| !m.invert)
-        .and_then(|m| match &m.source {
-            MaskSource::Nodes(nodes) => {
-                union_bounds(nodes).map(|r| r.with_outset((3.0 * m.feather, 3.0 * m.feather)))
-            }
-            MaskSource::Field { .. } => None,
-        });
-    clip.into_iter().chain(mask)
-}
-
 /// Shapes not clipped by a parent shape whose visible bounds leave the canvas. A shape's
 /// bounds are cut to every `inside` clip and node mask on it and its groups first.
 pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
@@ -395,7 +374,7 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             site = Some(&n.origin);
         }
         let world = parent * n.transform;
-        for r in kept_bounds(n) {
+        for r in n.kept_bounds() {
             let r = world.map_rect(r).0;
             match &mut kept {
                 Some(k) => {
