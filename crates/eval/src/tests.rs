@@ -4673,6 +4673,43 @@ fn canvas_inside_a_transformed_group_reads_in_the_group_s_frame() {
     );
 }
 
+#[test]
+fn a_child_with_no_at_sits_at_its_moved_group_s_origin() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:48,48 name:g\n  circle 5 fill:#000000 name:dot\n  rect 4x4 at:50%,0% fill:#000000 name:pct\n\
+         layer l at:16,40\n  rect 6 fill:#000000 name:sq\n\
+         assert @dot.cx == 48\n\
+         assert @dot.cy == 48\n\
+         assert @pct.cx == 48\n\
+         assert @pct.cy == 16\n\
+         assert @sq.cx == 16\n\
+         assert @sq.cy == 40\n",
+    );
+}
+
+#[test]
+fn a_mask_with_no_at_in_a_moved_group_covers_its_content() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:48,16 name:g\n  mask\n    rect 10x10 fill:#ffffff\n  circle 8 fill:#000000 name:dot\n\
+         assert @g.w == 10\n\
+         assert @g.cx == 48\n",
+    );
+}
+
+#[test]
+fn an_anim_that_moves_a_group_with_no_at_carries_its_children() {
+    let s = scene(
+        "@target t.png 64x64\n\
+         anim slide dur:1s\n  .g at:20,0\n\
+         group name:g\n  circle 5 fill:#000000 name:dot\n\
+         play slide\n",
+    );
+    near(at(node(&s, "g")), (20.0, 0.0));
+    near(at(node(&s, "dot")), (32.0, 32.0));
+}
+
 fn off_canvas_hits(src: &str) -> Vec<Diagnostic> {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
     let p = Project::from_sources(
