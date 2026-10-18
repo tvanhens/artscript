@@ -60,13 +60,23 @@ pub struct TargetJob {
     pub pivot: Option<Expr>,
     pub profile: Profile,
     /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, the target's highest scale for a
-    /// PNG (never below 1 for an SVG). A PNG output samples at its own `scale:` instead, and `scale`
-    /// reads that value.
+    /// PNG (never below 1 for an SVG). A PNG output samples at its own `scale:` instead.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
 
 impl TargetJob {
+    /// What the file reads as `scale`: a PNG output's own scale, which `evaluate_outputs` sets as the
+    /// job's `bake_scale`, and 1 for an SVG or GIF.
+    pub fn draw_scale(&self) -> f64 {
+        let scale = if self.outputs.iter().any(|o| o.format == Format::Png) {
+            self.bake_scale
+        } else {
+            1.0
+        };
+        scale.to_string().parse().unwrap_or(f64::from(scale))
+    }
+
     /// Identifies the declaration and matrix cell, stable across builds.
     pub fn key(&self) -> String {
         let m: Vec<String> = self

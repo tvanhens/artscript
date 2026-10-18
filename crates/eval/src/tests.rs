@@ -5406,3 +5406,77 @@ fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
     );
     assert_eq!(d.span.line, 6);
 }
+
+fn outputs(src: &str) -> crate::OutputScenes {
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::evaluate_outputs(&p, &plan.jobs[0])
+}
+
+fn width_at(out: &crate::OutputScenes, scale: f32, path: &str) -> f64 {
+    let scene = &out.at(scale).unwrap_or_else(|| panic!("no scene at {scale}")).scene;
+    f64::from(shape(scene, path).geometry.compute_tight_bounds().width())
+}
+
+#[test]
+fn scale_reads_each_png_outputs_own_scale() {
+    let out = outputs("@target t.png 40x40 scale:.5,1,2.5\ncircle 5*scale name:c\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(out.scenes.len(), 3);
+    for scale in [0.5, 1.0, 2.5] {
+        let w = width_at(&out, scale, "c");
+        assert!((w - 10.0 * f64::from(scale)).abs() < 0.05, "{scale}: {w}");
+    }
+}
+
+#[test]
+fn scale_is_the_number_the_target_wrote() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1.1\nlet r = if scale == 1.1 then 6 else 3\ncircle r name:c\n",
+    );
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 1.1, "c"), 12.0);
+}
+
+#[test]
+fn scale_is_one_for_an_svg_and_a_gif_whatever_scale_they_list() {
+    for target in [
+        "@target t.svg 40x40 scale:1,2",
+        "@target t.gif 40x40 scale:2 bg:#ffffff",
+    ] {
+        let p = project(&[("art/t.art", &format!("{target}\ncircle 5*scale name:c\n"))]);
+        let plan = plan(&p);
+        let ev = evaluate(&p, &plan.jobs[0]);
+        assert!(ev.diagnostics.is_empty(), "{target}: {}", show(&ev.diagnostics));
+        let s = ev.scene.unwrap();
+        assert_eq!(shape(&s, "c").geometry.compute_tight_bounds().width(), 10.0, "{target}");
+    }
+}
+
+#[test]
+fn a_parameter_named_scale_wins_over_the_output_scale() {
+    let out = outputs("@target t.png 40x40 scale:2\ndef dot scale:3\n  circle scale name:c\ndot name:d\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 2.0, "d.c"), 6.0);
+}
+
+#[test]
+fn diagnostics_from_every_scale_are_kept_and_a_shared_one_appears_once() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1,2\nexpect scale in 0..1.5 \"scale stays small\"\nexpect 5 in 0..1 \"always\"\n",
+    );
+    let always = out.diagnostics.iter().filter(|d| d.message.contains("always")).count();
+    let small = out.diagnostics.iter().filter(|d| d.message.contains("scale stays small")).count();
+    assert_eq!((always, small), (1, 1), "{}", show(&out.diagnostics));
+}
+
+#[test]
+fn each_scale_has_the_rig_its_own_scene_placed() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1,2 pivot:@body.hip\ndef doll\n  circle 4\n  anchor hip 0,5*scale\ndoll at:10,10 name:body\n",
+    );
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(out.at(1.0).unwrap().rig.pivot, Some((10.0, 15.0)));
+    assert_eq!(out.at(2.0).unwrap().rig.pivot, Some((10.0, 20.0)));
+}
