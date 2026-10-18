@@ -4292,6 +4292,7 @@ impl<'a> Evaluator<'a> {
             return Some(v);
         }
         match name {
+            "scale" => Some(Value::Num(self.job.draw_scale())),
             "true" => Some(Value::Bool(true)),
             "false" => Some(Value::Bool(false)),
             "none" => Some(Value::None),

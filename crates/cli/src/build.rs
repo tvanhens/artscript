@@ -6,7 +6,8 @@ use std::fs;
 use std::path::Path;
 
 use artscript_eval::{
-    BackendChoice, Format, OutputSpec, Project, Rig, TargetJob, dependencies, evaluate, fnv1a, plan,
+    BackendChoice, Format, OutputSpec, Project, Rig, TargetJob, dependencies, evaluate_outputs,
+    fnv1a, plan,
 };
 use artscript_ir::Scene;
 use artscript_render::Backend;
@@ -35,7 +36,8 @@ struct Outcome {
     /// `(path relative to out, hash)` for each output written or verified.
     outputs: Vec<(String, String)>,
     diagnostics: Vec<Diagnostic>,
-    rig: Rig,
+    /// Each output's pivot and anchors, keyed by its path: a file may place them differently per scale.
+    rigs: BTreeMap<String, Rig>,
 }
 
 /// `Diagnostic` only serializes; the cache stores this mirror so warnings replay on a hit.
@@ -104,8 +106,7 @@ struct CacheEntry {
     key: String,
     outputs: Vec<(String, String)>,
     diagnostics: Vec<CachedDiag>,
-    pivot: Option<(f64, f64)>,
-    anchors: BTreeMap<String, (f64, f64)>,
+    rigs: BTreeMap<String, Rig>,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -172,10 +173,7 @@ fn cache_hit(project: &Project, out_dir: &Path, job: &TargetJob, key: &str) -> O
             .into_iter()
             .map(Diagnostic::from)
             .collect(),
-        rig: Rig {
-            pivot: entry.pivot,
-            anchors: entry.anchors,
-        },
+        rigs: entry.rigs,
     })
 }
 
@@ -223,22 +221,17 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
     if job.outputs.iter().any(|o| o.format == Format::Gif) {
         return run_gif(project, out_dir, job, key, backend);
     }
-    let ev = evaluate(project, job);
-    let rig = ev.rig;
-    let mut diagnostics = ev.diagnostics;
+    let mut evaluated = evaluate_outputs(project, job);
+    let mut diagnostics = std::mem::take(&mut evaluated.diagnostics);
     let mut outputs = Vec::new();
+    let mut rigs = BTreeMap::new();
     let compile_error = diagnostics
         .iter()
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
-    if let (Some(scene), false) = (ev.scene, compile_error) {
-        let mut scenes = vec![(job.bake_scale, scene)];
+    if !compile_error {
         for out in &job.outputs {
-            if out.format == Format::Png && scenes.iter().all(|(s, _)| *s != out.scale) {
-                let at = TargetJob {
-                    bake_scale: out.scale,
-                    ..job.clone()
-                };
-                scenes.extend(evaluate(project, &at).scene.map(|sc| (out.scale, sc)));
+            if let Some(at) = evaluated.at(job.sample_scale(out)) {
+                rigs.insert(out.path.clone(), at.rig.clone());
             }
         }
         let render = |out: &OutputSpec, scene: &Scene| match out.format {
@@ -255,11 +248,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
                 .outputs
                 .iter()
                 .map(|out| {
-                    let sample = match out.format {
-                        Format::Png => out.scale,
-                        Format::Svg | Format::Gif => job.bake_scale,
-                    };
-                    let scene = scenes.iter().find(|(s, _)| *s == sample).map(|(_, sc)| sc.clone());
+                    let scene = evaluated.at(job.sample_scale(out)).map(|at| at.scene.clone());
                     s.spawn(move || scene.map(|scene| render(out, &scene)))
                 })
                 .collect();
@@ -295,8 +284,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
             key,
             outputs: outputs.clone(),
             diagnostics: diagnostics.iter().map(CachedDiag::from).collect(),
-            pivot: rig.pivot,
-            anchors: rig.anchors.clone(),
+            rigs: rigs.clone(),
         };
         let path = cache_path(&project.root, job);
         let _ = path
@@ -308,7 +296,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
         job: job.clone(),
         outputs,
         diagnostics,
-        rig,
+        rigs,
     }
 }
 
@@ -367,8 +355,7 @@ fn run_gif(
             key,
             outputs: outputs.clone(),
             diagnostics: diagnostics.iter().map(CachedDiag::from).collect(),
-            pivot: None,
-            anchors: BTreeMap::new(),
+            rigs: BTreeMap::new(),
         };
         let path = cache_path(&project.root, job);
         let _ = path
@@ -380,7 +367,7 @@ fn run_gif(
         job: job.clone(),
         outputs,
         diagnostics,
-        rig: Rig::default(),
+        rigs: BTreeMap::new(),
     }
 }
 
@@ -426,9 +413,9 @@ fn manifest_entry(o: &Outcome, path: &str, hash: &str) -> Json {
     if let Some(spec) = spec.filter(|s| s.format != Format::Gif) {
         let scale = f64::from(spec.scale);
         let point = |(x, y): (f64, f64)| json!([pixels(x * scale), pixels(y * scale)]);
-        entry["pivot"] = o.rig.pivot.map_or(Json::Null, point);
-        let anchors: serde_json::Map<String, Json> = o
-            .rig
+        let rig = o.rigs.get(path).cloned().unwrap_or_default();
+        entry["pivot"] = rig.pivot.map_or(Json::Null, point);
+        let anchors: serde_json::Map<String, Json> = rig
             .anchors
             .iter()
             .map(|(name, at)| (name.clone(), point(*at)))

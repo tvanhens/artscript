@@ -53,7 +53,7 @@ pub struct Evaluation {
 }
 
 /// What a scene exposes to the program that places its image, in canvas units.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rig {
     /// The `pivot:` point, `None` when the target has no `pivot:`.
     pub pivot: Option<(f64, f64)>,
@@ -79,6 +79,62 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = evaluate_frame(project, job);
     ev.diagnostics = fold_copies(ev.diagnostics);
     ev
+}
+
+/// One target's scene drawn at one scale, with the rig that scene placed.
+pub struct ScaleScene {
+    /// The scale the scene was evaluated at, as `TargetJob::sample_scale` names it.
+    pub scale: f32,
+    pub scene: Scene,
+    pub rig: Rig,
+}
+
+pub struct OutputScenes {
+    /// Every scale's diagnostics, a repeat of one scale-independent diagnostic kept once.
+    pub diagnostics: Vec<Diagnostic>,
+    /// One scene per distinct draw scale, in output order. A scale that could not be evaluated has none.
+    pub scenes: Vec<ScaleScene>,
+}
+
+impl OutputScenes {
+    pub fn at(&self, scale: f32) -> Option<&ScaleScene> {
+        self.scenes.iter().find(|s| s.scale == scale)
+    }
+}
+
+/// Evaluates a target once for each scale its outputs draw at, because a file reads `scale` and
+/// may draw differently at each.
+pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
+    let mut scales: Vec<f32> = Vec::new();
+    for out in &job.outputs {
+        let scale = job.sample_scale(out);
+        if !scales.contains(&scale) {
+            scales.push(scale);
+        }
+    }
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    let mut scenes = Vec::new();
+    for scale in scales {
+        let at = TargetJob {
+            bake_scale: scale,
+            ..job.clone()
+        };
+        let ev = evaluate(project, &at);
+        for d in ev.diagnostics {
+            if !diagnostics.contains(&d) {
+                diagnostics.push(d);
+            }
+        }
+        scenes.extend(ev.scene.map(|scene| ScaleScene {
+            scale,
+            scene,
+            rig: ev.rig,
+        }));
+    }
+    OutputScenes {
+        diagnostics,
+        scenes,
+    }
 }
 
 /// `evaluate` with each loop copy's diagnostic kept apart, so `sample` can fold them once across frames.

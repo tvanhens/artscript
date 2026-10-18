@@ -1072,3 +1072,78 @@ fn a_pivot_that_is_not_a_point_is_e0206() {
         let _ = fs::remove_dir_all(&dir);
     }
 }
+
+fn png_size(path: &Path) -> (u32, u32) {
+    let bytes = fs::read(path).unwrap();
+    let be = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+    (be(16), be(20))
+}
+
+#[test]
+fn size_placeholders_name_the_files_a_build_writes() {
+    let dir = rig_project(
+        "sized",
+        "@target icon_{w}.png 32x20 scale:.5,1,2\n@target vec_{w}x{h}_{scale}.svg 32x20 scale:2\nrect 4x4\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    for (name, size) in [("icon_16.png", (16, 10)), ("icon_32.png", (32, 20)), ("icon_64.png", (64, 40))] {
+        assert_eq!(png_size(&dir.join("assets").join(name)), size, "{name}");
+    }
+    assert!(dir.join("assets/vec_32x20_1.svg").exists());
+    let paths: Vec<String> = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["path"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(paths, ["icon_16.png", "icon_32.png", "icon_64.png", "vec_32x20_1.svg"]);
+    assert_eq!(entry(&dir, "icon_64.png")["scale"], 2.0);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_diagnostic_that_only_one_scale_raises_is_reported() {
+    let dir = rig_project(
+        "scale-diag",
+        "@target x.png 8x8 scale:1,2\nrect 4x4\nexpect scale in 0..1.5 \"small scale only\"\nexpect 5 in 0..1 \"every scale\"\n",
+    );
+    for cmd in ["check", "build"] {
+        let out = artscript(&dir, &[cmd]);
+        let err = text(&out);
+        assert_eq!(err.matches("2 is outside 0..1.5").count(), 1, "{cmd}: {err}");
+        assert_eq!(err.matches("5 is outside 0..1\n").count(), 1, "{cmd}: {err}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_compile_error_only_one_scale_raises_stops_the_build() {
+    let dir = rig_project(
+        "scale-error",
+        "@target x.png 8x8 scale:1,2\nrect 4x4\nif scale > 1\n  circle bogus\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(!dir.join("assets/x.png").exists() && !dir.join("assets/x@2x.png").exists());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn each_outputs_anchors_come_from_its_own_scene() {
+    let dir = rig_project(
+        "scale-rig",
+        "@target x.png 64x64 scale:1,2 pivot:@body.hip\n\
+         def doll\n  circle 8\n  anchor hip 0,10*scale\n\n\
+         doll at:30,40 name:body\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert_eq!(entry(&dir, "x.png")["anchors"], serde_json::json!({ "body.hip": [30, 50] }));
+    assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
+    assert_eq!(entry(&dir, "x@2x.png")["pivot"], serde_json::json!([60, 120]));
+    let again = artscript(&dir, &["build"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again));
+    assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
+    let _ = fs::remove_dir_all(&dir);
+}

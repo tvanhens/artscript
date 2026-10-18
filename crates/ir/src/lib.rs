@@ -59,6 +59,12 @@ pub enum Profile {
     Raster,
 }
 
+/// The pixel size of a `width` x `height` canvas drawn at `scale`: a PNG's size.
+pub fn pixel_size(width: f32, height: f32, scale: f32) -> (i32, i32) {
+    let side = |canvas: f32| (canvas * scale).ceil().max(1.0) as i32;
+    (side(width), side(height))
+}
+
 #[derive(Clone, Debug)]
 pub struct Scene {
     pub width: f32,
