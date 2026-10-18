@@ -1143,9 +1143,8 @@ impl<'a> Evaluator<'a> {
                 module.anims.borrow_mut().insert(name.clone(), anim);
                 Ok(())
             }
-            DeclKind::Shader { .. } | DeclKind::Light { .. } | DeclKind::Brush { .. } => {
+            DeclKind::Light { .. } | DeclKind::Brush { .. } => {
                 let what = match &decl.kind {
-                    DeclKind::Shader { .. } => "shader (Phase 2)",
                     DeclKind::Light { .. } => "light (Phase 2)",
                     _ => "brush (Phase 2)",
                 };

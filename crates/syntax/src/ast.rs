@@ -114,16 +114,15 @@ pub enum DeclKind {
         params: Vec<Named>,
         body: Vec<Scene>,
     },
-    /// `shader name params` + `sksl """..."""`. Parsed, not implemented in v0.1.
-    Shader {
-        name: String,
-        params: Vec<Named>,
-        sksl: Option<String>,
-    },
     /// `light sun dir:-1,-1.5`. Parsed, not implemented in v0.1.
     Light { name: String, named: Vec<Named> },
-    /// `brush ink stamp:@dab`. Parsed, not implemented in v0.1.
-    Brush { name: String, named: Vec<Named> },
+    /// `brush dry strength:.5 dir:0` + one `sksl """..."""` child. A head key in the placement
+    /// set sets placement; every other key declares a uniform with its default.
+    Brush {
+        name: String,
+        params: Vec<Named>,
+        sksl: Option<SkslBlock>,
+    },
     /// `anim idle dur:2s loop` with a body of patch lines.
     Anim {
         name: String,
@@ -131,6 +130,17 @@ pub enum DeclKind {
         loop_: bool,
         body: Vec<Patch>,
     },
+}
+
+/// A `sksl """..."""` block. `body` is where body line 1, column 1 sits in the file, so an
+/// SkSL error at body line `l` and column `c` is at `body.line + l - 1`, `body.col + c`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SkslBlock {
+    /// The dedented body text.
+    pub text: String,
+    /// The `sksl` keyword.
+    pub span: Span,
+    pub body: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]

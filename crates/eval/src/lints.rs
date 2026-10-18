@@ -175,14 +175,14 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
                     }
                 }
             }
-            DeclKind::Style { named: ns, .. }
-            | DeclKind::Light { named: ns, .. }
-            | DeclKind::Brush { named: ns, .. } => named(ns, &mut out),
+            DeclKind::Style { named: ns, .. } | DeclKind::Light { named: ns, .. } => {
+                named(ns, &mut out)
+            }
             DeclKind::Finish { params, body, .. } => {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
             }
-            DeclKind::Shader { params, .. } | DeclKind::Rule { params, .. } => {
+            DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
             DeclKind::Def { params, body, .. } => {
@@ -245,7 +245,7 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         if let DeclKind::Def { params, .. }
         | DeclKind::Rule { params, .. }
         | DeclKind::Finish { params, .. }
-        | DeclKind::Shader { params, .. } = &d.kind
+        | DeclKind::Brush { params, .. } = &d.kind
         {
             out.extend(params.iter().map(|p| p.key.clone()));
         }

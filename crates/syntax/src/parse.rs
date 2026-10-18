@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::Diagnostic;
 use crate::ast::{
     BinOp, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody, DrawItem, Expr, File, Fx,
-    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SlotFill, Span, Swatch,
+    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SkslBlock, SlotFill, Span, Swatch,
     SwatchKind, UnOp,
 };
 use crate::lex::{self, Line, SizePart, Tok};
@@ -231,7 +231,7 @@ impl<'a> Parser<'a> {
                 }
             };
         }
-        match tok.kind {
+        match &tok.kind {
             Tok::Kw(
                 Word::Use
                 | Word::Palette
@@ -239,11 +239,10 @@ impl<'a> Parser<'a> {
                 | Word::Finish
                 | Word::Def
                 | Word::Rule
-                | Word::Shader
                 | Word::Light
-                | Word::Brush
                 | Word::Anim,
             ) => Head::Decl,
+            Tok::Ident(s) if words::is_decl_head(s) => Head::Decl,
             Tok::Kw(Word::Fx) => Head::Fx,
             Tok::Kw(Word::Mask) => Head::Mask,
             Tok::Dot => Head::Patch,
@@ -469,9 +468,8 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Finish)) => self.parse_finish(),
             Some(Tok::Kw(Word::Def)) => self.parse_def(),
             Some(Tok::Kw(Word::Rule)) => self.parse_rule(),
-            Some(Tok::Kw(Word::Shader)) => self.parse_shader(),
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
-            Some(Tok::Kw(Word::Brush)) => self.parse_brush(),
+            Some(Tok::Ident(s)) if s == "brush" => self.parse_brush(),
             Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
             _ => None,
         }?;
@@ -660,7 +658,26 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Rule { name, params, body })
     }
 
-    fn parse_shader(&mut self) -> Option<DeclKind> {
+    fn parse_light(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, named) = self.parse_items();
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "a light takes named arguments only",
+                "write `light name key:value`",
+            );
+        }
+        self.no_block(indent);
+        Some(DeclKind::Light { name, named })
+    }
+
+    /// `brush NAME k:v...` then one child line `sksl """..."""`. A missing block is left to
+    /// eval, which reports it beside the kind checks on the params.
+    fn parse_brush(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
@@ -669,12 +686,12 @@ impl<'a> Parser<'a> {
         if !args.is_empty() {
             self.fail(
                 span,
-                "shader parameters are named arguments",
-                "write `shader name key:value`",
+                "a brush takes named arguments only",
+                "write `brush name key:value`",
             );
         }
         self.reject_param_names(&params);
-        let mut sksl = None;
+        let mut sksl: Option<SkslBlock> = None;
         let mut child_indent: Option<usize> = None;
         loop {
             let next = self.li + 1;
@@ -695,16 +712,18 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
             self.enter(next);
+            let kw = self.cur_span();
             if self.eat_ident("sksl") {
-                if let Some(Tok::Str(s)) = self.cur().map(|t| t.kind.clone()) {
+                if let Some(Tok::Raw(text, body)) = self.cur().map(|t| t.kind.clone()) {
                     self.bump();
                     if sksl.is_some() {
-                        self.fail_here(
-                            "a shader has one `sksl` block",
+                        self.fail(
+                            kw,
+                            "a brush has one `sksl` block",
                             "keep a single `sksl \"\"\"...\"\"\"` line",
                         );
                     } else {
-                        sksl = Some(s);
+                        sksl = Some(SkslBlock { text, span: kw, body });
                     }
                 } else {
                     self.fail_here(
@@ -714,47 +733,13 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 self.fail_here(
-                    "expected `sksl` under the shader",
-                    "indent `sksl \"\"\"...\"\"\"` under the shader",
+                    "expected `sksl` under the brush",
+                    "indent `sksl \"\"\"...\"\"\"` under the brush",
                 );
             }
             self.expect_eol("remove the extra tokens after `sksl`");
         }
-        Some(DeclKind::Shader { name, params, sksl })
-    }
-
-    fn parse_light(&mut self) -> Option<DeclKind> {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let name = self.expect_name();
-        let (args, named) = self.parse_items();
-        if !args.is_empty() {
-            self.fail(
-                span,
-                "a light takes named arguments only",
-                "write `light name key:value`",
-            );
-        }
-        self.no_block(indent);
-        Some(DeclKind::Light { name, named })
-    }
-
-    fn parse_brush(&mut self) -> Option<DeclKind> {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let name = self.expect_name();
-        let (args, named) = self.parse_items();
-        if !args.is_empty() {
-            self.fail(
-                span,
-                "a brush takes named arguments only",
-                "write `brush name key:value`",
-            );
-        }
-        self.no_block(indent);
-        Some(DeclKind::Brush { name, named })
+        Some(DeclKind::Brush { name, params, sksl })
     }
 
     fn parse_anim(&mut self) -> Option<DeclKind> {
@@ -1701,7 +1686,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Hex(h)
             }
-            Tok::Str(s) => {
+            Tok::Str(s) | Tok::Raw(s, _) => {
                 self.bump();
                 Expr::Str(s)
             }
