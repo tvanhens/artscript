@@ -180,3 +180,12 @@ artscript build
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
 
 artscript is a v0.1 draft. Expect breaking changes.
+
+## License
+
+artscript is source-available under the [Business Source License 1.1](LICENSE).
+
+- **Free.** Use artscript to make art for your own games, apps, and other projects, commercial ones included. The images and animations you build are yours, and the license places no restriction on them.
+- **Needs a commercial license.** Offering artscript to other people as part of a platform: a hosted or API asset generator, a game engine or editor that includes it, or an AI product that builds artscript for its users. [Contact the author](https://github.com/tvanhens) for terms.
+
+Each version becomes available under the Apache License 2.0 four years after its release. The [`LICENSE`](LICENSE) file has the full terms.
