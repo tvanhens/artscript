@@ -542,36 +542,47 @@ impl Channels {
     }
 }
 
-/// Where a list of `n` values sits along a path of length `len`: on the knots when there is one
-/// value per knot, else spread evenly by arc length. Knot positions are chord fractions, as the
-/// tapered outline places widths.
-fn positions(n: usize, knots: &[P], len: f64) -> Vec<f64> {
-    if n >= 2 && n == knots.len() {
+/// One contour of the geometry as the ribbon places values on it: its arc length, whether it
+/// closes, and the authored points it passes through, in order. A closed contour's last knot
+/// joins back to its first.
+struct Run<'a> {
+    start: f64,
+    len: f64,
+    closed: bool,
+    knots: &'a [P],
+}
+
+impl Run<'_> {
+    /// The chord from each knot to the next, the closing chord included on a closed contour.
+    fn chords(&self) -> Vec<f64> {
+        let k = self.knots;
+        let mut out: Vec<f64> = k.windows(2).map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1)).collect();
+        if self.closed && k.len() >= 2 {
+            let (a, b) = (k[k.len() - 1], k[0]);
+            out.push((b.0 - a.0).hypot(b.1 - a.1));
+        }
+        out
+    }
+
+    /// Local arc length of each knot by chord fraction, as the tapered outline places widths. A
+    /// closed contour adds its first knot again at `len`.
+    fn knot_at(&self) -> Vec<f64> {
         let mut acc = vec![0.0];
-        for w in knots.windows(2) {
-            acc.push(acc.last().unwrap() + (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1));
+        for c in self.chords() {
+            acc.push(acc.last().unwrap() + c);
         }
         let total = acc.last().copied().unwrap().max(1e-9);
-        acc.iter().map(|a| a / total * len).collect()
-    } else {
-        (0..n).map(|i| if n < 2 { 0.0 } else { i as f64 / (n - 1) as f64 * len }).collect()
+        acc.iter().map(|a| a / total * self.len).collect()
     }
 }
 
-/// A piecewise-linear channel along the whole path.
-struct Channel {
+/// A piecewise-linear channel on one contour: rising local arc lengths and their values.
+struct Line {
     at: Vec<f64>,
     values: Vec<f64>,
 }
 
-impl Channel {
-    fn new(values: &[f64], default: f64, knots: &[P], len: f64) -> Channel {
-        if values.is_empty() {
-            return Channel { at: vec![0.0], values: vec![default] };
-        }
-        Channel { at: positions(values.len(), knots, len), values: values.to_vec() }
-    }
-
+impl Line {
     fn at(&self, s: f64) -> f64 {
         let i = self.at.partition_point(|a| *a <= s);
         if i == 0 {
@@ -585,55 +596,135 @@ impl Channel {
     }
 }
 
-/// The ribbon a brushed stroke along `path` becomes. `widths` and each channel list sit on the
-/// knots when they have one value per knot and spread evenly otherwise. Velocity comes from knot
-/// spacing: knots are evenly timed, so a long chord is a fast segment, and a path without knots
-/// moves at 1.
-pub fn ribbon(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), ch: &Channels, marks: Vec<RibbonMark>) -> Ribbon {
-    let spans: Vec<(f64, bool)> = ContourMeasureIter::new(path, false, None)
+/// One [`Line`] per run for a list of values. A list with one value per knot puts value `i` on
+/// knot `i`, and a closed contour's list wraps back to its first value. Any other list spreads
+/// evenly by arc length over the whole path. An empty list is `default` everywhere.
+fn lines(values: &[f64], default: f64, spans: &[Run<'_>]) -> Vec<Line> {
+    let constant = |v: f64| spans.iter().map(|_| Line { at: vec![0.0], values: vec![v] }).collect();
+    match values {
+        [] => return constant(default),
+        [v] => return constant(*v),
+        _ => {}
+    }
+    let knots: usize = spans.iter().map(|sp| sp.knots.len()).sum();
+    if values.len() == knots {
+        let mut next = 0;
+        return spans
+            .iter()
+            .map(|sp| {
+                let own = &values[next..next + sp.knots.len()];
+                next += sp.knots.len();
+                if own.is_empty() {
+                    return Line { at: vec![0.0], values: vec![default] };
+                }
+                let mut vals = own.to_vec();
+                if sp.closed {
+                    vals.push(own[0]);
+                }
+                Line { at: sp.knot_at(), values: vals }
+            })
+            .collect();
+    }
+    let len: f64 = spans.iter().map(|sp| sp.len).sum();
+    let whole = Line {
+        at: (0..values.len()).map(|i| i as f64 / (values.len() - 1) as f64 * len).collect(),
+        values: values.to_vec(),
+    };
+    spans
+        .iter()
+        .map(|sp| {
+            let end = sp.start + sp.len;
+            let mut at = vec![0.0];
+            let mut vals = vec![whole.at(sp.start)];
+            for (a, v) in whole.at.iter().zip(&whole.values) {
+                if *a > sp.start && *a < end {
+                    at.push(a - sp.start);
+                    vals.push(*v);
+                }
+            }
+            at.push(sp.len);
+            vals.push(whole.at(end));
+            Line { at, values: vals }
+        })
+        .collect()
+}
+
+/// Velocity from knot spacing: knots are evenly timed, so a long chord is a fast segment and
+/// the mean chord is 1. A knot moves at the mean of the chords on either side of it, the closing
+/// chord included on a closed contour. A contour without knots moves at 1.
+fn velocity(spans: &[Run<'_>]) -> Vec<Line> {
+    let chords: Vec<Vec<f64>> = spans.iter().map(Run::chords).collect();
+    let all: Vec<f64> = chords.iter().flatten().copied().collect();
+    let mean = (all.iter().sum::<f64>() / all.len().max(1) as f64).max(1e-9);
+    spans
+        .iter()
+        .zip(&chords)
+        .map(|(sp, chords)| {
+            if chords.is_empty() {
+                return Line { at: vec![0.0], values: vec![1.0] };
+            }
+            let n = chords.len();
+            let mut v: Vec<f64> = (0..sp.knots.len())
+                .map(|i| {
+                    let before = if sp.closed { chords[(i + n - 1) % n] } else { chords[i.saturating_sub(1).min(n - 1)] };
+                    let after = chords[i.min(n - 1)];
+                    (before + after) / 2.0 / mean
+                })
+                .collect();
+            if sp.closed {
+                v.push(v[0]);
+            }
+            Line { at: sp.knot_at(), values: v }
+        })
+        .collect()
+}
+
+/// The ribbon a brushed stroke along `path` becomes. `knots` holds the authored points of each
+/// contour in path order: a curve's points, or a path's on-curve vertices. `widths` and each
+/// channel list sit on the knots when they have one value per knot and spread evenly otherwise.
+pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), ch: &Channels, marks: Vec<RibbonMark>) -> Ribbon {
+    let measured: Vec<(f64, bool)> = ContourMeasureIter::new(path, false, None)
         .map(|m| (f64::from(m.length()), m.is_closed()))
         .collect();
-    let len: f64 = spans.iter().map(|(l, _)| l).sum();
-    let width = Channel::new(widths, 1.0, knots, len);
-    let channel = |key: &str, default: f64| Channel::new(ch.get(key).unwrap_or(&[]), default, knots, len);
-    let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
-    let velocity = if knots.len() >= 2 {
-        let chords: Vec<f64> = knots.windows(2).map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1)).collect();
-        let mean = (chords.iter().sum::<f64>() / chords.len() as f64).max(1e-9);
-        let v: Vec<f64> = (0..knots.len())
-            .map(|i| {
-                let before = chords[i.saturating_sub(1).min(chords.len() - 1)];
-                let after = chords[i.min(chords.len() - 1)];
-                (before + after) / 2.0 / mean
-            })
-            .collect();
-        Channel::new(&v, 1.0, knots, len)
-    } else {
-        Channel::new(&[], 1.0, knots, len)
-    };
-    let mut at: Vec<f64> = [&width, &pressure, &angle, &tilt, &velocity].iter().flat_map(|c| c.at.iter().copied()).collect();
-    let mut contours = Vec::with_capacity(spans.len());
+    let aligned = knots.len() == measured.len();
     let mut start = 0.0;
-    for (clen, closed) in spans {
-        let end = start + clen;
-        at.extend([start, end]);
-        at.sort_by(f64::total_cmp);
-        at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-        let knots = at
-            .iter()
-            .filter(|s| **s >= start - 1e-6 && **s <= end + 1e-6)
-            .map(|&s| Knot {
-                s: (s - start).clamp(0.0, clen) as f32,
-                half_width: (width.at(s) / 2.0) as f32,
-                pressure: pressure.at(s) as f32,
-                angle: angle.at(s) as f32,
-                tilt: tilt.at(s) as f32,
-                velocity: velocity.at(s) as f32,
-            })
-            .collect();
-        contours.push(RibbonContour { start: start as f32, len: clen as f32, closed, knots });
-        start = end;
-    }
+    let spans: Vec<Run<'_>> = measured
+        .iter()
+        .enumerate()
+        .map(|(i, &(len, closed))| {
+            let sp = Run { start, len, closed, knots: if aligned { &knots[i] } else { &[] } };
+            start += len;
+            sp
+        })
+        .collect();
+    let len = start;
+    let width = lines(widths, 1.0, &spans);
+    let channel = |key: &str, default: f64| lines(ch.get(key).unwrap_or(&[]), default, &spans);
+    let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
+    let velocity = velocity(&spans);
+    let contours = spans
+        .iter()
+        .enumerate()
+        .map(|(i, sp)| {
+            let all = [&width[i], &pressure[i], &angle[i], &tilt[i], &velocity[i]];
+            let mut at: Vec<f64> = all.iter().flat_map(|c| c.at.iter().copied()).chain([0.0, sp.len]).collect();
+            at.sort_by(f64::total_cmp);
+            at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+            let knots = at
+                .iter()
+                .map(|&s| s.clamp(0.0, sp.len))
+                .map(|s| Knot {
+                    s: s as f32,
+                    half_width: (width[i].at(s) / 2.0) as f32,
+                    pressure: pressure[i].at(s) as f32,
+                    angle: angle[i].at(s) as f32,
+                    tilt: tilt[i].at(s) as f32,
+                    velocity: velocity[i].at(s) as f32,
+                })
+                .collect();
+            RibbonContour { start: sp.start as f32, len: sp.len as f32, closed: sp.closed, knots }
+        })
+        .collect();
     Ribbon { marks, contours, len: len as f32, taper: [taper.0 as f32, taper.1 as f32] }
 }
 

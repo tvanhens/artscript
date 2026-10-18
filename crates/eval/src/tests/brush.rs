@@ -520,3 +520,39 @@ fn the_frame_owns_only_u_names_so_a_body_may_define_finish() {
     assert!(d.message.contains("`u_finish`"), "{d}");
     assert_eq!(col(&d), (3, 9), "{d}");
 }
+
+#[test]
+fn a_closed_curve_counts_its_closing_chord_and_its_lists_wrap() {
+    let s = ok(
+        "@target t.png 200x200\nuse brushes { dry }\ncurve 40,100 160,100 160,180 40,180 closed stroke:#000000,[2 4 6 8] fill:none brush:dry pressure:[0 1 0 1] name:a\ncurve 0,0 30,0 30,40 closed stroke:#000000,2 fill:none brush:dry name:b\n",
+        &[LIB],
+    );
+    let c = &ribbon(&s, "a").contours[0];
+    let knot = |acc: f32| c.at(acc / 400.0 * c.len);
+    for (acc, p, w) in [(0.0, 0.0, 1.0), (120.0, 1.0, 2.0), (200.0, 0.0, 3.0), (320.0, 1.0, 4.0), (400.0, 0.0, 1.0)] {
+        let k = knot(acc);
+        assert!((k.pressure - p).abs() < 1e-3 && (k.half_width - w).abs() < 1e-3, "chord {acc}: {k:?}");
+    }
+    let c = &ribbon(&s, "b").contours[0];
+    let mean = (30.0 + 40.0 + 50.0) / 3.0;
+    assert!((c.at(0.0).velocity - (50.0 + 30.0) / 2.0 / mean).abs() < 1e-3, "knot 0 sits between the closing chord and the first: {:?}", c.at(0.0));
+    assert_eq!(c.at(0.0).velocity, c.at(c.len).velocity, "velocity wraps");
+}
+
+#[test]
+fn a_paths_on_curve_vertices_are_its_knots() {
+    let s = ok(
+        "@target t.png 200x200\nuse brushes { dry }\npath \"M10 20 L30 20 L190 20\" stroke:#000000,10 brush:dry pressure:[0 1 0] name:a\npath \"M0 0 L10 0 L40 0 M0 50 L20 50 L20 70 Z\" stroke:#000000,4 brush:dry pressure:[0 1 .5 .2 .8 .4] name:b\n",
+        &[LIB],
+    );
+    let c = &ribbon(&s, "a").contours[0];
+    assert!((c.at(20.0).pressure - 1.0).abs() < 1e-3, "the peak sits on the vertex at x 30: {:?}", c.at(20.0));
+    assert!((c.at(0.0).velocity - 20.0 / 90.0).abs() < 1e-3, "chords 20 and 160: {:?}", c.at(0.0));
+    let r = ribbon(&s, "b");
+    let (one, two) = (&r.contours[0], &r.contours[1]);
+    assert!((one.at(10.0).pressure - 1.0).abs() < 1e-3 && (one.at(40.0).pressure - 0.5).abs() < 1e-3, "{:?}", one.knots);
+    let total = 20.0 + 20.0 + 20f32.hypot(20.0);
+    let at = |acc: f32| two.at(acc / total * two.len).pressure;
+    assert!((at(0.0) - 0.2).abs() < 1e-3 && (at(20.0) - 0.8).abs() < 1e-3 && (at(40.0) - 0.4).abs() < 1e-3, "{:?}", two.knots);
+    assert!((at(total) - 0.2).abs() < 1e-3, "Z closes back to the first vertex's value");
+}

@@ -4,6 +4,7 @@
 
 use std::f64::consts::PI;
 
+use skia_safe::path::Verb;
 use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
 
 use artscript_ir::{Path, Point, Rect, taper_ramp};
@@ -77,6 +78,38 @@ pub fn spline(pts: &[P], tension: f64, closed: bool) -> Path {
         b.close();
     }
     b.detach()
+}
+
+/// The on-curve vertices of each contour of `path` that has length, in path order. A closed
+/// contour does not repeat its first vertex at its end.
+pub fn vertices(path: &Path) -> Vec<Vec<P>> {
+    let mut out: Vec<Vec<P>> = Vec::new();
+    let mut run: Vec<P> = Vec::new();
+    let mut flush = |run: &mut Vec<P>, closed: bool| {
+        if closed && run.len() > 1 && run.first() == run.last() {
+            run.pop();
+        }
+        if run.windows(2).any(|w| w[0] != w[1]) || (closed && run.len() > 1) {
+            out.push(std::mem::take(run));
+        }
+        run.clear();
+    };
+    for (verb, pts) in skia_safe::path::Iter::new(path, false) {
+        let p = |q: &Point| (f64::from(q.x), f64::from(q.y));
+        match verb {
+            Verb::Move => {
+                flush(&mut run, false);
+                run.push(p(&pts[0]));
+            }
+            Verb::Line => run.push(p(&pts[1])),
+            Verb::Quad | Verb::Conic => run.push(p(&pts[2])),
+            Verb::Cubic => run.push(p(&pts[3])),
+            Verb::Close => flush(&mut run, true),
+            Verb::Done => break,
+        }
+    }
+    flush(&mut run, false);
+    out
 }
 
 pub struct Contour {

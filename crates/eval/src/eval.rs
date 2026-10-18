@@ -2125,7 +2125,7 @@ impl<'a> Evaluator<'a> {
                         .iter()
                         .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
                         .collect();
-                    (geom::boolean(op, &sils), None, true)
+                    (geom::boolean(op, &sils), Vec::new(), true)
                 }
                 "copy" => {
                     let r = match a.pos.first() {
@@ -2138,7 +2138,7 @@ impl<'a> Evaluator<'a> {
                     self.outside_copy(&r, sc)?;
                     (
                         r.silhouette().make_transform(&inverse(&sc.world)),
-                        None,
+                        Vec::new(),
                         true,
                     )
                 }
@@ -2180,7 +2180,7 @@ impl<'a> Evaluator<'a> {
             let shape = self.paint_shape(
                 &a,
                 geometry,
-                knots.as_deref(),
+                &knots,
                 closed,
                 sc,
                 &world,
@@ -2588,7 +2588,7 @@ impl<'a> Evaluator<'a> {
         frame: Rect,
         sc: &Scope,
         closed_flag: bool,
-    ) -> R<(Path, Option<Vec<P>>, bool)> {
+    ) -> R<(Path, Vec<Vec<P>>, bool)> {
         let (fx, fy, fw, fh) = (
             frame.left as f64,
             frame.top as f64,
@@ -2612,7 +2612,7 @@ impl<'a> Evaluator<'a> {
                     Some(Some(r)) if r.len() == 4 => [r[0], r[1], r[2], r[3]],
                     Some(_) => return Err(need("one corner radius or four", "rect 40x20 r:4,4,0,0")),
                 };
-                (geom::rect(w.len(fw), h.len(fh), radii), None, true)
+                (geom::rect(w.len(fw), h.len(fh), radii), Vec::new(), true)
             }
             "circle" => {
                 let r = first
@@ -2620,7 +2620,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a radius", "circle 12"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
-                (geom::ellipse(r, r), None, true)
+                (geom::ellipse(r, r), Vec::new(), true)
             }
             "ellipse" => {
                 let (rx, ry) = first
@@ -2628,7 +2628,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("two radii", "ellipse 20,12"))?;
                 check_percent(rx, frame, sc)?;
                 check_percent(ry, frame, sc)?;
-                (geom::ellipse(rx.len(fw), ry.len(fh)), None, true)
+                (geom::ellipse(rx.len(fw), ry.len(fh)), Vec::new(), true)
             }
             "poly" | "star" => {
                 let n = first
@@ -2641,7 +2641,7 @@ impl<'a> Evaluator<'a> {
                 if let Some(round) = a.num("round").filter(|v| *v > 0.0) {
                     p = geom::round_corners(&p, round);
                 }
-                (p, None, true)
+                (p, Vec::new(), true)
             }
             "curve" => {
                 let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
@@ -2675,7 +2675,7 @@ impl<'a> Evaluator<'a> {
                 } else {
                     geom::spline(&pts, tension, closed)
                 };
-                (path, Some(pts), closed)
+                (path, vec![pts], closed)
             }
             "path" => {
                 let d = first.and_then(|v| match v {
@@ -2688,7 +2688,8 @@ impl<'a> Evaluator<'a> {
                 })?;
                 let closed =
                     skia_safe::ContourMeasureIter::new(&p, false, None).all(|c| c.is_closed());
-                (p, None, closed)
+                let knots = geom::vertices(&p);
+                (p, knots, closed)
             }
             "blob" => {
                 let r = first
@@ -2703,7 +2704,7 @@ impl<'a> Evaluator<'a> {
                 let points = a.num("points").unwrap_or(7.0) as usize;
                 (
                     geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng),
-                    None,
+                    Vec::new(),
                     true,
                 )
             }
@@ -2718,7 +2719,7 @@ impl<'a> Evaluator<'a> {
         &mut self,
         a: &Args,
         geometry: Path,
-        knots: Option<&[P]>,
+        knots: &[Vec<P>],
         closed: bool,
         sc: &Scope,
         world: &Matrix,
@@ -2920,7 +2921,7 @@ impl<'a> Evaluator<'a> {
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             let ribbon = brush::ribbon(
                 &geometry,
-                knots.unwrap_or(&[]),
+                knots,
                 &widths,
                 taper.unwrap_or((0.0, 0.0)),
                 &channels,
@@ -2942,7 +2943,10 @@ impl<'a> Evaluator<'a> {
             });
         }
         if tapered {
-            let knots = knots.filter(|k| k.len() == widths.len()).unwrap_or(&[]);
+            let knots = match knots {
+                [k] if k.len() == widths.len() => k.as_slice(),
+                _ => &[],
+            };
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
