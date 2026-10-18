@@ -810,3 +810,74 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
         assert!(bar.attribute("mask").is_some(), "{svg}");
     }
 }
+
+fn sided_tile(sides: artscript_ir::Sides, turn: f32) -> Vec<u8> {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides }));
+    render_png(&scene(100.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+}
+
+const TOP_ONLY: artscript_ir::Sides = artscript_ir::Sides { top: true, right: false, bottom: false, left: false };
+
+#[test]
+fn outline_on_the_top_side_leaves_the_other_three_bare() {
+    let png = sided_tile(TOP_ONLY, 0.0);
+    assert_eq!(pixel(&png, 50, 50), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 28, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 72, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_one_sided_band_ends_square_at_the_edges_of_the_box() {
+    let png = sided_tile(TOP_ONLY, 0.0);
+    assert_eq!(pixel(&png, 30, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 69, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 29, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 70, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 28, 28), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 30, 24), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 30, 23), [0, 0, 0, 0]);
+}
+
+#[test]
+fn two_adjacent_sides_leave_the_corner_between_them_filled() {
+    let top_left = artscript_ir::Sides { top: true, right: false, bottom: false, left: true };
+    let png = sided_tile(top_left, 0.0);
+    assert_eq!(pixel(&png, 27, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 27, 50), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 72, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 72, 27), [0, 0, 0, 0]);
+}
+
+#[test]
+fn all_sides_draws_the_full_ring() {
+    let png = sided_tile(artscript_ir::Sides::ALL, 0.0);
+    for (x, y) in [(50, 27), (28, 50), (72, 50), (50, 73), (27, 27)] {
+        assert_eq!(pixel(&png, x, y)[3], 255, "{x},{y}");
+    }
+}
+
+#[test]
+fn a_rotated_node_keeps_its_sides_in_its_own_frame() {
+    let png = sided_tile(TOP_ONLY, 90.0);
+    assert_eq!(pixel(&png, 73, 50), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 27, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+}
+
+#[test]
+fn svg_bakes_a_one_sided_outline_like_the_png() {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: TOP_ONLY }));
+    let scene = scene(100.0, 100.0, vec![node]);
+    assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline sides"));
+    assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<image"), "{svg}");
+}

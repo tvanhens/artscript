@@ -5284,3 +5284,41 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
+
+fn outline_sides(src: &str) -> artscript_ir::Sides {
+    let s = scene(&format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {src}\n"));
+    node(&s, "c")
+        .effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Outline { sides, .. } => Some(sides),
+            _ => None,
+        })
+        .expect("outline")
+}
+
+#[test]
+fn outline_sides_names_the_sides_it_draws_on() {
+    use artscript_ir::Sides;
+    assert_eq!(outline_sides(""), Sides::ALL);
+    assert_eq!(outline_sides("sides:top"), Sides { top: true, right: false, bottom: false, left: false });
+    assert_eq!(
+        outline_sides("sides:top,left"),
+        Sides { top: true, right: false, bottom: false, left: true }
+    );
+    assert_eq!(outline_sides("sides:left,top"), outline_sides("sides:top,left"));
+    assert_eq!(outline_sides("sides:top,right,bottom,left"), Sides::ALL);
+}
+
+#[test]
+fn outline_sides_rejects_what_is_not_a_side_word() {
+    for bad in ["sides:up", "sides:top,lef", "sides:3", "sides:[]", "sides:#ff0000", "sides:\"top\""] {
+        let ev = run_with(
+            &format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {bad}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("sides"), "{bad}: {d}");
+    }
+}
