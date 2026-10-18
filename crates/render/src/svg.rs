@@ -197,7 +197,7 @@ impl Writer {
         match last {
             SvgStep::Outline { width, color } => {
                 let oid = format!("{id}-outline{}", steps.len());
-                self.outline_paths(node, *width, *color, &oid, depth + 1)?;
+                self.outline_paths(node, *width, *color, &oid, bake_scale, depth + 1)?;
                 self.emit_outlined(scene, node, id, bake_scale, depth, head)
             }
             SvgStep::Filters(effects) => {
@@ -244,8 +244,8 @@ impl Writer {
         Ok(())
     }
 
-    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, id: &str, depth: usize) -> Result<(), RenderError> {
-        let regions = crate::effects::silhouette(node)?;
+    fn outline_paths(&mut self, node: &Node, width: f32, color: Color, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+        let regions = crate::effects::silhouette(node, &Matrix::scale((bake_scale, bake_scale)))?;
         if regions.is_empty() {
             return Ok(());
         }

@@ -9,19 +9,22 @@
 use std::collections::HashMap;
 
 use artscript_ir::{
-    Clip, Color, Effect, EffectInput, EffectOp, Mask, MaskSource, Node, NodeKind, Paint as IrPaint,
-    Path, Shape, Stroke,
+    Clip, Color, Effect, EffectInput, EffectOp, Field, Mask, MaskSource, Node, NodeKind,
+    Paint as IrPaint, Path, Shape, Stroke,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
+use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
-    BlendMode, Color4f, ColorMatrix, Data, Image, ImageFilter, Matrix, Paint, PathBuilder, PathOp,
-    PictureRecorder, Point, Rect, RuntimeEffect, TileMode, image_filters, path_utils,
+    BlendMode, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix, Paint,
+    PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, TileMode,
+    image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
 use crate::draw::{DrawCtx, draw_node};
+use crate::field::{FieldUse, field_shader};
 use crate::gpu::{self, Backend};
 use crate::paint::{color4, content_paint};
 
@@ -547,7 +550,7 @@ pub fn outline_geometry(
     if width <= 0.0 {
         return Ok(src);
     }
-    let regions = silhouette(node)?;
+    let regions = silhouette(node, local_to_px)?;
     if regions.is_empty() {
         return Ok(src);
     }
@@ -581,17 +584,19 @@ pub fn outline_geometry(
     Ok(surface.image_snapshot())
 }
 
-pub(crate) fn silhouette(node: &Node) -> Result<Vec<Region>, RenderError> {
+/// `local_to_px` maps the node's own space to the pixels a field mask is sampled on.
+pub(crate) fn silhouette(node: &Node, local_to_px: &Matrix) -> Result<Vec<Region>, RenderError> {
     let mut regions = Vec::new();
-    gather(node, &Matrix::new_identity(), true, &mut regions)?;
+    gather(node, local_to_px, true, &mut regions)?;
     Ok(regions)
 }
 
 /// `root` is the outlined node. Its transform is already on the canvas, and its opacity
-/// tints the finished layer, so neither is baked into the regions.
+/// tints the finished layer, so neither is baked into the regions. `to_px` maps the parent's
+/// space to pixels, or the root's own space.
 fn gather(
     node: &Node,
-    to_outline: &Matrix,
+    to_px: &Matrix,
     root: bool,
     out: &mut Vec<Region>,
 ) -> Result<(), RenderError> {
@@ -603,10 +608,10 @@ fn gather(
     if opacity <= 0.0 {
         return Ok(());
     }
-    let here = if root {
-        *to_outline
+    let (here, local_to_px) = if root {
+        (Matrix::new_identity(), *to_px)
     } else {
-        *to_outline * node.transform
+        (node.transform, *to_px * node.transform)
     };
     let mut local = Vec::new();
     match &node.kind {
@@ -616,7 +621,7 @@ fn gather(
             let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
             for child in children {
                 let mut nested = Vec::new();
-                gather(child, &Matrix::new_identity(), false, &mut nested)?;
+                gather(child, &local_to_px, false, &mut nested)?;
                 local.extend(nested.into_iter().filter_map(|region| {
                     skia_safe::op(&region.path, &shape.geometry, PathOp::Intersect)
                         .filter(|p| !p.is_empty())
@@ -626,7 +631,7 @@ fn gather(
         }
         NodeKind::Group { children, .. } => {
             for child in children {
-                gather(child, &Matrix::new_identity(), false, &mut local)?;
+                gather(child, &local_to_px, false, &mut local)?;
             }
         }
     }
@@ -646,7 +651,7 @@ fn gather(
             .collect();
     }
     if let Some(mask) = &node.mask {
-        local = mask_regions(local, mask)?;
+        local = mask_regions(local, mask, &local_to_px)?;
     }
     for region in local {
         out.push(Region {
@@ -661,12 +666,28 @@ fn gather(
     Ok(())
 }
 
-/// A node mask cuts each region to the mask's own regions, marked translucent when the edge is
-/// feathered. A field or inverted mask keeps the whole region, marked translucent because the
-/// mask can lower its alpha anywhere.
-fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, RenderError> {
-    let nodes = match &mask.source {
-        MaskSource::Nodes(nodes) if !mask.invert => nodes,
+/// A node mask or a thresholded field mask cuts each region to what the mask keeps, marked
+/// translucent when the edge is feathered. Any other mask keeps the whole region, marked
+/// translucent because the mask can lower its alpha anywhere.
+fn mask_regions(
+    regions: Vec<Region>,
+    mask: &Mask,
+    local_to_px: &Matrix,
+) -> Result<Vec<Region>, RenderError> {
+    let kept = match &mask.source {
+        MaskSource::Nodes(nodes) if !mask.invert => {
+            let mut kept = Vec::new();
+            for node in nodes {
+                gather(node, local_to_px, false, &mut kept)?;
+            }
+            kept
+        }
+        MaskSource::Field { field, threshold: Some(t) } => {
+            field_kept(field, *t, mask.invert, &regions, local_to_px)?
+                .map(|path| Region { path, coverage: Coverage::Opaque })
+                .into_iter()
+                .collect()
+        }
         _ => {
             return Ok(regions
                 .into_iter()
@@ -674,10 +695,6 @@ fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, Render
                 .collect());
         }
     };
-    let mut kept = Vec::new();
-    for node in nodes {
-        gather(node, &Matrix::new_identity(), false, &mut kept)?;
-    }
     Ok(regions
         .iter()
         .flat_map(|region| {
@@ -698,6 +715,78 @@ fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, Render
             })
         })
         .collect())
+}
+
+/// The pixels a thresholded field keeps over `regions`, sampled at the same pixel centers the
+/// mask draws on, as a path in local space.
+fn field_kept(
+    field: &Field,
+    threshold: f32,
+    invert: bool,
+    regions: &[Region],
+    local_to_px: &Matrix,
+) -> Result<Option<Path>, RenderError> {
+    let Some(px_to_local) = local_to_px.invert() else {
+        return Ok(None);
+    };
+    let Some(bounds) = regions.iter().map(|r| *r.path.bounds()).reduce(|mut a, b| {
+        a.join(b);
+        a
+    }) else {
+        return Ok(None);
+    };
+    let area: IRect = local_to_px.map_rect(bounds).0.round_out();
+    if area.is_empty() {
+        return Ok(None);
+    }
+    let info = ImageInfo::new_a8(area.size());
+    let mut surface = surfaces::raster(&info, None, None)
+        .ok_or_else(|| RenderError::Skia("field mask surface".into()))?;
+    let canvas = surface.canvas();
+    canvas.translate((-area.left as f32, -area.top as f32));
+    canvas.concat(local_to_px);
+    let mut paint = Paint::default();
+    paint.set_shader(field_shader(
+        field,
+        FieldUse::Coverage { threshold: Some(threshold), as_luma: false },
+    )?);
+    canvas.draw_paint(&paint);
+    let row = area.width() as usize;
+    let mut alpha = vec![0u8; row * area.height() as usize];
+    if !surface.read_pixels(&info, &mut alpha, row, (0, 0)) {
+        return Err(RenderError::Skia("field mask pixels".into()));
+    }
+    let mut kept: Vec<skia_safe::Region> = alpha
+        .chunks(row)
+        .zip(area.top..)
+        .map(|(line, y)| {
+            let mut region = skia_safe::Region::new();
+            let mut x = area.left;
+            for run in line.chunk_by(|a, b| (*a > 127) == (*b > 127)) {
+                let end = x + run.len() as i32;
+                if (run[0] > 127) != invert {
+                    region.op_rect(IRect::new(x, y, end, y + 1), RegionOp::Union);
+                }
+                x = end;
+            }
+            region
+        })
+        .collect();
+    while kept.len() > 1 {
+        let mut rows = kept.into_iter();
+        kept = std::iter::from_fn(|| {
+            let mut a = rows.next()?;
+            if let Some(b) = rows.next() {
+                a.op_region(&b, RegionOp::Union);
+            }
+            Some(a)
+        })
+        .collect();
+    }
+    Ok(kept
+        .pop()
+        .and_then(|region| region.boundary_path())
+        .map(|path| path.with_transform(&px_to_local)))
 }
 
 /// Fill path, plus the stroke's own filled outline.
