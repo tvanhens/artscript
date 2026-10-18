@@ -197,6 +197,13 @@ impl Scope {
         }
     }
 
+    fn bind_loop(&mut self, index: Option<&str>, var: &str, i: usize, v: Value) {
+        if let Some(index) = index {
+            self.env.push((index.to_string(), Value::Num(i as f64)));
+        }
+        self.env.push((var.to_string(), v));
+    }
+
     fn iteration(&self, span: Span, i: u32) -> Scope {
         let mut inner = self.clone();
         inner.scope_copies.push(i);
@@ -1453,14 +1460,19 @@ impl<'a> Evaluator<'a> {
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.eval_block(body, &mut inner, out);
                 }
                 Ok(())
@@ -3620,7 +3632,12 @@ impl<'a> Evaluator<'a> {
                 self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = self.quiet_expr(iter, sc).and_then(each_items);
                 if schedule && holds_play(body) {
@@ -3633,7 +3650,7 @@ impl<'a> Evaluator<'a> {
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.collect_surface(body, &mut inner, schedule);
                 }
                 Ok(())
@@ -3825,12 +3842,17 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     for child in body {
                         self.absorb_scene(child, &mut inner, owner, def_name, true, dest)?;
                     }
@@ -4350,12 +4372,17 @@ impl<'a> Evaluator<'a> {
             Expr::List(xs) => Value::List(Rc::new(
                 xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?,
             )),
-            Expr::Each { var, iter, body } => {
+            Expr::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 let items = each_items(self.expr(iter, sc)?)?;
                 let mut out = Vec::with_capacity(items.len());
-                for v in items {
+                for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     out.push(self.expr(body, &inner)?);
                 }
                 Value::List(Rc::new(out))

@@ -5994,3 +5994,50 @@ fn a_patch_under_an_instance_palette_reads_that_palette() {
     assert_eq!(fill_hex(node(&s, "s.a")), "#222222");
     assert_eq!(fill_hex(node(&s, "u.a")), "#111111");
 }
+
+#[test]
+fn each_binds_a_loop_index_before_the_value() {
+    let s = scene(
+        "@target t.png 80x80\nlet list = [5 6 7]\nlayer l\n  each i, x in list\n    circle 1 at:i*10,x\n",
+    );
+    assert_eq!(at(node(&s, "l.circle~1.0")), (0.0, 5.0));
+    assert_eq!(at(node(&s, "l.circle~1.1")), (10.0, 6.0));
+    assert_eq!(at(node(&s, "l.circle~1.2")), (20.0, 7.0));
+}
+
+#[test]
+fn the_loop_index_counts_positions_over_a_range() {
+    let s = scene("@target t.png 80x80\neach i, x in 4..7\n  circle 1 at:i,x\n");
+    assert_eq!(at(node(&s, "circle~1.0")), (0.0, 4.0));
+    assert_eq!(at(node(&s, "circle~1.2")), (2.0, 6.0));
+}
+
+#[test]
+fn each_expr_binds_a_loop_index() {
+    scene(
+        "@target t.png 80x80\nlet pts = [each i, x in [5 6 7] -> i,x]\nexpect pts == [0,5 1,6 2,7]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn a_loop_index_inside_a_def_body_and_nested_loops() {
+    let s = scene(
+        "@target t.png 80x80\ndef dots\n  each i, x in [1 2]\n    circle 1 at:i,x name:dot\ndots name:d\neach r, _a in [0 0]\n  each c, _b in [0 0 0]\n    rect 1 at:c,r name:cell\n",
+    );
+    assert_eq!(at(node(&s, "d.dot.1")), (1.0, 2.0));
+    assert_eq!(at(node(&s, "cell.1.2")), (2.0, 1.0));
+}
+
+#[test]
+fn adding_a_loop_index_keeps_the_seeds_inside_the_loop() {
+    let plain = scene("@target t.png 80x80\neach x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    let indexed = scene("@target t.png 80x80\neach i, x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    for k in 0..3 {
+        let path = format!("circle~1.{k}");
+        assert_eq!(at(node(&plain, &path)), at(node(&indexed, &path)), "{path}");
+    }
+    assert_ne!(
+        at(node(&plain, "circle~1.0")).0,
+        at(node(&plain, "circle~1.1")).0
+    );
+}

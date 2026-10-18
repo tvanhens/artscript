@@ -192,6 +192,8 @@ pub enum SceneKind {
         otherwise: Vec<Scene>,
     },
     Each {
+        /// `i` in `each i, x in list`: the position in the iteration, from 0.
+        index: Option<String>,
         var: String,
         iter: Expr,
         body: Vec<Scene>,
@@ -395,6 +397,7 @@ pub enum Expr {
     List(Vec<Expr>),
     /// `[each k in 0..n -> expr]`. Evaluates to a list.
     Each {
+        index: Option<String>,
         var: String,
         iter: Box<Expr>,
         body: Box<Expr>,

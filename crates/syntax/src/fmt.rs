@@ -196,8 +196,14 @@ impl<'a> Printer<'a> {
             } => {
                 self.stmt_if(line, cond, then, otherwise, indent, false);
             }
-            SceneKind::Each { var, iter, body } => {
-                self.emit(line, indent, &format!("each {var} in {}", fmt_expr(iter)));
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
+                let names = loop_names(index, var);
+                self.emit(line, indent, &format!("each {names} in {}", fmt_expr(iter)));
                 self.scenes(body, indent + 1);
             }
             SceneKind::Slot {
@@ -493,6 +499,13 @@ fn prec_of(e: &Expr) -> u8 {
     }
 }
 
+fn loop_names(index: &Option<String>, var: &str) -> String {
+    match index {
+        Some(i) => format!("{i}, {var}"),
+        None => var.to_string(),
+    }
+}
+
 fn fmt_body(e: &Expr) -> String {
     match e {
         Expr::Num(n) => fmt_number(*n),
@@ -519,8 +532,14 @@ fn fmt_body(e: &Expr) -> String {
             "[{}]",
             xs.iter().map(fmt_expr).collect::<Vec<_>>().join(" ")
         ),
-        Expr::Each { var, iter, body } => {
-            format!("[each {var} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
+        Expr::Each {
+            index,
+            var,
+            iter,
+            body,
+        } => {
+            let names = loop_names(index, var);
+            format!("[each {names} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
         }
         Expr::Range(lo, hi) => format!("{}..{}", fmt_at(lo, 7, false), fmt_at(hi, 7, true)),
         Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, true)),
