@@ -4995,23 +4995,6 @@ fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
 }
 
 #[test]
-fn the_worst_frame_ignores_the_nodes_in_an_also_in_note() {
-    use artscript_syntax::ast::Span;
-    let gap = |n: &str| {
-        Diagnostic::error("C0101", Span { line: 2, col: 1 }, "gap")
-            .in_file("art/t.art")
-            .at_node("row1")
-            .with_note(format!("gap is {n}"))
-    };
-    let out = super::aggregate_frames(&[
-        (0.0, vec![gap("1").with_note("also in row11, row12")]),
-        (0.5, vec![gap("3")]),
-    ]);
-    assert_eq!(out.len(), 1);
-    assert!(out[0].notes.iter().any(|n| n.contains("worst at 0.5s")), "{:?}", out[0].notes);
-}
-
-#[test]
 fn a_gif_names_each_failing_loop_copy_once() {
     let src = "@target t.gif 20x20 bg:#ffffff dur:1s fps:4\ndef dot k:0\n  circle 2\n  assert t > k\neach i in 0..3\n  dot k:i*.25 name:d\n";
     let p = project(&[("art/t.art", src)]);
@@ -5026,4 +5009,16 @@ fn a_gif_names_each_failing_loop_copy_once() {
     }
     named.sort();
     assert_eq!(named, ["d.0", "d.1", "d.2"], "{}", show(&sampled.diagnostics));
+}
+
+#[test]
+fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
+    let src = "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\ndef dot r:6\n  circle r fill:#000 name:disc\n  pointy 3\neach i in 0..3\n  dot at:12+i*20,32 name:d\n";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let d = &sampled.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }

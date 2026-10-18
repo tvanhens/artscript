@@ -66,6 +66,13 @@ pub struct Sample {
 
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
 pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
+    let mut ev = evaluate_frame(project, job);
+    ev.diagnostics = fold_copies(ev.diagnostics);
+    ev
+}
+
+/// `evaluate` with each loop copy's diagnostic kept apart, so `sample` can fold them once across frames.
+fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = Evaluator::new(project, job);
     let module = match ev.load_module(&job.source, true) {
         Ok(m) => m,
@@ -126,7 +133,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     diagnostics.extend(off_canvas);
     Evaluation {
         scene: Some(scene),
-        diagnostics: fold_copies(diagnostics),
+        diagnostics,
         plays,
         seeded,
     }
@@ -171,7 +178,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     };
     let mut probe_job = job.clone();
     probe_job.frame_t = 0.0;
-    let probe = evaluate(project, &probe_job);
+    let probe = evaluate_frame(project, &probe_job);
     let dur = job
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
@@ -179,7 +186,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let n = match frame_count(dur, fps) {
         Ok(n) => n,
         Err(msg) => {
-            let mut diagnostics = probe.diagnostics;
+            let mut diagnostics = fold_copies(probe.diagnostics);
             let own = diagnostics.len();
             diagnostics.push(
                 Diagnostic::error("E0206", job.span, msg)
@@ -219,7 +226,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             let t = i as f64 / fps;
             let mut frame_job = job.clone();
             frame_job.frame_t = t;
-            let ev = evaluate(project, &frame_job);
+            let ev = evaluate_frame(project, &frame_job);
             loops |= ev.plays.iter().any(|p| p.loops);
             let left = n - frames.len();
             if let Some(err) = ev
@@ -238,7 +245,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             acc.fold(t, &ev.diagnostics);
         }
     }
-    let mut diagnostics = acc.finish();
+    let mut diagnostics = fold_copies(acc.finish());
     let own = diagnostics.len();
     if let Some(d) = retained_error {
         diagnostics.push(d);
@@ -522,7 +529,7 @@ fn stamp_target(job: &TargetJob, diags: &mut [Diagnostic]) {
 fn note_magnitude(d: &Diagnostic) -> Option<f64> {
     let mut best = None;
     for note in &d.notes {
-        if is_site_note(note) || note.starts_with("also in ") {
+        if is_site_note(note) {
             continue;
         }
         for token in note.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-')) {
