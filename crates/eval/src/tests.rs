@@ -894,6 +894,16 @@ fn node_names_may_take_reserved_words_and_read_back_qualified() {
 }
 
 #[test]
+fn positional_names_may_take_reserved_words_and_read_back_qualified() {
+    let s = scene(
+        "@target t.png 64x64\nlayer mask\n  circle 20 at:32,32 fill:#336699\n\
+         group light\n  rect 10x10\n  anchor shader 5,7\n\
+         assert @mask.cx ~= 32\nassert @light.shader.x ~= 5\n",
+    );
+    assert_eq!(fill_hex(node(&s, "mask.circle~1")), "#336699");
+}
+
+#[test]
 fn palette_rows_may_take_reserved_names_and_read_back_qualified() {
     let s = scene(
         "@target t.png 10x10 bg:shroom.backdrop\npalette shroom\n  ramp cap #e0453a 5\n  color backdrop #1d2b53\n  color if #ff00ff\n\
