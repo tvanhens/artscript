@@ -4538,6 +4538,47 @@ fn an_unknown_key_on_a_builtin_verb_is_e0321() {
 }
 
 #[test]
+fn paint_on_a_boolean_operand_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\n\
+         def _dot fill:#000000\n  circle 3 fill:fill\n\
+         subtract fill:#88aaff name:wall\n  rect 60,60 at:32,32\n  ellipse 20,6 at:32,14 fill:#33aa33 a:.5\n  \
+         each i in 0..2\n    circle 3 at:10*i,50 blend:screen\n      fx glow 2\n  _dot fill:#ffffff\n\
+         union at:10,10\n  circle 4 stroke:#000000,2\n",
+        &[],
+    );
+    let mut found: Vec<(u32, String, String)> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0321")
+        .map(|d| (d.span.line, d.message.clone(), d.fix.clone().unwrap_or_default()))
+        .collect();
+    found.sort();
+    found.dedup();
+    let wall = "to paint over the result, draw it in `inside @wall`";
+    let ignored = |key: &str, verb: &str| {
+        format!("{key} on an operand of `{verb}` is ignored; an operand gives only its geometry")
+    };
+    let want = [
+        (6, ignored("`a:`", "subtract"), wall),
+        (6, ignored("`fill:`", "subtract"), wall),
+        (8, ignored("`blend:`", "subtract"), wall),
+        (9, ignored("`fx glow`", "subtract"), wall),
+        (
+            12,
+            ignored("`stroke:`", "union"),
+            "to paint over the result, name the `union` and draw it in `inside @<name>`",
+        ),
+    ];
+    assert_eq!(
+        found,
+        want.map(|(l, m, f)| (l, m, f.to_string())),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn a_group_passes_its_paint_keys_to_its_children() {
     let s = scene("@target t.png 64x64\ngroup g fill:#ff0000\n  circle 4 name:a\n  circle 4 fill:#0000ff name:b\n");
     assert_eq!(fill_hex(node(&s, "a")), "#ff0000");

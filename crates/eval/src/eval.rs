@@ -81,6 +81,10 @@ const NODE_KEYS: &[&str] = &[
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur"];
+/// Keys a boolean operand cannot use, because the boolean reads only its geometry.
+const OPERAND_IGNORES: &[&str] = &[
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "a", "blend",
+];
 
 struct Builtin {
     takes: usize,
@@ -158,8 +162,15 @@ pub(crate) struct Scope {
     /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
     pub site: Option<u32>,
     provisional: Option<Rc<Provisional>>,
+    /// The boolean whose operands this block draws. An instance body is not an operand.
+    operand_of: Option<Rc<OperandOf>>,
     top: bool,
     publish: bool,
+}
+
+struct OperandOf {
+    verb: String,
+    name: Option<String>,
 }
 
 /// The first copy of a `grid` without `cell:`, which moves once the grid has measured it.
@@ -213,6 +224,7 @@ impl Scope {
             frame,
             world,
             depth,
+            operand_of: None,
             top: false,
             publish: false,
             ..self.clone()
@@ -1192,6 +1204,7 @@ impl<'a> Evaluator<'a> {
             checks: Rc::new(RefCell::new(Vec::new())),
             site: None,
             provisional: None,
+            operand_of: None,
             top: false,
             publish: false,
         }
@@ -1788,6 +1801,9 @@ impl<'a> Evaluator<'a> {
                 self.report(unknown_key(verb, &keys, &n.key), &file, st.span, &node);
             }
         }
+        if let Some(of) = sc.operand_of.clone() {
+            self.report_operand_paint(&of, named, body, comp.as_deref(), sc);
+        }
         let key = sc.node_key(st.span);
         let path = key.to_string();
         let decl = sc.decl_at(st.span);
@@ -1969,6 +1985,14 @@ impl<'a> Evaluator<'a> {
                     };
                     let local_frame = inverse(&m).map_rect(frame).0;
                     let mut inner = sc.child(key.clone(), local_frame, inner_world);
+                    inner.operand_of = Some(Rc::new(OperandOf {
+                        verb: verb.to_string(),
+                        name: named
+                            .iter()
+                            .find(|n| n.key == "name")
+                            .and_then(|n| ident_of(&n.value))
+                            .map(str::to_string),
+                    }));
                     let operands = self.eval_block_nodes(body.scenes(), &mut inner);
                     let sils: Vec<Path> = operands
                         .iter()
@@ -2217,6 +2241,45 @@ impl<'a> Evaluator<'a> {
             out.push(m);
         }
         out
+    }
+
+    /// A boolean reads only the geometry of its operands, so paint, compositing, and `fx` lines
+    /// on an operand would be dropped. A component parameter of the same name is geometry input.
+    fn report_operand_paint(
+        &mut self,
+        of: &OperandOf,
+        named: &[Named],
+        body: &DrawBody,
+        comp: Option<&Component>,
+        sc: &Scope,
+    ) {
+        let fix = match &of.name {
+            Some(name) => format!("to paint over the result, draw it in `inside @{name}`"),
+            None => format!(
+                "to paint over the result, name the `{}` and draw it in `inside @<name>`",
+                of.verb
+            ),
+        };
+        let (file, node) = (sc.file().to_string(), sc.node_name());
+        let ignored = named.iter().filter(|n| {
+            OPERAND_IGNORES.contains(&n.key.as_str())
+                && !comp.is_some_and(|c| c.params.iter().any(|p| p.key == n.key))
+        });
+        let ignored: Vec<(String, Span)> = ignored
+            .map(|n| (format!("`{}:`", n.key), n.span))
+            .chain(body.fx().map(|f| (format!("`fx {}`", f.op), f.span)))
+            .collect();
+        for (what, span) in ignored {
+            let f = fail(
+                "E0321",
+                format!(
+                    "{what} on an operand of `{}` is ignored; an operand gives only its geometry",
+                    of.verb
+                ),
+            )
+            .fix(fix.clone());
+            self.report(f, &file, span, &node);
+        }
     }
 
     fn extra_positional(&mut self, verb: &str, takes: usize, items: &[Expr], sc: &Scope) -> Fail {
