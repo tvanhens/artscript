@@ -3785,6 +3785,55 @@ fn a_grid_copy_measures_where_it_was_drawn() {
 }
 
 #[test]
+fn a_grid_copy_reads_references_in_its_own_cell() {
+    let s = scene(
+        "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1 cell:20,20\n  circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n  copy @hub fill:#ffffff name:echo\nassert @dot.0.cx ~= @hub.cx\nassert @dot.1.cx ~= @hub.cx\nassert @echo.0.cx ~= @hub.cx\nassert @echo.1.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&s).contains(&"dot.1".to_string()));
+}
+
+#[test]
+fn a_later_grid_copy_without_a_cell_reads_in_its_own_cell() {
+    let later = scene(
+        "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  if col == 1\n    circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n  else\n    circle 2 fill:#ffffff name:dot\nassert @dot.1.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&later).contains(&"dot.1".to_string()));
+}
+
+#[test]
+fn the_first_copy_of_a_grid_without_a_cell_cannot_read_outside_it() {
+    for (src, line) in [
+        (
+            "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n",
+            4,
+        ),
+        (
+            "@target t.png 64x64\ngrid 2x1\n  circle 2 fill:#ffffff name:base\n  circle 1 at:@canvas.cx,0 fill:#ffffff name:dot\n",
+            4,
+        ),
+        (
+            "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  copy @hub fill:#ffffff name:echo\n",
+            4,
+        ),
+    ] {
+        let ev = run_with(src, &[]);
+        let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0352").collect();
+        assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+        assert_eq!(hits[0].file, "art/t.art");
+        assert_eq!(hits[0].span.line, line);
+        assert!(hits[0].fix.as_deref().unwrap().contains("cell:"), "{hits:?}");
+    }
+}
+
+#[test]
+fn a_grid_without_a_cell_reads_its_own_copy() {
+    let s = scene(
+        "@target t.png 80x40\ndef gem\n  circle 4 fill:#ffffff name:mark\n  circle 1 at:@mark.cx,@mark.cy fill:#ffffff name:dot\ncircle 8 fill:#ffffff name:hub\ngrid 2x1 gap:4\n  circle (@hub.w / 4) at:0,0 fill:#ffffff name:base\n  circle 1 at:@base.cx,@base.cy fill:#ffffff name:dot\n  gem at:0,0 name:gem\nassert @dot.0.cx ~= @base.0.cx\nassert @dot.1.cx ~= @base.1.cx\nassert @base.1.cx - @base.0.cx ~= 12\nassert @gem.1.dot.cx ~= @gem.1.mark.cx\ngrid 1x1\n  circle 1 at:@hub.cx,@hub.cy fill:#ffffff name:one\nassert @one.0.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&s).contains(&"gem.1.dot".to_string()));
+}
+
+#[test]
 fn one_inner_copy_keeps_the_outer_index() {
     let s = scene(
         "@target t.png 80x40\neach row in 0..2\n  each col in 0..1\n    circle 4 at:(row * 30),0 name:dot\n  assert @dot.0.cx ~= row * 30\n",
