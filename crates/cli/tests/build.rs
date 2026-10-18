@@ -770,3 +770,27 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
     assert!(plain.contains("in art/a.art:4"), "{plain}");
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
+    let dir = fixture("fx-cut", &[]);
+    let art = "@target t.png 64x64\nrect 10x20 at:32,55 fill:p.rim name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:p.rim name:bar\n  fx glow 12\nassert inside(@bar canvas margin:3)\n";
+    fs::write(dir.join("art/t.art"), art).unwrap();
+
+    let out = artscript(&dir, &["check", "--json"]);
+    assert_eq!(out.status.code(), Some(3), "{}", text(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cut: Vec<(String, u64)> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "L0102")
+        .map(|d| (d["node"].as_str().unwrap().to_string(), d["span"]["line"].as_u64().unwrap()))
+        .collect();
+    assert_eq!(cut, [("r".to_string(), 2), ("bar".to_string(), 4)], "{json}");
+
+    fs::write(dir.join("art/t.art"), art.replace("inside(@bar canvas margin:3)", "inside(@bar.outer canvas)")).unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(2), "{}", text(&out));
+    let _ = fs::remove_dir_all(&dir);
+}
