@@ -83,7 +83,7 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
 
 /// One target's scene drawn at one scale, with the rig that scene placed.
 pub struct ScaleScene {
-    /// The scale the scene was evaluated at: a PNG output's own `scale:`, else the job's `bake_scale`.
+    /// The scale the scene was evaluated at, as `TargetJob::sample_scale` names it.
     pub scale: f32,
     pub scene: Scene,
     pub rig: Rig,
