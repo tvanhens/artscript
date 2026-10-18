@@ -4969,3 +4969,27 @@ fn a_path_is_closed_only_when_every_subpath_ends_in_z() {
     assert!(bare.fill.is_none());
     assert!(bare.stroke.is_some(), "an open path gets the open-curve default stroke");
 }
+
+#[test]
+fn a_failure_under_each_loop_copy_is_reported_once() {
+    let ev = run_with(
+        "@target t.png 64x64\n\ndef dot r:6\n  circle r fill:#000 name:disc\n\neach i in 0..3\n  dot at:12+i*20,32 name:d\n    rect 4,20 fill:#000\n",
+        &[],
+    );
+    let d = &ev.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0330", "d.0"));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
+}
+
+#[test]
+fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
+    let ev = run_with(
+        "@target t.png 64x64\n\ndef dot r:6\n  circle r fill:#000 name:disc\n  pointy 3\n\neach i in 0..3\n  dot at:12+i*20,32 name:d\n",
+        &[],
+    );
+    let d = &ev.diagnostics;
+    assert_eq!(d.len(), 1, "{}", show(d));
+    assert_eq!((d[0].code.as_str(), d[0].span.line), ("E0301", 5));
+    assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
+}
