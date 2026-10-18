@@ -511,3 +511,39 @@ fn outline_shows_nothing_through_a_field_mask() {
     }
     assert_eq!(pixel(&outlined, 8, 40), [0, 0, 0, 255]);
 }
+
+#[test]
+fn outline_shows_nothing_through_a_feathered_mask_edge() {
+    let window = || solid("window", Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None), red());
+    let feathered = |outline: bool| {
+        let mut s = masked_bar(artscript_ir::MaskSource::Nodes(vec![window()]), outline);
+        s.children[0].mask.as_mut().unwrap().feather = 3.0;
+        s
+    };
+    let outlined = render_png(&feathered(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&feathered(false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(31, 40), (49, 40), (40, 31)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}
+
+#[test]
+fn outline_shows_nothing_through_a_feathered_clip_edge() {
+    let clipped = |outline: bool| {
+        let mut s = scene(80.0, 80.0, vec![solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255))]);
+        s.children[0].clip = Some(artscript_ir::Clip {
+            path: Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None),
+            feather: 3.0,
+            invert: false,
+        });
+        if outline {
+            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+        }
+        s
+    };
+    let outlined = render_png(&clipped(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&clipped(false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(31, 40), (49, 40)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}

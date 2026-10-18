@@ -636,7 +636,11 @@ fn gather(
             .filter_map(|region| {
                 clip_region(&region.path, clip).map(|path| Region {
                     path,
-                    coverage: region.coverage,
+                    coverage: if clip.feather > 0.0 {
+                        Coverage::Translucent
+                    } else {
+                        region.coverage
+                    },
                 })
             })
             .collect();
@@ -657,8 +661,9 @@ fn gather(
     Ok(())
 }
 
-/// A node mask cuts each region to the mask's own regions. A field or inverted mask keeps the
-/// whole region, marked translucent because the mask can lower its alpha anywhere.
+/// A node mask cuts each region to the mask's own regions, marked translucent when the edge is
+/// feathered. A field or inverted mask keeps the whole region, marked translucent because the
+/// mask can lower its alpha anywhere.
 fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, RenderError> {
     let nodes = match &mask.source {
         MaskSource::Nodes(nodes) if !mask.invert => nodes,
@@ -681,7 +686,10 @@ fn mask_regions(regions: Vec<Region>, mask: &Mask) -> Result<Vec<Region>, Render
                     .filter(|p| !p.is_empty())
                     .map(|path| Region {
                         path,
-                        coverage: if region.coverage == Coverage::Opaque && k.coverage == Coverage::Opaque {
+                        coverage: if mask.feather <= 0.0
+                            && region.coverage == Coverage::Opaque
+                            && k.coverage == Coverage::Opaque
+                        {
                             Coverage::Opaque
                         } else {
                             Coverage::Translucent
