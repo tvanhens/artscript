@@ -128,9 +128,11 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
-    let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
-    stamp_target(job, &mut off_canvas);
-    diagnostics.extend(off_canvas);
+    if !job.viewport {
+        let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
+        stamp_target(job, &mut off_canvas);
+        diagnostics.extend(off_canvas);
+    }
     Evaluation {
         scene: Some(scene),
         diagnostics,

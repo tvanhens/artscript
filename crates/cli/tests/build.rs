@@ -809,6 +809,47 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
 }
 
 #[test]
+fn a_viewport_target_skips_the_off_canvas_lint() {
+    let dir = fixture("viewport", &[]);
+    let body = "rect 40x20 at:60,32 fill:p.rim\n";
+    fs::write(
+        dir.join("art/t.art"),
+        format!("@target a.png 64x64\n@target b.png 64x64 viewport\n{body}"),
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check", "--json"]);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cut: Vec<&str> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "L0102")
+        .map(|d| d["target"].as_str().unwrap())
+        .collect();
+    assert_eq!(cut, ["a.png"], "{json}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_target_word_or_key_is_an_error() {
+    let dir = fixture("target-unknown", &[]);
+    for (line, what) in [
+        ("@target t.png 64x64 foo", "unknown target word `foo`"),
+        (
+            "@target t.png 64x64 viewport:yes",
+            "unknown target key `viewport`",
+        ),
+    ] {
+        fs::write(dir.join("art/t.art"), format!("{line}\nrect 4x4 at:8,8\n")).unwrap();
+        let out = artscript(&dir, &["check"]);
+        assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+        let err = text(&out);
+        assert!(err.contains("E0206") && err.contains(what), "{err}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_closed_output_pipe_keeps_the_exit_code() {
     let dir = fixture("closed-pipe", &[]);
     let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
