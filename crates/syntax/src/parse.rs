@@ -2094,7 +2094,7 @@ fn is_key(kind: &Tok) -> bool {
 fn is_each_axis(key: &str) -> bool {
     !matches!(
         key,
-        "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile"
+        "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile" | "pivot"
     )
 }
 
