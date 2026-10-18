@@ -6,8 +6,10 @@
 # left to right, so each streak keeps the gradient color under it rather than one flat color.
 # Cell 3 (x 160), green fill with stroke:p.ink,3 and brush:dry(on:fill): the fill is dry streaks
 # while the ink outline stays a crisp, unbroken 3px square around them.
-# The .svg target uses profile:svg: brushed nodes are baked into raster tiles, so each cell looks
-# like the PNG's.
+# The .svg target uses profile:svg: brushed nodes are baked into raster tiles. Cells 1 and 2 match
+# the PNG's. Cell 3's tile covers the stroke too, so it starts on a half pixel (x 134.5, y 6.5), and
+# the brush samples its noise on a grid shifted by half a pixel: the streaks look the same in style
+# and density but fall in different places than in the PNG.
 @target brush/stack.png 192x64
 @target brush/stack.svg 192x64 profile:svg
 

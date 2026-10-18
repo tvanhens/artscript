@@ -60,6 +60,7 @@ Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(
 - A bare word that is not a brush is E0364, and the fix names the nearest brush in scope. A number or any other kind is E0364. `brush:[]` is E0364; write `brush:none` to clear an inherited brush.
 - A brush applies to every paint slot the node has. A fill gets an area mark. A stroke, including a tapered or width-list stroke, is not brushed yet: a brush that reaches a stroke slot is E0362, and the fix is `on:fill` or drawing the outline as its own node. A brush on the node's own line with no slot it can reach, such as `fill:none brush:dry`, is E0362, and so is each stage of a stack on that line that reaches no slot. An inherited brush with no matching slot does nothing.
 - `blur:` together with a brush is E0362. Blur the parent instead.
+- Children of a brushed shape clip to its plain geometry, not to the brushed ink. A child that reaches the edge covers the brush's gaps and bites there, so brush the child as well or keep it inside the edge.
 - Stacks: `brush:[a b]` runs the stages in list order on each slot. The first stage sees the fill's paint at that pixel as `m.paint`, so gradients and fields reach the body. Each later stage sees the previous stage's rgb as `m.paint`. Coverages multiply. Each stage has its own seed.
 - A brushed node is raster-only. A `.svg` target with `profile:svg` bakes it to a PNG tile, and `profile:vector` reports E0209 with the feature `brush fill`.
 
@@ -71,7 +72,7 @@ Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(
 
 ## std/brushes
 
-`use std/brushes { dry chip }` imports the bundled library. `std/` names only bundled libraries: a project file in a folder named `std` is E0213, and `use std/nope` is E0210. `artscript std` lists the bundled libraries, and `artscript std brushes` prints the file, so `artscript std brushes > lib/brushes.art` forks it. The lints do not run on a bundled file.
+`use std/brushes { dry chip }` imports the bundled library. `std/` names only bundled libraries: a project file under `std/` at the project root or at a lib root is E0213, and `use std/nope` is E0210. `artscript std` lists the bundled libraries, and `artscript std brushes` prints the file, so `artscript std brushes > lib/brushes.art` forks it. The lints do not run on a bundled file.
 
 - `dry strength:.5 scale:1 fade:0 dir:0`: coverage breaks into parallel streaks along `dir`; `fade` wears the paint out toward the far end.
 - `chip strength:.6 scale:1 grit:.5`: a chipped, gritty edge. `scale` is the chip size, and the inside stays solid.
