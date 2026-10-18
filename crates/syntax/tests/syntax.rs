@@ -1340,4 +1340,7 @@ fn brush_is_a_name_everywhere_but_at_a_line_start() {
     assert!(errs.iter().any(|e| e.message.contains("declaration cannot go")), "{errs:?}");
     let errs = errors("brush 4 strength:1\n  sksl \"\"\"x\"\"\"\n");
     assert!(errs.iter().any(|e| e.message.contains("expected a name")), "{errs:?}");
+    let e = one_error("rect 4\ndef brush size:20\n  rect size\n");
+    assert_eq!((e.code.as_str(), e.span.line), ("E0105", 2), "{e:?}");
+    assert!(e.message.contains("cannot be named `brush`"), "{e:?}");
 }

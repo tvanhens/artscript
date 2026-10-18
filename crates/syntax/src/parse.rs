@@ -627,6 +627,13 @@ impl<'a> Parser<'a> {
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
+        if name == "brush" {
+            self.errors.push(
+                Diagnostic::error("E0105", span, "a def cannot be named `brush`")
+                    .with_note("a line that starts with `brush` declares a brush, so no instance of this def could be written")
+                    .with_fix("rename the def"),
+            );
+        }
         let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(
