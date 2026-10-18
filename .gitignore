@@ -1,4 +1,5 @@
 /target
+/catalog/build
 .artscript/
 .DS_Store
 .claude-review/

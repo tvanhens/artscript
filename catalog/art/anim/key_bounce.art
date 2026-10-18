@@ -1,0 +1,6 @@
+# A blue ball bounces in 6 frames: it starts on the ink floor line, peaks at frame 4, and is falling again in frame 6.
+# The ink floor line never moves.
+@target anim/key_bounce.gif 96x96 fps:6 dur:1s
+
+rect 80x2 at:48,84 fill:p.ink
+circle 10 at:48,key(72 24 72 dur:1s) fill:p.blue

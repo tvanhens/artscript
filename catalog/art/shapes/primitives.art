@@ -1,0 +1,12 @@
+# A 3x2 grid of filled primitives on paper, one per cell, each with a dark ink outline:
+# top row rect with rounded corners (red), circle (blue), ellipse wider than tall (green);
+# bottom row hexagon with rounded corners (gold), 5-point star (red), blob (blue).
+@target shapes/primitives.png 192x128
+@target shapes/primitives.svg 192x128 profile:vector
+
+rect 48x36 r:8 at:32,32 fill:p.red stroke:p.ink,2
+circle 20 at:96,32 fill:p.blue stroke:p.ink,2
+ellipse 26,14 at:160,32 fill:p.green stroke:p.ink,2
+poly 6 r:22 round:3 at:32,96 fill:p.gold stroke:p.ink,2
+star 5 r:24 inner:.5 at:96,96 fill:p.red stroke:p.ink,2
+blob 22 seed:4 wobble:.2 at:160,96 name:blob fill:p.blue stroke:p.ink,2

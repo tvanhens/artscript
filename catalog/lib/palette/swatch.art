@@ -1,0 +1,7 @@
+palette swatch
+  ramp red #e0574f 5
+  ramp blue #4f7fe0 5
+  ramp green #5fb05a 5
+  ramp gold #e8b33a 5
+  color ink #2b2440
+  color paper #f4f1ea

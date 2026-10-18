@@ -1,0 +1,17 @@
+[project]
+name = "catalog"
+out  = "build"
+lib  = ["lib"]
+std  = "0.1"
+
+[defaults]
+palette = "palette/swatch"
+scale   = [1]
+bg      = "#f4f1ea"
+profile = "auto"
+
+[build]
+backend = "cpu"
+
+[lint]
+raw-color = "off"
