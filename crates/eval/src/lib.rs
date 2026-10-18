@@ -66,6 +66,13 @@ pub struct Sample {
 
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
 pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
+    let mut ev = evaluate_frame(project, job);
+    ev.diagnostics = fold_copies(ev.diagnostics);
+    ev
+}
+
+/// `evaluate` with each loop copy's diagnostic kept apart, so `sample` can fold them once across frames.
+fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = Evaluator::new(project, job);
     let module = match ev.load_module(&job.source, true) {
         Ok(m) => m,
@@ -132,6 +139,36 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     }
 }
 
+/// Diagnostics that differ only in their node, such as one failure in every copy of a loop, kept
+/// as the first copy with the note `also in <node>, ...`.
+fn fold_copies(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut also: Vec<Vec<String>> = Vec::new();
+    for d in diags {
+        let first = out.iter().position(|o| {
+            (o.severity, &o.code, &o.file, o.span, &o.message, &o.notes, &o.fix)
+                == (d.severity, &d.code, &d.file, d.span, &d.message, &d.notes, &d.fix)
+        });
+        match first {
+            Some(i) => {
+                if !d.node.is_empty() && d.node != out[i].node && !also[i].contains(&d.node) {
+                    also[i].push(d.node);
+                }
+            }
+            None => {
+                out.push(d);
+                also.push(Vec::new());
+            }
+        }
+    }
+    for (d, nodes) in out.iter_mut().zip(also) {
+        if !nodes.is_empty() {
+            d.notes.push(format!("also in {}", nodes.join(", ")));
+        }
+    }
+    out
+}
+
 /// Frames `i` at `t = i/fps` for `t` in `[0, dur)`. Checks run on every frame and a failure is reported once.
 pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let fps = if job.fps.is_finite() && job.fps > 0.0 {
@@ -141,7 +178,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     };
     let mut probe_job = job.clone();
     probe_job.frame_t = 0.0;
-    let probe = evaluate(project, &probe_job);
+    let probe = evaluate_frame(project, &probe_job);
     let dur = job
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
@@ -149,7 +186,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let n = match frame_count(dur, fps) {
         Ok(n) => n,
         Err(msg) => {
-            let mut diagnostics = probe.diagnostics;
+            let mut diagnostics = fold_copies(probe.diagnostics);
             let own = diagnostics.len();
             diagnostics.push(
                 Diagnostic::error("E0206", job.span, msg)
@@ -189,7 +226,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             let t = i as f64 / fps;
             let mut frame_job = job.clone();
             frame_job.frame_t = t;
-            let ev = evaluate(project, &frame_job);
+            let ev = evaluate_frame(project, &frame_job);
             loops |= ev.plays.iter().any(|p| p.loops);
             let left = n - frames.len();
             if let Some(err) = ev
@@ -208,7 +245,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             acc.fold(t, &ev.diagnostics);
         }
     }
-    let mut diagnostics = acc.finish();
+    let mut diagnostics = fold_copies(acc.finish());
     let own = diagnostics.len();
     if let Some(d) = retained_error {
         diagnostics.push(d);
