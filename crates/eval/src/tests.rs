@@ -4427,6 +4427,66 @@ fn off_canvas_measures_a_shape_after_an_inside_clip() {
     assert_eq!(hits.len(), 1, "{}", show(&hits));
 }
 
+const CUT_FX: &str = "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:#4af name:bar\n  fx glow 12\n";
+
+#[test]
+fn off_canvas_measures_what_effects_draw() {
+    let plain = off_canvas_hits(
+        "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\nrect 40x10 at:32,8 fill:#4af name:bar\n",
+    );
+    assert!(plain.is_empty(), "{}", show(&plain));
+
+    let hits = off_canvas_hits(CUT_FX);
+    let nodes: Vec<&str> = hits.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["r", "bar"], "{}", show(&hits));
+    assert_eq!(hits[0].span.line, 2);
+    assert_eq!(hits[1].span.line, 4);
+}
+
+#[test]
+fn off_canvas_measures_an_effect_that_reads_another_node() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 40x10 at:32,8 fill:#4af name:bar\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 12 of:@bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "dot");
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 40 of:@dot\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn a_cut_group_glow_is_reported_once_at_the_group() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x10 at:0,0 fill:#4af name:a\n  rect 10x4 at:0,2 fill:#4af name:b\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "g");
+    assert_eq!(hits[0].span.line, 2);
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x30 at:0,0 fill:#4af name:a\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "a");
+}
+
+#[test]
+fn an_ancestor_clip_cuts_a_glow_and_the_node_s_own_clip_does_not() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x\n  rect 20x10 at:32,40 fill:#4af name:bar\n    fx glow 12\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x name:clip\n  fx glow 12\n  rect 20x10 at:32,40 fill:#4af name:bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "clip");
+}
+
 #[test]
 fn a_clipped_group_is_measured_inside_its_clip_and_mask() {
     let ev = run_with(

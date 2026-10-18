@@ -1,6 +1,6 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
-use artscript_ir::{Matrix, Node, NodeKind, Rect};
+use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
 use artscript_syntax::ast::{
     Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
     SwatchKind,
@@ -368,66 +368,77 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     out
 }
 
-/// Shapes not clipped by a parent shape whose visible bounds leave the canvas. A shape's
-/// bounds are cut to every `inside` clip and node mask on it and its groups first.
+/// Nodes whose drawn extent ([`Node::outer_bounds`], effects included) leaves the canvas. Each
+/// shape not clipped by a parent shape is measured, cut to every `inside` clip and node mask on
+/// its groups. A group or layer with effects is measured as well when none of its shapes left
+/// the canvas, so one cut is reported once.
 pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
     let level = manifest.lint_level("off-canvas", LintLevel::Warn);
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();
-    fn walk<'n>(
-        n: &'n Node,
-        parent: Matrix,
-        mut kept: Option<Rect>,
+    type Hit<'n> = (String, String, Rect, Option<&'n str>);
+    struct Walk<'n, 'f> {
         canvas: Rect,
-        entry: &str,
-        mut site: Option<&'n str>,
-        hits: &mut Vec<(String, String, Rect, Option<&'n str>)>,
-    ) {
-        if n.origin.rsplit_once(':').is_some_and(|(f, _)| f == entry) {
-            site = Some(&n.origin);
-        }
-        let world = parent * n.transform;
-        for r in n.kept_bounds() {
-            let r = world.map_rect(r).0;
-            match &mut kept {
-                Some(k) => {
-                    if !k.intersect(r) {
-                        return;
-                    }
-                }
-                None => kept = Some(r),
+        entry: &'f str,
+        find: &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+        hits: Vec<Hit<'n>>,
+    }
+    impl<'n> Walk<'n, '_> {
+        /// `kept` is what the ancestors' clips and masks keep, in canvas coordinates.
+        fn node(&mut self, n: &'n Node, parent: Matrix, kept: Option<Rect>, mut site: Option<&'n str>) -> bool {
+            if n.origin.rsplit_once(':').is_some_and(|(f, _)| f == self.entry) {
+                site = Some(&n.origin);
             }
-        }
-        match &n.kind {
-            NodeKind::Shape(_) => {
-                if let Some(b) = n.bounds() {
-                    let mut b = parent.map_rect(b).0;
-                    if let Some(k) = kept
-                        && !b.intersect(k)
-                    {
-                        return;
+            match &n.kind {
+                NodeKind::Shape(_) => self.measure(n, parent, kept, site),
+                NodeKind::Group { children, .. } => {
+                    let world = parent * n.transform;
+                    let mut inner = kept;
+                    let mut drawn = true;
+                    for r in n.kept_bounds() {
+                        let r = world.map_rect(r).0;
+                        match &mut inner {
+                            Some(k) => drawn &= k.intersect(r),
+                            None => inner = Some(r),
+                        }
                     }
-                    if !(b.left >= canvas.left
-                        && b.top >= canvas.top
-                        && b.right <= canvas.right
-                        && b.bottom <= canvas.bottom)
-                    {
-                        hits.push((n.path.clone(), n.origin.clone(), b, site));
+                    let mut hit = false;
+                    if drawn {
+                        for c in children {
+                            hit |= self.node(c, world, inner, site);
+                        }
                     }
+                    hit || (!n.effects.is_empty() && self.measure(n, parent, kept, site))
                 }
             }
-            NodeKind::Group { children, .. } => {
-                children
-                    .iter()
-                    .for_each(|c| walk(c, world, kept, canvas, entry, site, hits));
+        }
+
+        fn measure(&mut self, n: &'n Node, parent: Matrix, kept: Option<Rect>, site: Option<&'n str>) -> bool {
+            let Some(b) = n.outer_bounds(&parent, self.find) else {
+                return false;
+            };
+            let mut b = parent.map_rect(b).0;
+            if let Some(k) = kept
+                && !b.intersect(k)
+            {
+                return false;
             }
+            let c = self.canvas;
+            let inside = b.left >= c.left && b.top >= c.top && b.right <= c.right && b.bottom <= c.bottom;
+            if !inside {
+                self.hits.push((n.path.clone(), n.origin.clone(), b, site));
+            }
+            !inside
         }
     }
-    let mut hits = Vec::new();
-    scene
-        .children
-        .iter()
-        .for_each(|c| walk(c, Matrix::new_identity(), None, canvas, file, None, &mut hits));
+    let mut paths = HashMap::new();
+    index(&scene.children, Matrix::new_identity(), &mut paths);
+    let find = |p: &str| paths.get(p).copied();
+    let mut walk = Walk { canvas, entry: file, find: &find, hits: Vec::new() };
+    for c in &scene.children {
+        walk.node(c, Matrix::new_identity(), None, None);
+    }
+    let hits = walk.hits;
     for (path, origin, b, site) in hits {
         let line = origin
             .rsplit(':')
@@ -467,6 +478,21 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
         }
     }
     out
+}
+
+/// Every node by path with its parent's world transform, mask nodes included, as render indexes
+/// them for effects that read another node.
+fn index<'n>(nodes: &'n [Node], parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
+    for n in nodes {
+        out.insert(n.path.as_str(), (n, parent));
+        let world = parent * n.transform;
+        if let Some(mask) = &n.mask
+            && let MaskSource::Nodes(inner) = &mask.source
+        {
+            index(inner, world, out);
+        }
+        index(n.children(), world, out);
+    }
 }
 
 /// One warning per unnamed statement whose key fed a draw-site seed.
