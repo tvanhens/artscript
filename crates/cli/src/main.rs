@@ -108,6 +108,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("shapes", include_str!("../../../docs/topics/shapes.md")),
     ("structure", include_str!("../../../docs/topics/structure.md")),
     ("fields", include_str!("../../../docs/topics/fields.md")),
+    ("brushes", include_str!("../../../docs/topics/brushes.md")),
     ("components", include_str!("../../../docs/topics/components.md")),
     ("anim", include_str!("../../../docs/topics/anim.md")),
     ("checks", include_str!("../../../docs/topics/checks.md")),

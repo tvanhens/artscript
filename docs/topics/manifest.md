@@ -25,7 +25,7 @@ Every table and key is optional, and a missing key takes the default named below
 
 - `out` is the output directory, relative to the root. The default is `assets`. `build` and `check` do not read `.art` files inside it.
 - `lib` is one lib root or a list of them. The default is `["lib"]`. `use face/eye` reads `face/eye.art` from the first lib root that has it.
-- `name` and `std` are strings. The build does not read them.
+- `name` and `std` are strings. The build does not read them. The bundled `std/` libraries are the ones built into the running `artscript`, whatever `std` says.
 
 `[defaults]` sets the value for each target that leaves out the matching `@target` key (see `targets`):
 
