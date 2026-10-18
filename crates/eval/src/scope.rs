@@ -2,7 +2,7 @@
 //! finishes, and the records of named nodes that `@ref`s and checks measure.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
@@ -15,10 +15,10 @@ use crate::value::Value;
 pub struct Module {
     /// Project-relative source file.
     pub path: String,
-    pub globals: RefCell<HashMap<String, Value>>,
-    pub styles: RefCell<HashMap<String, Rc<StyleDef>>>,
-    pub finishes: RefCell<HashMap<String, Rc<FinishDef>>>,
-    pub anims: RefCell<HashMap<String, Rc<AnimDef>>>,
+    pub globals: RefCell<BTreeMap<String, Value>>,
+    pub styles: RefCell<BTreeMap<String, Rc<StyleDef>>>,
+    pub finishes: RefCell<BTreeMap<String, Rc<FinishDef>>>,
+    pub anims: RefCell<BTreeMap<String, Rc<AnimDef>>>,
     pub palettes: RefCell<Vec<Rc<Palette>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
@@ -32,10 +32,10 @@ impl Module {
     pub fn new(path: &str) -> Module {
         Module {
             path: path.to_string(),
-            globals: RefCell::new(HashMap::new()),
-            styles: RefCell::new(HashMap::new()),
-            finishes: RefCell::new(HashMap::new()),
-            anims: RefCell::new(HashMap::new()),
+            globals: RefCell::new(BTreeMap::new()),
+            styles: RefCell::new(BTreeMap::new()),
+            finishes: RefCell::new(BTreeMap::new()),
+            anims: RefCell::new(BTreeMap::new()),
             palettes: RefCell::new(Vec::new()),
             own: RefCell::new(Vec::new()),
             lost: RefCell::new(BTreeSet::new()),

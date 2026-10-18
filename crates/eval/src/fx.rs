@@ -220,9 +220,8 @@ impl Evaluator<'_> {
             other if sc.module.lost(other) => return Err(Fail::reported()),
             other => {
                 let mut f = fail("E0391", format!("unknown effect `{other}`")).note(effects_note());
-                let mut finishes: Vec<String> = sc.module.finishes.borrow().keys().cloned().collect();
+                let finishes: Vec<String> = sc.module.finishes.borrow().keys().cloned().collect();
                 if !finishes.is_empty() {
-                    finishes.sort();
                     f = f.note(format!("finishes: {}", finishes.join(", ")));
                 }
                 if sc.module.styles.borrow().contains_key(other) {

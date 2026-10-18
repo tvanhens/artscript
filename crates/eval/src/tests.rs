@@ -4447,3 +4447,26 @@ fn a_clipped_group_is_measured_inside_its_clip_and_mask() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn name_listings_in_notes_are_sorted() {
+    let defs = "def zeta\n  circle 1\ndef alpha\n  circle 1\ndef mid\n  circle 1\n";
+    let ev = run_with(&format!("@target t.png 10x10\n{defs}nope 1\n"), &[]);
+    assert!(
+        diag(&ev, "E0301")
+            .notes
+            .contains(&"components in scope: alpha, mid, zeta".to_string()),
+        "{:?}",
+        diag(&ev, "E0301").notes
+    );
+
+    let styles = "style zeta fill:#fff\nstyle alpha fill:#fff\nstyle mid fill:#fff\n";
+    let ev = run_with(&format!("@target t.png 10x10\n{styles}circle 1 style:nope\n"), &[]);
+    assert!(
+        diag(&ev, "E0307")
+            .notes
+            .contains(&"styles: alpha, mid, zeta".to_string()),
+        "{:?}",
+        diag(&ev, "E0307").notes
+    );
+}
