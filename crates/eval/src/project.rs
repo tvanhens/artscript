@@ -47,6 +47,7 @@ pub const LINTS: &[(&str, LintLevel)] = &[
     ("unused", LintLevel::Warn),
     ("positional-seed", LintLevel::Warn),
     ("hidden-child", LintLevel::Warn),
+    ("unknown-target", LintLevel::Warn),
 ];
 
 const PROJECT_KEYS: &[&str] = &["name", "out", "lib", "std"];

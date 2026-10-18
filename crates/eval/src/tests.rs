@@ -2057,6 +2057,103 @@ fn a_child_hidden_on_only_some_frames_is_not_reported() {
     assert_eq!(every.len(), 1, "{}", show(&every));
 }
 
+fn unknown_targets(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
+    run_with(src, libs)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0106")
+        .collect()
+}
+
+const TWO_LABELS: &str = "@target a.png 8x8 as:villain\n@target b.png 8x8 as:hero\n";
+
+#[test]
+fn comparing_target_with_a_path_warns_and_names_the_labels() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}if target == \"a.png\"\n  circle 2\nif target != \"a.png\"\n  circle 3\n"
+        ),
+        &[],
+    );
+    let lines: Vec<u32> = hits.iter().map(|d| d.span.line).collect();
+    assert_eq!(lines, [3, 5], "{}", show(&hits));
+    let d = &hits[0];
+    assert_eq!(d.severity, artscript_syntax::Severity::Warning);
+    assert_eq!(d.message, "`target` is never `\"a.png\"` in this file");
+    assert_eq!(d.notes, ["its targets are labeled hero, villain"]);
+    assert_eq!(
+        d.fix.as_deref(),
+        Some("compare `target` with an `as:` label, such as `target == hero`")
+    );
+}
+
+#[test]
+fn comparing_target_with_one_of_its_labels_is_quiet() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}if target == hero\n  circle 2\nif target == \"villain\"\n  circle 3\nlet lead = target != hero\n"
+        ),
+        &[],
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn target_is_none_only_when_a_target_has_no_label() {
+    let src = "if target == none\n  circle 2\n";
+    let partly = unknown_targets(
+        &format!("@target a.png 8x8 as:hero\n@target b.png 8x8\n{src}"),
+        &[],
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
+    let labeled = unknown_targets(&format!("{TWO_LABELS}{src}"), &[]);
+    assert_eq!(labeled.len(), 1, "{}", show(&labeled));
+    assert_eq!(labeled[0].message, "`target` is never `none` in this file");
+    let unlabeled = unknown_targets("@target a.png 8x8\nif target == hero\n  circle 2\n", &[]);
+    assert_eq!(unlabeled.len(), 1, "{}", show(&unlabeled));
+    assert_eq!(
+        unlabeled[0].notes,
+        ["no `@target` here sets `as:`, so `target` is always `none`"]
+    );
+    assert_eq!(
+        unlabeled[0].fix.as_deref(),
+        Some("add `as:<label>` to a `@target`")
+    );
+}
+
+#[test]
+fn a_name_compared_with_target_is_quiet_because_its_value_is_unknown() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}let lead = hero\nif target == lead\n  circle 2\neach v in [hero villain]\n  if target == v\n    circle 3\nuse names\nif target == star\n  circle 4\n"
+        ),
+        &[("lib/names.art", "let star = villain\n")],
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn unknown_target_off_is_silent() {
+    let manifest = "[project]\nout = \"out\"\n\n[lint]\nunknown-target = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [(
+            "art/t.art".to_string(),
+            format!("{TWO_LABELS}if target == \"a.png\"\n  circle 2\n"),
+        )]
+        .into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0106"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
 #[test]
 fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";

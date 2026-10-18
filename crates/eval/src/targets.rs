@@ -229,6 +229,14 @@ const TARGET_KEYS: [&str; 10] = [
     "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot", "palette",
 ];
 
+/// The `as:` label of one `@target` line, which the file reads as `target`.
+pub(crate) fn label(d: &Directive) -> Option<String> {
+    match d.named.iter().find(|n| n.key == "as").map(|n| &n.value) {
+        Some(Expr::Ident(s)) => Some(s.clone()),
+        _ => None,
+    }
+}
+
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
     let Some(raw_path) = d.path.clone() else {
         return Err(
@@ -284,10 +292,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 .with_fix("write `scale:1,2`"),
         );
     }
-    let label = match named("as") {
-        Some(Expr::Ident(s)) => Some(s.clone()),
-        _ => None,
-    };
+    let label = label(d);
     let fps = match named("fps") {
         None => 24.0,
         Some(Expr::Time(_)) => {

@@ -212,6 +212,12 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
+    diagnostics.extend(lints::unknown_target(
+        &file,
+        &job.source,
+        &project.manifest,
+        |n| module.global(n).is_some() || module.lost(n),
+    ));
     let mut placement = Vec::new();
     if !job.viewport {
         placement = lints::off_canvas(&scene, &project.manifest, &job.source);
