@@ -5,7 +5,7 @@ description: Draw, edit, and export artwork (sprites, icons, characters, props, 
 
 # artscript
 
-artscript is a declarative language for vector art. You write `.art` files. `artscript build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source always gives the same bytes.
+artscript is a declarative language for vector art. You write `.art` files. `artscript build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source gives the same bytes on the same backend. CPU and GPU output can differ.
 
 ## Before you draw
 

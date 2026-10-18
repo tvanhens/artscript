@@ -67,7 +67,7 @@ Rebuilt, only the eyes change. Every other pixel is identical. `artscript fmt` p
 
 **Eyes optional.** A model doesn't need to look at a render to know where things are. `assert` and `expect` lines encode the composition rules: eyes level, the body inside the canvas with a margin, the head as wide as the body. `artscript explain` prints every node with its bounds and resolved colors as text.
 
-**Made for big projects.** Shared palettes and component libraries (`use face/parts { eye blush }`) keep a house style across files. One `@target` line fans out every variant in a matrix. `build --only 'character/*'` lets each agent render just the files it owns. Builds are deterministic, and `art-manifest.json` records a hash per output, so a reviewer sees exactly which assets changed.
+**Made for big projects.** Shared palettes and component libraries (`use face/parts { eye blush }`) keep a house style across files. One `@target` line fans out every variant in a matrix. `build --only 'character/*'` lets each agent render just the files it owns. Builds are deterministic for a pinned backend, and `art-manifest.json` records a hash per output, so a reviewer sees exactly which assets changed.
 
 ## One file, three slimes
 
