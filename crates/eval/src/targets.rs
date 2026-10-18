@@ -59,8 +59,9 @@ pub struct TargetJob {
     /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
     pub pivot: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, else the target's highest scale.
-    /// An SVG samples at this scale. A PNG output samples at its own `scale:` instead.
+    /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, the target's highest scale for a
+    /// PNG (never below 1 for an SVG). A PNG output samples at its own `scale:` instead, and `scale`
+    /// reads that value.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
@@ -201,6 +202,8 @@ fn time_literal(e: &Expr) -> Option<f64> {
         _ => None,
     }
 }
+
+const OUTPUT_VARS: [&str; 3] = ["scale", "w", "h"];
 
 const TARGET_KEYS: [&str; 9] = [
     "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot",
@@ -356,6 +359,20 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
     };
     let mut cells: Vec<Vec<(String, MatrixValue)>> = vec![Vec::new()];
     for axis in &d.each {
+        if matches!(axis.key.as_str(), "w" | "h") {
+            return Err(Diagnostic::error(
+                "E0206",
+                axis.span,
+                format!(
+                    "matrix axis `{0}` collides with the `{{{0}}}` output size in the path",
+                    axis.key
+                ),
+            )
+            .with_fix(format!(
+                "rename the axis, for example `each {0}_:[..]`",
+                axis.key
+            )));
+        }
         let Expr::List(items) = &axis.value else {
             return Err(Diagnostic::error(
                 "E0206",
@@ -378,33 +395,56 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
     }
     let bake_scale = match format {
         Format::Gif => 1.0,
-        Format::Png | Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
+        Format::Png => scales.iter().copied().fold(0.0f32, f32::max),
+        Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
     };
+    let sized_name = OUTPUT_VARS
+        .iter()
+        .any(|var| raw_path.contains(&format!("{{{var}}}")));
     cells
         .into_iter()
         .map(|matrix| {
-            let path = interpolate(&raw_path, &matrix).map_err(|var| {
-                Diagnostic::error(
-                    "E0207",
-                    d.span,
-                    format!("`{{{var}}}` in the path is not a matrix axis"),
-                )
-                .with_fix(format!("add `each {var}:[..]`, or remove `{{{var}}}`"))
-            })?;
+            let name = |scale: f32| {
+                let (w, h) = artscript_ir::pixel_size(size.0, size.1, scale);
+                interpolate(&raw_path, |var| match var {
+                    "scale" => Some(num(f64::from(scale))),
+                    "w" => Some(w.to_string()),
+                    "h" => Some(h.to_string()),
+                    _ => matrix.iter().find(|(k, _)| k == var).map(|(_, v)| v.text()),
+                })
+                .map_err(|var| {
+                    Diagnostic::error(
+                        "E0207",
+                        d.span,
+                        format!("`{{{var}}}` in the path is not a matrix axis"),
+                    )
+                    .with_fix(format!(
+                        "add `each {var}:[..]`, or use one of {}",
+                        OUTPUT_VARS.map(|v| format!("`{{{v}}}`")).join(", ")
+                    ))
+                })
+            };
             let outputs = match format {
                 Format::Svg | Format::Gif => vec![OutputSpec {
-                    path,
+                    path: name(1.0)?,
                     format,
                     scale: 1.0,
                 }],
                 Format::Png => scales
                     .iter()
-                    .map(|s| OutputSpec {
-                        path: scaled_name(&path, *s),
-                        format,
-                        scale: *s,
+                    .map(|s| {
+                        let path = name(*s)?;
+                        Ok(OutputSpec {
+                            path: if sized_name {
+                                path
+                            } else {
+                                scaled_name(&path, *s)
+                            },
+                            format,
+                            scale: *s,
+                        })
                     })
-                    .collect(),
+                    .collect::<Result<_, Diagnostic>>()?,
             };
             let clip = clip_of(clip_expr.as_ref(), &matrix, d.span)?;
             Ok(TargetJob {
@@ -464,17 +504,14 @@ fn clip_of(
     }
 }
 
-fn interpolate(path: &str, matrix: &[(String, MatrixValue)]) -> Result<String, String> {
+fn interpolate(path: &str, lookup: impl Fn(&str) -> Option<String>) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = path;
     while let Some(i) = rest.find('{') {
         out.push_str(&rest[..i]);
         let Some(j) = rest[i..].find('}') else { break };
         let var = &rest[i + 1..i + j];
-        match matrix.iter().find(|(k, _)| k == var) {
-            Some((_, v)) => out.push_str(&v.text()),
-            None => return Err(var.to_string()),
-        }
+        out.push_str(&lookup(var).ok_or_else(|| var.to_string())?);
         rest = &rest[i + j + 1..];
     }
     out.push_str(rest);
@@ -533,6 +570,107 @@ mod tests {
             plan.jobs[1].matrix[1],
             ("team".to_string(), MatrixValue::Word("blue".into()))
         );
+    }
+
+    fn output_paths(target: &str) -> Vec<String> {
+        let p = project(&[("art/k.art", &format!("{target}\nrect 1\n"))]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        plan.jobs
+            .iter()
+            .flat_map(|j| j.outputs.iter().map(|o| o.path.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn size_placeholders_name_each_output_and_drop_the_scale_suffix() {
+        assert_eq!(
+            output_paths("@target icon_{w}x{h}.png 33x20 scale:.5,1,2.5"),
+            ["icon_17x10.png", "icon_33x20.png", "icon_83x50.png"]
+        );
+        assert_eq!(
+            output_paths("@target icon_{scale}x.png 32x32 scale:.5,1,2"),
+            ["icon_0.5x.png", "icon_1x.png", "icon_2x.png"]
+        );
+    }
+
+    #[test]
+    fn size_placeholders_mix_with_matrix_axes() {
+        assert_eq!(
+            output_paths("@target {team}_{w}.png 8x8 scale:1,2 each team:[red blue]"),
+            ["red_8.png", "red_16.png", "blue_8.png", "blue_16.png"]
+        );
+    }
+
+    #[test]
+    fn a_path_without_a_placeholder_keeps_its_suffix_names() {
+        assert_eq!(
+            output_paths("@target icon.png 32x32 scale:.5,1,2"),
+            ["icon@0.5x.png", "icon.png", "icon@2x.png"]
+        );
+    }
+
+    #[test]
+    fn an_svg_and_a_gif_fill_placeholders_at_scale_one() {
+        assert_eq!(
+            output_paths("@target s_{w}x{h}_{scale}.svg 24x12 scale:1,2"),
+            ["s_24x12_1.svg"]
+        );
+        assert_eq!(
+            output_paths("@target g_{w}x{h}_{scale}.gif 24x12 scale:2 bg:#ffffff"),
+            ["g_24x12_1.gif"]
+        );
+    }
+
+    #[test]
+    fn colliding_sized_names_are_a_duplicate_output() {
+        let p = project(&[("art/k.art", "@target i_{h}.png 8x8 scale:.4,.5\nrect 1\n")]);
+        let plan = plan(&p);
+        assert!(
+            plan.diagnostics.iter().any(|d| d.code == "E0202"),
+            "{:?}",
+            plan.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_w_or_h_axis_collides_with_the_size_placeholders() {
+        for axis in ["w", "h"] {
+            let p = project(&[(
+                "art/k.art",
+                &format!("@target t_{{{axis}}}.png 8x8 each {axis}:[1 2]\nrect 1\n"),
+            )]);
+            let plan = plan(&p);
+            let hit = plan
+                .diagnostics
+                .iter()
+                .find(|d| d.code == "E0206" && d.message.contains(&format!("`{axis}`")));
+            assert!(hit.is_some(), "{:?}", plan.diagnostics);
+            assert!(plan.jobs.is_empty());
+        }
+    }
+
+    #[test]
+    fn an_unknown_path_variable_is_still_e0207() {
+        let p = project(&[("art/k.art", "@target t_{x}.png 8x8\nrect 1\n")]);
+        let plan = plan(&p);
+        assert!(
+            plan.diagnostics.iter().any(|d| d.code == "E0207"),
+            "{:?}",
+            plan.diagnostics
+        );
+    }
+
+    #[test]
+    fn a_png_bakes_at_its_highest_scale_and_an_svg_never_below_one() {
+        let bake = |target: &str| {
+            let p = project(&[("art/k.art", &format!("{target}\nrect 1\n"))]);
+            plan(&p).jobs[0].bake_scale
+        };
+        assert_eq!(bake("@target t.png 8x8 scale:.5"), 0.5);
+        assert_eq!(bake("@target t.png 8x8 scale:.5,.25"), 0.5);
+        assert_eq!(bake("@target t.svg 8x8 scale:.5"), 1.0);
+        assert_eq!(bake("@target t.svg 8x8 scale:1,2"), 2.0);
     }
 
     #[test]
