@@ -19,7 +19,8 @@ const CACHE_DIR: &str = ".artscript/cache";
 
 #[derive(Default)]
 pub struct Options {
-    pub only: Option<String>,
+    /// A target is built when any glob matches it. Empty builds every target.
+    pub only: Vec<String>,
     pub allow_warnings: bool,
     /// Overrides the manifest's `[build] backend`.
     pub backend: Option<BackendChoice>,
@@ -351,11 +352,8 @@ fn run_gif(
     }
 }
 
-fn selected(job: &TargetJob, only: &Option<String>) -> bool {
-    match only {
-        None => true,
-        Some(g) => glob_match(g, &job.source) || job.outputs.iter().any(|o| glob_match(g, &o.path)),
-    }
+fn matches(job: &TargetJob, glob: &str) -> bool {
+    glob_match(glob, &job.source) || job.outputs.iter().any(|o| glob_match(glob, &o.path))
 }
 
 fn status(diags: &[Diagnostic]) -> &'static str {
@@ -438,11 +436,26 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
         );
         return report(diagnostics, opts.allow_warnings, false);
     };
+    let unmatched: Vec<Diagnostic> = opts
+        .only
+        .iter()
+        .filter(|g| !plan.jobs.iter().any(|j| matches(j, g)))
+        .filter(|g| !plan.diagnostics.iter().any(|d| glob_match(g, &d.file)))
+        .map(|g| {
+            Diagnostic::error("E0200", Span::default(), format!("`--only '{g}'` matches no target"))
+                .with_fix("match an entry file such as `art/x.art` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories")
+        })
+        .collect();
+    if !unmatched.is_empty() {
+        let mut diagnostics = plan.diagnostics;
+        diagnostics.extend(unmatched);
+        return report(diagnostics, opts.allow_warnings, false);
+    }
     let out_dir = project.root.join(&project.manifest.out);
     let jobs: Vec<&TargetJob> = plan
         .jobs
         .iter()
-        .filter(|j| selected(j, &opts.only))
+        .filter(|j| opts.only.is_empty() || opts.only.iter().any(|g| matches(j, g)))
         .collect();
 
     let workers = std::thread::available_parallelism()
@@ -473,7 +486,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
     let manifest_path = out_dir.join(MANIFEST_FILE);
     let old = read_manifest(&manifest_path);
     let mut new: BTreeMap<String, Json> = BTreeMap::new();
-    if opts.only.is_some() {
+    if !opts.only.is_empty() {
         let rebuilt: BTreeSet<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
         for (path, entry) in &old {
             if !entry["source"]

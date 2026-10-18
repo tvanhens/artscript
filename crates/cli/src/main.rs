@@ -15,7 +15,7 @@ use artscript_syntax::{Diagnostic, Severity};
 const USAGE: &str = "usage: artscript <command>
 
 commands:
-  build [--only GLOB] [--allow-warnings] [--backend auto|gpu|cpu]
+  build [--only GLOB]... [--allow-warnings] [--backend auto|gpu|cpu]
                                            render every @target, write art-manifest.json
   check [--json]                           evaluate stills and sample GIFs, without rendering
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
@@ -144,8 +144,11 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--allow-warnings" => opts.allow_warnings = true,
-            "--only" => opts.only = it.next().cloned(),
-            s if s.starts_with("--only=") => opts.only = Some(s["--only=".len()..].to_string()),
+            "--only" => {
+                let glob = it.next().ok_or("`--only` needs a glob")?;
+                opts.only.push(parse_glob(glob)?);
+            }
+            s if s.starts_with("--only=") => opts.only.push(parse_glob(&s["--only=".len()..])?),
             "--backend" => {
                 let value = it.next().ok_or("`--backend` needs auto, gpu or cpu")?;
                 opts.backend = Some(value.parse()?);
@@ -404,11 +407,47 @@ fn init(cwd: &Path) -> u8 {
     0
 }
 
-/// `*` matches within a path segment, `**` across segments, `?` one char.
+fn parse_glob(glob: &str) -> Result<String, String> {
+    let mut depth = 0usize;
+    for c in glob.chars() {
+        match c {
+            '{' => depth += 1,
+            '}' => depth = depth.checked_sub(1).ok_or(format!("`}}` without `{{` in glob `{glob}`"))?,
+            _ => {}
+        }
+    }
+    if depth > 0 {
+        return Err(format!("`{{` without `}}` in glob `{glob}`"));
+    }
+    Ok(glob.to_string())
+}
+
+/// `*` matches within a path segment, `**` across segments, `?` one char, `{a,b}` either.
+/// Braces balance, because `parse_glob` checks every `--only`.
 pub(crate) fn glob_match(pat: &str, text: &str) -> bool {
     fn go(p: &[u8], t: &[u8]) -> bool {
         match p.first() {
             None => t.is_empty(),
+            Some(b'{') => {
+                let (mut depth, mut start, mut close, mut alts) = (0, 1, p.len(), Vec::new());
+                for (i, &c) in p.iter().enumerate().skip(1) {
+                    match c {
+                        b'{' => depth += 1,
+                        b'}' if depth > 0 => depth -= 1,
+                        b'}' => {
+                            alts.push(&p[start..i]);
+                            close = i + 1;
+                            break;
+                        }
+                        b',' if depth == 0 => {
+                            alts.push(&p[start..i]);
+                            start = i + 1;
+                        }
+                        _ => {}
+                    }
+                }
+                alts.iter().any(|alt| go(&[alt, &p[close..]].concat(), t))
+            }
             Some(b'*') if p.get(1) == Some(&b'*') => {
                 let rest = p[2..].strip_prefix(b"/").unwrap_or(&p[2..]);
                 (0..=t.len()).any(|i| go(rest, &t[i..]) || (i < t.len() && go(&p[2..], &t[i..])))
@@ -437,6 +476,12 @@ mod tests {
             "art/**/momo?peach.art",
             "art/produce/momo_peach.art"
         ));
+        assert!(glob_match("art/{tiles,props}/x/*.art", "art/props/x/c.art"));
+        assert!(glob_match("{a,b{c,d}}.png", "bd.png"));
+        assert!(glob_match("x{,_big}.png", "x.png"));
+        assert!(!glob_match("art/{tiles,props}/*.art", "art/fx/c.art"));
+        assert!(parse_glob("art/{tiles").is_err());
+        assert!(parse_glob("art/tiles}").is_err());
     }
 
     #[test]
