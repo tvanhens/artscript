@@ -143,6 +143,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
     let outline = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
+        sides: artscript_ir::Sides::ALL,
     });
     let loose = covers("outline", &outline);
     assert!(
@@ -243,6 +244,7 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
         outlined.effects.push(effect(EffectOp::Outline {
             width: 4.0,
             color: color(255, 0, 0, 255),
+            sides: artscript_ir::Sides::ALL,
         }));
         covers(&format!("{name} outline"), &outlined);
     }

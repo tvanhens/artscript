@@ -524,7 +524,7 @@ pub fn layer_steps(
     let mut halo = false;
     let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
-        let EffectOp::Outline { width, color } = effect.op else {
+        let EffectOp::Outline { width, color, .. } = effect.op else {
             continue;
         };
         if width <= 0.0 {

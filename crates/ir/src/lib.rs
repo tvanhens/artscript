@@ -32,6 +32,23 @@ impl Color {
     }
 }
 
+/// The sides of a node's local box an effect draws on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sides {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl Sides {
+    pub const ALL: Sides = Sides { top: true, right: true, bottom: true, left: true };
+
+    pub fn is_all(self) -> bool {
+        self == Sides::ALL
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
     /// Pure SVG; any raster-only feature is an error.
@@ -257,8 +274,9 @@ pub enum EffectOp {
     /// OKLCH shift of every pixel: hue degrees, chroma fraction (+.2 = 20% more), OKLab lightness.
     Adjust { hue: f32, sat: f32, light: f32 },
     /// Line of `width` around the node's shape geometry, drawn behind the content.
-    /// Earlier effects do not change the traced path.
-    Outline { width: f32, color: Color },
+    /// Earlier effects do not change the traced path. Ink past an edge of the traced
+    /// geometry's box is dropped on every side `sides` leaves out.
+    Outline { width: f32, color: Color, sides: Sides },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.

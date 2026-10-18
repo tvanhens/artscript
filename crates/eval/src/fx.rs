@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Point};
+use artscript_ir::{Effect, EffectInput, EffectOp, Point, Sides};
 use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
@@ -199,7 +199,7 @@ impl Evaluator<'_> {
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
+            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: Sides::ALL },
             "grain" => {
                 let explicit = a.num("seed").map(|s| s as u64);
                 EffectOp::Grain {

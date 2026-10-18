@@ -29,7 +29,7 @@ fn effect(e: &Effect) -> String {
         EffectOp::Glow { radius, color } => format!("glow {} {}", num(*radius as f64), color.hex()),
         EffectOp::Rim { width, color, .. } => format!("rim {} {}", num(*width as f64), color.hex()),
         EffectOp::Adjust { hue, sat, light } => format!("adjust {} {} {}", num(*hue as f64), num(*sat as f64), num(*light as f64)),
-        EffectOp::Outline { width, color } => format!("outline {} {}", num(*width as f64), color.hex()),
+        EffectOp::Outline { width, color, .. } => format!("outline {} {}", num(*width as f64), color.hex()),
         EffectOp::Grain { strength, .. } => format!("grain {}", num(*strength as f64)),
         EffectOp::Merge { inputs, .. } => format!("merge ({})", inputs.len()),
     }
