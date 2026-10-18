@@ -217,6 +217,7 @@ impl Evaluator<'_> {
                 EffectOp::Merge { inputs, alphas }
             }
             other if PHASE2.contains(&other) => return Err(phase2(other)),
+            other if sc.module.lost(other) => return Err(Fail::reported()),
             other => {
                 let mut f = fail("E0391", format!("unknown effect `{other}`")).note(effects_note());
                 let mut finishes: Vec<String> = sc.module.finishes.borrow().keys().cloned().collect();

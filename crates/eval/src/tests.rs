@@ -993,6 +993,80 @@ fn a_fill_line_is_a_draw_with_an_unknown_verb() {
     );
 }
 
+const BROKEN: (&str, &str) = (
+    "lib/x/thing.art",
+    "style soft a:.5\nfinish sheen\n  fx grain .05\nlet sky = #8cf\ndef thing\n  rect 1x(2) fill:p.sky name:r\n",
+);
+
+fn codes_at(ev: &Evaluation) -> Vec<String> {
+    ev.diagnostics
+        .iter()
+        .map(|d| format!("{} {}", d.code, d.file))
+        .collect()
+}
+
+#[test]
+fn a_library_that_fails_to_parse_is_reported_once_at_the_library() {
+    for src in [
+        "@target t.png 64x64\nuse x/thing { thing }\nthing at:32,32 name:t\n",
+        "@target t.png 64x64\nuse x/thing\nthing at:32,32 name:t\n",
+        "@target t.png 64x64\nuse x/thing { soft }\nrect 2x2 style:soft name:t\n",
+        "@target t.png 64x64\nuse x/thing { sheen }\nrect 2x2 name:t\n  fx sheen\n",
+        "@target t.png 64x64\nuse x/thing\nrect 2x2 name:t\n  fx sheen\n",
+        "@target t.png 64x64\nuse x/thing as m\nrect 2x2 fill:m.sky name:t\n",
+        "@target t.png 64x64\nuse x/thing { sky }\nrect 2x2 fill:sky.1 name:t\n",
+    ] {
+        let ev = run_with(src, &[BROKEN]);
+        assert_eq!(codes_at(&ev), ["E0101 lib/x/thing.art"], "{src}\n{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn a_broken_manifest_palette_is_reported_once_at_the_palette() {
+    let p = Project::from_sources(
+        &format!("{MANIFEST}\n[defaults]\npalette = \"palette/house\"\n"),
+        [
+            (
+                "art/t.art".to_string(),
+                "@target t.png 10x10\ncircle 1 fill:p.sky name:c\n".to_string(),
+            ),
+            (
+                "lib/palette/house.art".to_string(),
+                "palette house\n  color sky 1x(2)\n".to_string(),
+            ),
+        ]
+        .into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert_eq!(codes_at(&ev), ["E0101 lib/palette/house.art"], "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_play_of_an_anim_from_a_broken_library_is_quiet() {
+    let lib = ("lib/x/moves.art", "anim bob dur:1s\n  .t at:key(0 4)\nlet x = 1x(2)\n");
+    let ev = run_with(
+        "@target t.png 64x64\nuse x/moves { bob }\nrect 2x2 name:t\nplay bob\n",
+        &[lib],
+    );
+    assert_eq!(codes_at(&ev), ["E0101 lib/x/moves.art"], "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_typo_beside_a_broken_import_is_still_an_unknown_verb() {
+    let ev = run_with(
+        "@target t.png 64x64\nuse x/thing { thing }\nthng at:32,32 name:t\n",
+        &[BROKEN],
+    );
+    assert_eq!(
+        codes_at(&ev),
+        ["E0101 lib/x/thing.art", "E0301 art/t.art"],
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
 #[test]
 fn slot_fill_under_a_shape_is_still_e0331() {
     let ev = run_with(

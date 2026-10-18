@@ -1,8 +1,8 @@
 //! What names resolve to: modules and their exports, palettes, components, rules, styles,
 //! finishes, and the records of named nodes that `@ref`s and checks measure.
 
-use std::cell::RefCell;
-use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
+use std::collections::{BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
@@ -22,6 +22,10 @@ pub struct Module {
     pub palettes: RefCell<Vec<Rc<Palette>>>,
     /// Names this module declares itself, in order. Exported unless they start with `_`.
     pub own: RefCell<Vec<String>>,
+    /// Names a failed `use` would have bound. The `use` already reported the failure.
+    pub lost: RefCell<BTreeSet<String>>,
+    /// A failed `use` without an item list could have bound any name.
+    pub lost_all: Cell<bool>,
 }
 
 impl Module {
@@ -34,6 +38,8 @@ impl Module {
             anims: RefCell::new(HashMap::new()),
             palettes: RefCell::new(Vec::new()),
             own: RefCell::new(Vec::new()),
+            lost: RefCell::new(BTreeSet::new()),
+            lost_all: Cell::new(false),
         }
     }
 
@@ -47,6 +53,11 @@ impl Module {
         if !own.iter().any(|n| n == name) {
             own.push(name.to_string());
         }
+    }
+
+    /// A use site of a lost name stays quiet instead of reporting the name as unknown.
+    pub fn lost(&self, name: &str) -> bool {
+        self.lost_all.get() || self.lost.borrow().contains(name)
     }
 
     pub fn exports(&self) -> Vec<(String, Value)> {
