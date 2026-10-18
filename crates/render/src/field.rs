@@ -137,7 +137,7 @@ impl Gen {
                 self.src.push_str(&format!("float {name}(float2 p) {{ return {v:.8}; }}\n"));
                 name
             }
-            Field::Noise { kind, scale, seed } => {
+            Field::Noise { kind, scale, seed, .. } => {
                 let name = self.fresh();
                 let scale = if *scale == 0.0 { 0.0001 } else { *scale };
                 let (lo, hi) = seed_pair(*seed);

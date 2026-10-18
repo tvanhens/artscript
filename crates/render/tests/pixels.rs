@@ -566,7 +566,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
         let mut node = solid("rock", circle_at(70.0, 20.0, 10.0), red());
         if let artscript_ir::NodeKind::Shape(shape) = &mut node.kind {
             shape.fill = Some(Paint::Field {
-                field: Field::Noise { kind: NoiseKind::Value, scale: 6.0, seed: 4 },
+                field: Field::Noise { kind: NoiseKind::Value, scale: 6.0, seed: 4, wrap: None },
                 stops: vec![
                     artscript_ir::Stop { pos: 0.0, color: color(90, 80, 70, 255) },
                     artscript_ir::Stop { pos: 1.0, color: color(210, 190, 160, 255) },
@@ -695,7 +695,7 @@ fn outline_shows_nothing_through_a_field_mask() {
 
 fn outline_hugs_what_a_thresholded_field_keeps(invert: bool) {
     let blobs = |outline: bool| {
-        let field = Field::Noise { kind: NoiseKind::Simplex, scale: 8.0, seed: 1 };
+        let field = Field::Noise { kind: NoiseKind::Simplex, scale: 8.0, seed: 1, wrap: None };
         let mut s = masked_bar(artscript_ir::MaskSource::Field { field, threshold: Some(0.5) }, outline);
         s.children[0].mask.as_mut().unwrap().invert = invert;
         s
@@ -772,7 +772,7 @@ fn noise_ramp(kind: NoiseKind) -> Vec<u8> {
     let mut node = solid("noise", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 192.0, 192.0), None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Paint::Field {
-            field: Field::Noise { kind, scale: 16.0, seed: 1 },
+            field: Field::Noise { kind, scale: 16.0, seed: 1, wrap: None },
             stops: vec![
                 artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
                 artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
@@ -880,4 +880,99 @@ fn svg_bakes_a_one_sided_outline_like_the_png() {
     assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
     let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<image"), "{svg}");
+}
+
+fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, w, h), None), red());
+    if let NodeKind::Shape(shape) = &mut node.kind {
+        shape.fill = Some(Paint::Field {
+            field,
+            stops: vec![
+                artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
+                artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
+            ],
+        });
+    }
+    let png = render_png(&scene(w, h, vec![node]), 1.0, Backend::Cpu).unwrap();
+    rgba(&png).iter().map(|p| p[0] as f64).collect()
+}
+
+/// Mean absolute red step from each column to the next and from each row to the next on a
+/// `w` by `h` tile. The last entry of each list is the step across the wrap seam, from the
+/// last column or row back to the first.
+fn line_steps(reds: &[f64], w: usize, h: usize) -> (Vec<f64>, Vec<f64>) {
+    let at = |x: usize, y: usize| reds[y * w + x];
+    let cols = (0..w)
+        .map(|x| (0..h).map(|y| (at(x, y) - at((x + 1) % w, y)).abs()).sum::<f64>() / h as f64)
+        .collect();
+    let rows = (0..h)
+        .map(|y| (0..w).map(|x| (at(x, y) - at(x, (y + 1) % h)).abs()).sum::<f64>() / w as f64)
+        .collect();
+    (cols, rows)
+}
+
+/// The seam between two copies of a wrapped tile is one more line of the texture: it steps no
+/// more than the steepest line inside the tile, and about as much as the average one.
+fn assert_seam_hides(name: &str, field: Field, w: usize, h: usize) {
+    let (cols, rows) = line_steps(&ramp_tile(field, w as f32, h as f32), w, h);
+    for (axis, lines) in [("x", cols), ("y", rows)] {
+        let (seam, interior) = lines.split_last().unwrap();
+        let mean = interior.iter().sum::<f64>() / interior.len() as f64;
+        let max = interior.iter().cloned().fold(0.0, f64::max);
+        assert!(mean > 0.5, "{name}: interior {axis} step {mean:.1} is flat");
+        assert!(*seam <= max * 1.1, "{name}: {axis} seam {seam:.1} against steepest interior line {max:.1}");
+        assert!(*seam < mean * 2.0, "{name}: {axis} seam {seam:.1} against mean interior line {mean:.1}");
+    }
+}
+
+#[test]
+fn a_wrapped_field_tiles_across_its_seam_like_its_interior() {
+    let wrapped = |kind, scale| Field::Noise { kind, scale, seed: 1, wrap: Some([64.0, 64.0]) };
+    let fields = [
+        ("fbm(simplex)", Field::Fbm { base: Box::new(wrapped(NoiseKind::Simplex, 16.0)), octaves: 4, ridged: false }),
+        ("fbm(perlin)", Field::Fbm { base: Box::new(wrapped(NoiseKind::Perlin, 16.0)), octaves: 4, ridged: false }),
+        ("simplex", wrapped(NoiseKind::Simplex, 16.0)),
+        ("perlin", wrapped(NoiseKind::Perlin, 16.0)),
+        ("worley", wrapped(NoiseKind::Worley, 16.0)),
+        ("value", wrapped(NoiseKind::Value, 16.0)),
+        ("ridged(value) snapped from 14", Field::Fbm { base: Box::new(wrapped(NoiseKind::Value, 14.0)), octaves: 3, ridged: true }),
+    ];
+    for (name, field) in fields {
+        assert_seam_hides(name, field, 64, 64);
+    }
+}
+
+#[test]
+fn a_wrapped_field_with_two_periods_tiles_on_each_axis() {
+    let field = Field::Noise { kind: NoiseKind::Perlin, scale: 10.0, seed: 2, wrap: Some([64.0, 32.0]) };
+    assert_seam_hides("perlin 64,32", field, 64, 32);
+}
+
+#[test]
+fn a_wrapped_field_is_the_same_in_every_window_of_its_period() {
+    let field = Field::Noise { kind: NoiseKind::Simplex, scale: 16.0, seed: 3, wrap: Some([64.0, 64.0]) };
+    let reds = ramp_tile(field, 128.0, 128.0);
+    let at = |x: usize, y: usize| reds[y * 128 + x];
+    let mut off = 0;
+    for y in 0..64 {
+        for x in 0..64 {
+            for (dx, dy) in [(64, 0), (0, 64), (64, 64)] {
+                if (at(x, y) - at(x + dx, y + dy)).abs() > 2.0 {
+                    off += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(off, 0, "{off} pixel pairs one period apart differ");
+}
+
+#[test]
+fn wrapped_noise_fills_the_ramp_without_clipping_its_ends() {
+    for kind in [NoiseKind::Simplex, NoiseKind::Perlin, NoiseKind::Worley, NoiseKind::Value] {
+        let reds = ramp_tile(Field::Noise { kind, scale: 16.0, seed: 1, wrap: Some([192.0, 192.0]) }, 192.0, 192.0);
+        let clipped = reds.iter().filter(|&&r| r == 0.0 || r == 255.0).count() as f64 / reds.len() as f64;
+        let (lo, hi) = reds.iter().fold((255.0_f64, 0.0_f64), |(lo, hi), &r| (lo.min(r), hi.max(r)));
+        assert!(clipped < 0.01, "{kind:?} puts {:.1}% of pixels on a ramp end", clipped * 100.0);
+        assert!(lo < 20.0 && hi > 225.0, "{kind:?} spans only {lo}..{hi} of the ramp");
+    }
 }

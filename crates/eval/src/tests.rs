@@ -5331,3 +5331,36 @@ fn outline_sides_rejects_what_is_not_a_side_word() {
         assert!(d.message.contains("sides"), "{bad}: {d}");
     }
 }
+
+fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
+    match &shape(s, path).fill {
+        Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
+        other => panic!("{path} has fill {other:?}"),
+    }
+}
+
+#[test]
+fn wrap_sets_a_period_per_axis_on_a_noise_field() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 20x20 fill:simplex(16 wrap:64) -> [#000 #fff] name:a\n\
+         rect 20x20 fill:worley(16 wrap:64,32) -> [#000 #fff] name:b\n\
+         rect 20x20 fill:value(16) -> [#000 #fff] name:c\n",
+    );
+    assert_eq!(noise_wrap(&s, "a"), Some([64.0, 64.0]));
+    assert_eq!(noise_wrap(&s, "b"), Some([64.0, 32.0]));
+    assert_eq!(noise_wrap(&s, "c"), None);
+}
+
+#[test]
+fn a_wrap_that_is_not_a_positive_number_or_pair_is_e0320_at_its_line() {
+    for bad in ["wrap:tile", "wrap:0", "wrap:-64", "wrap:64,0", "wrap:50%"] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\ncircle 10 name:spacer\nrect 20x20 fill:perlin(16 {bad}) -> [#000 #fff] name:a\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("wrap"), "{bad}: {d}");
+    }
+}

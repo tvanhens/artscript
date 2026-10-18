@@ -126,7 +126,7 @@ fn rock() -> Node {
         Path::oval(skia_safe::Rect::from_xywh(286.0, 300.0, 48.0, 36.0), None),
         Paint::Field {
             field: Field::Fbm {
-                base: Box::new(Field::Noise { kind: NoiseKind::Worley, scale: 10.0, seed: 5 }),
+                base: Box::new(Field::Noise { kind: NoiseKind::Worley, scale: 10.0, seed: 5, wrap: None }),
                 octaves: 3,
                 ridged: false,
             },

@@ -175,8 +175,10 @@ pub enum MaskSource {
 /// Scalar field over the owning node's local coordinates, nominally 0..1.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Field {
-    /// `scale` is the feature size in canvas units.
-    Noise { kind: NoiseKind, scale: f32, seed: u32 },
+    /// `scale` is the feature size in canvas units. `wrap` is a period per axis in the same
+    /// units: the field repeats every `wrap[0]` along x and every `wrap[1]` along y, with the
+    /// feature size snapped so a whole number of cells fits each period.
+    Noise { kind: NoiseKind, scale: f32, seed: u32, wrap: Option<[f32; 2]> },
     /// Fractal sum of `octaves` copies of `base` at doubling frequency and halving amplitude,
     /// renormalised to 0..1. `ridged` folds each octave as `1 - |2v - 1|`.
     Fbm { base: Box<Field>, octaves: u32, ridged: bool },
