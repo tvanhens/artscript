@@ -108,6 +108,26 @@ fn reach_lets_a_brush_paint_past_the_geometry_inside_a_layer_too() {
 }
 
 #[test]
+fn ink_never_lands_past_the_bounds_plus_reach() {
+    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 6, m)); }\n";
+    for reach in [0.0_f32, 3.0] {
+        let node = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), reach)]);
+        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        let (lo, hi) = (20 - reach as i32, 60 + reach as i32);
+        for y in 0..80 {
+            for x in 0..80 {
+                let inside = (lo..hi).contains(&x) && (lo..hi).contains(&y);
+                let a = pixel(&png, x, y)[3];
+                assert!(inside || a == 0, "reach {reach}: ink at {x},{y} outside {lo}..{hi}");
+                if inside {
+                    assert_eq!(a, 255, "reach {reach}: {x},{y} inside the bounds is painted");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn gpu_brush_render_is_close_to_cpu_and_repeatable() {
     if !gpu_available() {
         return;

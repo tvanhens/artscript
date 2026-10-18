@@ -25,9 +25,10 @@ pub(crate) fn draw_area(
     let reach = fill.reach();
     let local = geometry.compute_tight_bounds().with_outset((reach, reach));
     let rounded: IRect = ltd.map_rect(local).0.round_out();
+    // The field keeps a 2 px margin past the drawn area, so `edge` at its border is measured, not clamped.
     let field_rect = rounded.with_outset((2, 2));
     let Some(clip) = canvas.device_clip_bounds() else { return Ok(()) };
-    let Some(dev) = IRect::intersect(&clip, &field_rect) else { return Ok(()) };
+    let Some(dev) = IRect::intersect(&clip, &rounded) else { return Ok(()) };
     if dev.is_empty() {
         return Ok(());
     }
