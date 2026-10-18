@@ -90,8 +90,7 @@ pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let w = (scene.width * scale).ceil().max(1.0) as i32;
-    let h = (scene.height * scale).ceil().max(1.0) as i32;
+    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
@@ -111,8 +110,7 @@ pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, 
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let w = (scene.width * scale).ceil().max(1.0) as i32;
-    let h = (scene.height * scale).ceil().max(1.0) as i32;
+    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
