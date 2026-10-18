@@ -19,7 +19,7 @@ use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
     BlendMode, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix, Paint,
     PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, SamplingOptions,
-    TileMode, image_filters, path_utils, surfaces,
+    TileMode, color_filters, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
@@ -96,17 +96,11 @@ fn apply(
                 None,
             ),
         )?)),
-        EffectOp::Glow { radius, color } => Ok(Some(req(
-            "glow",
-            image_filters::drop_shadow(
-                (0.0, 0.0),
-                (*radius, *radius),
-                color4(*color),
-                None,
-                input,
-                None,
-            ),
-        )?)),
+        EffectOp::Glow {
+            radius,
+            color,
+            strength,
+        } => glow(*radius, *color, *strength, input),
         EffectOp::Inner {
             dx,
             dy,
@@ -123,6 +117,38 @@ fn apply(
         EffectOp::Adjust { hue, sat, light } => adjust(*hue, *sat, *light, input),
         EffectOp::Merge { inputs, alphas } => merge(inputs, alphas, &input, named, env),
     }
+}
+
+fn glow(
+    radius: f32,
+    color: Color,
+    strength: f32,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
+    let halo = req(
+        "glow",
+        image_filters::drop_shadow_only(
+            (0.0, 0.0),
+            (radius, radius),
+            color4(color),
+            None,
+            input.clone(),
+            None,
+        ),
+    )?;
+    // The matrix works on unpremultiplied color, so it scales only alpha and clamps it to 1.
+    let scale = ColorMatrix::new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        strength, 0.0,
+    );
+    let halo = req(
+        "glow strength",
+        image_filters::color_filter(color_filters::matrix(&scale, None), halo, None),
+    )?;
+    Ok(Some(req(
+        "glow",
+        image_filters::merge([Some(halo), input], None),
+    )?))
 }
 
 fn inner(

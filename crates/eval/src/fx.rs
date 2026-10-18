@@ -11,7 +11,7 @@ use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of};
 use crate::identity::{self, Key};
 use crate::scope::{FinishDef, Module};
-use crate::value::Value;
+use crate::value::{Value, num};
 
 const EFFECTS: &[&str] = &["blur", "shadow", "inner", "glow", "rim", "adjust", "outline", "grain", "merge"];
 /// Parsed but not implemented in v0.1.
@@ -188,7 +188,13 @@ impl Evaluator<'_> {
                     EffectOp::Inner { dx: dx as f32, dy: dy as f32, blur, color: c }
                 }
             }
-            "glow" => EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))? },
+            "glow" => {
+                let strength = a.num("strength").unwrap_or(1.0);
+                if strength < 0.0 {
+                    return Err(fail("E0320", format!("`strength:` must be 0 or more, got {}", num(strength))).fix("write a strength of 0 or more"));
+                }
+                EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))?, strength: strength as f32 }
+            }
             "rim" => {
                 let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
                 let rim = color::from_oklch(color::Lch { l: 0.86, c: 0.05, h: 265.0 }, 1.0);

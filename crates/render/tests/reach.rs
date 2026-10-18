@@ -82,13 +82,16 @@ fn no_blurred_pixel_lies_past_the_outer_extent() {
         covers(&format!("blur {sigma}"), &with(EffectOp::Blur { sigma }));
         covers(&format!("shape blur {sigma}"), &shape_blur(sigma));
         for a in [255, 102, 26] {
-            covers(
-                &format!("glow {sigma} a{a}"),
-                &with(EffectOp::Glow {
-                    radius: sigma,
-                    color: color(255, 255, 0, a),
-                }),
-            );
+            for strength in [1.0, 0.5, 4.0] {
+                covers(
+                    &format!("glow {sigma} a{a} strength{strength}"),
+                    &with(EffectOp::Glow {
+                        radius: sigma,
+                        color: color(255, 255, 0, a),
+                        strength,
+                    }),
+                );
+            }
         }
         covers(
             &format!("shadow {sigma}"),
@@ -113,6 +116,15 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
                 with(EffectOp::Glow {
                     radius: sigma,
                     color: color(255, 255, 0, 255),
+                    strength: 1.0,
+                }),
+            ),
+            (
+                "strong glow",
+                with(EffectOp::Glow {
+                    radius: sigma,
+                    color: color(255, 255, 0, 255),
+                    strength: 4.0,
                 }),
             ),
             (
@@ -120,6 +132,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
                 with(EffectOp::Glow {
                     radius: sigma,
                     color: color(255, 255, 0, 26),
+                    strength: 1.0,
                 }),
             ),
             (
@@ -157,6 +170,7 @@ fn a_faint_glow_reaches_less_than_a_full_one() {
         with(EffectOp::Glow {
             radius: 8.0,
             color: color(255, 255, 0, a),
+            strength: 1.0,
         })
         .outer_bounds(&Matrix::new_identity(), &|_| None)
         .unwrap()
@@ -175,6 +189,7 @@ fn an_input_node_keeps_its_whole_glow() {
     glowing.effects.push(effect(EffectOp::Glow {
         radius: 40.0,
         color: color(255, 255, 0, 255),
+        strength: 1.0,
     }));
     let mut masked = solid(
         "m",
@@ -247,3 +262,4 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
         covers(&format!("{name} outline"), &outlined);
     }
 }
+
