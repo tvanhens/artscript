@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use artscript_ir::{
     Clip, Color, Effect, EffectInput, EffectOp, Field, Mask, MaskSource, Node, NodeKind,
-    Paint as IrPaint, Path, Shape, Stroke,
+    Paint as IrPaint, Path, Shape, Sides, Stroke,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
@@ -491,7 +491,7 @@ half4 main(half4 c) {
 /// visible to a later one.
 pub enum LayerStep {
     Filter(ImageFilter),
-    Outline { width: f32, color: Color, cover_halo_past: Option<f32> },
+    Outline { width: f32, color: Color, sides: Sides, cover_halo_past: Option<f32> },
 }
 
 fn paints_past_its_input(effect: &Effect) -> bool {
@@ -524,7 +524,7 @@ pub fn layer_steps(
     let mut halo = false;
     let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
-        let EffectOp::Outline { width, color, .. } = effect.op else {
+        let EffectOp::Outline { width, color, sides } = effect.op else {
             continue;
         };
         if width <= 0.0 {
@@ -537,7 +537,7 @@ pub fn layer_steps(
             steps.push(LayerStep::Filter(filter));
             halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline { width, color, cover_halo_past: halo.then_some(inked) });
+        steps.push(LayerStep::Outline { width, color, sides, cover_halo_past: halo.then_some(inked) });
         inked = inked.max(width);
         start = i + 1;
     }
@@ -567,6 +567,7 @@ pub fn outline_geometry(
     node: &Node,
     width: f32,
     color: Color,
+    sides: Sides,
     cover_halo_past: Option<f32>,
 ) -> Result<Image, RenderError> {
     if width <= 0.0 {
@@ -576,7 +577,7 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let ring = Ring { regions: &regions, local_to_px, width, color };
+    let ring = Ring { regions: &regions, local_to_px, width, color, sides };
     let mut under = ring.composite(backend, &src, BlendMode::DstOver)?;
     if let Some(inked) = cover_halo_past {
         let over = ring.composite(backend, &src, BlendMode::SrcOver)?.image_snapshot();
@@ -617,9 +618,26 @@ struct Ring<'a> {
     local_to_px: &'a Matrix,
     width: f32,
     color: Color,
+    sides: Sides,
 }
 
 impl Ring<'_> {
+    /// The traced geometry's box, open on every side the outline draws on.
+    fn kept_area(&self) -> Rect {
+        const FAR: f32 = 1.0e6;
+        let mut bounds = *self.regions[0].path.bounds();
+        for region in &self.regions[1..] {
+            bounds.join(region.path.bounds());
+        }
+        let edge = |on: bool, at: f32, open: f32| if on { open } else { at };
+        Rect::new(
+            edge(self.sides.left, bounds.left, -FAR),
+            edge(self.sides.top, bounds.top, -FAR),
+            edge(self.sides.right, bounds.right, FAR),
+            edge(self.sides.bottom, bounds.bottom, FAR),
+        )
+    }
+
     fn composite(&self, backend: Backend, src: &Image, mode: BlendMode) -> Result<skia_safe::Surface, RenderError> {
         let mut surface = gpu::surface(backend, (src.width(), src.height()))
             .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
@@ -636,12 +654,17 @@ impl Ring<'_> {
         ink.set_stroke_cap(Cap::Round);
         ink.set_stroke_join(Join::Round);
         ink.set_stroke_width(self.width * 2.0);
+        canvas.save();
+        if !self.sides.is_all() {
+            canvas.clip_rect(self.kept_area(), None, true);
+        }
         for region in self.regions {
             ink.set_style(Style::Fill);
             canvas.draw_path(&region.path, &ink);
             ink.set_style(Style::Stroke);
             canvas.draw_path(&region.path, &ink);
         }
+        canvas.restore();
         ink.set_style(Style::Fill);
         ink.set_blend_mode(BlendMode::DstOut);
         for region in self.regions.iter().filter(|r| r.coverage == Coverage::Translucent) {

@@ -389,10 +389,18 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, .. } = effect.op
+            if let EffectOp::Outline { width, sides, .. } = effect.op
                 && width > 0.0
             {
-                let traced = self.local_ink().map(|r| r.with_outset((width, width)));
+                let traced = self.local_ink().map(|r| {
+                    let reach = |on: bool| if on { width } else { 0.0 };
+                    Rect::new(
+                        r.left - reach(sides.left),
+                        r.top - reach(sides.top),
+                        r.right + reach(sides.right),
+                        r.bottom + reach(sides.bottom),
+                    )
+                });
                 current = join(current, traced);
                 source = current;
                 named.clear();

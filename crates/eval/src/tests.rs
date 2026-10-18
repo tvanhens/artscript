@@ -5026,6 +5026,15 @@ fn copy_of_an_outer_ref_is_its_box() {
 }
 
 #[test]
+fn the_outer_extent_grows_only_on_the_sides_an_outline_draws() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3 sides:top,left\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 60.0, 55.0));
+}
+
+#[test]
 fn a_part_named_outer_wins_over_the_outer_extent() {
     let s = scene(
         "@target t.png 100x100\n\
