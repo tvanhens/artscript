@@ -1520,13 +1520,27 @@ impl<'a> Evaluator<'a> {
         } else {
             0.0
         };
-        let scale = a.get("scale").and_then(Value::vec2).unwrap_or((1.0, 1.0));
+        let vector = |key: &str, default: (f64, f64)| match a.get(key) {
+            None => Ok(default),
+            Some(v) => v.vec2().ok_or_else(|| {
+                fail("E0320", format!("`{key}:` expects a number or a vector like 2,1, got {}", v.kind()))
+            }),
+        };
+        let scale = vector("scale", (1.0, 1.0))?;
         let skew = match a.get("skew") {
             Some(Value::Num(k)) => (*k, 0.0),
-            Some(v) => v.vec2().unwrap_or((0.0, 0.0)),
-            None => (0.0, 0.0),
+            _ => vector("skew", (0.0, 0.0))?,
         };
-        Ok((mat_trs(at, pivot, rot, skew, scale), at))
+        if skew.0.abs() >= 90.0 || skew.1.abs() >= 90.0 {
+            return Err(fail("E0320", "`skew:` must be between -90 and 90 degrees")
+                .fix("a skew of 90 degrees flattens the shape to a line"));
+        }
+        let m = mat_trs(at, pivot, rot, skew, scale);
+        if !m.is_finite() {
+            return Err(fail("E0320", "this node's transform is not finite")
+                .fix("check `at:`, `rot:`, `scale:` and `pivot:` for a division by zero"));
+        }
+        Ok((m, at))
     }
 
     /// Opacity, blend and z order shared by every node.

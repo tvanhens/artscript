@@ -4504,3 +4504,17 @@ fn rect_radii_are_one_number_or_four() {
     let ev = run_with("@target t.png 40x40\nrect 20x20 r:4,4\n", &[]);
     assert_eq!(diag(&ev, "E0320").message, "`rect` needs one corner radius or four");
 }
+
+#[test]
+fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
+    for (attr, message) in [
+        ("scale:1/0", "this node's transform is not finite"),
+        ("at:1/0,0", "this node's transform is not finite"),
+        ("skew:0,-90", "`skew:` must be between -90 and 90 degrees"),
+        ("scale:red", "`scale:` expects a number or a vector like 2,1, got a word"),
+    ] {
+        let ev = run_with(&format!("@target t.png 40x40\ncurve 0,0 10,10 stroke:#000,[2 4] {attr}\n"), &[]);
+        assert_eq!(diag(&ev, "E0320").message, message, "{attr}");
+    }
+    scene("@target t.png 40x40\nrect 4x4 at:20,20 scale:2 skew:30,-45\n");
+}
