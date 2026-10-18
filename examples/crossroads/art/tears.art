@@ -1,0 +1,224 @@
+@target tears.png 1920x1080 bg:p.void scale:1,2
+use char/knight { knight }
+use city/arch { pointed column window }
+use city/lamp { lamp }
+
+let ground = 872
+let kx = 760
+let lamp_x = 1010
+let spring = 600
+let bay = 300
+
+# sky: a rain-heavy vault lifting toward the glow of the city below
+rect 100%x100% fill:grad(down p.sky.0 p.sky.1,.3 p.sky.3,.62 p.sky.4)
+ellipse 1000,420 at:960,640 fill:p.fog.2 a:.3 blur:150
+ellipse 260,700 at:1240,260 fill:p.lamp.1 a:.07 blur:120
+
+layer shafts blend:screen
+  each i in 0..5
+    let x = 300+i*330+rand(-60 60)
+    let w = rand(24 70)
+    curve x-w,-20 x+w,-20 x+w*3+160,1100 x-w*2+160,1100 closed tension:0 fill:grad(down fade(p.lamp.2 .2) fade(p.lamp.2 0)) blur:28
+
+# the cavern vault the rain falls from
+layer vault
+  curve -40,-40 1960,-40 1960,60 1840,90 1760,70 1680,120 1590,96 1500,140 1420,104 1330,80 1250,40 1160,60 1060,30 940,44 840,20 760,64 660,90 560,70 470,120 380,96 300,150 210,120 120,170 -40,140 closed tension:.4 fill:grad(down p.void p.deep.0,.7 p.sky.0) blur:6 name:roof
+  each i in 0..26
+    let x = rand(0 1920)
+    let l = rand(30 140)
+    curve x-rand(8 20),30 x,l+40 x+rand(8 20),30 closed tension:.3 fill:p.deep.0 blur:3 name:stalactite
+  curve 0,0 1920,0 stroke:p.void,40 blur:20
+
+# far spires, softened by distance and fog
+layer far a:.6
+  each i in 0..18
+    let x = 30+i*110+rand(-30 30)
+    let h = rand(560 900)
+    let w = rand(30 62)
+    let top = 1080-h
+    curve x-w,1080 x-w,top x-w*.45,top-36 x,top-rand(110 230) x+w*.45,top-36 x+w,top x+w,1080 closed tension:0 fill:p.sky.3 name:spire
+      each j in 0..6
+        circle rand(1.5 2.6) at:x+rand(-w*.6 w*.6),top+rand(30 h-260) fill:p.lamp.2 a:rand(.3 .9) name:far_light
+ellipse 1200,160 at:960,700 fill:p.fog.2 a:.4 blur:80
+
+# the crown tower and its dome
+layer crown a:.7
+  rect 160,800 at:1460,640 fill:grad(right p.sky.2 p.sky.3,.35 p.sky.2,.8 p.sky.1) name:tower
+    each r in 0..7
+      each c in 0..3
+        window 9 18 at:-50+c*50,-300+r*84 tint:p.lamp.2 name:tower_window
+    rect 160,6 at:0,-180 fill:p.sky.4 a:.5
+    rect 160,6 at:0,20 fill:p.sky.4 a:.5
+  ellipse 118,106 at:1460,246 fill:grad(right p.sky.2 p.sky.4,.32 p.sky.2,.8 p.sky.1) name:dome
+    each k in 0..9
+      let u = (k-4)/4.5
+      curve u*10,-106 u*70,-70 u*112,0 stroke:p.sky.1,3 a:.5
+    rect 240,10 at:0,0 fill:p.sky.1
+  curve 1452,152 1460,40 1468,152 closed tension:0 fill:p.sky.3
+  circle 6 at:1460,38 fill:p.lamp.3
+    fx glow 16 color:p.lamp.3
+ellipse 1400,160 at:960,820 fill:p.fog.1 a:.5 blur:70
+
+# nearer houses with lit windows, seen through the arcade
+layer houses a:.85
+  each i in 0..9
+    let x = 40+i*230+rand(-40 40)
+    let h = rand(260 420)
+    let w = rand(60 95)
+    let top = ground-h
+    rect w*2,h+40 at:x,top+h/2+20 fill:grad(right p.stone.1 p.stone,.4 p.stone.0) name:house
+      each r in 0..3
+        each c in 0..2
+          if rand(0 1) > .15
+            window 7 14 at:-w*.4+c*w*.8,-h/2+50+r*80 tint:p.lamp.2 name:house_window
+    ellipse w*1.05,w*.9 at:x,top fill:grad(right p.stone.1 p.stone.3,.35 p.stone.0)
+    curve x-3,top-w*.8 x,top-w*.8-60 x+3,top-w*.8 closed tension:0 fill:p.stone.1
+ellipse 1500,120 at:960,ground-30 fill:p.fog.2 a:.45 blur:60
+
+# the arcade: a stone wall pierced by pointed arches, columns between
+layer arcade
+  subtract fill:grad(down p.stone.1 p.stone,.5 p.stone.1) name:wall
+    rect 2000,ground-380 at:960,(ground+380)/2
+    each i in 0..7
+      pointed 112 ground-spring at:i*bay+150,ground+2
+    fx grain .07 scale:2
+    fx inner 0,10 blur:10 color:p.deep.0 a:.6
+  inside @wall name:wall_detail
+    each r in 0..12
+      rect 2000,2 at:960,400+r*44 fill:p.stone.0 a:.35
+      each c in 0..12
+        rect 2,44 at:c*170+mod(r 2)*85,422+r*44 fill:p.stone.0 a:.3
+    rect 2000,600 at:960,620 fill:fbm(simplex(60)) -> [fade(p.stone.3 0) fade(p.deep.0 .5)] blend:multiply name:stain
+    ellipse 420,380 at:lamp_x,ground-300 fill:p.lamp.2 a:.22 blur:120 blend:screen
+  each i in 0..7
+    let x = i*bay+150
+    subtract fill:p.stone.0 a:.85
+      pointed 112 ground-spring at:x,ground+2
+      pointed 112 ground-spring at:x+16,ground+2
+    pointed 112 ground-spring at:x,ground+2 fill:fade(p.stone 0) edge:p.stone.3,3
+    pointed 124 ground-spring at:x,ground+2 fill:fade(p.stone 0) edge:p.stone.0,5 a:.7
+    circle 18 at:x+bay/2,spring-150 fill:grad(down p.stone.3 p.stone.0)
+      circle 11 fill:p.deep.0
+        star 8 r:9 inner:.35 fill:p.lamp.2 a:.7
+          fx glow 4 color:p.lamp.2
+  each i in 0..8
+    column 18 ground-spring at:i*bay,ground tone:p.stone name:column
+  rect 2000,30 at:960,392 fill:grad(down p.stone.3 p.stone.1)
+  rect 2000,12 at:960,372 fill:p.stone.0
+  each i in 0..48
+    let x = i*42
+    rect 14,46 at:x,346 r:6,6,0,0 fill:grad(right p.stone.1 p.stone.3,.4 p.stone.0)
+  rect 2000,10 at:960,322 fill:p.stone.0
+  each i in 0..8
+    let x = i*bay
+    rect 40,30 at:x,302 fill:grad(right p.stone.0 p.stone.2,.4 p.stone.0)
+    curve x-14,288 x-18,262 x-8,246 x,240 x+8,246 x+18,262 x+14,288 closed tension:.5 fill:grad(right p.stone.0 p.stone.2,.4 p.stone.0)
+    curve x,240 x,214 stroke:p.stone.0,4
+    circle 5 at:x,210 fill:p.stone.1
+  group name:statue
+    rect 64,70 at:1050,282 fill:grad(right p.stone.0 p.stone.2,.35 p.stone.0)
+    rect 76,10 at:1050,250 fill:p.stone.0
+    curve 1018,246 1026,206 1034,168 1050,150 1066,168 1074,206 1084,246 closed tension:.4 fill:grad(right p.stone.0 p.stone.2,.35 p.stone.0) name:robe
+    curve 1036,170 1028,150 1036,128 1050,122 1064,128 1072,150 1064,170 closed tension:.5 fill:p.stone.1
+    each s in [-1 1]
+      curve 1050+s*8,126 1050+s*18,104 1050+s*30,96 1050+s*22,112 1050+s*12,128 closed tension:.4 fill:p.stone.1
+    curve 1068,196 1100,160 1112,104 stroke:p.stone.0,5
+    curve 1112,104 1112,86 stroke:p.stone.0,2
+    circle 9 at:1112,96 fill:p.lamp.2
+      fx glow 14 color:p.lamp.2
+    ellipse 50,60 at:1100,140 fill:p.lamp.2 a:.08 blur:30 blend:screen
+
+# the wet walkway, mirroring the bright arches
+layer floor
+  rect 2000,220 at:960,ground+110 fill:grad(down p.stone.1 p.deep.1,.35 p.deep.0) name:walk
+    each i in 0..30
+      curve -1000+i*72,-110 -1000+i*72-(i-14)*14,110 stroke:p.deep.0,2 a:.5
+    each r in 0..4
+      curve -1000,-110+r*r*14+16 1000,-110+r*r*14+16 stroke:p.deep.0,2 a:.4
+    rect 2000,4 at:0,-108 fill:p.stone.4 a:.5
+    fx grain .06 scale:2
+layer reflect blend:screen
+  each i in 0..7
+    rect 150,160 at:i*bay+150,ground+80 fill:grad(down fade(p.fog.2 .3) fade(p.fog.2 0)) blur:10
+    each k in 0..6
+      rect rand(2 5),rand(30 90) at:i*bay+150+rand(-70 70),ground+rand(20 90) fill:p.fog.4 a:rand(.05 .14) blur:2 name:glint
+  rect 30,170 at:lamp_x,ground+90 fill:grad(down fade(p.lamp.3 .5) fade(p.lamp.2 0)) blur:10
+  ellipse 80,10 at:lamp_x,ground+6 fill:p.lamp.3 a:.35 blur:8
+  rect 16,90 at:330,ground+50 fill:grad(down fade(p.lamp.3 .3) fade(p.lamp.2 0)) blur:8
+layer hero_reflection a:.16
+  knight at:kx,ground+4 scale:1.3,-1.3 name:knight_reflection
+    fx blur 2
+
+layer lamps
+  lamp 300 18 at:lamp_x,ground name:lamp_main
+  lamp 220 12 at:330,ground a:.85 name:lamp_far
+
+layer hero
+  ellipse 70,8 at:kx+4,ground+2 fill:p.void a:.7 blur:5
+  knight at:kx,ground scale:1.3 name:knight
+
+# ripples where the rain lands near the knight and the lamp
+layer ripples
+  each i in 0..14
+    let x = rand(560 1200)
+    let y = ground+rand(8 120)
+    let r = rand(6 22)
+    ellipse r,r*.22 at:x,y fill:fade(p.rain 0) stroke:p.fog.4,1 a:rand(.12 .3) name:ripple
+    ellipse r*.5,r*.11 at:x,y fill:fade(p.rain 0) stroke:p.fog.4,1 a:rand(.1 .25) name:ripple_inner
+
+# ground mist
+layer mist blend:screen
+  each i in 0..9
+    ellipse rand(160 300),rand(20 40) at:rand(0 1920),ground+rand(-10 40) fill:p.fog.2 a:rand(.06 .14) blur:24 name:mist_puff
+
+# rain
+layer rain
+  each i in 0..420
+    let x = rand(-100 1980)
+    let y = rand(-40 1080)
+    let l = rand(20 60)
+    curve x,y x+l*.18,y+l stroke:p.rain,1 a:rand(.08 .28) name:drop
+  each i in 0..90
+    let x = rand(-100 1980)
+    let y = rand(-40 1080)
+    let l = rand(70 140)
+    curve x,y x+l*.18,y+l stroke:p.rain,1.8 a:rand(.12 .3) blur:1.2 name:streak
+  each i in 0..22
+    let x = rand(0 1920)
+    let y = ground+rand(4 160)
+    ellipse rand(4 9),rand(1 2) at:x,y fill:fade(p.rain 0) stroke:p.rain,1 a:rand(.1 .3) name:splash
+
+# motes drifting round the lamp
+layer motes blend:add
+  each i in 0..26
+    let d = polar(rand(30 240) rand(0 360))
+    circle rand(1 2.4) at:lamp_x+d.x,ground-300+d.y fill:p.lamp.3 a:rand(.3 .9) name:mote
+      fx glow 4 color:p.lamp.3
+
+# foreground framing, out of focus
+layer fore
+  rect 200,1200 at:40,540 fill:grad(right p.void p.void,.8 p.deep.1) blur:3 name:pillar
+  rect 6,1200 at:136,540 fill:p.fog.2 a:.25 blur:3
+  rect 250,40 at:40,150 r:4 fill:p.void blur:3
+  rect 270,20 at:40,180 r:4 fill:p.deep.0 blur:3
+  rect 250,50 at:40,1000 fill:p.void blur:3
+  each k in 0..9
+    let y = 180+k*28
+    ellipse 9,14 at:182,y fill:fade(p.void 0) stroke:p.void,4 rot:if mod(k 2) > .5 then 90 else 0 blur:1.5
+  curve 182,430 170,460 182,500 194,460 closed tension:.4 fill:p.void blur:1.5
+  curve 1700,1100 1730,1010 1790,960 1860,930 1960,920 1960,1100 closed tension:.4 fill:p.void blur:5
+  each i in 0..7
+    let x = 1720+i*34
+    rect 10,140 at:x,1000-i*6 fill:p.void blur:4
+    circle 12 at:x,926-i*6 fill:p.void blur:4
+  curve 1700,940 1960,900 stroke:p.void,10 blur:4
+  curve 1820,-20 1830,120 1810,260 1840,380 stroke:p.void,5 blur:2
+  each i in 0..9
+    circle 7 at:1820+i*2,i*42 fill:fade(p.void 0) stroke:p.void,3 blur:2
+  rect 2000,70 at:960,1075 fill:p.void blur:12
+
+layer bokeh blend:screen
+  each i in 0..14
+    circle rand(14 46) at:rand(0 1920),rand(0 1080) fill:p.fog.3 a:rand(.04 .1) blur:rand(4 10) name:bokeh_disc
+
+rect 100%x100% fill:radial(fade(p.void 0) fade(p.void 0),.5 fade(p.void .8))

@@ -1,0 +1,16 @@
+# City of Tears night: deep blue-violet stone, cyan-white lamp light.
+palette house
+  ramp sky #070b1c #2c4a78 7
+  ramp stone #2a3552 7
+  ramp deep #10162a 5
+  ramp fog #7d9cc8 5
+  ramp lamp #bfe8ff 5
+  ramp gold #e8c27a 5
+  color void #04060d
+  color shell #f2f0ea
+  color shell_shade #b9bfd0
+  ramp cloak #1c2236 5
+  color eye #05060a
+  color nail #c9d2e2
+  color rain #a8c8ee
+  color glow #dff6ff

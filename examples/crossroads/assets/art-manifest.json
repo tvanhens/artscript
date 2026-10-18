@@ -1,0 +1,27 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "e4c3bb31290e154f",
+      "line": 1,
+      "matrix": {},
+      "path": "tears.png",
+      "scale": 1.0,
+      "source": "art/tears.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "02ce193e505149fa",
+      "line": 1,
+      "matrix": {},
+      "path": "tears@2x.png",
+      "scale": 2.0,
+      "source": "art/tears.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

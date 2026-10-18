@@ -1,0 +1,25 @@
+# Pointed (equilateral) arch opening: bottom center on the origin, springing `h` above it.
+def pointed w:80 h:300 fill:p.stone edge:p.stone,0
+  union fill:fill stroke:edge
+    rect w*2,h+2 at:0,-h/2
+    intersect
+      circle w*2 at:-w,-h
+      circle w*2 at:w,-h
+      rect w*2,w*2 at:0,-h-w
+
+# A column with a flared capital and a stepped base, bottom center on the origin.
+def column w:16 h:300 tone:p.stone
+  rect w*2,h at:0,-h/2 fill:grad(right shade(tone -1) shade(tone 1),.35 tone,.6 shade(tone -2)) name:shaft
+    curve -w*.3,-h/2+20 -w*.3,h/2-30 stroke:shade(tone 2),1.5 a:.5
+  curve -w-10,-h -w-4,-h+16 -w,-h+26 w,-h+26 w+4,-h+16 w+10,-h closed tension:.4 fill:shade(tone -1)
+  rect w*2+24,10 at:0,-h-4 r:2 fill:tone
+  rect w*2+14,12 at:0,-6 fill:shade(tone -1)
+  rect w*2+24,8 at:0,-2 fill:shade(tone -2)
+
+# A gothic window lit from within.
+def window w:14 h:30 tint:p.lamp.2
+  pointed w h at:0,h/2 fill:grad(down tint shade(tint -2)) name:pane
+  inside @pane
+    rect 2,h*3 fill:p.deep.0 a:.8
+    rect w*2,2 at:0,h*.1 fill:p.deep.0 a:.8
+  fx glow w*.8 color:tint a:.5
