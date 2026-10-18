@@ -365,6 +365,8 @@ fn let_if_and_assert_proportion() {
             message: Some("msg".into()),
         }
     );
+    let raw = must_parse("assert 1 > 0 \"\"\"width\"\"\"\n");
+    assert!(matches!(node(&raw), SceneKind::Check { message: Some(m), .. } if m == "width"), "{:?}", node(&raw));
 }
 
 #[test]

@@ -907,10 +907,10 @@ impl<'a> Parser<'a> {
         }
         let message = if self
             .cur()
-            .is_some_and(|t| matches!(t.kind, Tok::Str(_)) && t.ws_before)
+            .is_some_and(|t| matches!(t.kind, Tok::Str(_) | Tok::Raw(..)) && t.ws_before)
         {
             match self.bump().kind {
-                Tok::Str(s) => Some(s),
+                Tok::Str(s) | Tok::Raw(s, _) => Some(s),
                 _ => None,
             }
         } else {
