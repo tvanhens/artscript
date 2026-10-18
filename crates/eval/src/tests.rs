@@ -4678,3 +4678,77 @@ fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
     }
     scene("@target t.png 40x40\nrect 4x4 at:20,20 scale:2 skew:30,-45\n");
 }
+
+#[test]
+fn a_field_below_a_threshold_masks_the_complement() {
+    let alpha = |mask: &str| {
+        let s = scene(&format!(
+            "@target t.png 32x32\nrect 32x32 at:16,16 fill:#fff\n  mask {mask}\n"
+        ));
+        let (_, _, px) = artscript_render::render_rgba(&s, 1.0, artscript_render::Backend::Cpu).unwrap();
+        px.chunks(4).map(|p| p[3] as i32).collect::<Vec<_>>()
+    };
+    let (above, below, flipped) = (
+        alpha("simplex(8) > .4"),
+        alpha("simplex(8) < .4"),
+        alpha(".4 > simplex(8)"),
+    );
+    assert_eq!(below, flipped, "`.4 > f` is `f < .4`");
+    assert!(above.contains(&255) && below.contains(&255));
+    let mismatched = above.iter().zip(&below).filter(|(a, b)| (*a + *b - 255).abs() > 2).count();
+    assert!(mismatched < 16, "{mismatched} pixels are in both masks or neither");
+}
+
+#[test]
+fn an_off_patch_on_one_copy_hides_that_copy_and_counts_as_a_match() {
+    let def = "@target t.png 64x64\ndef comp4\n  repeat 5\n    circle 3 at:10,0 name:dot8\n";
+    for src in [
+        format!("{def}comp4 name:b at:32,32\n  .dot8.1 off\n"),
+        format!("{def}anim hide dur:1s\n  .dot8.1 off\ncomp4 name:b at:32,32\n  play hide\n"),
+        format!("{def}anim hide dur:1s\n  .b.dot8.1 off\ncomp4 name:b at:32,32\nplay hide\n"),
+    ] {
+        let s = scene(&src);
+        for i in [0, 2, 3, 4] {
+            node(&s, &format!("b.dot8.{i}"));
+        }
+        assert!(!paths(&s).iter().any(|p| p == "b.dot8.1"), "{src}\n{:?}", paths(&s));
+    }
+}
+
+#[test]
+fn a_final_star_patch_skips_anchors() {
+    let def = "@target t.png 64x64\ndef comp\n  poly 4 name:tail7\n  anchor anc8 38,6\n";
+    for src in [
+        format!("{def}comp name:b at:32,32\n  .* a:.5\n"),
+        format!("{def}anim fade dur:1s\n  .* a:.5\ncomp name:b at:32,32\n  play fade\n"),
+    ] {
+        let s = scene(&src);
+        assert!((node(&s, "b.tail7").opacity - 0.5).abs() < 1e-4, "{src}");
+    }
+
+    let only = run_with(
+        "@target t.png 64x64\ndef comp\n  anchor anc8 38,6\ncomp name:b at:32,32\n  .* a:.5\n",
+        &[],
+    );
+    let hits: Vec<_> = only.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&only.diagnostics));
+    assert_eq!(hits[0].span.line, 5);
+    assert!(hits[0].message.contains("matches nothing"), "{hits:?}");
+}
+
+#[test]
+fn a_path_is_closed_only_when_every_subpath_ends_in_z() {
+    let s = scene(
+        "@target t.png 64x64\n\
+         path \"M-24 0 Q-12 -24 0 0 T24 0\" stroke:#111,3 name:wave\n\
+         path \"M0 0 L10 0 L10 10 Z\" name:tri\n\
+         path \"M0 0 L10 0 L10 10 z M20 0 L30 0\" name:mixed\n\
+         path \"M0 0 L10 0 L10 10\" name:bare\n",
+    );
+    assert!(shape(&s, "wave").fill.is_none());
+    assert!(shape(&s, "mixed").fill.is_none());
+    assert_eq!(fill_hex(node(&s, "tri")), "#8a8a8a");
+    let bare = shape(&s, "bare");
+    assert!(bare.fill.is_none());
+    assert!(bare.stroke.is_some(), "an open path gets the open-curve default stroke");
+}

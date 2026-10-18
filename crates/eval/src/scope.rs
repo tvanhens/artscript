@@ -3,7 +3,7 @@
 
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
@@ -153,7 +153,8 @@ pub struct Record {
     pub anchor: Option<Point>,
     /// The node's `at:` in its parent's coordinates (for suggested fixes).
     pub at: (f64, f64),
-    pub home: Option<Rc<RefCell<Names>>>,
+    /// The scope this record is registered in. That scope owns the record, so this is weak.
+    pub home: Option<Weak<RefCell<Names>>>,
     pub decl: Option<DeclId>,
     /// Set when this node opens a scope (an instance or a slot).
     pub inner: Option<Rc<RefCell<Names>>>,
@@ -225,11 +226,16 @@ impl RefVal {
         }
     }
 
+    fn home(&self) -> Option<Rc<RefCell<Names>>> {
+        let home = self.record.home.as_ref()?;
+        Some(home.upgrade().expect("a reference is walked while its scope is alive"))
+    }
+
     /// Named direct tree children of this copy. An instance or a slot lists the scope it opens.
     pub fn children(&self) -> Vec<RefVal> {
         let (entries, prefix_len) = if let Some(inner) = &self.record.inner {
             (inner.borrow().children_of(None, &[]), 0)
-        } else if let (Some(home), Some(decl)) = (&self.record.home, self.record.decl) {
+        } else if let (Some(home), Some(decl)) = (self.home(), self.record.decl) {
             let prefix = self.record.key.trailing_copies();
             let n = prefix.len();
             (home.borrow().children_of(Some(decl), &prefix), n)
@@ -257,7 +263,7 @@ impl RefVal {
 
     /// Whether a part named `name` that is not an anchor is declared anywhere under this node.
     pub fn holds(&self, name: &str) -> bool {
-        let (Some(home), Some(decl)) = (&self.record.home, self.record.decl) else {
+        let (Some(home), Some(decl)) = (self.home(), self.record.decl) else {
             return false;
         };
         let region = home.borrow().region();

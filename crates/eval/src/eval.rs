@@ -1583,7 +1583,7 @@ impl<'a> Evaluator<'a> {
     ) -> Rc<RefCell<Record>> {
         record.path = key.to_string();
         record.key = key.clone();
-        record.home = Some(sc.names.clone());
+        record.home = Some(Rc::downgrade(&sc.names));
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
         self.placed
@@ -2406,7 +2406,9 @@ impl<'a> Evaluator<'a> {
                 let p = skia_safe::utils::parse_path::from_svg(&d).ok_or_else(|| {
                     fail("E0320", "invalid SVG path data").fix("check the path string")
                 })?;
-                (p, None, true)
+                let closed =
+                    skia_safe::ContourMeasureIter::new(&p, false, None).all(|c| c.is_closed());
+                (p, None, closed)
             }
             "blob" => {
                 let r = first
@@ -4151,11 +4153,17 @@ impl<'a> Evaluator<'a> {
             BinOp::Eq => Value::Bool(equal(&a, &b)),
             BinOp::Ne => Value::Bool(!equal(&a, &b)),
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
-                if let Value::Field(f) = &a
-                    && let Some(t) = b.num()
-                    && matches!(op, BinOp::Gt | BinOp::Ge)
-                {
-                    return Ok(Value::FieldMask(f.clone(), t));
+                let above = matches!(op, BinOp::Gt | BinOp::Ge);
+                let threshold = match (&a, &b) {
+                    (Value::Field(f), t) => t.num().map(|t| (f, t, above)),
+                    (t, Value::Field(f)) => t.num().map(|t| (f, t, !above)),
+                    _ => None,
+                };
+                if let Some((f, t, above)) = threshold {
+                    if above {
+                        return Ok(Value::FieldMask(f.clone(), t));
+                    }
+                    return Ok(mask_below(f, t));
                 }
                 let (x, y) = match (a.num(), b.num()) {
                     (Some(x), Some(y)) => (x, y),
@@ -4814,6 +4822,15 @@ fn is_paint_key(k: &str) -> bool {
         k,
         "fill" | "stroke" | "cap" | "join" | "dash" | "taper" | "blur"
     )
+}
+
+fn mask_below(f: &artscript_ir::Field, t: f64) -> Value {
+    let complement = artscript_ir::Field::Binary(
+        artscript_ir::FieldOp::Sub,
+        Box::new(artscript_ir::Field::Const(1.0)),
+        Box::new(f.clone()),
+    );
+    Value::FieldMask(Rc::new(complement), 1.0 - t)
 }
 
 fn numbers(v: &Value) -> Option<Vec<f64>> {

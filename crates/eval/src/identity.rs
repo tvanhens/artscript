@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::rc::Rc;
@@ -382,6 +382,10 @@ pub enum NameKind {
 impl NameKind {
     pub fn opens_scope(self) -> bool {
         matches!(self, NameKind::Instance | NameKind::Slot)
+    }
+
+    pub fn has_node(self) -> bool {
+        self != NameKind::Anchor
     }
 }
 
@@ -1377,6 +1381,7 @@ pub struct ChannelPatch {
 /// Patches that survived entry into one scope.
 pub struct Pending {
     items: Vec<PendingPatch>,
+    reached: Vec<Cell<bool>>,
 }
 
 pub struct Arrival {
@@ -1413,11 +1418,17 @@ impl Pending {
                 items.push(patch);
             }
         }
-        Pending { items }
+        Pending {
+            reached: vec![Cell::new(false); items.len()],
+            items,
+        }
     }
 
     pub fn empty() -> Pending {
-        Pending { items: Vec::new() }
+        Pending {
+            items: Vec::new(),
+            reached: Vec::new(),
+        }
     }
 
     pub fn items(&self) -> &[PendingPatch] {
@@ -1429,16 +1440,18 @@ impl Pending {
         let d = region.decl(decl);
         let mut own = Vec::new();
         let mut forward = Vec::new();
-        for patch in &self.items {
+        for (patch, reached) in self.items.iter().zip(&self.reached) {
             if matches!(patch.rest.first(), Some(Hop::Star)) && region.is_private(d.name.as_str()) {
                 continue;
             }
-            let Some(rest) = take(patch, &d.name, d.tree_parent, &d.loops, copies) else {
+            let Some(rest) = take(patch, d, copies) else {
                 continue;
             };
             if rest.is_empty() {
+                reached.set(true);
                 own.push(patch.clone());
             } else if d.kind.opens_scope() {
+                reached.set(true);
                 let mut next = patch.clone();
                 next.rest = rest;
                 forward.push(next);
@@ -1453,16 +1466,11 @@ impl Pending {
     }
 }
 
-fn take(
-    patch: &PendingPatch,
-    name: &Name,
-    tree_parent: Option<DeclId>,
-    loops: &[Span],
-    copies: &[u32],
-) -> Option<Vec<Hop>> {
+fn take(patch: &PendingPatch, decl: &NameDecl, copies: &[u32]) -> Option<Vec<Hop>> {
+    let loops = &decl.loops;
     match patch.rest.first() {
-        Some(Hop::Star) => (tree_parent.is_none()).then(Vec::new),
-        Some(Hop::Name(n)) if n == name => {
+        Some(Hop::Star) => (decl.tree_parent.is_none() && decl.kind.has_node()).then(Vec::new),
+        Some(Hop::Name(n)) if *n == decl.name => {
             let mut i = 1;
             let mut c = 0;
             while i < patch.rest.len()
@@ -1522,7 +1530,7 @@ fn validate(
             if region
                 .decls
                 .iter()
-                .any(|d| d.tree_parent.is_none() && !region.is_private(d.name.as_str()))
+                .any(|d| d.tree_parent.is_none() && d.kind.has_node() && !region.is_private(d.name.as_str()))
             {
                 return true;
             }
@@ -1648,7 +1656,7 @@ fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]
         let mut kids = Vec::new();
         for id in region.decl_ids() {
             let decl = region.decl(id);
-            if decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
+            if decl.kind.has_node() && decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
                 let name = decl.name.to_string();
                 if !kids.contains(&name) {
                     kids.push(name);
@@ -1690,43 +1698,17 @@ pub fn skip_hop(consumed: &[Hop], rest: &[Hop]) -> Option<String> {
     Some(parts.join("."))
 }
 
-/// A patch whose name was drawn, but whose index matches none of those copies.
-/// A name that was not drawn at all stays quiet.
-pub fn missed_landing(patch: &PendingPatch, names: &Names, owner: &Key) -> Option<String> {
+fn drawn_copy(patch: &PendingPatch, names: &Names, owner: &Key) -> Option<String> {
     let Hop::Name(name) = patch.rest.first()? else {
         return None;
     };
-    let ids = names.region.lookup(name.as_str());
-    if ids.is_empty() {
-        return None;
-    }
-    let mut fix = None;
-    let mut landed = false;
-    for &id in ids {
-        let decl = names.region.decl(id);
-        for entry in names.drawn(id) {
-            if fix.is_none() {
-                fix = entry
-                    .record
-                    .borrow()
-                    .key
-                    .address_from(owner)
-                    .or_else(|| Some(format!(".{}", entry.record.borrow().key)));
-            }
-            if take(
-                patch,
-                &decl.name,
-                decl.tree_parent,
-                &decl.loops,
-                &entry.record.borrow().key.trailing_copies(),
-            )
-            .is_some_and(|rest| rest.is_empty() || decl.kind.opens_scope())
-            {
-                landed = true;
-            }
-        }
-    }
-    if landed { None } else { fix }
+    let entry = names
+        .region
+        .lookup(name.as_str())
+        .iter()
+        .find_map(|&id| names.drawn(id).into_iter().next())?;
+    let key = &entry.record.borrow().key;
+    Some(key.address_from(owner).unwrap_or_else(|| format!(".{key}")))
 }
 
 /// Reports one E0340 when a patch that survived entry matches no drawn copy.
@@ -1738,8 +1720,11 @@ pub fn report_misses(
     reported: &mut BTreeSet<ReportKey>,
     out: &mut Vec<Diagnostic>,
 ) {
-    for patch in pending.items() {
-        let Some(addr) = missed_landing(patch, names, owner) else {
+    for (patch, reached) in pending.items.iter().zip(&pending.reached) {
+        if reached.get() {
+            continue;
+        }
+        let Some(addr) = drawn_copy(patch, names, owner) else {
             continue;
         };
         if !reported.insert(report_key(patch)) {
