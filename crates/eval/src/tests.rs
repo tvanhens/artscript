@@ -3972,6 +3972,41 @@ fn manifest_errors_point_at_the_bad_line() {
 }
 
 #[test]
+fn manifest_rejects_what_it_would_otherwise_ignore() {
+    use crate::Manifest;
+
+    for (src, line, says) in [
+        ("[lint]\noffcanvas = \"off\"\n", 2, "no lint `offcanvas`"),
+        ("[project]\nnmae = \"x\"\n", 2, "no key `nmae`"),
+        ("[defaults]\npallete = \"p\"\n", 2, "no key `pallete`"),
+        ("[lints]\nunused = \"off\"\n", 1, "unknown field `lints`"),
+        ("[build]\nbackends = \"cpu\"\n", 2, "unknown field `backends`"),
+        ("[defaults]\nbg = \"red\"\n", 2, "bg"),
+        ("[defaults]\nscale = [1, \"2\"]\n", 2, "scale"),
+        ("[defaults]\nscale = 0\n", 2, "scale"),
+        ("[project]\nlib = [1]\n", 2, "lib"),
+        ("[project]\nout = 1\n", 2, "out"),
+    ] {
+        let err = Manifest::parse(src).unwrap_err();
+        assert_eq!(err.code, "E0200");
+        assert_eq!(err.span.line, line, "{src:?}: {}", err.message);
+        assert!(err.message.contains(says), "{src:?}: {}", err.message);
+    }
+    let ok = Manifest::parse("[defaults]\nbg = \"#f4f1ea\"\nscale = 2\n").unwrap();
+    assert_eq!((ok.bg.as_deref(), ok.scale), (Some("#f4f1ea"), vec![2.0]));
+}
+
+#[test]
+fn manifest_palette_must_be_in_a_lib_root() {
+    let manifest = "[project]\nlib = [\"lib\"]\n\n[defaults]\npalette = \"palette/nope\"\n";
+    let err = Project::from_sources(manifest, Default::default()).unwrap_err();
+    assert_eq!((err.code.as_str(), err.span.line), ("E0200", 5), "{}", err.message);
+    assert!(err.message.contains("palette/nope"), "{}", err.message);
+    let files = [("lib/palette/nope.art".to_string(), "palette nope\n  color a #000000\n".to_string())];
+    assert!(Project::from_sources(manifest, files.into()).is_ok());
+}
+
+#[test]
 fn comments_and_blank_lines_keep_statement_seeds() {
     let src = |pad: &str| {
         format!(
