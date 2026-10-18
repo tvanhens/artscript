@@ -156,6 +156,17 @@ fn a_brush_with_no_paint_to_brush_and_blur_with_a_brush_are_e0362() {
 }
 
 #[test]
+fn each_stage_on_the_nodes_own_line_that_reaches_no_slot_is_e0362() {
+    let ds = errors("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 brush:[dry dry(on:stroke) dry(on:stroke)] name:a\n", &[LIB]);
+    let stages: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E0362").collect();
+    assert_eq!(stages.len(), 2, "{}", show(&ds));
+    assert!(stages[0].message.contains("stage 2 of `brush:` (`dry`)"), "{}", stages[0]);
+    assert!(stages[1].message.contains("stage 3"), "{}", stages[1]);
+    assert!(stages.iter().all(|d| d.span.line == 3), "{}", show(&ds));
+    assert_eq!(ds.len(), 2, "{}", show(&ds));
+}
+
+#[test]
 fn brush_none_clears_an_inherited_brush_and_a_style_passes_one() {
     let s = ok(
         "@target t.png 100x100\nuse brushes { dry }\nstyle rough brush:dry\nlayer back brush:dry\n  rect 20x20 at:20,50 fill:#ff0000 name:a\n  rect 20x20 at:50,50 fill:#ff0000 brush:none name:b\n  rect 20x20 at:80,50 fill:#ff0000 style:rough name:c\n",

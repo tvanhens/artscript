@@ -2827,17 +2827,22 @@ impl<'a> Evaluator<'a> {
                         .fix("add `on:fill` to the brush, or draw the outline as its own node");
                     return Err(at_brush(self, f));
                 }
-                let fill_stack: Vec<Rc<BrushVal>> = stack
-                    .iter()
-                    .filter(|b| fill.is_some() && b.place.on.is_none_or(|on| on == Slot::Fill))
-                    .cloned()
-                    .collect();
-                if fill_stack.is_empty() && brush_site.is_some() && !stack.is_empty() {
-                    let f = fail("E0362", "`brush:` on a node with no paint to brush")
-                        .note(if fill.is_none() { "this node has no fill" } else { "the brush is narrowed to a slot this node does not have" })
-                        .fix("give the node a fill, or remove `brush:`");
-                    return Err(at_brush(self, f));
+                let lands = |b: &BrushVal| fill.is_some() && b.place.on.is_none_or(|on| on == Slot::Fill);
+                if brush_site.is_some() && stack.iter().any(|b| !lands(b)) {
+                    for (i, b) in stack.iter().enumerate().filter(|(_, b)| !lands(b)) {
+                        let what = if stack.len() == 1 {
+                            "`brush:` on a node with no paint to brush".to_string()
+                        } else {
+                            format!("stage {} of `brush:` (`{}`) has no paint to brush on this node", i + 1, b.decl.name)
+                        };
+                        let f = fail("E0362", what)
+                            .note(if fill.is_none() { "this node has no fill" } else { "the brush is narrowed to a slot this node does not have" })
+                            .fix("give the node a fill, or remove the brush");
+                        at_brush(self, f);
+                    }
+                    return Err(Fail::reported());
                 }
+                let fill_stack: Vec<Rc<BrushVal>> = stack.iter().filter(|b| lands(b)).cloned().collect();
                 if blur > 0.0 && !fill_stack.is_empty() {
                     let f = fail("E0362", "`blur:` on a brushed shape")
                         .fix("blur the parent instead: wrap the node in a `group` with `fx blur`");
