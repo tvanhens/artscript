@@ -221,9 +221,7 @@ layer footings pivot:512,840
   group
     intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_l
       copy @src_l
-      union
-        copy @stone_l.rock
-        copy @stone_l.rock stroke:stone,4 taper:0
+      copy @stone_l.rock
     copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 z:behind
     inside @tuft_l
       each i in 0..14

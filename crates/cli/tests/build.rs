@@ -922,3 +922,17 @@ fn a_closed_output_pipe_keeps_the_exit_code() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn init_names_the_project_after_its_folder() {
+    let folder = format!("playtest \"metroidvania\" {}", std::process::id());
+    let dir = std::env::temp_dir().join(&folder);
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    let out = artscript(&dir, &["init"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let manifest = artscript_eval::Manifest::parse(&fs::read_to_string(dir.join("artscript.toml")).unwrap()).unwrap();
+    assert_eq!(manifest.name, folder);
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}

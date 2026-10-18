@@ -14,6 +14,7 @@ artscript-syntax.workspace = true
 artscript-ir.workspace = true
 artscript-render.workspace = true
 artscript-eval.workspace = true
+toml = "0.8"
 
 [dev-dependencies]
 gif = "0.13"
