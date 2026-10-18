@@ -4368,6 +4368,18 @@ impl<'a> Evaluator<'a> {
                 let b = self.expr(base, sc)?;
                 self.member(&b, seg, sc)?
             }
+            Expr::Index(base, key) => match &**base {
+                Expr::Ref(segs) => {
+                    let mut segs = segs.clone();
+                    segs.push(self.index_segment(key, sc)?);
+                    self.reference(&segs, sc)?
+                }
+                _ => {
+                    let b = self.expr(base, sc)?;
+                    let seg = self.index_segment(key, sc)?;
+                    self.member(&b, &seg, sc)?
+                }
+            },
             Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
             Expr::List(xs) => Value::List(Rc::new(
                 xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?,
@@ -4562,17 +4574,21 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn index_segment(&mut self, key: &Expr, sc: &Scope) -> R<String> {
+        let k = self.expr(key, sc)?;
+        k.word()
+            .map(str::to_string)
+            .or(k.num().map(num))
+            .ok_or_else(|| {
+                fail(
+                    "E0320",
+                    format!("an index is a name or a number, got {}", k.kind()),
+                )
+                .fix("write a number or a name inside `{}`, such as `list.{i}`")
+            })
+    }
+
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
-        let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => match self.lookup_ident(var, sc) {
-                Some(Value::Unseen) => return Err(unseen(var)),
-                v => v
-                    .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
-                    .unwrap_or(var.to_string()),
-            },
-            None => seg.to_string(),
-        };
-        let seg = seg.as_str();
         let missing = |what: &str, names: Vec<String>| {
             fail("E0350", format!("{what} has no member `{seg}`"))
                 .note(format!("members: {}", names.join(", ")))

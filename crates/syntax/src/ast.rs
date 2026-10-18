@@ -391,6 +391,8 @@ pub enum Expr {
     Ref(Vec<String>),
     /// `p.sky.3`: the base and each member segment (numbers are kept as text).
     Member(Box<Expr>, String),
+    /// `list.{expr}`: the base and the key expression, which evaluates to a name or a number.
+    Index(Box<Expr>, Box<Expr>),
     /// Tight comma tuple without spaces: `14,0`, `p.ink,1.5`, `.4,1`.
     Tuple(Vec<Expr>),
     /// `[a b]`.

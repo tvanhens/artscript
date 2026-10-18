@@ -494,7 +494,7 @@ fn prec_of(e: &Expr) -> u8 {
         Expr::Range(_, _) => 7,
         Expr::Unary(UnOp::Not, _) => 4,
         Expr::Unary(UnOp::Neg, _) => 10,
-        Expr::Member(_, _) | Expr::Call { .. } => 11,
+        Expr::Member(_, _) | Expr::Index(_, _) | Expr::Call { .. } => 11,
         _ => 12,
     }
 }
@@ -519,6 +519,10 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
         Expr::Member(base, seg) if matches!(**base, Expr::Num(_)) => format!("({}).{seg}", fmt_body(base)),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
+        Expr::Index(base, key) if matches!(**base, Expr::Num(_)) => {
+            format!("({}).{{{}}}", fmt_body(base), fmt_expr(key))
+        }
+        Expr::Index(base, key) => format!("{}.{{{}}}", fmt_at(base, 11, false), fmt_expr(key)),
         Expr::Tuple(xs) => {
             // An `else` branch takes the rest of the tuple, so only the last element may be a bare `if`.
             let last = xs.len().saturating_sub(1);

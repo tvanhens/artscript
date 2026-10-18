@@ -1585,20 +1585,11 @@ impl<'a> Parser<'a> {
                 "*".into()
             } else if matches!(tok.kind, Tok::LBrace) {
                 self.bump();
-                let name = match self.cur().map(|t| t.kind.clone()) {
-                    Some(Tok::Ident(s)) => {
-                        self.bump();
-                        s
-                    }
-                    _ => {
-                        self.fail_here("expected a name inside `{}`", "write `.{name}`");
-                        String::new()
-                    }
-                };
+                let key = self.parse_prec(0);
                 if !self.eat(&Tok::RBrace) {
-                    self.fail_here("expected `}` after the name", "close the segment with `}`");
+                    self.fail_here("expected `}` after the index", "close the index with `}`");
                 }
-                format!("{{{name}}}")
+                return Expr::Index(Box::new(base), Box::new(key));
             } else {
                 self.fail_here(
                     "expected a member name after `.`",

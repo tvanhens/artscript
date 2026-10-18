@@ -676,6 +676,38 @@ fn each_index_errors_say_what_to_write() {
 }
 
 #[test]
+fn a_member_segment_in_braces_is_an_expression() {
+    let file = must_parse("let c = tones.{mod(row 3)}\n");
+    assert_eq!(
+        node(&file),
+        &SceneKind::Let {
+            name: "c".into(),
+            value: Expr::Index(
+                Box::new(ident("tones")),
+                Box::new(call("mod", vec![ident("row"), num(3.0)])),
+            ),
+        }
+    );
+    for src in [
+        "let c = tones.{i}\n",
+        "let c = tones.{i+1}\n",
+        "let c = pts.{k}.x\n",
+        "let c = @dot.{k}.cx\n",
+        "let c = grid.{r}.{c}\n",
+    ] {
+        assert_eq!(format_source(src).unwrap(), src);
+    }
+    assert_eq!(
+        format_source("let c = tones.{ i + 1 }\n").unwrap(),
+        "let c = tones.{i+1}\n"
+    );
+    let empty = parse("let c = tones.{}\n").unwrap_err();
+    assert_eq!(empty[0].code, "E0101");
+    let open = parse("let c = tones.{i\n").unwrap_err();
+    assert_eq!(open[0].fix.as_deref(), Some("close the index with `}`"));
+}
+
+#[test]
 fn syntax_errors_carry_a_fix() {
     let tab = parse("def arm\n\tcircle 1\n").unwrap_err();
     let tab_err = tab.iter().find(|e| e.code == "E0102").expect("tab");

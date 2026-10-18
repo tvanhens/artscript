@@ -6041,3 +6041,53 @@ fn adding_a_loop_index_keeps_the_seeds_inside_the_loop() {
         at(node(&plain, "circle~1.1")).0
     );
 }
+
+#[test]
+fn a_list_is_indexed_by_an_expression() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\nlet row = 4\nlet i = 1\ncircle 2 fill:tones.{mod(row 3)} name:a\ncircle 2 fill:tones.{i+1} name:b\ncircle 2 fill:tones.{i} name:c\ncircle 2 fill:tones.2 name:d\n",
+    );
+    assert_eq!(fill_hex(node(&s, "a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "b")), "#333333");
+    assert_eq!(fill_hex(node(&s, "c")), "#222222");
+    assert_eq!(fill_hex(node(&s, "d")), "#333333");
+}
+
+#[test]
+fn an_index_inside_each_reads_the_loop_names() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\neach i, x in 0..4\n  circle 2 fill:tones.{mod(i 3)} name:dot\n",
+    );
+    let fills: Vec<String> = (0..4).map(|k| fill_hex(node(&s, &format!("dot.{k}")))).collect();
+    assert_eq!(fills, ["#111111", "#222222", "#333333", "#111111"]);
+}
+
+#[test]
+fn an_index_that_is_not_a_name_or_a_number_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\nlet tones = [1 2 3]\nlet v = 1,2\ncircle tones.{v}\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "an index is a name or a number, got a vector like 4,2");
+    assert_eq!(
+        d.fix.as_deref(),
+        Some("write a number or a name inside `{}`, such as `list.{i}`")
+    );
+}
+
+#[test]
+fn an_unbound_name_in_an_index_is_the_member_name() {
+    let ev = run_with("@target t.png 40x40\nlet tones = [1 2 3]\ncircle tones.{nope}\n", &[]);
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.message, "a list has no member `nope`");
+}
+
+#[test]
+fn an_index_picks_one_copy_of_a_family() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 1\neach i in 0..3\n  circle 2 at:i*10+5,10 name:dot\ncircle 2 at:@dot.{k}.cx,30 name:a\ncircle 2 at:@dot.{k+1}.cx,40 name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (15.0, 30.0));
+    assert_eq!(at(node(&s, "b")), (25.0, 40.0));
+}
