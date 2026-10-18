@@ -1,14 +1,15 @@
-//! Canvas walk. A node that needs isolation, a mask, a soft clip, an effect, or a non-default
-//! composite is drawn into a layer. Effects see the clipped and masked content.
+//! Canvas walk. A node that needs isolation, a mask, an effect, or a non-default composite is
+//! drawn into a layer. A soft clip draws into layers that start from the canvas below, so its
+//! children still blend with it. Effects see the clipped and masked content.
 
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
-use skia_safe::canvas::SaveLayerRec;
+use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
-    BlendMode, Canvas, ClipOp, ColorFilter, ColorMatrix, EncodedImageFormat, Image, ImageFilter,
-    Paint, Rect, TileMode, image_filters,
+    BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, Image,
+    ImageFilter, Paint, Rect, RuntimeEffect, TileMode, image_filters,
 };
 
 use crate::gpu::{self, Backend};
@@ -320,7 +321,6 @@ fn needs_layer(node: &Node) -> bool {
         || node.blend != Blend::Normal
         || !node.effects.is_empty()
         || node.mask.is_some()
-        || node.clip.as_ref().is_some_and(|c| c.feather > 0.0)
         || matches!(node.kind, NodeKind::Group { isolate: true, .. })
 }
 
@@ -342,10 +342,20 @@ fn draw_clipped(
         canvas.clip_path(&clip.path, op, true);
     }
     let wrapped = soft.is_some() || node.mask.is_some();
-    if wrapped {
-        canvas.save_layer(&SaveLayerRec::default());
+    if soft.is_some() {
+        let backdrop = || SaveLayerRec::default().flags(SaveLayerFlags::INIT_WITH_PREVIOUS);
+        let mut paint = Paint::default();
+        paint.set_blender(uncomposite()?);
+        canvas.save_layer(&backdrop());
+        canvas.save_layer(&backdrop().paint(&paint));
+        draw_kind(canvas, node, ctx, world)?;
+        canvas.restore();
+    } else {
+        if wrapped {
+            canvas.save_layer(&SaveLayerRec::default());
+        }
+        draw_kind(canvas, node, ctx, world)?;
     }
-    draw_kind(canvas, node, ctx, world)?;
     if let Some(clip) = soft {
         apply_clip_mask(canvas, clip)?;
     }
@@ -359,6 +369,31 @@ fn draw_clipped(
         canvas.restore();
     }
     Ok(())
+}
+
+/// Replaces the backdrop `dst` with `S`, such that `S` drawn over `dst` gives `src`: the
+/// children composited over the backdrop. The clip coverage `m` then scales `S`, and `m * S`
+/// over the backdrop is `lerp(dst, src, m)` in every color channel. Over a translucent
+/// backdrop the alpha of `S` solves `src.a = S.a + dst.a * (1 - S.a)`. Each color channel also
+/// bounds `S.a` from below, so `S` stays a valid premultiplied color when 8-bit rounding or an
+/// opaque backdrop leaves the alpha unconstrained.
+fn uncomposite() -> Result<Blender, RenderError> {
+    const SKSL: &str = "half4 main(half4 src, half4 dst) {
+        float4 s = float4(src);
+        float4 d = float4(dst);
+        float a = 0;
+        if (d.a < 0.999) { a = (s.a - d.a) / (1 - d.a); }
+        for (int i = 0; i < 3; i++) {
+            if (d[i] > 0.001) { a = max(a, 1 - s[i] / d[i]); }
+            if (d[i] < 0.999) { a = max(a, (s[i] - d[i]) / (1 - d[i])); }
+        }
+        a = saturate(a);
+        return half4(clamp(s.rgb - d.rgb * (1 - a), 0, a), a);
+    }";
+    RuntimeEffect::make_for_blender(SKSL, None)
+        .map_err(RenderError::Skia)?
+        .make_blender(Data::new_empty(), None)
+        .ok_or_else(|| RenderError::Skia("uncomposite".into()))
 }
 
 fn draw_kind(
