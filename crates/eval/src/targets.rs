@@ -58,6 +58,8 @@ pub struct TargetJob {
     pub viewport: bool,
     /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
     pub pivot: Option<Expr>,
+    /// The `palette:` expression: a palette or a palette module that `p` names for the whole scene.
+    pub palette: Option<Expr>,
     pub profile: Profile,
     /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, else the target's highest scale.
     /// An SVG samples at this scale. A PNG output samples at its own `scale:` instead.
@@ -202,8 +204,8 @@ fn time_literal(e: &Expr) -> Option<f64> {
     }
 }
 
-const TARGET_KEYS: [&str; 9] = [
-    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot",
+const TARGET_KEYS: [&str; 10] = [
+    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot", "palette",
 ];
 
 fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
@@ -421,6 +423,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 bg: named("bg").cloned(),
                 viewport,
                 pivot: named("pivot").cloned(),
+                palette: named("palette").cloned(),
                 profile,
                 bake_scale,
                 outputs,

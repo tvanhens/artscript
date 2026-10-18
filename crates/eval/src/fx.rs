@@ -118,9 +118,10 @@ impl Evaluator<'_> {
             given.push((n.key.clone(), self.expr(&n.value, site.scope)?));
         }
         let module = self.modules.get(&def.module).cloned().ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", def.module)))?;
-        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span)?;
+        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span, site.scope)?;
         let mut fsc = self.module_scope(&module);
         fsc.env = env;
+        fsc.palette = site.scope.palette.clone();
         Ok(fsc)
     }
 

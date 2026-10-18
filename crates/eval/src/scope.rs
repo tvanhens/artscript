@@ -26,6 +26,7 @@ pub struct Module {
     pub lost: RefCell<BTreeSet<String>>,
     /// A failed `use` without an item list could have bound any name.
     pub lost_all: Cell<bool>,
+    pub binds_p: Cell<bool>,
 }
 
 impl Module {
@@ -40,6 +41,7 @@ impl Module {
             own: RefCell::new(Vec::new()),
             lost: RefCell::new(BTreeSet::new()),
             lost_all: Cell::new(false),
+            binds_p: Cell::new(false),
         }
     }
 
@@ -47,8 +49,13 @@ impl Module {
         self.globals.borrow().get(name).cloned()
     }
 
-    pub fn define(&self, name: &str, v: Value) {
+    pub fn bind(&self, name: &str, v: Value) {
+        self.binds_p.set(self.binds_p.get() || name == "p");
         self.globals.borrow_mut().insert(name.to_string(), v);
+    }
+
+    pub fn define(&self, name: &str, v: Value) {
+        self.bind(name, v);
         let mut own = self.own.borrow_mut();
         if !own.iter().any(|n| n == name) {
             own.push(name.to_string());

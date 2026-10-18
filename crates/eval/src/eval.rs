@@ -156,6 +156,7 @@ pub(crate) struct Scope {
     /// Canvas from local coordinates.
     pub world: Matrix,
     pub style: Rc<Vec<(String, Value)>>,
+    pub palette: Option<Value>,
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
@@ -657,6 +658,17 @@ fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
 
 fn size_box(w: f64, h: f64) -> Rect {
     Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
+}
+
+fn param_fix(key: &str, default: &Value, given: &Value) -> String {
+    match (default, given) {
+        (Value::Module(_), Value::Palette(p)) => format!(
+            "write `palette:{}` on the instance to swap `p`, or pass a module from `use`, like `{key}:hollow`",
+            p.name
+        ),
+        (Value::Module(_), _) => format!("pass a module from `use`, like `{key}:hollow`"),
+        _ => format!("pass {} like `{key}:{}`", default.kind(), default.show()),
+    }
 }
 
 /// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
@@ -1167,10 +1179,7 @@ impl<'a> Evaluator<'a> {
         }
         let m = self.load_module(&target, false)?;
         if let Some(a) = alias {
-            module
-                .globals
-                .borrow_mut()
-                .insert(a.clone(), Value::Module(m));
+            module.bind(a, Value::Module(m));
             return Ok(());
         }
         let exports = m.exports();
@@ -1179,7 +1188,7 @@ impl<'a> Evaluator<'a> {
         let anims = m.anims.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
-                module.globals.borrow_mut().insert(k, v);
+                module.bind(&k, v);
             }
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
@@ -1195,7 +1204,7 @@ impl<'a> Evaluator<'a> {
         for item in items {
             let mut found = false;
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
-                module.globals.borrow_mut().insert(item.clone(), v.clone());
+                module.bind(item, v.clone());
                 found = true;
             }
             if !item.starts_with('_')
@@ -1246,6 +1255,7 @@ impl<'a> Evaluator<'a> {
             frame: Rect::new_empty(),
             world: Matrix::new_identity(),
             style: Rc::new(Vec::new()),
+            palette: None,
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
@@ -1421,10 +1431,7 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -1501,7 +1508,12 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn style_named(&mut self, name: &str, home: &Rc<Module>) -> R<Vec<(String, Value)>> {
+    fn style_named(
+        &mut self,
+        name: &str,
+        home: &Rc<Module>,
+        sc: &Scope,
+    ) -> R<Vec<(String, Value)>> {
         if home.lost(name) && !home.styles.borrow().contains_key(name) {
             return Err(Fail::reported());
         }
@@ -1521,7 +1533,8 @@ impl<'a> Evaluator<'a> {
             .get(&style.module)
             .cloned()
             .unwrap_or_else(|| home.clone());
-        let msc = self.module_scope(&module);
+        let mut msc = self.module_scope(&module);
+        msc.palette = sc.palette.clone();
         style
             .named
             .iter()
@@ -1541,7 +1554,7 @@ impl<'a> Evaluator<'a> {
             .as_ref()
             .and_then(|(file, _, _)| self.modules.get(file).cloned())
             .unwrap_or_else(|| sc.module.clone());
-        let mut styled = match (self.style_named(&sname, &home), site) {
+        let mut styled = match (self.style_named(&sname, &home, sc), site) {
             (Ok(styled), _) => styled,
             (Err(f), Some((file, span, anim))) => {
                 self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
@@ -2290,6 +2303,17 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
+    pub(crate) fn target_palette(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
+        match self.expr(e, sc)? {
+            v @ (Value::Palette(_) | Value::Module(_)) => Ok(v),
+            other => Err(fail(
+                "E0206",
+                format!("`palette:` takes a palette, got {}", other.kind()),
+            )
+            .fix("write `palette:elite`")),
+        }
+    }
+
     /// The target's `pivot:` point in canvas units.
     pub(crate) fn pivot(&mut self, e: &Expr, sc: &Scope) -> R<(f64, f64)> {
         let bad = || {
@@ -2821,8 +2845,10 @@ impl<'a> Evaluator<'a> {
         module: &Rc<Module>,
         given: &[(String, Value)],
         span: Span,
+        caller: &Scope,
     ) -> R<Vec<(String, Value)>> {
-        let def_scope = self.module_scope(module);
+        let mut def_scope = self.module_scope(module);
+        def_scope.palette = caller.palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
         for p in params {
             let mut dsc = def_scope.clone();
@@ -2842,12 +2868,7 @@ impl<'a> Evaluator<'a> {
                                 v.kind()
                             ),
                         )
-                        .fix(format!(
-                            "pass {} like `{}:{}`",
-                            d.kind(),
-                            p.key,
-                            d.show()
-                        )));
+                        .fix(param_fix(&p.key, d, v)));
                     }
                     v.clone()
                 }
@@ -2907,6 +2928,7 @@ impl<'a> Evaluator<'a> {
             named: Vec::new(),
         };
         let mut key = key;
+        let mut palette = sc.palette.clone();
         for (k, v) in &a.named {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
@@ -2916,6 +2938,15 @@ impl<'a> Evaluator<'a> {
                         .fix("write `seed:7`")
                 })?;
                 key = key.seeded(&comp.module, &comp.name, seed as u64);
+            } else if k == "palette" {
+                if !matches!(v, Value::Palette(_) | Value::Module(_)) {
+                    return Err(fail(
+                        "E0320",
+                        format!("`palette:` takes a palette, got {}", v.kind()),
+                    )
+                    .fix("write `palette:elite`"));
+                }
+                palette = Some(v.clone());
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
@@ -2929,7 +2960,8 @@ impl<'a> Evaluator<'a> {
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
         let caller_local = inverse(&m).map_rect(sc.frame).0;
         let mut box_frame = Rect::new_empty();
-        let def_scope = self.module_scope(&module);
+        let mut def_scope = self.module_scope(&module);
+        def_scope.palette = palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
@@ -2951,12 +2983,7 @@ impl<'a> Evaluator<'a> {
                                 v.kind()
                             ),
                         )
-                        .fix(format!(
-                            "pass {} like `{}:{}`",
-                            d.kind(),
-                            p.key,
-                            d.show()
-                        )));
+                        .fix(param_fix(&p.key, d, v)));
                     }
                     v.clone()
                 }
@@ -3007,6 +3034,7 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
+        call_sc.palette = palette.clone();
         let call_fx = call_sc.collect_branch_fx();
         let mut call_patches = Vec::new();
         for b in block.items() {
@@ -3041,6 +3069,7 @@ impl<'a> Evaluator<'a> {
         body_scope.host = None;
         body_scope.checks = checks.clone();
         body_scope.style = sc.style.clone();
+        body_scope.palette = palette;
         let def_fx = body_scope.collect_branch_fx();
         let placeholder = new_node(
             path.clone(),
@@ -3556,10 +3585,7 @@ impl<'a> Evaluator<'a> {
                     Err(_) => Value::None,
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -3949,7 +3975,11 @@ impl<'a> Evaluator<'a> {
         };
         let module = self.modules.get(&anim.module).cloned();
         let dur_scope = match &module {
-            Some(m) => self.module_scope(m),
+            Some(m) => {
+                let mut dur_scope = self.module_scope(m);
+                dur_scope.palette = sc.palette.clone();
+                dur_scope
+            }
             None => sc.clone(),
         };
         self.begin_seed(&anim.module, owner.at_stmt(&[], &format!("anim {}", anim.name)));
@@ -4241,6 +4271,12 @@ impl<'a> Evaluator<'a> {
                 MatrixValue::Word(w) => Value::Ident(w.clone()),
                 MatrixValue::Num(n) => Value::Num(*n),
             });
+        }
+        if name == "p"
+            && let Some(v) = &sc.palette
+            && !sc.module.binds_p.get()
+        {
+            return Some(v.clone());
         }
         if let Some(v) = sc.module.global(name) {
             return Some(v);
