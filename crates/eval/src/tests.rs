@@ -3518,6 +3518,51 @@ fn a_reference_through_a_group_names_the_key() {
 }
 
 #[test]
+fn at_takes_an_anchor_reference_like_its_x_and_y() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "group name:body at:30,20 rot:90\n",
+        "  rect 10x10\n",
+        "  anchor neck 5,7\n",
+        "circle 2 at:@body.neck name:a\n",
+        "circle 2 at:@body.neck.x,@body.neck.y name:b\n",
+        "group at:10,10 rot:30 scale:2\n",
+        "  circle 2 at:@body.neck name:c\n",
+        "  circle 2 at:@body.neck.x,@body.neck.y name:d\n",
+    ));
+    near(at(node(&s, "a")), (23.0, 25.0));
+    let b = at(node(&s, "b"));
+    near(at(node(&s, "a")), (f64::from(b.0), f64::from(b.1)));
+    let (c, d) = (at(node(&s, "c")), at(node(&s, "d")));
+    near(c, (f64::from(d.0), f64::from(d.1)));
+    assert!(c.0.abs() + c.1.abs() > 1.0, "{c:?}");
+}
+
+#[test]
+fn at_takes_an_anchor_through_an_instance() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "def hero\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "hero at:40,50 name:hero\n",
+        "circle 2 at:@hero.neck name:a\n",
+    ));
+    near(at(node(&s, "a")), (40.0, 44.0));
+}
+
+#[test]
+fn at_names_the_node_when_the_reference_is_not_a_point() {
+    let ev = run_with(
+        "@target t.png 40x40\nrect 10x10 name:body\ncircle 2 at:@body\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("`at:@body` is a node, not a point"), "{d}");
+    assert!(d.fix.as_deref().unwrap_or("").contains("at:@body.neck"), "{d}");
+}
+
+#[test]
 fn an_index_that_does_not_fit_is_not_copy_zero() {
     let ev = run_with(
         "@target t.png 40x40\ndef face\n  circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.99999999999 fill:#ff0000\n",
