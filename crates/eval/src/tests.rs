@@ -4120,3 +4120,50 @@ fn canvas_inside_a_transformed_group_reads_in_the_group_s_frame() {
          assert @g.c.w == canvas.w/2\n",
     );
 }
+
+fn off_canvas_hits(src: &str) -> Vec<Diagnostic> {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [("art/t.art".to_string(), src.to_string())].into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    ev.diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0102")
+        .collect()
+}
+
+#[test]
+fn off_canvas_measures_a_shape_after_its_mask() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,32 name:cell\n  mask\n    rect 40x40 at:0,0 fill:#4af name:m\n  rect 80x20 at:0,0 fill:#4af name:bar\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,32 name:cell\n  mask\n    rect 72x40 at:0,0 fill:#4af name:m\n  rect 80x20 at:0,0 fill:#4af name:bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "bar");
+    assert!(
+        hits[0].notes.iter().any(|n| n == "bounds -4,22 72x20"),
+        "{}",
+        show(&hits)
+    );
+}
+
+#[test]
+fn off_canvas_measures_a_shape_after_an_inside_clip() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 40x40 at:32,32 fill:#4af name:x\ninside @x\n  rect 80x20 at:32,32 fill:#4af name:bar\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 40x40 at:32,32 fill:#4af name:x\noutside @x\n  rect 80x20 at:32,32 fill:#4af name:bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+}
