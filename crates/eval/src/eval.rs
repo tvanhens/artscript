@@ -67,7 +67,7 @@ impl Fail {
     }
 
     /// Already reported (for example, syntax errors in an imported file).
-    fn reported() -> Fail {
+    pub(crate) fn reported() -> Fail {
         fail("", "")
     }
 }

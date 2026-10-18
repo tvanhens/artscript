@@ -995,7 +995,7 @@ fn a_fill_line_is_a_draw_with_an_unknown_verb() {
 
 const BROKEN: (&str, &str) = (
     "lib/x/thing.art",
-    "style soft a:.5\nlet sky = #8cf\ndef thing\n  rect 1x(2) fill:p.sky name:r\n",
+    "style soft a:.5\nfinish sheen\n  fx grain .05\nlet sky = #8cf\ndef thing\n  rect 1x(2) fill:p.sky name:r\n",
 );
 
 fn codes_at(ev: &Evaluation) -> Vec<String> {
@@ -1011,6 +1011,8 @@ fn a_library_that_fails_to_parse_is_reported_once_at_the_library() {
         "@target t.png 64x64\nuse x/thing { thing }\nthing at:32,32 name:t\n",
         "@target t.png 64x64\nuse x/thing\nthing at:32,32 name:t\n",
         "@target t.png 64x64\nuse x/thing { soft }\nrect 2x2 style:soft name:t\n",
+        "@target t.png 64x64\nuse x/thing { sheen }\nrect 2x2 name:t\n  fx sheen\n",
+        "@target t.png 64x64\nuse x/thing\nrect 2x2 name:t\n  fx sheen\n",
         "@target t.png 64x64\nuse x/thing as m\nrect 2x2 fill:m.sky name:t\n",
         "@target t.png 64x64\nuse x/thing { sky }\nrect 2x2 fill:sky.1 name:t\n",
     ] {
