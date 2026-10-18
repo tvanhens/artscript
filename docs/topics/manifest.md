@@ -46,5 +46,6 @@ Every table and key is optional, and a missing key takes the default named below
 | `off-canvas` | L0102 | a node that the canvas edge cuts (see `checks`) |
 | `unused` | L0103 | an imported or private name that nothing reads (see `targets`) |
 | `positional-seed` | L0104 | an unnamed statement whose randomness comes from its position (see `fields`) |
+| `hidden-child` | L0105 | a line nested under a shape that draws nothing there (see `checks`) |
 
 Each lint is `warn` unless the table sets it. The levels are `off`, `info`, `warn`, and `error`. `off` drops the lint. `info` prints it and keeps exit code 0. `warn` makes `build` and `check` exit 3, unless `build --allow-warnings` is set. `error` makes them exit 2. A compile error still exits 1. A full-bleed scene that draws past the canvas edge on purpose sets `off-canvas = "off"`.

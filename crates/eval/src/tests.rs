@@ -1994,6 +1994,69 @@ fn off_canvas_on_a_later_frame_is_kept() {
     assert_eq!(offs[0].node, "c");
 }
 
+fn hidden_children(src: &str) -> Vec<Diagnostic> {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [("art/t.art".to_string(), src.to_string())].into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::sample(&p, &plan.jobs[0])
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0105")
+        .collect()
+}
+
+#[test]
+fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
+    let hidden = hidden_children(
+        "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
+    );
+    let nodes: Vec<_> = hidden.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["f.eye_l", "f.eye_r"], "{}", show(&hidden));
+    assert_eq!(hidden[0].span.line, 4);
+    assert!(
+        hidden[0].message.contains("`f.skull`"),
+        "{}",
+        hidden[0].message
+    );
+}
+
+#[test]
+fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
+    let partly = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*12-18,0 name:dot\n",
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
+    let all = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*4,20 name:dot\n",
+    );
+    assert_eq!(all.len(), 1, "{}", show(&all));
+    assert!(
+        all[0]
+            .notes
+            .iter()
+            .any(|n| n == "so are the 3 other copies"),
+        "{:?}",
+        all[0].notes
+    );
+}
+
+#[test]
+fn a_child_hidden_on_only_some_frames_is_not_reported() {
+    let some = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(0 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert!(some.is_empty(), "{}", show(&some));
+    let every = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(20 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert_eq!(every.len(), 1, "{}", show(&every));
+}
+
 #[test]
 fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
