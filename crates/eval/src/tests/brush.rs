@@ -371,3 +371,21 @@ fn an_unnamed_brushed_node_gets_the_positional_seed_lint() {
     let ev = evaluate(&p, &plan(&p).jobs[0]);
     assert!(ev.diagnostics.iter().any(|d| d.code == "L0104"), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn a_same_line_sksl_body_maps_later_lines_to_their_own_column() {
+    let scene = "@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n";
+    let at = |lib: &str, code: &str, needle: &str| {
+        let ds = errors(scene, &[("lib/b.art", lib)]);
+        let d = ds.iter().find(|d| d.code == code && d.message.contains(needle)).unwrap_or_else(|| panic!("{lib}: {}", show(&ds)));
+        (d.span.line, d.span.col)
+    };
+    let same = "brush b\n  sksl \"\"\"float4 shade(Mark m) {\n    return float4(m.paint.rgb, bogus);\n  }\"\"\"\n";
+    assert_eq!(at(same, "E0360", "bogus"), (3, 32));
+    let same = "brush b\n  sksl \"\"\"float4 shade(Mark m) {\n    float u_k = 1;\n    return m.paint;\n  }\"\"\"\n";
+    assert_eq!(at(same, "E0363", "u_k"), (3, 11));
+    let first = "brush b\n  sksl \"\"\"float4 shade(Mark m) { float u_k = 1; return m.paint; }\"\"\"\n";
+    assert_eq!(at(first, "E0363", "u_k"), (2, 40));
+    let newline = "brush b\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return float4(m.paint.rgb, bogus);\n    }\n  \"\"\"\n";
+    assert_eq!(at(newline, "E0360", "bogus"), (4, 34));
+}

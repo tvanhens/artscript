@@ -721,7 +721,7 @@ impl<'a> Parser<'a> {
             self.enter(next);
             let kw = self.cur_span();
             if self.eat_ident("sksl") {
-                if let Some(Tok::Raw(text, body)) = self.cur().map(|t| t.kind.clone()) {
+                if let Some(Tok::Raw(text, body, rest)) = self.cur().map(|t| t.kind.clone()) {
                     self.bump();
                     if sksl.is_some() {
                         self.fail(
@@ -730,7 +730,7 @@ impl<'a> Parser<'a> {
                             "keep a single `sksl \"\"\"...\"\"\"` line",
                         );
                     } else {
-                        sksl = Some(SkslBlock { text, span: kw, body });
+                        sksl = Some(SkslBlock { text, span: kw, body, rest });
                     }
                 } else {
                     self.fail_here(
@@ -910,7 +910,7 @@ impl<'a> Parser<'a> {
             .is_some_and(|t| matches!(t.kind, Tok::Str(_) | Tok::Raw(..)) && t.ws_before)
         {
             match self.bump().kind {
-                Tok::Str(s) | Tok::Raw(s, _) => Some(s),
+                Tok::Str(s) | Tok::Raw(s, ..) => Some(s),
                 _ => None,
             }
         } else {
@@ -1693,7 +1693,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Hex(h)
             }
-            Tok::Str(s) | Tok::Raw(s, _) => {
+            Tok::Str(s) | Tok::Raw(s, ..) => {
                 self.bump();
                 Expr::Str(s)
             }

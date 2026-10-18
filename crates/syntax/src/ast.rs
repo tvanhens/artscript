@@ -132,8 +132,11 @@ pub enum DeclKind {
     },
 }
 
-/// A `sksl """..."""` block. `body` is where body line 1, column 1 sits in the file, so an
-/// SkSL error at body line `l` and column `c` is at `body.line + l - 1`, `body.col + c`.
+/// A `sksl """..."""` block. `body` is where body line 1, column 1 sits in the file and `rest`
+/// where body line 2 does. A same-line body starts after the delimiter, so the two columns
+/// differ. An SkSL error at body line `l` and column `c` is at `body.col + c` on line 1 and
+/// `rest.col + c` at `rest.line + l - 2` after it. Both are `Span`s so the `fmt` round-trip
+/// test strips them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SkslBlock {
     /// The dedented body text.
@@ -141,6 +144,7 @@ pub struct SkslBlock {
     /// The `sksl` keyword.
     pub span: Span,
     pub body: Span,
+    pub rest: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]

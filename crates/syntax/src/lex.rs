@@ -36,7 +36,8 @@ pub(crate) enum Tok {
     Hex(String),
     Str(String),
     /// A `"""..."""` string: the dedented text and where its line 1, column 1 sits in the file.
-    Raw(String, Span),
+    /// Text, then where body line 1 and body line 2 start in the file.
+    Raw(String, Span, Span),
     Ref(Vec<String>),
     Plus,
     Minus,
@@ -635,19 +636,20 @@ impl<'a> Scanner<'a> {
                 // Without a leading newline the first body line starts after the delimiter and
                 // later lines at column 1; `fmt` writes the newline-first form, where every
                 // body line starts at the common indent.
+                let rest = Span { line: span.line + 1 + u32::from(newline_first), col: indent as u32 + 1 };
                 let body = if newline_first {
-                    Span { line: span.line + 1, col: indent as u32 + 1 }
+                    Span { line: span.line + 1, col: rest.col }
                 } else {
-                    Span { line: span.line, col: span.col + 3 }
+                    Span { line: span.line, col: span.col + 3 + indent as u32 }
                 };
-                Tok::Raw(text, body)
+                Tok::Raw(text, body, rest)
             } else {
                 self.errors.push(
                     Diagnostic::error("E0101", span, "unterminated raw string")
                         .with_fix("close the raw string with `\"\"\"`"),
                 );
                 self.i = self.src.len();
-                Tok::Raw(String::new(), span)
+                Tok::Raw(String::new(), span, span)
             }
         } else {
             self.bump();

@@ -273,10 +273,13 @@ impl Evaluator<'_> {
             }
         }
         let at = |origin: Origin| match origin {
-            Origin::Body { line, col } => Span {
-                line: block.body.line + line - 1,
-                col: block.body.col + col.unwrap_or(0),
-            },
+            Origin::Body { line, col } => {
+                let start = if line == 1 { block.body } else { block.rest };
+                Span {
+                    line: block.body.line + line - 1,
+                    col: start.col + col.unwrap_or(0),
+                }
+            }
             Origin::Param(i) => params
                 .iter()
                 .filter(|p| !PLACEMENT_KEYS.contains(&p.key.as_str()))
