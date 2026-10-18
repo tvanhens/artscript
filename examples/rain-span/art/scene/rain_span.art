@@ -1,0 +1,161 @@
+@target scene/rain_span.png 1280x720
+@target scene/rain_span.gif 640x360 bg:#070d14 fps:12 dur:2s
+
+palette hall
+  ramp void #070d14 5
+  ramp stone #2c5870 5
+  ramp mist #b7e4e4 5
+  ramp soul #6ee0c8 5
+  ramp shell #f6f1e6 5
+  ramp lamp #e8b15a 5
+  ramp rain #e7f3f8 5
+  color nail #d5dde4
+  color iron #243038
+
+def traveler face:1 cloak:hall.void shell:hall.shell nail:hall.nail
+  group scale:face,1 name:turn
+    curve 32,-18 46,-112 48,-114 34,-16 closed tension:0 fill:nail name:blade
+    curve 34,-22 47,-108 stroke:hall.mist.2,1.1 name:edge
+    curve 0,2 -22,-6 -28,-44 -16,-82 -4,-90 10,-88 20,-78 24,-42 16,-6 closed tension:.35 fill:cloak name:cloak
+      ellipse 16,9 at:-8,-58 fill:cloak.3 a:.5 blur:3
+      subtract fill:cloak a:.4
+        copy @cloak
+        copy @cloak at:12,-10
+      fx rim 4 dir:-1,-1 color:hall.mist.1 a:.45
+      fx outline 2.6 color:cloak.line
+    ellipse 18,20 at:2,-108 fill:shell.3 name:mask
+      ellipse 9,5 at:-4,-6 fill:shell.4 a:.85 blur:2
+      ellipse 4.4,1.6 at:-6,-3 rot:-14 fill:cloak name:eye_l
+      ellipse 4.4,1.6 at:6,-2 rot:8 fill:cloak name:eye_r
+      fx outline 2.2 color:cloak.line
+    curve -12,-118 -16,-128 -22,-150 -6,-124 closed tension:0 fill:shell.3 name:horn_l
+      fx outline 1.8 color:cloak.line
+    curve 6,-114 16,-120 13,-142 3,-118 closed tension:0 fill:shell.2 name:horn_r
+      fx outline 1.8 color:cloak.line
+
+def spire x:0 w:44 top:90 bot:430 ink:hall.stone.0
+  let h = bot-top
+  rect w,h at:x,top+h/2 fill:ink a:.9 name:shaft
+  curve x-w*.55,top+6 x,top-w*.7 x+w*.55,top+6 closed tension:0 fill:ink a:.9 name:cap
+
+def lamp drop:70 bulb:hall.soul
+  curve 0,0 2,drop*.45 -1,drop stroke:hall.stone.3,1.6 name:chain
+  circle 52 at:0,drop+4 fill:radial(fade(bulb.3 .8) fade(bulb 0) r:56) blend:screen name:halo
+  ellipse 7,10 at:0,drop+6 fill:bulb.4 name:glass
+    ellipse 3,4 at:-1,-2 fill:fade(hall.shell.4 .8)
+    fx glow 4 color:bulb
+    fx outline 1.4 color:hall.iron
+
+layer sky scale:canvas.w/1280 pivot:0,0
+  rect 1280,720 at:640,360 fill:grad(down hall.void hall.stone.0,.42 hall.mist.0,.7 hall.void.1) name:field
+    ellipse 640,150 at:-40,-20 fill:hall.mist.1 a:.14 blur:26
+    ellipse 420,100 at:180,30 fill:hall.mist.2 a:.1 blur:20
+
+layer far scale:canvas.w/1280 pivot:0,0
+  spire 70 36 70 400 hall.stone.0 name:spire_a
+  spire 150 48 48 430 hall.stone.0 name:spire_b
+  spire 250 30 100 390 hall.stone.1 name:spire_c
+  spire 340 54 56 450 hall.stone.0 name:spire_d
+  spire 450 28 120 380 hall.stone.0 name:spire_e
+  spire 860 40 80 420 hall.stone.0 name:spire_f
+  spire 980 52 46 460 hall.stone.1 name:spire_g
+  spire 1100 34 72 410 hall.stone.0 name:spire_h
+  spire 1210 46 58 440 hall.stone.0 name:spire_i
+
+layer colossus scale:canvas.w/1280 pivot:0,0
+  curve 560,530 500,460 490,300 540,190 640,150 760,200 800,330 760,500 700,530 closed tension:.4 fill:hall.stone.0 a:.38 name:giant
+  ellipse 78,90 at:648,168 fill:hall.stone.1 a:.42 name:giant_mask
+  curve 600,150 575,120 590,78 630,130 closed tension:0 fill:hall.stone.1 a:.42
+  curve 690,155 720,125 705,100 670,145 closed tension:0 fill:hall.stone.0 a:.4
+  ellipse 10,3.2 at:626,172 rot:-12 fill:hall.void a:.55
+  ellipse 10,3.2 at:674,176 rot:8 fill:hall.void a:.5
+
+layer city scale:canvas.w/1280 pivot:0,0
+  rect 150,280 at:120,378 fill:hall.void.2 name:block_l
+    rect 18,34 at:-28,-30 fill:hall.soul.1 a:.7
+    rect 18,26 at:30,20 fill:hall.soul.0 a:.5
+    fx grain .05 scale:1.8
+    fx outline 2 color:hall.void
+  curve 42,250 120,168 198,250 closed tension:0 fill:hall.void.2 name:roof_l
+  rect 120,240 at:300,398 fill:hall.void.1 name:block_m
+    rect 16,44 at:-22,-16 fill:hall.soul.2 a:.6
+    rect 16,22 at:24,36 fill:hall.mist.1 a:.3
+    fx grain .045 scale:1.7
+    fx outline 2 color:hall.void
+  curve 238,286 300,214 362,286 closed tension:0 fill:hall.void.1 name:roof_m
+  curve 860,518 860,230 930,120 1040,78 1150,140 1220,240 1220,518 closed tension:.2 fill:hall.stone.0 name:cathedral
+    circle 22 at:1040,188 fill:hall.soul.3 name:rose
+    rect 12,70 at:970,300 fill:hall.soul.1 a:.45
+    rect 12,54 at:1110,330 fill:hall.soul.0 a:.35
+    fx grain .05 scale:1.6
+    fx outline 2.4 color:hall.void
+  circle 78 at:1040,188 fill:radial(fade(hall.soul.3 .6) fade(hall.soul 0) r:80) blend:screen name:rose_glow
+  ellipse 16,180 at:888,320 fill:hall.mist.1 a:.22 blur:5
+  rect 22,48 at:1135,250 fill:hall.lamp.3 name:warm
+    circle 36 at:0,0 fill:radial(fade(hall.lamp.3 .8) fade(hall.lamp 0) r:48) blend:screen
+    fx glow 5 color:hall.lamp
+
+layer span scale:canvas.w/1280 pivot:0,0
+  rect 1280,34 at:640,535 fill:hall.stone.1 name:deck
+    each i in 0..18
+      circle rand(1.1 2.2) at:rand(-600 600),rand(-10 10) fill:hall.stone.3 a:.45 name:grit
+    fx grain .05 scale:1.5
+  rect 1280,4 at:640,516 fill:hall.stone.3 name:lip
+  rect 1280,3 at:640,498 fill:hall.iron name:rail
+  each x in [70 180 300 430 560 700 840 980 1120 1230]
+    rect 7,18 at:x,488 fill:hall.iron name:post
+  each x in [200 520 880 1160]
+    rect 26,100 at:x,590 fill:hall.stone.0 name:pier
+
+layer water scale:canvas.w/1280 pivot:0,0
+  rect 1280,166 at:640,637 fill:grad(down hall.void.1 hall.void) name:pool
+  ellipse 100,16 at:360,578 fill:hall.soul.2 a:.4 blur:7 blend:screen
+  ellipse 110,16 at:560,574 fill:hall.soul.2 a:.42 blur:7 blend:screen
+  ellipse 80,14 at:760,580 fill:hall.soul.1 a:.32 blur:6 blend:screen
+  ellipse 54,12 at:1135,572 fill:hall.lamp.2 a:.45 blur:6 blend:screen
+  ellipse 36,8 at:430,586 fill:hall.shell.1 a:.14 blur:4
+
+layer lamps scale:canvas.w/1280 pivot:0,0
+  curve 250,348 640,332 1080,350 stroke:hall.stone.2,1.5 a:.55 name:cable
+  lamp 112 at:360,343 name:lamp_c
+  lamp 120 at:560,335 name:lamp_a
+  lamp 118 at:760,337 name:lamp_b
+
+layer figure scale:canvas.w/1280 pivot:0,0
+  ellipse 40,8 at:430,516 fill:hall.void a:.55 blur:5
+  traveler 1 at:430,514 cloak:hall.void shell:hall.shell nail:hall.nail scale:.92 name:hero
+
+layer weather scale:canvas.w/1280 pivot:0,0
+  rect 1280,720 at:640,360 fill:none name:frame
+    each i in 0..26
+      let x = rand(-600 600)
+      let y0 = rand(-340 300)
+      let y = mod(y0+360+t*rand(40 70) 720)-360
+      curve x,y x-4,y+16 stroke:fade(hall.rain .22),1 name:far_drop
+    each i in 0..64
+      let x = rand(-620 620)
+      let y0 = rand(-340 320)
+      let y = mod(y0+360+t*rand(90 150) 720)-360
+      let len = rand(18 36)
+      curve x,y x-len*.18,y+len stroke:fade(hall.rain .5),1.15 name:drop
+
+layer foreground scale:canvas.w/1280 pivot:0,0
+  rect 22,240 at:16,490 fill:hall.void name:post_near
+  rect 18,70 at:1240,470 fill:hall.void.1 a:.85 name:post_far
+  curve 20,430 48,470 30,520 stroke:hall.iron,2.2 a:.7
+
+layer vignette scale:canvas.w/1280 pivot:0,0
+  rect 1280,720 at:640,360 fill:radial(fade(hall.void 0) fade(hall.void .15),.45 fade(hall.void .62)) a:.85 name:shade
+
+anim sway dur:2.4s loop
+  .lamp_a rot:key(0 2.4 0 -2.4 0)
+  .lamp_b rot:key(0 -2 0 2 0)
+  .lamp_c rot:key(0 1.6 0 -1.6 0)
+
+play sway
+
+assert inside(@hero canvas margin:16)
+assert @cable.bottom < @hero.top
+assert @lamp_a.glass.cy < @deck.top
+assert @lamp_b.glass.cy < @deck.top
+assert @lamp_c.glass.cy < @deck.top

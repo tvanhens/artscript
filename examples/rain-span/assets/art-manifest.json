@@ -1,0 +1,27 @@
+{
+  "outputs": [
+    {
+      "checks": [],
+      "hash": "54a5f95ec8fcf26e",
+      "line": 2,
+      "matrix": {},
+      "path": "scene/rain_span.gif",
+      "scale": 1.0,
+      "source": "art/scene/rain_span.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "2860ae4ebc960e61",
+      "line": 1,
+      "matrix": {},
+      "path": "scene/rain_span.png",
+      "scale": 1.0,
+      "source": "art/scene/rain_span.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

@@ -174,9 +174,14 @@ artscript build
 | `artscript explain <file>` | Print the evaluated node tree |
 | `artscript init` | Create a starter project |
 
+<p align="center">
+  <img src="examples/rain-span/assets/scene/rain_span.gif" alt="A small horned traveler on a rainy stone bridge. Soul lanterns hang over the span, and a giant mask fades in the mist." width="640">
+</p>
+
 ## Learn more
 
 - [`docs/language.md`](docs/language.md) is the core language card, and [`docs/topics/`](docs/topics) holds one file per topic. `artscript docs` prints both.
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
+- [`examples/rain-span`](examples/rain-span) is one rainy span. The still is 1280 by 720. The GIF is that picture at half size, with the rain falling and the lanterns swaying.
 
 artscript is a v0.1 draft. Expect breaking changes.
