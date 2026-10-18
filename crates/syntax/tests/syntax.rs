@@ -1121,3 +1121,14 @@ let n = t
     assert_eq!(format(&must_parse("let n = 1500ms\n")), "let n = 1.5s\n");
     assert_eq!(format(&must_parse("let n = 0s\n")), "let n = 0s\n");
 }
+
+#[test]
+fn calling_a_member_at_the_end_of_a_line_is_e0101() {
+    for src in ["let p = a.b(\n", "rect 1x1 at:p.x(1)\n", "let p = a.b("] {
+        let errs = parse(src).unwrap_err();
+        assert_eq!(errs.len(), 1, "{src:?}: {errs:?}");
+        assert_eq!(errs[0].code, "E0101");
+        assert_eq!(errs[0].message, "only a name can be called");
+        assert_eq!(errs[0].span.line, 1);
+    }
+}

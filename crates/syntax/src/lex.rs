@@ -256,13 +256,6 @@ impl<'a> Scanner<'a> {
                         tokens.push(tok);
                     }
                     ws = false;
-                    if self
-                        .errors
-                        .iter()
-                        .any(|e| e.code == "E0101" && e.message.contains("unterminated raw"))
-                    {
-                        break;
-                    }
                 }
                 self.consume_eol();
                 if !tokens.is_empty() {
