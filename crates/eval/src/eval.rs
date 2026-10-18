@@ -147,7 +147,7 @@ pub(crate) struct Scope {
     scope_copies: Vec<u32>,
     parent_copies: Vec<u32>,
     scope_loops: Vec<Span>,
-    names: Rc<RefCell<Names>>,
+    pub(crate) names: Rc<RefCell<Names>>,
     lookup: Lookup,
     pending: Rc<Pending>,
     ids: Rc<ModuleIds>,
@@ -311,7 +311,6 @@ pub(crate) struct Evaluator<'a> {
     loading: Vec<String>,
     pub diags: Vec<Diagnostic>,
     pub canvas: Rect,
-    pub anchors: HashMap<String, Point>,
     pub background: Option<Rgba>,
     pub check: Option<CheckState>,
     ids: HashMap<String, Rc<ModuleIds>>,
@@ -780,7 +779,6 @@ impl<'a> Evaluator<'a> {
             loading: Vec::new(),
             diags: Vec::new(),
             canvas: Rect::from_wh(job.size.0, job.size.1),
-            anchors: HashMap::new(),
             background: None,
             check: None,
             ids: HashMap::new(),
@@ -2204,6 +2202,36 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
+    /// The target's `pivot:` point in canvas units.
+    pub(crate) fn pivot(&mut self, e: &Expr, sc: &Scope) -> R<(f64, f64)> {
+        let bad = || {
+            fail("E0206", "`pivot:` needs a point")
+                .fix("write `pivot:48,96`, `pivot:50%,100%`, or `pivot:@leg.hip`")
+        };
+        let value = self.expr(e, sc)?;
+        if let Value::Ref(r) = &value {
+            return match (r.record.anchor, r.canvas) {
+                (Some(p), None) => Ok((p.x as f64, p.y as f64)),
+                _ => Err(fail(
+                    "E0206",
+                    format!("`pivot:@{}` is a node, not a point", r.label),
+                )
+                .fix(format!(
+                    "name an anchor such as `pivot:@{0}.hip`, or write `pivot:@{0}.cx,@{0}.cy`",
+                    r.label
+                ))),
+            };
+        }
+        let (x, y) = value.pair().ok_or_else(bad)?;
+        let (w, h) = self.job.size;
+        let at = (x.pos(0.0, w as f64), y.pos(0.0, h as f64));
+        if at.0.is_finite() && at.1.is_finite() {
+            Ok(at)
+        } else {
+            Err(bad())
+        }
+    }
+
     fn anchor(&mut self, span: Span, args: &[Expr], sc: &Scope) -> R<()> {
         args.first().and_then(ident_of).ok_or_else(|| {
             fail("E0320", "`anchor` needs a name").fix("write `anchor neck 0,-4`")
@@ -2214,7 +2242,6 @@ impl<'a> Evaluator<'a> {
         };
         let p = sc.world.map_point(Point::new(at.0 as f32, at.1 as f32));
         let key = sc.node_key(span);
-        self.anchors.insert(key.to_string(), p);
         if let Some(id) = sc.decl_at(span) {
             let region = sc.names.borrow().region();
             let own = sc.pending.arrive(id, &region, &sc.scope_copies).own;

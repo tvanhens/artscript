@@ -54,6 +54,8 @@ pub struct TargetJob {
     pub matrix: Vec<(String, MatrixValue)>,
     pub size: (f32, f32),
     pub bg: Option<Expr>,
+    /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
+    pub pivot: Option<Expr>,
     pub profile: Profile,
     /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, else the target's highest scale.
     /// An SVG samples at this scale. A PNG output samples at its own `scale:` instead.
@@ -285,6 +287,12 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
         )
         .with_fix("end the path with .png, .svg or .gif"));
     };
+    if format == Format::Gif && named("pivot").is_some() {
+        return Err(
+            Diagnostic::error("E0206", d.span, "`pivot:` needs a .png or .svg target")
+                .with_fix("remove `pivot:`; pivots are for png and svg targets"),
+        );
+    }
     let (profile_word, explicit) = match named("profile") {
         None => (project.manifest.profile.as_str(), false),
         Some(Expr::Ident(s)) => (s.as_str(), true),
@@ -378,6 +386,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 matrix,
                 size,
                 bg: named("bg").cloned(),
+                pivot: named("pivot").cloned(),
                 profile,
                 bake_scale,
                 outputs,

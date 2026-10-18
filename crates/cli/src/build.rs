@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use artscript_eval::{
-    BackendChoice, Format, OutputSpec, Project, TargetJob, dependencies, evaluate, fnv1a, plan,
+    BackendChoice, Format, OutputSpec, Project, Rig, TargetJob, dependencies, evaluate, fnv1a, plan,
 };
 use artscript_ir::Scene;
 use artscript_render::Backend;
@@ -35,6 +35,7 @@ struct Outcome {
     /// `(path relative to out, hash)` for each output written or verified.
     outputs: Vec<(String, String)>,
     diagnostics: Vec<Diagnostic>,
+    rig: Rig,
 }
 
 /// `Diagnostic` only serializes; the cache stores this mirror so warnings replay on a hit.
@@ -103,6 +104,8 @@ struct CacheEntry {
     key: String,
     outputs: Vec<(String, String)>,
     diagnostics: Vec<CachedDiag>,
+    pivot: Option<(f64, f64)>,
+    anchors: BTreeMap<String, (f64, f64)>,
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -169,6 +172,10 @@ fn cache_hit(project: &Project, out_dir: &Path, job: &TargetJob, key: &str) -> O
             .into_iter()
             .map(Diagnostic::from)
             .collect(),
+        rig: Rig {
+            pivot: entry.pivot,
+            anchors: entry.anchors,
+        },
     })
 }
 
@@ -217,6 +224,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
         return run_gif(project, out_dir, job, key, backend);
     }
     let ev = evaluate(project, job);
+    let rig = ev.rig;
     let mut diagnostics = ev.diagnostics;
     let mut outputs = Vec::new();
     let compile_error = diagnostics
@@ -287,6 +295,8 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
             key,
             outputs: outputs.clone(),
             diagnostics: diagnostics.iter().map(CachedDiag::from).collect(),
+            pivot: rig.pivot,
+            anchors: rig.anchors.clone(),
         };
         let path = cache_path(&project.root, job);
         let _ = path
@@ -298,6 +308,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
         job: job.clone(),
         outputs,
         diagnostics,
+        rig,
     }
 }
 
@@ -356,6 +367,8 @@ fn run_gif(
             key,
             outputs: outputs.clone(),
             diagnostics: diagnostics.iter().map(CachedDiag::from).collect(),
+            pivot: None,
+            anchors: BTreeMap::new(),
         };
         let path = cache_path(&project.root, job);
         let _ = path
@@ -367,6 +380,7 @@ fn run_gif(
         job: job.clone(),
         outputs,
         diagnostics,
+        rig: Rig::default(),
     }
 }
 
@@ -402,7 +416,7 @@ fn manifest_entry(o: &Outcome, path: &str, hash: &str) -> Json {
             }
         })
         .collect();
-    json!({
+    let mut entry = json!({
         "path": path,
         "source": o.job.source,
         "line": o.job.line,
@@ -412,7 +426,30 @@ fn manifest_entry(o: &Outcome, path: &str, hash: &str) -> Json {
         "hash": hash,
         "status": status(&o.diagnostics),
         "checks": checks,
-    })
+    });
+    if let Some(spec) = spec.filter(|s| s.format != Format::Gif) {
+        let scale = f64::from(spec.scale);
+        let point = |(x, y): (f64, f64)| json!([pixels(x * scale), pixels(y * scale)]);
+        entry["pivot"] = o.rig.pivot.map_or(Json::Null, point);
+        let anchors: serde_json::Map<String, Json> = o
+            .rig
+            .anchors
+            .iter()
+            .map(|(name, at)| (name.clone(), point(*at)))
+            .collect();
+        entry["anchors"] = Json::Object(anchors);
+    }
+    entry
+}
+
+/// Three decimals, so f32 noise stays out of the manifest.
+fn pixels(v: f64) -> Json {
+    let r = (v * 1000.0).round() / 1000.0;
+    if r.fract() == 0.0 {
+        Json::from(r as i64)
+    } else {
+        Json::from(r)
+    }
 }
 
 fn read_manifest(path: &Path) -> BTreeMap<String, Json> {
