@@ -171,8 +171,8 @@ impl Evaluator<'_> {
                 Value::Vec2(Coord::Num(r * d.cos()), Coord::Num(r * d.sin()))
             }
             "rand" => {
-                let extra = get("seed").and_then(|v| v.num()).unwrap_or(0.0) as u64;
-                let mut rng = Rng::new(self.next_seed(extra));
+                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let mut rng = Rng::new(self.next_seed(explicit));
                 let (lo, hi) = match a.len() {
                     0 => (0.0, 1.0),
                     1 => (0.0, n(0)?),
@@ -187,8 +187,8 @@ impl Evaluator<'_> {
                 if items.is_empty() {
                     return Err(fail("E0320", "`pick` needs a non-empty list"));
                 }
-                let extra = get("seed").and_then(|v| v.num()).unwrap_or(0.0) as u64;
-                let mut rng = Rng::new(self.next_seed(extra));
+                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let mut rng = Rng::new(self.next_seed(explicit));
                 items[(rng.unit() * items.len() as f64) as usize % items.len()].clone()
             }
             "shade" | "lit" => {
@@ -274,11 +274,11 @@ impl Evaluator<'_> {
                     _ => NoiseKind::Value,
                 };
                 let scale = a.first().and_then(Value::num).unwrap_or(32.0) as f32;
-                let extra = get("seed").and_then(|v| v.num()).unwrap_or(0.0) as u64;
+                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
                 let base = Field::Noise {
                     kind,
                     scale,
-                    seed: self.next_seed(extra) as u32,
+                    seed: self.next_seed(explicit) as u32,
                 };
                 match get("oct").and_then(|v| v.num()) {
                     Some(o) if o > 1.0 => Value::Field(Rc::new(Field::Fbm {

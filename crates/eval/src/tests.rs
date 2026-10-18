@@ -2994,6 +2994,33 @@ fn l0104_warns_once_when_an_unnamed_circle_draws_a_seed() {
 }
 
 #[test]
+fn an_explicit_seed_draws_the_same_noise_in_any_node_and_file() {
+    let lib = "def blot\n  rect 20x20 fill:simplex(16 seed:1) -> [#000 #fff] name:fill\n";
+    let s = lib_scene(
+        "@target t.png 100x100\nuse d { blot }\n\
+         rect 20x20 fill:simplex(16 seed:1) -> [#000 #fff] name:a\n\
+         rect 20x20 fill:simplex(16 seed:1) -> [#000 #fff] name:b\n\
+         blot name:c\n\
+         rect 20x20 fill:simplex(16 seed:2) -> [#000 #fff] name:d\n",
+        lib,
+    );
+    let fill = |path| format!("{:?}", shape(&s, path).fill);
+    assert_eq!(fill("a"), fill("b"));
+    assert_eq!(fill("a"), fill("c.fill"));
+    assert_ne!(fill("a"), fill("d"));
+}
+
+#[test]
+fn an_unnamed_node_with_an_explicit_seed_does_not_warn_l0104() {
+    let ev = eval_lint("@target t.png 40x40\ncircle 4 at:rand(0 10 seed:3),0\n", "");
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0104"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
     let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");
     let wrapped = scene(

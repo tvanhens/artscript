@@ -227,7 +227,7 @@ layer footings pivot:512,840
     copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 z:behind
     inside @tuft_l
       each i in 0..14
-        circle rand(1 1.8 seed:i) at:rand(248 294 seed:i),rand(766 814 seed:i) fill:moss.4 a:.6 name:moss_dot_l
+        circle rand(1 1.8) at:rand(248 294),rand(766 814) fill:moss.4 a:.6 name:moss_dot_l
     copy @tuft_l fill:fade(moss 0) stroke:moss.line,1.4 a:.45 blur:.55
   curve 750,770 768,778 782,794 786,806 778,802 766,788 752,780 closed tension:.4 fill:none name:src_r
   copy @src_r at:3,4 fill:stone.0 a:.45 blur:3
