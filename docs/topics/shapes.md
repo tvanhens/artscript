@@ -11,7 +11,7 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 | blob | `blob 30 seed:4 wobble:.2` organic closed shape |
 | path | `path "M0 0 c10-20 30-20 40 0z"`. A path is closed only when every subpath ends in `Z` or `z`. Otherwise it is open like a curve without `closed` |
 | copy | `copy @body at:-20,-8` reuses a named node's outline |
-| booleans | `subtract`, `union`, `intersect`, `xor` with shape operands as children, first minus the rest |
+| booleans | `subtract`, `union`, `intersect`, `xor` with shape operands as children, first minus the rest. Every child is an operand, and the boolean reads only its geometry. `fill: stroke: cap: join: dash: taper: blur: a: blend:` or an `fx` line on an operand is E0321. To paint over the result, name the boolean and draw in `inside @name` |
 | mirror | `mirror x` draws its block and the block flipped across x = 0 |
 | repeat, grid | `repeat 8 rot:45`, `grid 4x3 gap:8` (`i`, `row`, `col` in the block). `cell:20x20` sets the cell size, which is otherwise the first copy's bounds. A copy reads references in its own cell. Without `cell:`, the first copy sets the pitch, so it cannot read a position from outside the grid (E0352) |
 
