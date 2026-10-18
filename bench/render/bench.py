@@ -3,8 +3,7 @@
 
     python3 bench/render/bench.py [--runs 5] [--backend cpu] BINARY [BINARY...]
 
-Binaries run in turn (A, B, A, B, ...) so drift favors neither. Each run builds a fresh copy of
-`bench/render/catacombs`. The script exits 1 when two runs of one binary write different outputs.
+Exits 1 when two runs of one binary write different outputs.
 """
 
 import argparse

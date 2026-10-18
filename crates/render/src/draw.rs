@@ -304,10 +304,8 @@ fn paint_layer_steps(
     Ok(())
 }
 
-/// The device pixels a layer for `node` covers instead of the whole clip: what the node and its
-/// effects ink, from [`Node::outer_bounds`], joined with [`path_extent`]. Skia antialiases a
-/// path that reaches past the device differently, so every path stays inside the layer and
-/// draws as it would on a layer over the whole clip. `None` keeps the whole clip.
+/// Skia antialiases a path that reaches past the device differently, so the layer also covers
+/// [`path_extent`]: every path stays inside it and draws as it would on a layer over the whole clip.
 fn reach_px(
     node: &Node,
     ctx: &DrawCtx<'_>,

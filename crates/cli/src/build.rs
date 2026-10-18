@@ -241,8 +241,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
                 "gif is rendered through sample".into(),
             )),
         };
-        // Outputs render on their own threads. A scene's paths are not `Sync`, so each thread
-        // takes its own copy.
+        // A scene's paths are not `Sync`, so each thread takes its own copy.
         let rendered: Vec<_> = std::thread::scope(|s| {
             let threads: Vec<_> = job
                 .outputs
