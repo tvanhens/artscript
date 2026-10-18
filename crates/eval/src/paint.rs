@@ -64,11 +64,11 @@ pub fn resolve_gradient(g: &GradSpec, b: Rect) -> Paint {
         },
         GradKind::Radial { at: f, r } => {
             let (x, y) = at(*f);
-            let far = [(b.left, b.top), (b.right, b.top), (b.left, b.bottom), (b.right, b.bottom)]
+            let near = [x - b.left as f64, b.right as f64 - x, y - b.top as f64, b.bottom as f64 - y]
                 .iter()
-                .map(|(px, py)| (*px as f64 - x).hypot(*py as f64 - y))
-                .fold(0.0, f64::max);
-            Paint::Radial { center: p(x, y), radius: r.unwrap_or(far).max(1e-3) as f32, stops: stops(&g.stops) }
+                .map(|d| d.abs())
+                .fold(f64::INFINITY, f64::min);
+            Paint::Radial { center: p(x, y), radius: r.unwrap_or(near).max(1e-3) as f32, stops: stops(&g.stops) }
         }
         GradKind::Conic { at: f, start } => {
             let (x, y) = at(*f);
