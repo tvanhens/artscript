@@ -5010,3 +5010,20 @@ fn the_worst_frame_ignores_the_nodes_in_an_also_in_note() {
     assert_eq!(out.len(), 1);
     assert!(out[0].notes.iter().any(|n| n.contains("worst at 0.5s")), "{:?}", out[0].notes);
 }
+
+#[test]
+fn a_gif_names_each_failing_loop_copy_once() {
+    let src = "@target t.gif 20x20 bg:#ffffff dur:1s fps:4\ndef dot k:0\n  circle 2\n  assert t > k\neach i in 0..3\n  dot k:i*.25 name:d\n";
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    let mut named: Vec<String> = Vec::new();
+    for d in sampled.diagnostics.iter().filter(|d| d.code == "C0101") {
+        named.push(d.node.clone());
+        for n in d.notes.iter().filter_map(|n| n.strip_prefix("also in ")) {
+            named.extend(n.split(", ").map(String::from));
+        }
+    }
+    named.sort();
+    assert_eq!(named, ["d.0", "d.1", "d.2"], "{}", show(&sampled.diagnostics));
+}
