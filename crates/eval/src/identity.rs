@@ -9,7 +9,7 @@ use artscript_syntax::ast::{
 use artscript_syntax::{Diagnostic, format_expr};
 
 use crate::scope::Record;
-use crate::seed::node_seed;
+use crate::seed::{explicit_seed, node_seed};
 use crate::value::Value;
 
 const BUILTIN: &[&str] = &[
@@ -349,11 +349,14 @@ impl PositionalUses {
     }
 }
 
-/// `node_seed` over `file` and the key's seed text, plus `seed:`. When the key holds an unnamed
-/// segment, `uses` records that statement for L0104.
-pub fn seed(file: &str, key: &Key, extra: u64, uses: &mut PositionalUses) -> u64 {
+/// The author's `seed:` when there is one, else `node_seed` over `file` and the key's seed text.
+/// When a key seed holds an unnamed segment, `uses` records that statement for L0104.
+pub fn seed(file: &str, key: &Key, explicit: Option<u64>, uses: &mut PositionalUses) -> u64 {
+    if let Some(s) = explicit {
+        return explicit_seed(s);
+    }
     uses.note(key);
-    node_seed(file, &key.seed_text(), extra)
+    node_seed(file, &key.seed_text())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -2023,8 +2026,8 @@ mod tests {
             &name("eye"),
             &[2],
         );
-        let old = |base: &str, path: &str| node_seed(base, path, 3);
-        let mut s = |k: &Key| seed(file, k, 3, &mut uses);
+        let old = |base: &str, path: &str| node_seed(base, path);
+        let mut s = |k: &Key| seed(file, k, None, &mut uses);
         assert_eq!(s(&key.draw(2)), old("art/t.art\0hero.eye.2", "2"));
         assert_eq!(s(&key.blob()), old("art/t.art\0hero.eye.2", "blob"));
         assert_eq!(s(&key.jitter()), old("art/t.art", "hero.eye.2#jitter"));
@@ -2059,7 +2062,7 @@ mod tests {
         let mut uses = PositionalUses::default();
         for i in 0..3 {
             let key = Key::anon(&call, &circle, &[i]);
-            seed("art/t.art", &key.draw(1), 0, &mut uses);
+            seed("art/t.art", &key.draw(1), None, &mut uses);
         }
         let sites: Vec<(u32, &str, &str)> = uses
             .sites()

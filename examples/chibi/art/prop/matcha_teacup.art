@@ -42,7 +42,7 @@ layer saucer pivot:512,800
     curve 300,790 360,754 470,740 stroke:tea.clay.4,5 a:.7 blur:1.5
     curve 224,806 300,838 430,852 stroke:tea.clay.4,3 a:.6 blur:1
     each k in 0..26
-      let p = polar(sqrt(rand(.3 .95 seed:k)) rand(0 360))
+      let p = polar(sqrt(rand(.3 .95)) rand(0 360))
       circle rand(1.2 2.4) at:512+296*p.x,800+54*p.y fill:tea.clay.0 a:.5 name:fleck
     fx rim 4 dir:1,1 color:tea.rim a:.45
     fx grain .04 scale:2.5
@@ -101,7 +101,7 @@ layer saucer pivot:512,800
         curve [each p in spiral -> p+(2,3)] stroke:tea.matcha.1,[each k in 0..70 -> 9-k/10] taper:.1,.2 a:.6 blur:1
         curve spiral stroke:tea.matcha.4,[each k in 0..70 -> 7.6-6*k/70] taper:.1,.2 a:.9
         each k in 0..18
-          circle rand(1.5 3.5 seed:k) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55 name:bubble
+          circle rand(1.5 3.5) at:rand(360 660),490+rand(-22 22) fill:tea.matcha.4 a:.55 name:bubble
         ellipse 40,7 at:430,476 fill:tea.foam_hi a:.7 blur:3
         fx inner 0,9 blur:5 color:tea.matcha.0
         fx grain .06 scale:1.5

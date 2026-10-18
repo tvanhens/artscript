@@ -664,14 +664,10 @@ impl Writer {
             self.defs.push_str(&inner.defs);
             if mask.feather > 0.0 || mask.invert {
                 let fid = format!("{id}-fx");
-                self.defs.push_str("      <g");
-                if mask.feather > 0.0 || mask.invert {
-                    self.mask_effect_filter(&fid, mask.feather, mask.invert);
-                    self.defs.push_str(" filter=\"url(#");
-                    self.defs.push_str(&fid);
-                    self.defs.push_str(")\"");
-                }
-                self.defs.push_str(">\n");
+                self.mask_effect_filter(&fid, mask.feather, mask.invert);
+                self.defs.push_str("      <g filter=\"url(#");
+                self.defs.push_str(&fid);
+                self.defs.push_str(")\">\n");
                 self.defs.push_str(&inner.body);
                 self.defs.push_str("      </g>\n");
             } else {

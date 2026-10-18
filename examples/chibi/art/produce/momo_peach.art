@@ -125,17 +125,17 @@ layer body
     let outy = [each k in 0..sample_count -> ny.{k}*flip.{k}]
     let seg_mid = floor(sample_count/2)
     let seg_light = min(1 max(0 (0-outx.{seg_mid}-outy.{seg_mid})*.85))
-    let wobble = [each k in 0..sample_count -> rand(-.16 .16 seed:k)]
+    let wobble = [each k in 0..sample_count -> rand(-.16 .16)]
     if spot.{seg_mid}.x < 400
       each k in 0..sample_count
         if mod(k 3) == 1
-          let reach = rand(2.2 3.6 seed:k+11)
+          let reach = rand(2.2 3.6)
           let hair = spot.{k}+(outx.{k},outy.{k})*8.6+(tx.{k},ty.{k})*wobble.{k}
           curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.fuzz,.95 a:seg_light*.42 taper:0,.9
     else
       each k in 0..sample_count
         if mod(k 2) == 1
-          let reach = rand(2.2 3.4 seed:k)
+          let reach = rand(2.2 3.4)
           let hair = spot.{k}+(outx.{k},outy.{k})*3.6+(tx.{k},ty.{k})*wobble.{k}
           curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.edge,.7 a:.7 taper:0,.9
   assert inside(@skin canvas margin:24)

@@ -201,11 +201,11 @@ impl Evaluator<'_> {
             },
             "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
             "grain" => {
-                let extra = a.num("seed").unwrap_or(0.0) as u64;
+                let explicit = a.num("seed").map(|s| s as u64);
                 EffectOp::Grain {
                     strength: n0.unwrap_or(0.05) as f32,
                     scale: a.num("scale").unwrap_or(1.5) as f32,
-                    seed: identity::seed(seed_file, &key.grain(), extra, &mut self.uses) as u32,
+                    seed: identity::seed(seed_file, &key.grain(), explicit, &mut self.uses) as u32,
                 }
             }
             "merge" => {

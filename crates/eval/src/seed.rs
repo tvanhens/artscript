@@ -7,13 +7,18 @@ pub fn fnv1a(bytes: &[u8]) -> u64 {
     h
 }
 
-/// Seed for a node: FNV-1a over `file \0 node_path`, offset by the author's `seed:`.
-pub fn node_seed(file: &str, node_path: &str, extra: u64) -> u64 {
+/// Seed for a node: FNV-1a over `file \0 node_path`.
+pub fn node_seed(file: &str, node_path: &str) -> u64 {
     let mut bytes = Vec::with_capacity(file.len() + node_path.len() + 1);
     bytes.extend_from_slice(file.as_bytes());
     bytes.push(0);
     bytes.extend_from_slice(node_path.as_bytes());
-    fnv1a(&bytes).wrapping_add(extra.wrapping_mul(0x9e3779b97f4a7c15))
+    fnv1a(&bytes)
+}
+
+/// The seed an author's `seed:` sets. It is the same in any node and file.
+pub fn explicit_seed(seed: u64) -> u64 {
+    Rng::new(seed).next_u64()
 }
 
 /// SplitMix64.

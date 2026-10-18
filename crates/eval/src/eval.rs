@@ -804,10 +804,10 @@ impl<'a> Evaluator<'a> {
     }
 
     /// Draw-site `rand`, `pick`, and noise. The counter is how many of those this statement drew.
-    pub fn next_seed(&mut self, extra: u64) -> u64 {
+    pub fn next_seed(&mut self, explicit: Option<u64>) -> u64 {
         self.seed_count += 1;
         let key = self.seed_key.draw(self.seed_count);
-        identity::seed(&self.seed_file, &key, extra, &mut self.uses)
+        identity::seed(&self.seed_file, &key, explicit, &mut self.uses)
     }
 
     pub(crate) fn seeded(&self) -> &BTreeSet<String> {
@@ -1985,8 +1985,8 @@ impl<'a> Evaluator<'a> {
                         return Err(fail("E0320", "`jitter:` wavelength must be positive")
                             .fix("write `jitter:1.5,60`"));
                     }
-                    let extra = a.num("seed").unwrap_or(0.0) as u64;
-                    let jitter = identity::seed(sc.file(), &key.jitter(), extra, &mut self.uses);
+                    let explicit = a.num("seed").map(|s| s as u64);
+                    let jitter = identity::seed(sc.file(), &key.jitter(), explicit, &mut self.uses);
                     let mut rng = Rng::new(jitter);
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
                 }
@@ -2416,9 +2416,9 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
-                let extra = a.num("seed").unwrap_or(0.0) as u64;
+                let explicit = a.num("seed").map(|s| s as u64);
                 let blob =
-                    identity::seed(sc.file(), &self.seed_key.blob(), extra, &mut self.uses);
+                    identity::seed(sc.file(), &self.seed_key.blob(), explicit, &mut self.uses);
                 let mut rng = Rng::new(blob);
                 let points = a.num("points").unwrap_or(7.0) as usize;
                 (
