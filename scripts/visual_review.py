@@ -115,7 +115,8 @@ def fixture_for(golden):
 def main():
     base, out = sys.argv[1], Path(sys.argv[2])
     out.mkdir(parents=True, exist_ok=True)
-    changes = git("diff", "--name-status", "--no-renames", f"{base}...HEAD", "--", GOLDEN).decode().split("\n")
+    base = git("merge-base", base, "HEAD").decode().strip()
+    changes = git("diff", "--name-status", "--no-renames", base, "HEAD", "--", GOLDEN).decode().split("\n")
     lines = ["| status | golden | changed pixels | fixture | sheet |", "|---|---|---|---|---|"]
     for change in filter(None, changes):
         status, path = change.split("\t")
