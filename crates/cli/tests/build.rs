@@ -780,7 +780,7 @@ fn check_limits_itself_to_the_selected_entries_and_their_libraries() {
     let (code, err) = check(&["--only", "art/zzz/*"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(
-        err.contains("`--only 'art/zzz/*'` matches no target"),
+        err.contains("`--only 'art/zzz/*'` matches no target") && !err.contains("art/b.art"),
         "{err}"
     );
     let (code, err) = check(&["art/a.art", "--only", "art/zzz/*"]);

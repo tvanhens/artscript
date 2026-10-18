@@ -336,12 +336,6 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
         }
     }
     let plan = plan(project);
-    let unmatched = unmatched(&plan, &selectors);
-    if !unmatched.is_empty() {
-        let mut diags = plan.diagnostics;
-        diags.extend(unmatched);
-        return report(diags, false, json);
-    }
     let all = selectors.is_empty();
     let mut entries: BTreeSet<&str> = BTreeSet::new();
     for job in plan.jobs.iter().filter(|j| all || selectors.iter().any(|s| s.matches(j))) {
@@ -357,6 +351,11 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
         .filter(|d| all || scope.contains(&d.file))
         .cloned()
         .collect();
+    let unmatched = unmatched(&plan, &selectors);
+    if !unmatched.is_empty() {
+        diags.extend(unmatched);
+        return report(diags, false, json);
+    }
     for job in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
             artscript_eval::sample(project, job).diagnostics
