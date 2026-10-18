@@ -216,6 +216,43 @@ fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
     assert!(y <= -30003.0 && y + h >= -29957.0, "{svg}");
 }
 
+fn assert_mask_region_covers(svg: &str, left: f32, top: f32, right: f32, bottom: f32) {
+    let masks: Vec<&str> = svg.split("<mask").skip(1).filter_map(|s| s.split('>').next()).collect();
+    assert!(!masks.is_empty(), "{svg}");
+    for mask in masks {
+        let attr = |name: &str| -> f32 {
+            let key = format!(" {name}=\"");
+            mask.split(&key).nth(1).and_then(|s| s.split('"').next()).and_then(|v| v.parse().ok()).expect(svg)
+        };
+        let (x, y, w, h) = (attr("x"), attr("y"), attr("width"), attr("height"));
+        assert!(x <= left && x + w >= right && y <= top && y + h >= bottom, "{mask}");
+    }
+}
+
+#[test]
+fn svg_node_mask_region_covers_a_shape_placed_away_from_the_origin() {
+    let window = solid("window", circle_at(0.0, 0.0, 20.0), red());
+    let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
+    bar.transform = skia_safe::Matrix::translate((48.0, 48.0));
+    bar.mask = Some(Box::new(artscript_ir::Mask {
+        source: artscript_ir::MaskSource::Nodes(vec![window]),
+        luminance: false,
+        feather: 0.0,
+        invert: false,
+    }));
+    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_mask_region_covers(&svg, -20.0, -20.0, 20.0, 20.0);
+}
+
+#[test]
+fn svg_outside_clip_region_covers_a_shape_placed_away_from_the_origin() {
+    let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
+    bar.transform = skia_safe::Matrix::translate((48.0, 48.0));
+    bar.clip = Some(artscript_ir::Clip { path: circle_at(0.0, 0.0, 10.0), feather: 0.0, invert: true });
+    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_mask_region_covers(&svg, -24.0, -24.0, 24.0, 24.0);
+}
+
 #[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
