@@ -280,39 +280,40 @@ impl Evaluator<'_> {
                 )),
             }
         }
-        for ident in artscript_brush::reserved_identifiers(&block.text) {
+        let at = |origin: Origin| match origin {
+            Origin::Body { line, col } => Span {
+                line: block.body.line + line - 1,
+                col: block.body.col + col.unwrap_or(0),
+            },
+            Origin::Param(i) => params
+                .iter()
+                .filter(|p| !PLACEMENT_KEYS.contains(&p.key.as_str()))
+                .nth(i)
+                .map_or(block.span, |p| p.span),
+            Origin::Frame => block.span,
+        };
+        let head_failed = !errors.is_empty();
+        for (ident, origin) in artscript_brush::reserved_identifiers(&block.text) {
             errors.push((
                 fail("E0363", format!("`{ident}` is reserved: names starting with `{RESERVED_PREFIX}` belong to the runtime"))
                     .fix("rename it"),
-                block.span,
+                at(origin),
             ));
         }
-        if !errors.is_empty() {
+        if head_failed {
             return Err(errors);
         }
         let program = Program::assemble(MainKind::Area, &decl_params, &block.text);
         if let Err(errs) = artscript_brush::check(&program) {
-            let at = |origin: Origin| match origin {
-                Origin::Body { line, col } => Span {
-                    line: block.body.line + line - 1,
-                    col: block.body.col + col.unwrap_or(0),
-                },
-                Origin::Param(i) => params
-                    .iter()
-                    .filter(|p| !PLACEMENT_KEYS.contains(&p.key.as_str()))
-                    .nth(i)
-                    .map_or(block.span, |p| p.span),
-                Origin::Frame => block.span,
-            };
-            return Err(errs
-                .into_iter()
-                .map(|e| {
-                    let f = fail("E0360", format!("SkSL: {}", e.message))
-                        .note(format!("in brush `{name}`"))
-                        .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
-                    (f, at(e.origin))
-                })
-                .collect());
+            errors.extend(errs.into_iter().map(|e| {
+                let f = fail("E0360", format!("SkSL: {}", e.message))
+                    .note(format!("in brush `{name}`"))
+                    .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
+                (f, at(e.origin))
+            }));
+        }
+        if !errors.is_empty() {
+            return Err(errors);
         }
         Ok(BrushVal {
             decl: Rc::new(BrushDecl {

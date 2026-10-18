@@ -351,6 +351,9 @@ fn parse_errors(program: &Program, text: &str) -> Vec<SkslError> {
             message: text.trim().to_string(),
         });
     }
+    // Errors past the first in the frame name its internals (`o`, `rgb`) and follow from it.
+    let mut frame_seen = false;
+    out.retain(|e| e.origin != Origin::Frame || !std::mem::replace(&mut frame_seen, true));
     out
 }
 
@@ -395,21 +398,59 @@ impl From<u32> for Seeds {
     }
 }
 
-/// Every identifier in `text` that starts with [`RESERVED_PREFIX`], in order, deduplicated.
-pub fn reserved_identifiers(text: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    let mut rest = text;
-    while let Some(start) = rest.find(|c: char| c.is_ascii_alphabetic() || c == '_') {
-        let after = &rest[start..];
-        let end = after
-            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .unwrap_or(after.len());
-        let word = &after[..end];
-        let glued = rest[..start].ends_with(|c: char| c.is_ascii_digit());
-        if !glued && word.starts_with(RESERVED_PREFIX) && !out.iter().any(|w| w == word) {
-            out.push(word.to_string());
+/// The first use of each identifier in `text` that starts with [`RESERVED_PREFIX`], in order,
+/// with its body line and column. Comments are skipped.
+pub fn reserved_identifiers(text: &str) -> Vec<(String, Origin)> {
+    let mut out: Vec<(String, Origin)> = Vec::new();
+    for (i, line) in blank_comments(text).lines().enumerate() {
+        let mut rest = line;
+        while let Some(start) = rest.find(|c: char| c.is_ascii_alphabetic() || c == '_') {
+            let after = &rest[start..];
+            let end = after
+                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .unwrap_or(after.len());
+            let word = &after[..end];
+            let glued = rest[..start].ends_with(|c: char| c.is_ascii_digit());
+            if !glued && word.starts_with(RESERVED_PREFIX) && !out.iter().any(|(w, _)| w == word) {
+                let col = line[..line.len() - after.len()].chars().count() as u32;
+                out.push((word.to_string(), Origin::Body { line: i as u32 + 1, col: Some(col) }));
+            }
+            rest = &after[end..];
         }
-        rest = &after[end..];
+    }
+    out
+}
+
+/// `text` with every `//` and `/* */` comment turned into spaces, lines and columns kept.
+fn blank_comments(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        let block = match (c, chars.peek()) {
+            ('/', Some('/')) => false,
+            ('/', Some('*')) => true,
+            _ => {
+                out.push(c);
+                continue;
+            }
+        };
+        out.push(' ');
+        if block {
+            chars.next();
+            out.push(' ');
+        }
+        let mut prev = ' ';
+        while let Some(&n) = chars.peek() {
+            if !block && n == '\n' {
+                break;
+            }
+            chars.next();
+            out.push(if n == '\n' { '\n' } else { ' ' });
+            if block && prev == '*' && n == '/' {
+                break;
+            }
+            prev = n;
+        }
     }
     out
 }
@@ -446,7 +487,8 @@ mod tests {
     fn a_missing_shade_is_a_frame_error() {
         let p = Program::assemble(MainKind::Area, &[], "float f(float x) { return x; }\n");
         let errs = check(&p).unwrap_err();
-        assert!(errs.iter().all(|e| e.origin == Origin::Frame), "{errs:?}");
+        assert_eq!(errs.len(), 1, "only the first frame error: {errs:?}");
+        assert_eq!(errs[0].origin, Origin::Frame);
         assert!(errs[0].message.contains("shade"), "{errs:?}");
     }
 
@@ -480,8 +522,16 @@ mod tests {
     }
 
     #[test]
-    fn reserved_identifiers_are_found_in_a_body() {
-        assert_eq!(reserved_identifiers("float u_x = 1; u_x + u_y; au_z"), vec!["u_x", "u_y"]);
+    fn reserved_identifiers_are_found_in_a_body_outside_comments() {
+        let at = |line, col| Origin::Body { line, col: Some(col) };
+        assert_eq!(
+            reserved_identifiers("float u_x = 1; u_x + u_y; au_z 2u_w"),
+            vec![("u_x".to_string(), at(1, 6)), ("u_y".to_string(), at(1, 21))]
+        );
+        assert_eq!(
+            reserved_identifiers("// u_prev is the base\n/*/ u_a\n u_b */ float k;\n  float q = u_seed;"),
+            vec![("u_seed".to_string(), at(4, 12))]
+        );
         assert!(reserved_identifiers(OK_BODY).is_empty());
     }
 }

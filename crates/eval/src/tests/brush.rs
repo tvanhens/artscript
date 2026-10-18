@@ -264,8 +264,9 @@ fn calling_a_lost_brush_stays_quiet_at_every_use_site() {
 fn a_frame_error_lands_on_the_sksl_keyword_and_an_unused_brush_is_still_checked() {
     let bad = ("lib/bad.art", "brush bad strength:.5\n  sksl \"\"\"\n    float f(float x) { return x; }\n  \"\"\"\n");
     let ds = errors("@target t.png 100x100\nuse bad\nrect 40x40 at:50,50 fill:#ff0000 name:a\n", &[bad]);
-    let d = ds.iter().find(|d| d.code == "E0360").unwrap_or_else(|| panic!("{}", show(&ds)));
-    assert_eq!((d.file.as_str(), d.span.line, d.span.col), ("lib/bad.art", 2, 3), "{d}");
+    assert_eq!(ds.len(), 1, "{}", show(&ds));
+    let d = &ds[0];
+    assert_eq!((d.code.as_str(), d.file.as_str(), d.span.line, d.span.col), ("E0360", "lib/bad.art", 2, 3), "{d}");
     assert!(d.message.contains("shade"), "{d}");
 }
 
@@ -276,7 +277,7 @@ fn malformed_declarations_are_e0363_at_their_key() {
         ("brush b edge:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `edge`"),
         ("brush b u_x:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `u_x`"),
         ("brush b word:left\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "must default to a number, color or vector"),
-        ("brush b strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { float u_k = 1; return m.paint; }\n  \"\"\"\n", 2, "`u_k` is reserved"),
+        ("brush b strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { float u_k = 1; return m.paint; }\n  \"\"\"\n", 3, "`u_k` is reserved"),
     ];
     for (lib, line, msg) in cases {
         let ds = errors("@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[("lib/b.art", lib)]);
@@ -285,6 +286,20 @@ fn malformed_declarations_are_e0363_at_their_key() {
         assert_eq!((d.file.as_str(), d.span.line), ("lib/b.art", line), "{lib}: {d}");
         assert!(ds.iter().all(|d| d.code == "E0363"), "{lib}: {}", show(&ds));
     }
+}
+
+#[test]
+fn a_reserved_name_lands_on_its_own_line_and_column_and_the_compile_errors_still_show() {
+    let lib = (
+        "lib/b.art",
+        "brush b strength:.5\n  sksl \"\"\"\n    // u_prev is the base\n    float4 shade(Mark m) {\n      float n = fbmx(m.uv, 3);\n      float q = u_seed;\n      return float4(m.paint.rgb, n);\n    }\n  \"\"\"\n",
+    );
+    let ds = errors("@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
+    let reserved: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E0363").collect();
+    assert_eq!(reserved.len(), 1, "a comment is not a use: {}", show(&ds));
+    assert!(reserved[0].message.contains("`u_seed`"), "{}", reserved[0]);
+    assert_eq!((reserved[0].span.line, reserved[0].span.col), (6, 17), "{}", reserved[0]);
+    assert!(ds.iter().any(|d| d.code == "E0360" && d.message.contains("fbmx") && d.span.line == 5), "{}", show(&ds));
 }
 
 #[test]
