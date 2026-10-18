@@ -3030,6 +3030,144 @@ fn an_unnamed_node_with_an_explicit_seed_does_not_warn_l0104() {
     );
 }
 
+/// Every unseeded draw a def body can make: a field fill, a `let` and a draw-site `rand`, a
+/// `blob`, `jitter:`, and `fx grain`.
+const BLOT_LIB: &str = "\
+def blot
+  rect 40x40 fill:fbm(simplex(6)) -> [#000 #fff] name:field
+  let r = rand(3 8)
+  circle r at:rand(-10 10),rand(-10 10) fill:#ff0000 name:dot
+  blob 8 wobble:.4 fill:#00ff00 name:lump
+  rect 30x4 at:0,15 jitter:1.5,8 fill:#0000ff name:bar
+  fx grain .3
+";
+
+/// The 48x48 pixels centered on `cx`,`cy`. Paint dithers on an 8px device grid, so two crops
+/// match byte for byte only when their centers differ by a multiple of 8.
+fn crop(scene: &Scene, cx: i32, cy: i32) -> Vec<u8> {
+    let (w, h, buf) =
+        artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
+    assert!(cx >= 24 && cy >= 24 && cx + 24 <= w as i32 && cy + 24 <= h as i32);
+    let mut out = Vec::new();
+    for y in cy - 24..cy + 24 {
+        let row = (y as usize * w as usize + (cx - 24) as usize) * 4;
+        out.extend_from_slice(&buf[row..row + 48 * 4]);
+    }
+    out
+}
+
+#[test]
+fn two_instances_with_the_same_seed_draw_the_same_pixels() {
+    let s = lib_scene(
+        "@target t.png 300x96 bg:#ffffff\nuse d { blot }\n\
+         blot at:48,48 seed:7 name:a\n\
+         group name:g at:96,0\n  blot at:48,48 seed:7 name:b\n\
+         blot at:240,48 seed:8 name:c\n",
+        BLOT_LIB,
+    );
+    let (a, b, c) = (crop(&s, 48, 48), crop(&s, 144, 48), crop(&s, 240, 48));
+    assert!(a == b, "seed:7 drew different pixels at a and g.b");
+    assert!(a != c, "seed:7 and seed:8 drew the same pixels");
+}
+
+#[test]
+fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
+    let wrap = "use d { blot }\ndef wrap\n  blot seed:7 name:w\n    fx grain .3\n";
+    let libs = [("lib/d.art", BLOT_LIB), ("lib/e.art", wrap)];
+    let ev = run_with(
+        "@target t.png 200x96 bg:#ffffff\nuse d { blot }\nuse e { wrap }\n\
+         blot at:48,48 seed:7 name:a\n  fx grain .3\nwrap at:144,48 name:x\n",
+        &libs,
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert!(
+        crop(&s, 48, 48) == crop(&s, 144, 48),
+        "the call in lib/e.art drew different pixels"
+    );
+
+    let asset = run_with(
+        "@target t.png 48x48 bg:#ffffff\nuse d { blot }\nblot at:24,24 seed:7 name:block\n  fx grain .3\n",
+        &libs,
+    );
+    assert!(asset.diagnostics.is_empty(), "{}", show(&asset.diagnostics));
+    assert!(
+        crop(&asset.scene.unwrap(), 24, 24) == crop(&s, 48, 48),
+        "the asset entry file drew different pixels"
+    );
+}
+
+#[test]
+fn a_seeded_instance_seeds_slot_content_from_the_seed_in_any_file() {
+    let fill = |indent: &str| format!("{indent}top:\n{indent}  circle 4 at:rand(0 40),0 name:c\n");
+    let wrap = format!(
+        "use d {{ holder }}\ndef wrap\n  holder seed:7 name:w\n{}",
+        fill("    ")
+    );
+    let libs = [
+        ("lib/d.art", "def holder\n  slot top\n"),
+        ("lib/e.art", wrap.as_str()),
+    ];
+    let ev = run_with(
+        &format!(
+            "@target t.png 96x48\nuse d {{ holder }}\nuse e {{ wrap }}\n\
+             holder seed:7 name:a\n{}wrap name:x\nholder seed:8 name:b\n{}",
+            fill("  "),
+            fill("  ")
+        ),
+        &libs,
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(at(node(&s, "a.top.c")), at(node(&s, "x.w.top.c")));
+    assert_ne!(at(node(&s, "a.top.c")), at(node(&s, "b.top.c")));
+}
+
+#[test]
+fn an_unnamed_instance_with_a_seed_does_not_warn_l0104() {
+    let src = |call: &str| {
+        format!(
+            "@target t.png 40x40\ndef speck\n  rect 20x20 fill:#888888\n  fx grain .3\n{call}\n"
+        )
+    };
+    let seeded = eval_lint(&src("speck seed:7"), "");
+    assert!(
+        seeded.diagnostics.is_empty(),
+        "{}",
+        show(&seeded.diagnostics)
+    );
+    let bare = eval_lint(&src("speck"), "");
+    assert!(
+        bare.diagnostics
+            .iter()
+            .any(|d| d.code == "L0104" && d.span.line == 5),
+        "{}",
+        show(&bare.diagnostics)
+    );
+}
+
+#[test]
+fn a_def_with_a_seed_parameter_still_receives_seed() {
+    let s = scene(
+        "@target t.png 100x100\ndef tile seed:1\n  rect 20x20 fill:simplex(6 seed:seed) -> [#000 #fff] name:f\n\
+         tile seed:5 name:a\nrect 20x20 fill:simplex(6 seed:5) -> [#000 #fff] name:r\n",
+    );
+    assert_eq!(
+        format!("{:?}", shape(&s, "a.f").fill),
+        format!("{:?}", shape(&s, "r").fill)
+    );
+}
+
+#[test]
+fn an_instance_seed_that_is_not_a_number_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef speck\n  rect 20x20 fill:#888888\nspeck seed:#ff0000 name:s\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 4);
+}
+
 #[test]
 fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
     let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");

@@ -2778,9 +2778,16 @@ impl<'a> Evaluator<'a> {
             pos: Vec::new(),
             named: Vec::new(),
         };
+        let mut key = key;
         for (k, v) in &a.named {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
+            } else if k == "seed" {
+                let seed = v.num().ok_or_else(|| {
+                    fail("E0320", format!("`seed:` takes a number, got {}", v.kind()))
+                        .fix("write `seed:7`")
+                })?;
+                key = key.seeded(&comp.module, &comp.name, seed as u64);
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
