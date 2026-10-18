@@ -4307,6 +4307,63 @@ fn an_inside_or_outside_block_blends_with_what_is_below_it() {
     assert_eq!(pixel(&inside, 5, 10), pixel(&plain, 5, 10));
 }
 
+fn premul(p: [u8; 4]) -> [i32; 4] {
+    let a = p[3] as i32;
+    [p[0] as i32 * a / 255, p[1] as i32 * a / 255, p[2] as i32 * a / 255, a]
+}
+
+fn assert_near(got: [u8; 4], want: [u8; 4], tol: i32, what: &str) {
+    let (g, w) = (premul(got), premul(want));
+    assert!(g.iter().zip(w).all(|(g, w)| (g - w).abs() <= tol), "{what}: got {got:?}, want {want:?}");
+}
+
+#[test]
+fn a_feathered_inside_or_outside_block_blends_with_what_is_below_it() {
+    let draws = "  rect 20x20 at:10,10 fill:#ffffff\n  rect 40x20 at:20,10 fill:#80c0ff blend:multiply\n";
+    let head = "@target t.png 40x20 bg:#010001\nrect 40x20 at:20,10 fill:none name:frame\ncircle 1 at:-9,-9 fill:none name:away\n";
+    let plain = scene(&format!("{head}group\n{draws}"));
+    let inside = scene(&format!("{head}inside @frame feather:2\n{draws}"));
+    let outside = scene(&format!("{head}outside @away feather:2\n{draws}"));
+    assert_eq!(pixel(&plain, 35, 10), [1, 0, 1, 255]);
+    assert_near(pixel(&inside, 35, 10), pixel(&plain, 35, 10), 1, "inside isolated its block");
+    assert_near(pixel(&outside, 35, 10), pixel(&plain, 35, 10), 1, "outside isolated its block");
+}
+
+#[test]
+fn a_feathered_inside_block_counts_a_translucent_canvas_once_in_its_edge() {
+    let draws = "rect 20x20 at:10,10 fill:none name:frame\ninside @frame feather:2\n  rect 40x6 at:20,3 fill:#ffffff80\n  rect 40x6 at:20,10 fill:#ff0000\n";
+    let alone = scene(&format!("@target t.png 40x20\n{draws}"));
+    let over = scene(&format!("@target t.png 40x20 bg:#3366cc80\n{draws}"));
+    let bg = premul([0x33, 0x66, 0xcc, 0x80]);
+    for y in [3, 10, 17] {
+        for x in [16, 18, 20, 22] {
+            let src = premul(pixel(&alone, x, y));
+            let want: Vec<i32> = (0..4).map(|i| src[i] + (bg[i] * (255 - src[3]) + 127) / 255).collect();
+            let got = premul(pixel(&over, x, y));
+            assert!(
+                got.iter().zip(&want).all(|(g, w)| (g - w).abs() <= 2),
+                "at {x},{y}: got {got:?}, want {want:?}, the block alone over the canvas"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_feathered_inside_block_fades_its_blend_into_the_canvas() {
+    let head = "rect 20x20 at:10,10 fill:none name:frame\n";
+    let coverage = scene(&format!("@target t.png 40x20\n{head}inside @frame feather:2\n  rect 40x20 at:20,10 fill:#ffffff\n"));
+    let shade = "  rect 40x20 at:20,10 fill:#80c0ff blend:multiply\n";
+    let gray = "@target t.png 40x20 bg:#808080\n";
+    let plain = scene(&format!("{gray}{head}group\n{shade}"));
+    let soft = scene(&format!("{gray}{head}inside @frame feather:2\n{shade}"));
+    for x in [16, 18, 20, 22] {
+        let m = pixel(&coverage, x, 10)[3] as f32 / 255.0;
+        let full = pixel(&plain, x, 10);
+        let want = full.map(|c| (128.0 + (c as f32 - 128.0) * m).round() as u8);
+        assert_near(pixel(&soft, x, 10), [want[0], want[1], want[2], 255], 2, &format!("coverage {m} at {x},10"));
+    }
+}
+
 #[test]
 fn an_svg_inside_block_clips_its_blended_child_not_the_block() {
     let s = scene("@target t.svg 40x20 bg:#010001\nrect 40x20 at:20,10 fill:none name:frame\ninside @frame name:view\n  group\n    rect 40x20 at:20,10 fill:#80c0ff blend:multiply name:shade\n");
@@ -4314,6 +4371,53 @@ fn an_svg_inside_block_clips_its_blended_child_not_the_block() {
     let tag = |part: &str| svg.lines().find(|l| l.contains(part)).unwrap_or_else(|| panic!("no {part} in {svg}"));
     assert!(!tag("id=\"view\"").contains("clip-path"), "a clip-path on the block isolates it: {svg}");
     assert!(tag("mix-blend-mode:multiply").contains("clip-path"), "the blended child lost the clip: {svg}");
+}
+
+#[test]
+fn an_svg_feathered_inside_block_masks_its_blended_child_not_the_block() {
+    for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
+        let s = scene(&format!("@target t.svg 40x20 bg:#010001\nrect 30x20 at:15,10 fill:none name:frame\n{clip} name:view\n  group\n    rect 40x20 at:20,10 fill:#80c0ff blend:multiply name:shade\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let tag = |part: &str| svg.lines().find(|l| l.contains(part)).unwrap_or_else(|| panic!("no {part} in {svg}"));
+        assert!(!tag("id=\"view\"").contains("mask="), "{clip}: a mask on the block isolates it: {svg}");
+        assert!(tag("mix-blend-mode:multiply").contains("mask="), "{clip}: the blended child lost the mask: {svg}");
+    }
+}
+
+#[test]
+fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
+    for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
+        let s = scene(&format!("@target t.svg 40x20\nrect 30x20 at:15,10 fill:none name:frame\n{clip}\n  rect 40x20 at:20,10 fill:#80c0ff\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        assert!(svg.contains("<feGaussianBlur"), "{clip}: no blur: {svg}");
+        assert!(
+            svg.lines().all(|l| !l.contains("<filter") || l.trim_start().starts_with("<filter")),
+            "{clip}: a filter element inside another tag: {svg}"
+        );
+    }
+}
+
+#[test]
+fn an_svg_outside_block_masks_by_luminance_so_its_black_hole_hides() {
+    for feather in ["", " feather:2"] {
+        let s = scene(&format!("@target t.svg 60x40\ncircle 10 at:30,20 fill:none name:hole\noutside @hole{feather}\n  rect 60x40 at:30,20 fill:#80c0ff\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let mask = svg.lines().find(|l| l.contains("<mask")).unwrap_or_else(|| panic!("no mask in {svg}"));
+        assert!(svg.contains("fill=\"#000000\""), "outside{feather}: no black hole: {svg}");
+        assert!(mask.contains("mask-type=\"luminance\""), "outside{feather}: an alpha mask keeps the black hole: {svg}");
+    }
+}
+
+#[test]
+fn an_svg_inside_block_clips_a_baked_child_in_canvas_coordinates() {
+    for (feather, def) in [("", "<clipPath id=\"inside-1.rect-1-clip\">"), (" feather:2", "<mask id=\"inside-1.rect-1-pushed\"")] {
+        let s = scene(&format!("@target t.svg 60x40 bg:#808080\nrect 30x30 at:30,20 fill:none name:frame\ninside @frame{feather}\n  rect 50x36 at:30,20 fill:#80c0ff blend:multiply\n    fx adjust hue:10\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        assert!(svg.contains("<image x=\"5\" y=\"2\""), "inside{feather}: the child did not bake: {svg}");
+        let clip = svg.split(def).nth(1).unwrap_or_else(|| panic!("inside{feather}: no {def} in {svg}"));
+        let clip = &clip[..clip.find("</").unwrap()];
+        assert!(clip.contains("M 15 5L 45 5L 45 35L 15 35Z") && !clip.contains("transform"), "inside{feather}: the clip is not in the tile's coordinates: {svg}");
+    }
 }
 
 #[test]
@@ -4452,6 +4556,166 @@ fn off_canvas_measures_a_shape_after_an_inside_clip() {
         "@target t.png 64x64\nrect 40x40 at:32,32 fill:#4af name:x\noutside @x\n  rect 80x20 at:32,32 fill:#4af name:bar\n",
     );
     assert_eq!(hits.len(), 1, "{}", show(&hits));
+}
+
+const CUT_FX: &str = "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:#4af name:bar\n  fx glow 12\n";
+
+#[test]
+fn off_canvas_measures_what_effects_draw() {
+    let plain = off_canvas_hits(
+        "@target t.png 64x64\nrect 10x20 at:32,55 fill:#4af name:r\nrect 40x10 at:32,8 fill:#4af name:bar\n",
+    );
+    assert!(plain.is_empty(), "{}", show(&plain));
+
+    let hits = off_canvas_hits(CUT_FX);
+    let nodes: Vec<&str> = hits.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["r", "bar"], "{}", show(&hits));
+    assert_eq!(hits[0].span.line, 2);
+    assert_eq!(hits[1].span.line, 4);
+}
+
+#[test]
+fn off_canvas_measures_an_effect_that_reads_another_node() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 40x10 at:32,8 fill:#4af name:bar\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 12 of:@bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "dot");
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ncircle 4 at:32,40 fill:#4af name:dot\n  fx glow 40 of:@dot\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 10x20 at:30,30 fill:#4af name:r\n  fx outline 3\n\
+         rect 40x10 at:50,70 fill:#4af name:g\n  fx glow 4 a:1\n\
+         rect 10x10 at:70,20 fill:#4af name:s\n  fx shadow 0,6 blur:2 color:#000\n\
+         circle 1 at:@r.outer.right,@r.outer.bottom name:pr\n\
+         circle 1 at:@r.right,@r.bottom name:vr\n\
+         circle 1 at:@g.outer.left,@g.outer.bottom name:pg\n\
+         circle 1 at:@g.left,@g.bottom name:vg\n\
+         circle 1 at:@s.outer.top,@s.outer.bottom name:ps\n",
+    );
+    let glow = 4.0 * 2.884_402_7;
+    let shadow = 2.0 * 2.884_402_7;
+    near(at(node(&s, "pr")), (38.0, 43.0));
+    near(at(node(&s, "vr")), (35.0, 40.0));
+    near(at(node(&s, "pg")), (30.0 - glow, 75.0 + glow));
+    near(at(node(&s, "vg")), (30.0, 75.0));
+    near(at(node(&s, "ps")), (15.0, 31.0 + shadow));
+}
+
+#[test]
+fn inside_outer_fails_where_plain_inside_passes() {
+    let ev = run_with(
+        &format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"),
+        &[],
+    );
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "C0101"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+
+    let ev = run_with(&format!("{CUT_FX}assert inside(@bar.outer canvas)\n"), &[]);
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
+    assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(failed[0].span.line, 6);
+
+    let ev = run_with(&format!("{CUT_FX}assert @bar.outer.top >= 0\n"), &[]);
+    let failed: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('C'))
+        .collect();
+    assert_eq!(failed.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(
+        failed[0]
+            .notes
+            .iter()
+            .any(|n| n.starts_with("bar.outer.top = -")),
+        "{:?}",
+        failed[0].notes
+    );
+}
+
+#[test]
+fn outer_follows_an_effect_that_reads_another_node() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 40x10 at:50,30 fill:#4af name:bar\n\
+         circle 4 at:50,70 fill:#4af name:dot\n  fx glow 4 a:1 of:@bar\n\
+         circle 1 at:@dot.outer.cx,@dot.outer.top name:probe\n",
+    );
+    near(at(node(&s, "probe")), (50.0, 25.0 - 4.0 * 2.884_402_7));
+
+    let ev = run_with(&format!("{CUT_FX}assert @bar.outer.foo > 0\n"), &[]);
+    assert!(
+        ev.diagnostics
+            .iter()
+            .any(|d| d.code == "E0350" && d.message.contains("`.outer.foo`")),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
+fn copy_of_an_outer_ref_is_its_box() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 63.0, 58.0));
+}
+
+#[test]
+fn a_part_named_outer_wins_over_the_outer_extent() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         def badge\n  circle 10 fill:#4af name:outer\n  circle 2 at:0,30 fill:#4af name:pin\n\
+         badge at:50,40 name:b\n  fx glow 8\n\
+         circle 1 at:@b.outer.cx,@b.outer.bottom name:probe\n",
+    );
+    near(at(node(&s, "probe")), (50.0, 50.0));
+}
+
+#[test]
+fn a_cut_group_glow_is_reported_once_at_the_group() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x10 at:0,0 fill:#4af name:a\n  rect 10x4 at:0,2 fill:#4af name:b\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "g");
+    assert_eq!(hits[0].span.line, 2);
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\ngroup at:32,10 name:g\n  fx glow 12\n  rect 40x30 at:0,0 fill:#4af name:a\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "a");
+}
+
+#[test]
+fn an_ancestor_clip_cuts_a_glow_and_the_node_s_own_clip_does_not() {
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x\n  rect 20x10 at:32,40 fill:#4af name:bar\n    fx glow 12\n",
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+
+    let hits = off_canvas_hits(
+        "@target t.png 64x64\nrect 20x20 at:32,32 fill:#4af name:x\ninside @x name:clip\n  fx glow 12\n  rect 20x10 at:32,40 fill:#4af name:bar\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+    assert_eq!(hits[0].node, "clip");
 }
 
 #[test]

@@ -29,7 +29,7 @@ use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AnimDef, Component, Module, Palette, Record, RefVal, RuleDef, StyleDef, ref_from,
+    AnimDef, Component, Extent, Module, Palette, Record, RefVal, RuleDef, StyleDef, ref_from,
 };
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
@@ -303,6 +303,8 @@ pub(crate) struct Evaluator<'a> {
     /// True while `collect_entry` runs, before anything is drawn.
     pub(crate) prepass: bool,
     silence: bool,
+    /// Every placed record by node path, for `.outer` to find the nodes an `of:@x` effect reads.
+    placed: RefCell<HashMap<String, Rc<RefCell<Record>>>>,
 }
 
 struct StyleHit {
@@ -767,6 +769,7 @@ impl<'a> Evaluator<'a> {
             guards: HashMap::new(),
             prepass: false,
             silence: false,
+            placed: RefCell::new(HashMap::new()),
         }
     }
 
@@ -1583,6 +1586,9 @@ impl<'a> Evaluator<'a> {
         record.home = Some(Rc::downgrade(&sc.names));
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
+        self.placed
+            .borrow_mut()
+            .insert(rec.borrow().path.clone(), rec.clone());
         let name = sc.names.borrow().region().decl(decl).name.clone();
         sc.names.borrow_mut().register(
             decl,
@@ -2828,18 +2834,22 @@ impl<'a> Evaluator<'a> {
                 at,
                 Some(names.clone()),
             ),
-            None => Rc::new(RefCell::new(Record {
-                name: String::new(),
-                path: path.clone(),
-                key: key.clone(),
-                parent_world: sc.world,
-                node: Some(placeholder),
-                anchor: None,
-                at,
-                home: None,
-                decl: None,
-                inner: Some(names.clone()),
-            })),
+            None => {
+                let rec = Rc::new(RefCell::new(Record {
+                    name: String::new(),
+                    path: path.clone(),
+                    key: key.clone(),
+                    parent_world: sc.world,
+                    node: Some(placeholder),
+                    anchor: None,
+                    at,
+                    home: None,
+                    decl: None,
+                    inner: Some(names.clone()),
+                }));
+                self.placed.borrow_mut().insert(path.clone(), rec.clone());
+                rec
+            }
         };
         let children =
             self.eval_block_nodes(comp.body.iter().filter_map(DefItem::scene), &mut body_scope);
@@ -4026,6 +4036,7 @@ impl<'a> Evaluator<'a> {
                 },
                 source: None,
                 canvas: Some(self.canvas),
+                extent: Extent::Visual,
             }))),
             _ => None,
         }
@@ -4379,6 +4390,36 @@ impl<'a> Evaluator<'a> {
         Ok(Value::Num(v))
     }
 
+    /// `@x.outer`: the box of everything `r` draws, in canvas coordinates. The canvas and an
+    /// anchor draw only themselves.
+    fn outer(&self, r: &RefVal, label: &str) -> R<RefVal> {
+        let no_ink = || fail("E0351", format!("@{label} draws nothing"));
+        let rect = match &r.record.node {
+            None => r.bounds().ok_or_else(no_ink)?,
+            Some(node) => {
+                let placed = self.placed.borrow();
+                let records: Vec<(&str, std::cell::Ref<'_, Record>)> = placed
+                    .iter()
+                    .map(|(p, rec)| (p.as_str(), rec.borrow()))
+                    .collect();
+                let nodes: HashMap<&str, (&Node, Matrix)> = records
+                    .iter()
+                    .filter_map(|(p, rec)| Some((*p, (rec.node.as_ref()?, rec.parent_world))))
+                    .collect();
+                let find = |p: &str| nodes.get(p).copied();
+                let local = node
+                    .outer_bounds(&r.record.parent_world, &find)
+                    .ok_or_else(no_ink)?;
+                r.record.parent_world.map_rect(local).0
+            }
+        };
+        Ok(RefVal {
+            label: format!("{label}.outer"),
+            extent: Extent::Outer(rect),
+            ..r.clone()
+        })
+    }
+
     fn reference(&mut self, segs: &[String], sc: &Scope) -> R<Value> {
         let first = &segs[0];
         if first == "self" {
@@ -4396,6 +4437,7 @@ impl<'a> Evaluator<'a> {
                 record: rec.borrow().clone(),
                 source: Some(Rc::as_ptr(&rec) as usize),
                 canvas: None,
+                extent: Extent::Visual,
             };
             return self.walk_ref(vec![cur], segs, 1, "self".into(), sc, 0);
         }
@@ -4529,6 +4571,15 @@ impl<'a> Evaluator<'a> {
             if matched.is_empty() {
                 if last && MEASURES.contains(&seg) {
                     return self.measure(&one, seg, sc);
+                }
+                if seg == "outer" {
+                    let outer = self.outer(&one, &label)?;
+                    return match &segs[i + 1..] {
+                        [] => Ok(Value::Ref(Rc::new(outer))),
+                        [m] if MEASURES.contains(&m.as_str()) => self.measure(&outer, m, sc),
+                        [m, ..] => Err(fail("E0350", format!("unknown measurement `.outer.{m}`"))
+                            .note(format!("measurements: {}", MEASURES.join(" ")))),
+                    };
                 }
                 return Err(fail("E0350", format!("@{label} has no part `{seg}`"))
                     .note(format!(
