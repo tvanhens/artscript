@@ -40,6 +40,8 @@ These are never blocking: style, naming, structure preferences, speculative perf
 2. Open the sheet with the Read tool and look at it.
 3. Apply the "Visual goldens" rule in `AGENTS.md`.
 
+`.claude-review/visual/required.txt` lists the goldens this run must review. List every golden you checked in `goldens_reviewed`. The check fails when a golden in `required.txt` is missing from it, so review all of them before you answer.
+
 A golden is a binary file and takes no inline comment. Anchor a visual finding on the fixture's first line when the fixture is in the PR diff. Otherwise anchor it on the changed code line that most likely made the change. Its failure scenario names the golden, the cell, what the spec or the code change says the cell should show, and what the image shows.
 
 ## First review (`last_sha` is empty)
@@ -63,3 +65,4 @@ Do these in order.
 - `blocking`: every blocking finding open at HEAD, new and carried over. Empty means the check passes.
 - `resolve_thread_ids`: ids from `threads.json` only. Never list an id that is also in `blocking`.
 - `nonblocking_count`: how many non-blocking observations you made, posted or not.
+- `goldens_reviewed`: every golden whose sheet you opened and checked, by its path in `visual/index.md`.

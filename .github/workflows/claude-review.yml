@@ -75,7 +75,7 @@ jobs:
           # A cancelled or crashed run never updates it, so the next run re-reviews that range.
           last_sha=$(gh api --paginate "repos/$REPO/issues/$PR_NUMBER/comments" \
             --jq '.[] | select(.user.login == (env.REVIEWER_LOGIN + "[bot]")) | .body' |
-            grep -oE '<!-- claude-review:sha=[0-9a-f]{40} -->' | tail -n1 |
+            grep -oE '<!-- claude-review:covered=[0-9a-f]{40} -->' | tail -n1 |
             grep -oE '[0-9a-f]{40}' || true)
           if [ -n "$last_sha" ] && ! git cat-file -e "$last_sha^{commit}" 2>/dev/null; then
             last_sha=
@@ -83,6 +83,14 @@ jobs:
           printf '%s' "$last_sha" >.claude-review/last_sha
 
           python3 scripts/visual_review.py "$BASE_SHA" .claude-review/visual
+          # The goldens this run must review: the PR's own, narrowed to those changed since the last covered review.
+          git diff --name-only --no-renames "$BASE_SHA...HEAD" -- catalog/golden/ | sort >.claude-review/visual/pr.txt
+          if [ -n "$last_sha" ]; then
+            git diff --name-only --no-renames "$last_sha" HEAD -- catalog/golden/ | sort |
+              comm -12 - .claude-review/visual/pr.txt >.claude-review/visual/required.txt
+          else
+            cp .claude-review/visual/pr.txt .claude-review/visual/required.txt
+          fi
 
           # claude_args is shell-quote parsed, so the schema rides in single quotes.
           schema=$(jq -c . .github/claude-review/schema.json)
@@ -98,7 +106,7 @@ jobs:
             echo "- base_sha: $BASE_SHA"
             echo "- last_sha: $last_sha"
             echo "- reviewer_login: $REVIEWER_LOGIN (your comments carry this author login in threads.json)"
-            echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above; visual/index.md lists the catalog goldens this PR changes)"
+            echo "- context dir: .claude-review/ (threads.json lists every review thread; last_sha holds the same value as above; visual/index.md lists the catalog goldens this PR changes; visual/required.txt lists the goldens this run must review)"
             echo
             cat .github/claude-review/prompt.md
             echo 'CLAUDE_REVIEW_PROMPT_EOF'

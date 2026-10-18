@@ -55,4 +55,5 @@ A PR description records why its design choice was made. Replace an earlier choi
 - Each push is re-reviewed. The reviewer resolves a thread when the code is fixed or it accepts your reply.
 - To have a reply re-evaluated with no code change, run `gh run rerun <run-id> --failed`.
 - The check says "did not run" when the review crashed or was skipped. Rerun it the same way.
+- The check fails when the reviewer did not review every golden this PR changes. Rerun it the same way.
 - Do not resolve threads by hand or edit `.github/claude-review/` to get a pass.

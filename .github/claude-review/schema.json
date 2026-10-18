@@ -1,7 +1,7 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["summary", "blocking", "resolve_thread_ids", "nonblocking_count"],
+  "required": ["summary", "blocking", "resolve_thread_ids", "nonblocking_count", "goldens_reviewed"],
   "properties": {
     "summary": {
       "type": "string",
@@ -32,6 +32,11 @@
     "resolve_thread_ids": {
       "type": "array",
       "description": "Prior bot threads now fixed at HEAD, or answered by a reply you accept.",
+      "items": { "type": "string" }
+    },
+    "goldens_reviewed": {
+      "type": "array",
+      "description": "Every golden whose sheet you opened and checked against its fixture, by its path in visual/index.md.",
       "items": { "type": "string" }
     },
     "nonblocking_count": {
