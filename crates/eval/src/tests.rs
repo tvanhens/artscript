@@ -4486,6 +4486,70 @@ fn extra_positional_items_on_a_builtin_verb_are_e0321() {
 }
 
 #[test]
+fn an_unknown_key_on_a_builtin_verb_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\ncircle 6 at:32,32 fil:#7fd4a8\nrect 10,10 at:10,10 strok:#7fd4a8,2 nmae:box\n",
+        &[],
+    );
+    let found: Vec<(u32, String, String)> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0321")
+        .map(|d| (d.span.line, d.message.clone(), d.fix.clone().unwrap_or_default()))
+        .collect();
+    let want = [
+        (2, "`circle` has no key `fil`", "did you mean `fill:`?"),
+        (3, "`rect` has no key `strok`", "did you mean `stroke:`?"),
+        (3, "`rect` has no key `nmae`", "did you mean `name:`?"),
+    ];
+    assert_eq!(
+        found,
+        want.map(|(l, m, f)| (l, m.to_string(), f.to_string())),
+        "{}",
+        show(&ev.diagnostics)
+    );
+
+    let ev = run_with("@target t.png 64x64\npoly 6 r:20 inner:.5\n", &[]);
+    let d = diag(&ev, "E0321");
+    assert_eq!(d.message, "`poly` has no key `inner`");
+
+    let ev = run_with("@target t.png 64x64\ngroup g\n  repeat 3 colour:4\n    circle 2\n", &[]);
+    let d = diag(&ev, "E0321");
+    assert_eq!(d.message, "`repeat` has no key `colour`");
+    assert_eq!(d.span.line, 3);
+    assert!(d.notes.iter().any(|n| n.contains("step")), "{d}");
+
+    for src in [
+        "star 5 r:20 inner:.5 round:2 jitter:1,20 seed:3",
+        "blob 20 seed:4 wobble:.2 points:9",
+        "curve 0,0 20,-15 40,0 closed tension:0 round:2 taper:.3",
+        "rect 10x10 r:2 stroke:#000000,2 cap:butt join:miter dash:4,2 blur:1 a:.5 blend:multiply z:front feather:1 name:box",
+        "group g\n  grid 2x2 gap:2 cell:4x4\n    circle 2",
+        "group g\n  repeat 3 step:4,0 rot:10\n    circle 2",
+        "group g style:ink fill:#000000\n  circle 2",
+    ] {
+        let ev = run_with(&format!("@target t.png 64x64\nstyle ink a:1\n{src}\n"), &[]);
+        assert!(
+            ev.diagnostics.iter().all(|d| d.code != "E0321"),
+            "{src}: {}",
+            show(&ev.diagnostics)
+        );
+    }
+}
+
+#[test]
+fn a_group_passes_its_paint_keys_to_its_children() {
+    let s = scene("@target t.png 64x64\ngroup g fill:#ff0000\n  circle 4 name:a\n  circle 4 fill:#0000ff name:b\n");
+    assert_eq!(fill_hex(node(&s, "a")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "b")), "#0000ff");
+
+    let ev = run_with("@target t.png 64x64\ncanvas fil:#000000\n", &[]);
+    let d = diag(&ev, "E0321");
+    assert_eq!(d.message, "`canvas` has no key `fil`");
+    assert_eq!(d.fix.as_deref(), Some("did you mean `fill:`?"));
+}
+
+#[test]
 fn a_vector_is_a_size_and_filtered_words_still_pass() {
     let s = scene(
         "@target t.png 64x64\nlet w = 30\nlet h = 6\nrect w,h at:32,32 name:r\nlayer bg\n  group g at:32,32\n    mirror x\n      circle 4 at:10,0 name:ear\ncurve 0,0 10,-5 20,0 30,5 40,0 name:wave\ncurve 0,0 10,10 20,0 closed name:loop\n",
