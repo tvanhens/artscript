@@ -18,8 +18,8 @@ use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
     BlendMode, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix, Paint,
-    PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, TileMode,
-    image_filters, path_utils, surfaces,
+    PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, SamplingOptions,
+    TileMode, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
@@ -491,7 +491,20 @@ half4 main(half4 c) {
 /// visible to a later one.
 pub enum LayerStep {
     Filter(ImageFilter),
-    Outline { width: f32, color: Color },
+    Outline { width: f32, color: Color, cover_halo_past: Option<f32> },
+}
+
+fn paints_past_its_input(effect: &Effect) -> bool {
+    matches!(effect.input, EffectInput::Node(_))
+        || match &effect.op {
+            EffectOp::Blur { .. } | EffectOp::Shadow { .. } | EffectOp::Glow { .. } => true,
+            EffectOp::Merge { inputs, .. } => inputs.iter().any(|i| matches!(i, EffectInput::Node(_))),
+            EffectOp::Inner { .. }
+            | EffectOp::Rim { .. }
+            | EffectOp::Adjust { .. }
+            | EffectOp::Grain { .. }
+            | EffectOp::Outline { .. } => false,
+        }
 }
 
 /// Splits a chain that contains a positive outline. A chain with none stays on the single
@@ -508,6 +521,8 @@ pub fn layer_steps(
     }
     let mut steps = Vec::new();
     let mut start = 0;
+    let mut halo = false;
+    let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
         let EffectOp::Outline { width, color } = effect.op else {
             continue;
@@ -515,12 +530,15 @@ pub fn layer_steps(
         if width <= 0.0 {
             continue;
         }
-        if start < i
-            && let Some(filter) = chain(&effects[start..i], env)?
+        let run = &effects[start..i];
+        if !run.is_empty()
+            && let Some(filter) = chain(run, env)?
         {
             steps.push(LayerStep::Filter(filter));
+            halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline { width, color });
+        steps.push(LayerStep::Outline { width, color, cover_halo_past: halo.then_some(inked) });
+        inked = inked.max(width);
         start = i + 1;
     }
     if start < effects.len()
@@ -549,6 +567,7 @@ pub fn outline_geometry(
     node: &Node,
     width: f32,
     color: Color,
+    cover_halo_past: Option<f32>,
 ) -> Result<Image, RenderError> {
     if width <= 0.0 {
         return Ok(src);
@@ -557,34 +576,80 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let mut surface = gpu::surface(backend, (src.width(), src.height()))
-        .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
-    let canvas = surface.canvas();
-    canvas.draw_image(&src, (0.0, 0.0), None);
-    canvas.concat(local_to_px);
-    let mut layer = Paint::default();
-    layer.set_blend_mode(BlendMode::DstOver);
-    layer.set_alpha_f(color.a.clamp(0.0, 1.0));
-    canvas.save_layer(&SaveLayerRec::default().paint(&layer));
-    let mut ink = Paint::default();
-    ink.set_anti_alias(true);
-    ink.set_color4f(Color4f { a: 1.0, ..color4(color) }, None);
-    ink.set_stroke_cap(Cap::Round);
-    ink.set_stroke_join(Join::Round);
-    ink.set_stroke_width(width * 2.0);
-    for region in &regions {
+    let ring = Ring { regions: &regions, local_to_px, width, color };
+    let mut under = ring.composite(backend, &src, BlendMode::DstOver)?;
+    if let Some(inked) = cover_halo_past {
+        let over = ring.composite(backend, &src, BlendMode::SrcOver)?.image_snapshot();
+        let outside = ink_area(&regions, inked)?
+            .with_transform(local_to_px)
+            .with_toggle_inverse_fill_type();
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        paint.set_blend_mode(BlendMode::Src);
+        paint.set_shader(over.to_shader(None, SamplingOptions::default(), None));
+        under.canvas().draw_path(&outside, &paint);
+    }
+    Ok(under.image_snapshot())
+}
+
+fn ink_area(regions: &[Region], reach: f32) -> Result<Path, RenderError> {
+    let mut grow = Paint::default();
+    grow.set_style(Style::Stroke);
+    grow.set_stroke_width(reach * 2.0);
+    grow.set_stroke_cap(Cap::Round);
+    grow.set_stroke_join(Join::Round);
+    regions
+        .iter()
+        .try_fold(Path::default(), |area, region| {
+            let area = skia_safe::op(&area, &region.path, PathOp::Union)?;
+            if reach <= 0.0 {
+                return Some(area);
+            }
+            let mut band = PathBuilder::new();
+            path_utils::fill_path_with_paint(&region.path, &grow, &mut band, None::<&Rect>, None::<Matrix>);
+            skia_safe::op(&area, &band.snapshot(), PathOp::Union)
+        })
+        .ok_or_else(|| RenderError::Skia("outline ink area".into()))
+}
+
+struct Ring<'a> {
+    regions: &'a [Region],
+    local_to_px: &'a Matrix,
+    width: f32,
+    color: Color,
+}
+
+impl Ring<'_> {
+    fn composite(&self, backend: Backend, src: &Image, mode: BlendMode) -> Result<skia_safe::Surface, RenderError> {
+        let mut surface = gpu::surface(backend, (src.width(), src.height()))
+            .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
+        let canvas = surface.canvas();
+        canvas.draw_image(src, (0.0, 0.0), None);
+        let mut layer = Paint::default();
+        layer.set_blend_mode(mode);
+        layer.set_alpha_f(self.color.a.clamp(0.0, 1.0));
+        canvas.save_layer(&SaveLayerRec::default().paint(&layer));
+        canvas.concat(self.local_to_px);
+        let mut ink = Paint::default();
+        ink.set_anti_alias(true);
+        ink.set_color4f(Color4f { a: 1.0, ..color4(self.color) }, None);
+        ink.set_stroke_cap(Cap::Round);
+        ink.set_stroke_join(Join::Round);
+        ink.set_stroke_width(self.width * 2.0);
+        for region in self.regions {
+            ink.set_style(Style::Fill);
+            canvas.draw_path(&region.path, &ink);
+            ink.set_style(Style::Stroke);
+            canvas.draw_path(&region.path, &ink);
+        }
         ink.set_style(Style::Fill);
-        canvas.draw_path(&region.path, &ink);
-        ink.set_style(Style::Stroke);
-        canvas.draw_path(&region.path, &ink);
+        ink.set_blend_mode(BlendMode::DstOut);
+        for region in self.regions.iter().filter(|r| r.coverage == Coverage::Translucent) {
+            canvas.draw_path(&region.path, &ink);
+        }
+        canvas.restore();
+        Ok(surface)
     }
-    ink.set_style(Style::Fill);
-    ink.set_blend_mode(BlendMode::DstOut);
-    for region in regions.iter().filter(|r| r.coverage == Coverage::Translucent) {
-        canvas.draw_path(&region.path, &ink);
-    }
-    canvas.restore();
-    Ok(surface.image_snapshot())
 }
 
 /// `local_to_px` maps the node's own space to the pixels a field mask is sampled on.
