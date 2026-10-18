@@ -5318,6 +5318,19 @@ fn fx_under_an_if_in_a_def_body_or_call_block_applies_to_the_instance() {
 }
 
 #[test]
+fn fx_under_an_if_reads_the_lets_of_its_branch() {
+    let s = scene(
+        "@target t.png 100x100\nlet w = 1\ncircle 10 name:c\n  if true\n    let w = 5\n    fx blur w\ndef badge\n  circle 4\n  if true\n    let w = 5\n    fx blur w\nbadge name:a\nbadge name:b\n  if true\n    let w = 5\n    fx glow w\n",
+    );
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx blur 5\ndef badge\n  circle 4\n  fx blur 5\nbadge name:a\nbadge name:b\n  fx glow 5\n",
+    );
+    for path in ["c", "a", "b"] {
+        assert_eq!(fx_debug(&s, path), fx_debug(&written, path), "{path}");
+    }
+}
+
+#[test]
 fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
     let ev = run_with(
         "@target t.png 64x64\nsubtract name:wall\n  rect 60,60 at:32,32\n  circle 10 at:32,32\n    if true\n      fx glow 2\n",
