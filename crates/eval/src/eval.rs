@@ -880,7 +880,10 @@ impl<'a> Evaluator<'a> {
                         .borrow_mut()
                         .insert("p".into(), Value::Module(m));
                 }
-                Err(f) => self.report(f, file, Span { line: 1, col: 1 }, ""),
+                Err(f) => {
+                    module.lost.borrow_mut().insert("p".into());
+                    self.report(f, file, Span { line: 1, col: 1 }, "")
+                }
             }
         }
         for item in &parsed.items {
@@ -922,7 +925,19 @@ impl<'a> Evaluator<'a> {
             }
         };
         match &decl.kind {
-            DeclKind::Use { path, alias, items } => self.declare_use(module, path, alias, items),
+            DeclKind::Use { path, alias, items } => {
+                let declared = self.declare_use(module, path, alias, items);
+                if declared.is_err() {
+                    match alias {
+                        Some(a) => {
+                            module.lost.borrow_mut().insert(a.clone());
+                        }
+                        None if items.is_empty() => module.lost_all.set(true),
+                        None => module.lost.borrow_mut().extend(items.iter().cloned()),
+                    }
+                }
+                declared
+            }
             DeclKind::Palette { name, from, body } => {
                 let pal = self.palette(module, name, from.as_deref(), body)?;
                 module.palettes.borrow_mut().push(pal.clone());
@@ -1359,6 +1374,9 @@ impl<'a> Evaluator<'a> {
     }
 
     fn style_named(&mut self, name: &str, home: &Rc<Module>) -> R<Vec<(String, Value)>> {
+        if home.lost(name) && !home.styles.borrow().contains_key(name) {
+            return Err(Fail::reported());
+        }
         let style = home.styles.borrow().get(name).cloned().ok_or_else(|| {
             let names: Vec<String> = home.styles.borrow().keys().cloned().collect();
             let f = fail("E0307", format!("no style `{name}`"))
@@ -1631,6 +1649,9 @@ impl<'a> Evaluator<'a> {
         }
         let known = builtin_takes(verb).is_some();
         if comp.is_none() && !known {
+            if sc.module.lost(verb) {
+                return Err(Fail::reported());
+            }
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
                 .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
                 .note("structure: layer group inside outside mirror repeat grid anchor slot");
@@ -3591,6 +3612,7 @@ impl<'a> Evaluator<'a> {
         let node = owner.to_string();
         let anim = match sc.module.anims.borrow().get(name).cloned() {
             Some(a) => a,
+            None if sc.module.lost(name) => return Vec::new(),
             None => {
                 self.report(
                     fail("E0308", format!("no anim `{name}`"))
@@ -3958,6 +3980,7 @@ impl<'a> Evaluator<'a> {
             Expr::Ident(name) => match self.lookup_ident(name, sc) {
                 Some(Value::Unseen) => return Err(unseen(name)),
                 Some(v) => v,
+                None if sc.module.lost.borrow().contains(name) => return Err(Fail::reported()),
                 None => Value::Ident(name.clone()),
             },
             Expr::Ref(segs) => self.reference(segs, sc)?,
