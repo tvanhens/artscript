@@ -491,7 +491,15 @@ half4 main(half4 c) {
 /// visible to a later one.
 pub enum LayerStep {
     Filter(ImageFilter),
-    Outline { width: f32, color: Color, sides: Sides, cover_halo_past: Option<f32> },
+    Outline(OutlineStep),
+}
+
+#[derive(Clone, Copy)]
+pub struct OutlineStep {
+    pub width: f32,
+    pub color: Color,
+    pub sides: Sides,
+    pub cover_halo_past: Option<f32>,
 }
 
 fn paints_past_its_input(effect: &Effect) -> bool {
@@ -537,7 +545,7 @@ pub fn layer_steps(
             steps.push(LayerStep::Filter(filter));
             halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline { width, color, sides, cover_halo_past: halo.then_some(inked) });
+        steps.push(LayerStep::Outline(OutlineStep { width, color, sides, cover_halo_past: halo.then_some(inked) }));
         inked = inked.max(width);
         start = i + 1;
     }
@@ -565,11 +573,9 @@ pub fn outline_geometry(
     src: Image,
     local_to_px: &Matrix,
     node: &Node,
-    width: f32,
-    color: Color,
-    sides: Sides,
-    cover_halo_past: Option<f32>,
+    step: OutlineStep,
 ) -> Result<Image, RenderError> {
+    let OutlineStep { width, color, sides, cover_halo_past } = step;
     if width <= 0.0 {
         return Ok(src);
     }
