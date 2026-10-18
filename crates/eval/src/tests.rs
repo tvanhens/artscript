@@ -1881,7 +1881,7 @@ fn a_library_let_and_a_parent_palette_are_not_unused() {
         ),
         (
             "lib/grid.art".to_string(),
-            "let tile = 64\ndef cell\n  let gap = 2\n  rect 4x4\n".to_string(),
+            "let tile = 64\nlet _pad = 3\ndef cell\n  let gap = 2\n  rect 4x4\n".to_string(),
         ),
         (
             "lib/house.art".to_string(),
@@ -1907,6 +1907,7 @@ fn a_library_let_and_a_parent_palette_are_not_unused() {
         unused,
         [
             "art/t.art `let spare` is never used",
+            "lib/grid.art `let _pad` is never used",
             "lib/grid.art `let gap` is never used",
         ],
         "{}",

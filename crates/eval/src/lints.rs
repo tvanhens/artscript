@@ -266,7 +266,7 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     }
 }
 
-/// A library's top-level `let` is an export, like a def, and is never reported.
+/// A library's public top-level `let` is an export, like a def, and is never reported.
 pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Vec<Diagnostic> {
     let level = manifest.lint_level("unused", LintLevel::Warn);
     let mut scenes = Vec::new();
@@ -348,7 +348,11 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
             _ => {}
         }
     }
-    let exported = |s: &Scene| library && file.scenes().any(|t| std::ptr::eq(t, s));
+    let exported = |s: &Scene| {
+        library
+            && matches!(&s.kind, SceneKind::Let { name, .. } if !name.starts_with('_'))
+            && file.scenes().any(|t| std::ptr::eq(t, s))
+    };
     for s in &scenes {
         if let SceneKind::Let { name, .. } = &s.kind
             && !used.contains(name)
