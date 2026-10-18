@@ -1718,6 +1718,10 @@ impl<'a> Evaluator<'a> {
         match verb {
             "anchor" => return self.anchor(st.span, args, sc),
             "canvas" if sc.top => {
+                let (file, node) = (sc.file().to_string(), sc.node_name());
+                for n in named.iter().filter(|n| n.key != "fill") {
+                    self.report(unknown_key(verb, &["fill"], &n.key), &file, st.span, &node);
+                }
                 let a = self.eval_args(args, named, sc, 0)?;
                 if let Some(v) = a.get("fill") {
                     self.background = v.color().map(|c| c.rgba);
@@ -1779,8 +1783,9 @@ impl<'a> Evaluator<'a> {
                 return Err(self.extra_positional(verb, b.takes, &pos_exprs, sc));
             }
             let (file, node) = (sc.file().to_string(), sc.node_name());
-            for n in named.iter().filter(|n| !b.all_keys().any(|k| k == n.key)) {
-                self.report(unknown_key(verb, b, &n.key), &file, st.span, &node);
+            let keys: Vec<&str> = b.all_keys().collect();
+            for n in named.iter().filter(|n| !keys.contains(&n.key.as_str())) {
+                self.report(unknown_key(verb, &keys, &n.key), &file, st.span, &node);
             }
         }
         let key = sc.node_key(st.span);
@@ -1877,13 +1882,12 @@ impl<'a> Evaluator<'a> {
             self.report(err.1, &file, err.0, &path);
         }
         let expanded_style = a.word("style");
-        let child_style = match &expanded_style {
-            Some(_) => {
-                let mut s = (*sc.style).clone();
-                s.extend(a.named.iter().filter(|(k, _)| is_paint_key(k)).cloned());
-                Rc::new(s)
-            }
-            None => sc.style.clone(),
+        let child_style = if group_like || expanded_style.is_some() {
+            let mut s = (*sc.style).clone();
+            s.extend(a.named.iter().filter(|(k, _)| is_paint_key(k)).cloned());
+            Rc::new(s)
+        } else {
+            sc.style.clone()
         };
         let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
         let world = sc.world * m;
@@ -4845,17 +4849,17 @@ fn is_paint_key(k: &str) -> bool {
     PAINT_KEYS.contains(&k)
 }
 
-fn unknown_key(verb: &str, b: &Builtin, key: &str) -> Fail {
+fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
     let f = fail("E0321", format!("`{verb}` has no key `{key}`"));
-    let near = b
-        .all_keys()
+    let near = keys
+        .iter()
         .map(|k| (osa_distance(key, k), k))
         .min_by_key(|(d, _)| *d)
         .filter(|(d, _)| *d <= (key.len() + 1) / 3);
     match near {
         Some((_, k)) => f.fix(format!("did you mean `{k}:`?")),
         None => f
-            .note(format!("keys: {}", b.all_keys().collect::<Vec<_>>().join(", ")))
+            .note(format!("keys: {}", keys.join(", ")))
             .fix("use one of the listed keys"),
     }
 }
