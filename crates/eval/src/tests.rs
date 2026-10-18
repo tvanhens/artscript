@@ -1872,6 +1872,49 @@ fn play_marks_an_imported_anim_as_used() {
 }
 
 #[test]
+fn a_library_let_and_a_parent_palette_are_not_unused() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
+    let files = [
+        (
+            "art/t.art".to_string(),
+            "@target t.png 64x64\nuse grid { tile cell }\nuse elite { elite }\nlet spare = 1\ncell\nrect 10x10 at:tile/2,tile/2 fill:elite.sky name:r\n".to_string(),
+        ),
+        (
+            "lib/grid.art".to_string(),
+            "let tile = 64\ndef cell\n  let gap = 2\n  rect 4x4\n".to_string(),
+        ),
+        (
+            "lib/house.art".to_string(),
+            "palette house\n  color sky #446688\n".to_string(),
+        ),
+        (
+            "lib/elite.art".to_string(),
+            "use house { house }\n\npalette elite from house\n  ramp sky #9a8fb8 5\n".to_string(),
+        ),
+    ]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    let unused: Vec<String> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0103")
+        .map(|d| format!("{} {}", d.file, d.message))
+        .collect();
+    assert_eq!(
+        unused,
+        [
+            "art/t.art `let spare` is never used",
+            "lib/grid.art `let gap` is never used",
+        ],
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn an_alias_counts_under_the_word_written() {
     let s = lib_scene(
         "@target t.png 40x40\nuse d\nlet alias = eye\nalias\neye\n",
