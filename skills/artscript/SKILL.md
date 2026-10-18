@@ -22,6 +22,7 @@ artscript is a declarative language for vector art. You write `.art` files. `art
    - `checks` assert, expect, measurements, check functions, rule
    - `cli` commands, flags, docs topics, exit codes
    - `craft` structure a piece, layers and names, shading, outline, ground shadow, margin
+   - `manifest` artscript.toml tables and keys, project defaults, lint levels
 3. Find the project root: the nearest `artscript.toml`. If there is none, run `artscript init` in the folder where the art belongs, then delete the starter `art/hello.art`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
 
 ## The loop
