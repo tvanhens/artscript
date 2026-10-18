@@ -124,7 +124,7 @@ pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Resul
         if !stroke.dash.is_empty() {
             let mut dash = stroke.dash.clone();
             if dash.len() % 2 == 1 {
-                dash.push(dash[dash.len() - 1]);
+                dash = dash.repeat(2);
             }
             if let Some(effect) = PathEffect::dash(&dash, 0.0) {
                 paint.set_path_effect(effect);

@@ -1520,13 +1520,27 @@ impl<'a> Evaluator<'a> {
         } else {
             0.0
         };
-        let scale = a.get("scale").and_then(Value::vec2).unwrap_or((1.0, 1.0));
+        let vector = |key: &str, default: (f64, f64)| match a.get(key) {
+            None => Ok(default),
+            Some(v) => v.vec2().ok_or_else(|| {
+                fail("E0320", format!("`{key}:` expects a number or a vector like 2,1, got {}", v.kind()))
+            }),
+        };
+        let scale = vector("scale", (1.0, 1.0))?;
         let skew = match a.get("skew") {
             Some(Value::Num(k)) => (*k, 0.0),
-            Some(v) => v.vec2().unwrap_or((0.0, 0.0)),
-            None => (0.0, 0.0),
+            _ => vector("skew", (0.0, 0.0))?,
         };
-        Ok((mat_trs(at, pivot, rot, skew, scale), at))
+        if skew.0.abs() >= 90.0 || skew.1.abs() >= 90.0 {
+            return Err(fail("E0320", "`skew:` must be between -90 and 90 degrees")
+                .fix("a skew of 90 degrees flattens the shape to a line"));
+        }
+        let m = mat_trs(at, pivot, rot, skew, scale);
+        if !m.is_finite() {
+            return Err(fail("E0320", "this node's transform is not finite")
+                .fix("check `at:`, `rot:`, `scale:` and `pivot:` for a division by zero"));
+        }
+        Ok((m, at))
     }
 
     /// Opacity, blend and z order shared by every node.
@@ -2305,16 +2319,11 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a size", "rect 40x20"))?;
                 check_percent(w, frame, sc)?;
                 check_percent(h, frame, sc)?;
-                let radii = match a.get("r") {
-                    Some(Value::Num(r)) => [*r; 4],
-                    Some(v) => match v.items() {
-                        Some(xs) if xs.len() == 4 => {
-                            let r: Vec<f64> = xs.iter().map(|x| x.num().unwrap_or(0.0)).collect();
-                            [r[0], r[1], r[2], r[3]]
-                        }
-                        _ => [0.0; 4],
-                    },
+                let radii = match a.get("r").map(numbers) {
                     None => [0.0; 4],
+                    Some(Some(r)) if r.len() == 1 => [r[0]; 4],
+                    Some(Some(r)) if r.len() == 4 => [r[0], r[1], r[2], r[3]],
+                    Some(_) => return Err(need("one corner radius or four", "rect 40x20 r:4,4,0,0")),
                 };
                 (geom::rect(w.len(fw), h.len(fh), radii), None, true)
             }
@@ -2337,7 +2346,8 @@ impl<'a> Evaluator<'a> {
             "poly" | "star" => {
                 let n = first
                     .and_then(Value::num)
-                    .ok_or_else(|| need("a point count", "star 5 r:20"))?;
+                    .filter(|n| n.is_finite() && *n <= 100_000.0)
+                    .ok_or_else(|| need("a point count up to 100000", "star 5 r:20"))?;
                 let r = a.num("r").unwrap_or(10.0);
                 let inner = (verb == "star").then(|| a.num("inner").unwrap_or(0.5));
                 let mut p = geom::regular(n as usize, r, inner);
@@ -2553,10 +2563,15 @@ impl<'a> Evaluator<'a> {
             Some("bevel") => Join::Bevel,
             _ => Join::Round,
         };
-        let dash = pick("dash")
-            .and_then(|v| v.items())
-            .map(|xs| xs.iter().filter_map(Value::num).map(|v| v as f32).collect())
-            .unwrap_or_default();
+        let dash = match pick("dash") {
+            None => Vec::new(),
+            Some(v) => numbers(&v)
+                .filter(|d| !d.is_empty() && d.iter().all(|x| x.is_finite() && *x >= 0.0))
+                .ok_or_else(|| fail("E0320", "`dash:` takes lengths").fix("write `dash:4,2`"))?
+                .into_iter()
+                .map(|v| v as f32)
+                .collect(),
+        };
         Ok(Shape {
             geometry,
             fill,
@@ -4748,6 +4763,16 @@ fn is_paint_key(k: &str) -> bool {
         k,
         "fill" | "stroke" | "cap" | "join" | "dash" | "taper" | "blur"
     )
+}
+
+fn numbers(v: &Value) -> Option<Vec<f64>> {
+    match v {
+        Value::Num(n) => Some(vec![*n]),
+        _ => match v.vec2() {
+            Some((a, b)) => Some(vec![a, b]),
+            None => v.items()?.iter().map(Value::num).collect(),
+        },
+    }
 }
 
 pub fn measure_rect(b: Rect, m: &str) -> Option<f64> {
