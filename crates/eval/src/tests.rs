@@ -3155,6 +3155,18 @@ fn a_copy_hop_stays_on_that_copy() {
 }
 
 #[test]
+fn a_reference_into_an_instance_skips_its_groups() {
+    let s = scene_with(
+        "@target t.png 64x64\nuse g { thing }\nthing at:20,20 name:t\nexpect @t.box.w == 10\n",
+        &[(
+            "lib/g.art",
+            "def thing\n  group at:0,0 name:grp\n    rect 10x10 fill:#ff0000 name:box\n",
+        )],
+    );
+    assert!(paths(&s).contains(&"t.box".to_string()), "{:?}", paths(&s));
+}
+
+#[test]
 fn an_index_that_does_not_fit_is_not_copy_zero() {
     let ev = run_with(
         "@target t.png 40x40\ndef face\n  circle 8 fill:#ffffff name:eye\nface name:face\n  .eye.99999999999 fill:#ff0000\n",
