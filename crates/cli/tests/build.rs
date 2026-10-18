@@ -1,4 +1,5 @@
-//! End-to-end CLI runs on a temporary copy of `examples/chibi`.
+//! End-to-end CLI runs on a temporary copy of `examples/chibi`, trimmed to
+//! the art files each test needs, since `check` evaluates every file.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -7,24 +8,27 @@ use std::process::{Command, Output};
 fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for entry in fs::read_dir(from).unwrap().flatten() {
-        let name = entry.file_name();
-        if [".artscript", "assets"].contains(&name.to_str().unwrap_or_default()) {
-            continue;
-        }
-        let path = entry.path();
+        let (path, dest) = (entry.path(), to.join(entry.file_name()));
         if path.is_dir() {
-            copy_dir(&path, &to.join(&name));
+            copy_dir(&path, &dest);
         } else {
-            fs::copy(&path, to.join(&name)).unwrap();
+            fs::copy(&path, &dest).unwrap();
         }
     }
 }
 
-fn fixture(tag: &str) -> PathBuf {
+fn fixture(tag: &str, art: &[&str]) -> PathBuf {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/chibi");
     let dir = std::env::temp_dir().join(format!("artscript-cli-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
-    copy_dir(&src, &dir);
+    copy_dir(&src.join("lib"), &dir.join("lib"));
+    fs::copy(src.join("artscript.toml"), dir.join("artscript.toml")).unwrap();
+    fs::create_dir_all(dir.join("art")).unwrap();
+    for file in art {
+        let dest = dir.join("art").join(file);
+        fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        fs::copy(src.join("art").join(file), dest).unwrap();
+    }
     dir
 }
 
@@ -55,7 +59,7 @@ fn fnv_hex(bytes: &[u8]) -> String {
 
 #[test]
 fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
-    let dir = fixture("build");
+    let dir = fixture("build", &["produce/momo_peach.art"]);
     let png = dir.join("assets/produce/momo_peach.png");
     let svg = dir.join("assets/produce/momo_peach.svg");
 
@@ -130,7 +134,7 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
 
 #[test]
 fn check_json_reports_failed_asserts_with_exit_2() {
-    let dir = fixture("check");
+    let dir = fixture("check", &["produce/momo_peach.art"]);
     let art = dir.join("art/produce/momo_peach.art");
     let src = fs::read_to_string(&art).unwrap();
     fs::write(
@@ -495,7 +499,7 @@ fn check_reports_a_gif_without_an_opaque_background() {
 
 #[test]
 fn backend_flag_is_validated_and_switching_backends_rebuilds() {
-    let dir = fixture("backend");
+    let dir = fixture("backend", &["produce/momo_peach.art"]);
     let bad = artscript(&dir, &["build", "--backend", "metal"]);
     assert_eq!(bad.status.code(), Some(1), "{}", text(&bad));
     assert!(text(&bad).contains("backend `metal`"), "{}", text(&bad));
@@ -528,7 +532,7 @@ fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
     if artscript_render::gpu_available() {
         return;
     }
-    let dir = fixture("nogpu");
+    let dir = fixture("nogpu", &[]);
     fs::write(dir.join("art/broken.art"), "@target broken.png 64x64 scale:-1\n").unwrap();
     let out = artscript(&dir, &["build", "--backend", "gpu"]);
     let report = text(&out);
@@ -540,7 +544,7 @@ fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
 
 #[test]
 fn a_file_with_only_unknown_directives_is_e0208() {
-    let dir = fixture("unknown-directive");
+    let dir = fixture("unknown-directive", &[]);
     fs::write(
         dir.join("art/broken.art"),
         "@taget broken.png 64x64\nrect 0 0 10 10\n",
@@ -565,7 +569,7 @@ fn a_file_with_only_unknown_directives_is_e0208() {
 
 #[test]
 fn adding_2x_leaves_the_1x_taper_png_unchanged() {
-    let dir = fixture("taper");
+    let dir = fixture("taper", &[]);
     let curve = "curve 40,200 128,40 216,200 stroke:p.ink,[2 14 2] taper:.3\n";
     let mut builds = Vec::new();
     for target in [
@@ -573,7 +577,7 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
         "@target taper.png 256x256 scale:1,2",
     ] {
         fs::write(dir.join("art/taper.art"), format!("{target}\n{curve}")).unwrap();
-        let out = artscript(&dir, &["build", "--only", "taper.png", "--backend", "cpu"]);
+        let out = artscript(&dir, &["build", "--backend", "cpu"]);
         assert!(out.status.success(), "{target}: {}", text(&out));
         builds.push(fs::read(dir.join("assets/taper.png")).unwrap());
     }
