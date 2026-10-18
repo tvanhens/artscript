@@ -58,7 +58,7 @@ float simplex2(float2 p, float2 sd) {
         dot(grad2(i + o, sd), b),
         dot(grad2(i + 1.0, sd), c)
     );
-    return clamp(0.5 + 70.0 * (n.x + n.y + n.z), 0.0, 1.0);
+    return clamp(0.5 + 35.0 * 1.41421356 * (n.x + n.y + n.z), 0.0, 1.0);
 }
 
 float worley2(float2 p, float2 sd) {
