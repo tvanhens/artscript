@@ -79,6 +79,7 @@ dependencies = [
 name = "artscript-render"
 version = "0.1.0"
 dependencies = [
+ "artscript-brush",
  "artscript-ir",
  "color_quant",
  "gif 0.13.3",

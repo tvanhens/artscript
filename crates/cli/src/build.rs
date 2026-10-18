@@ -189,6 +189,13 @@ fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic
         artscript_render::RenderError::Skia(msg) => {
             Diagnostic::error("E0400", span, format!("render failed: {msg}")).in_file(&job.source)
         }
+        artscript_render::RenderError::AtNode { origin, message } => {
+            let (file, line) = origin
+                .rsplit_once(':')
+                .and_then(|(f, l)| Some((f.to_string(), l.parse::<u32>().ok()?)))
+                .unwrap_or((job.source.clone(), span.line));
+            Diagnostic::error("E0400", Span { line, col: 1 }, format!("render failed: {message}")).in_file(file)
+        }
         artscript_render::RenderError::TransparentGif => {
             Diagnostic::error("E0206", span, "a gif needs an opaque `bg:`")
                 .in_file(&job.source)
