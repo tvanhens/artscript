@@ -127,11 +127,11 @@ mod tests {
     }
 
     #[test]
-    fn radial_defaults_to_the_farthest_corner() {
-        let g = GradSpec { kind: GradKind::Radial { at: (0.0, 0.0), r: None }, stops: vec![(Rgba::GRAY, None)] };
+    fn radial_defaults_to_the_nearest_edge() {
+        let g = GradSpec { kind: GradKind::Radial { at: (0.3, 0.5), r: None }, stops: vec![(Rgba::GRAY, None)] };
         let Paint::Radial { center, radius, .. } = resolve_gradient(&g, Rect::from_ltrb(0.0, 0.0, 30.0, 40.0)) else {
             panic!("radial")
         };
-        assert_eq!((center, radius), (Point::new(0.0, 0.0), 50.0));
+        assert_eq!((center, radius), (Point::new(9.0, 20.0), 9.0));
     }
 }
