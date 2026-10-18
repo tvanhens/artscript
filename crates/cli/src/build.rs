@@ -15,7 +15,7 @@ use artscript_syntax::{Diagnostic, Severity};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 
-use crate::{exit_code, glob_match, report};
+use crate::{Selector, exit_code, report, unmatched};
 
 pub const MANIFEST_FILE: &str = "art-manifest.json";
 const CACHE_DIR: &str = ".artscript/cache";
@@ -23,7 +23,7 @@ const CACHE_DIR: &str = ".artscript/cache";
 #[derive(Default)]
 pub struct Options {
     /// A target is built when any glob matches it. Empty builds every target.
-    pub only: Vec<String>,
+    pub only: Vec<Selector>,
     pub allow_warnings: bool,
     /// Overrides the manifest's `[build] backend`.
     pub backend: Option<BackendChoice>,
@@ -370,10 +370,6 @@ fn run_gif(
     }
 }
 
-fn matches(job: &TargetJob, glob: &str) -> bool {
-    glob_match(glob, &job.source) || job.outputs.iter().any(|o| glob_match(glob, &o.path))
-}
-
 fn status(diags: &[Diagnostic]) -> &'static str {
     match exit_code(diags, false) {
         0 => "pass",
@@ -454,21 +450,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
         );
         return report(diagnostics, opts.allow_warnings, false);
     };
-    let unmatched: Vec<Diagnostic> = opts
-        .only
-        .iter()
-        .filter(|g| !plan.jobs.iter().any(|j| matches(j, g)))
-        .filter(|g| {
-            !plan
-                .diagnostics
-                .iter()
-                .any(|d| d.severity == Severity::Error && glob_match(g, &d.file))
-        })
-        .map(|g| {
-            Diagnostic::error("E0200", Span::default(), format!("`--only '{g}'` matches no target"))
-                .with_fix("match an entry file such as `art/x.art` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories")
-        })
-        .collect();
+    let unmatched = unmatched(&plan, &opts.only);
     if !unmatched.is_empty() {
         let mut diagnostics = plan.diagnostics;
         diagnostics.extend(unmatched);
@@ -478,7 +460,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
     let jobs: Vec<&TargetJob> = plan
         .jobs
         .iter()
-        .filter(|j| opts.only.is_empty() || opts.only.iter().any(|g| matches(j, g)))
+        .filter(|j| opts.only.is_empty() || opts.only.iter().any(|g| g.matches(j)))
         .collect();
 
     let workers = std::thread::available_parallelism()
