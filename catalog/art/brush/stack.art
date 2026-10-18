@@ -1,0 +1,18 @@
+# Brush stacks, a gradient base, and a brushed fill beside a plain stroke, 192x64, three 48px
+# squares on paper at y 32.
+# Cell 1 (x 32), red with brush:[chip dry]: the edge is bitten by chip's flakes and the inside is
+# broken into dry's horizontal streaks, both on the same square.
+# Cell 2 (x 96), grad(right gold blue) with dry: the streaks run through a gold-to-blue ramp from
+# left to right, so each streak keeps the gradient color under it rather than one flat color.
+# Cell 3 (x 160), green fill with stroke:p.ink,3 and brush:dry(on:fill): the fill is dry streaks
+# while the ink outline stays a crisp, unbroken 3px square around them.
+# The .svg target uses profile:svg: brushed nodes are baked into raster tiles, so each cell looks
+# like the PNG's.
+@target brush/stack.png 192x64
+@target brush/stack.svg 192x64 profile:svg
+
+use std/brushes { dry chip }
+
+rect 48 at:32,32 fill:p.red.2 brush:[chip dry(strength:.6)] name:stacked
+rect 48 at:96,32 fill:grad(right p.gold.2 p.blue.2) brush:dry(strength:.6) name:ramped
+rect 48 at:160,32 fill:p.green.2 stroke:p.ink,3 brush:dry(strength:.6 on:fill) name:outlined
