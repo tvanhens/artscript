@@ -130,10 +130,39 @@ struct Tail {
 
 /// A node's identity. Names are unique per region, counts are unique per block, and copies add
 /// an index, so two nodes in one scene never share a key. The scene root is the empty key.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, Debug)]
 pub struct Key {
     segs: Rc<[Seg]>,
     tail: Option<Rc<Tail>>,
+    /// It changes seeds only, so equality and hashing leave it out.
+    seed_root: Option<Rc<SeedRoot>>,
+}
+
+/// An instance's `seed:`. Every seed under the instance hashes the def and the value in place
+/// of the file and the instance's own segs, so it is the same from any caller in any file.
+#[derive(Debug)]
+struct SeedRoot {
+    /// How many leading segs the root replaces: the instance key and its loop copies.
+    segs: usize,
+    /// The def's module path.
+    module: Rc<str>,
+    def: Rc<str>,
+    seed: u64,
+}
+
+impl PartialEq for Key {
+    fn eq(&self, other: &Key) -> bool {
+        self.segs == other.segs && self.tail == other.tail
+    }
+}
+
+impl Eq for Key {}
+
+impl std::hash::Hash for Key {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.segs.hash(state);
+        self.tail.hash(state);
+    }
 }
 
 impl Default for Key {
@@ -147,6 +176,7 @@ impl Key {
         Key {
             segs: Rc::from(Vec::new()),
             tail: None,
+            seed_root: None,
         }
     }
 
@@ -174,7 +204,26 @@ impl Key {
         Key {
             segs: segs.into(),
             tail: None,
+            seed_root: self.seed_root.clone(),
         }
+    }
+
+    /// This instance key of `def` with `seed:`. An inner seeded instance replaces an outer one.
+    pub fn seeded(&self, module: &str, def: &str, seed: u64) -> Key {
+        let root = SeedRoot {
+            segs: self.segs.len(),
+            module: module.into(),
+            def: def.into(),
+            seed,
+        };
+        Key {
+            seed_root: Some(Rc::new(root)),
+            ..self.clone()
+        }
+    }
+
+    fn seed_skip(&self) -> usize {
+        self.seed_root.as_ref().map_or(0, |r| r.segs)
     }
 
     /// Loop indices after the last name or positional segment.
@@ -254,7 +303,16 @@ impl Key {
     }
 
     fn seed_text(&self) -> String {
-        let mut s = self.to_string();
+        let mut s = match &self.seed_root {
+            Some(r) => {
+                let mut s = format!("\0{} seed:{}", r.def, r.seed);
+                for seg in &self.segs[r.segs..] {
+                    s.push_str(&format!(".{seg}"));
+                }
+                s
+            }
+            None => self.to_string(),
+        };
         if let Some(t) = &self.tail {
             if let Some(b) = &t.binding {
                 s.push_str(b);
@@ -327,7 +385,7 @@ impl PositionalUses {
             return;
         }
         let text = key.to_string();
-        for (i, seg) in key.segs.iter().enumerate() {
+        for (i, seg) in key.segs.iter().enumerate().skip(key.seed_skip()) {
             if let Seg::Anon(a) = seg {
                 self.sites
                     .entry(a.site.clone())
@@ -350,12 +408,14 @@ impl PositionalUses {
 }
 
 /// The author's `seed:` when there is one, else `node_seed` over `file` and the key's seed text.
-/// When a key seed holds an unnamed segment, `uses` records that statement for L0104.
+/// Under a seeded instance the def's module stands in for `file`. When the key's seed text holds
+/// an unnamed segment, `uses` records that statement for L0104.
 pub fn seed(file: &str, key: &Key, explicit: Option<u64>, uses: &mut PositionalUses) -> u64 {
     if let Some(s) = explicit {
         return explicit_seed(s);
     }
     uses.note(key);
+    let file = key.seed_root.as_ref().map_or(file, |r| &r.module);
     node_seed(file, &key.seed_text())
 }
 
