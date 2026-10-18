@@ -327,7 +327,7 @@ fn level_failure_is_c0101_with_measurements_and_a_fix() {
     let d = &ev.diagnostics[0];
     assert_eq!(
         d.to_string(),
-        "error[C0101] art/t.art:4:1\n  assert level(@eye_l @eye_r) tol:.5\n  eye_l.cy = 40   eye_r.cy = 43   difference 3 > tol 0.5\n  fix: set .eye_r at:70,40"
+        "error[C0101] art/t.art:4:1  [t.png]\n  assert level(@eye_l @eye_r) tol:.5\n  eye_l.cy = 40   eye_r.cy = 43   difference 3 > tol 0.5\n  fix: set .eye_r at:70,40"
     );
 }
 

@@ -23,6 +23,9 @@ pub struct Diagnostic {
     pub span: Span,
     /// Node path such as `hero.body.head`, or empty.
     pub node: String,
+    /// First output path of the target whose evaluation raised this, such as `hero.png`. Empty when
+    /// no one target raised it: a plan error, or a lint on a library's own text.
+    pub target: String,
     pub message: String,
     /// Extra lines shown under the message (measured values, available names).
     pub notes: Vec<String>,
@@ -37,6 +40,7 @@ impl Diagnostic {
             file: String::new(),
             span,
             node: String::new(),
+            target: String::new(),
             message: message.into(),
             notes: Vec::new(),
             fix: None,
@@ -73,7 +77,7 @@ impl Diagnostic {
 
 impl fmt::Display for Diagnostic {
     /// ```text
-    /// error[E0311] art/chars/hero.art:18:7  hero.body.torso.tunic
+    /// error[E0311] art/chars/hero.art:18:7  hero.body.torso.tunic  [hero.png]
     ///   tunic needs @torso, but the host `goblin` has no part named torso
     ///   parts available: chest, belly
     ///   fix: rename goblin's `chest` to `torso`
@@ -87,6 +91,9 @@ impl fmt::Display for Diagnostic {
         write!(f, "{sev}[{}] {}:{}", self.code, self.file, self.span)?;
         if !self.node.is_empty() {
             write!(f, "  {}", self.node)?;
+        }
+        if !self.target.is_empty() {
+            write!(f, "  [{}]", self.target)?;
         }
         write!(f, "\n  {}", self.message)?;
         for n in &self.notes {

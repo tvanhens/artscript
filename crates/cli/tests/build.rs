@@ -629,3 +629,56 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_library_diagnostic_names_each_target_that_reached_it() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-libsite-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::create_dir_all(dir.join("lib/kit")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"libsite\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 80x20 fill:#88ccff name:wide\n").unwrap();
+    let body = "use kit/cell { cell }\n\ncell at:32,32 name:tile\n";
+    fs::write(dir.join("art/a.art"), format!("@target a.png 64x64\n{body}")).unwrap();
+    fs::write(dir.join("art/b.art"), format!("@target b.png 64x64\n{body}")).unwrap();
+    fs::write(dir.join("art/c.art"), format!("@target c_{{k}}.png 64x64 each k:[x y]\n{body}")).unwrap();
+
+    let out = artscript(&dir, &["check", "--json"]);
+    assert_eq!(out.status.code(), Some(3), "{}", text(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let diags = json["diagnostics"].as_array().unwrap();
+    let mut sites: Vec<(String, String)> = diags
+        .iter()
+        .filter(|d| d["code"] == "L0102")
+        .map(|d| {
+            assert_eq!(d["file"], "lib/kit/cell.art", "{d}");
+            let notes = d["notes"].as_array().unwrap();
+            let site = notes
+                .iter()
+                .filter_map(|n| n.as_str())
+                .find(|n| n.starts_with("in "))
+                .unwrap_or_else(|| panic!("no call-site note: {d}"));
+            (d["target"].as_str().unwrap_or_default().to_string(), site.to_string())
+        })
+        .collect();
+    sites.sort();
+    let want = [
+        ("a.png", "in art/a.art:4"),
+        ("b.png", "in art/b.art:4"),
+        ("c_x.png", "in art/c.art:4"),
+        ("c_y.png", "in art/c.art:4"),
+    ]
+    .map(|(t, s)| (t.to_string(), s.to_string()));
+    assert_eq!(sites, want, "{json}");
+    let raw: Vec<_> = diags.iter().filter(|d| d["code"] == "L0101").collect();
+    assert_eq!(raw.len(), 1, "a library's own text is reported once: {json}");
+
+    let plain = text(&artscript(&dir, &["check"]));
+    assert_eq!(plain.matches("warning[L0102]").count(), 4, "{plain}");
+    assert!(plain.contains("in art/a.art:4"), "{plain}");
+    let _ = fs::remove_dir_all(&dir);
+}
