@@ -5,7 +5,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use artscript_eval::{BackendChoice, Format, Project, TargetJob, dependencies, evaluate, fnv1a, plan};
+use artscript_eval::{
+    BackendChoice, Format, OutputSpec, Project, TargetJob, dependencies, evaluate, fnv1a, plan,
+};
+use artscript_ir::Scene;
 use artscript_render::Backend;
 use artscript_syntax::ast::Span;
 use artscript_syntax::{Diagnostic, Severity};
@@ -230,21 +233,34 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
                 scenes.extend(evaluate(project, &at).scene.map(|sc| (out.scale, sc)));
             }
         }
-        for out in &job.outputs {
-            let sample = match out.format {
-                Format::Png => out.scale,
-                Format::Svg | Format::Gif => job.bake_scale,
-            };
-            let Some((_, scene)) = scenes.iter().find(|(s, _)| *s == sample) else {
+        let render = |out: &OutputSpec, scene: &Scene| match out.format {
+            Format::Png => artscript_render::render_png(scene, out.scale, backend),
+            Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale, backend)
+                .map(String::into_bytes),
+            Format::Gif => Err(artscript_render::RenderError::Skia(
+                "gif is rendered through sample".into(),
+            )),
+        };
+        // Outputs render on their own threads. A scene's paths are not `Sync`, so each thread
+        // takes its own copy.
+        let rendered: Vec<_> = std::thread::scope(|s| {
+            let threads: Vec<_> = job
+                .outputs
+                .iter()
+                .map(|out| {
+                    let sample = match out.format {
+                        Format::Png => out.scale,
+                        Format::Svg | Format::Gif => job.bake_scale,
+                    };
+                    let scene = scenes.iter().find(|(s, _)| *s == sample).map(|(_, sc)| sc.clone());
+                    s.spawn(move || scene.map(|scene| render(out, &scene)))
+                })
+                .collect();
+            threads.into_iter().map(|t| t.join().expect("render thread panicked")).collect()
+        });
+        for (out, bytes) in job.outputs.iter().zip(rendered) {
+            let Some(bytes) = bytes else {
                 continue;
-            };
-            let bytes = match out.format {
-                Format::Png => artscript_render::render_png(scene, out.scale, backend),
-                Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale, backend)
-                    .map(String::into_bytes),
-                Format::Gif => Err(artscript_render::RenderError::Skia(
-                    "gif is rendered through sample".into(),
-                )),
             };
             let bytes = match bytes {
                 Ok(b) => b,
