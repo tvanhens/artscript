@@ -4394,6 +4394,18 @@ fn an_svg_outside_block_masks_by_luminance_so_its_black_hole_hides() {
 }
 
 #[test]
+fn an_svg_inside_block_clips_a_baked_child_in_canvas_coordinates() {
+    for (feather, def) in [("", "<clipPath id=\"inside-1.rect-1-clip\">"), (" feather:2", "<mask id=\"inside-1.rect-1-pushed\"")] {
+        let s = scene(&format!("@target t.svg 60x40 bg:#808080\nrect 30x30 at:30,20 fill:none name:frame\ninside @frame{feather}\n  rect 50x36 at:30,20 fill:#80c0ff blend:multiply\n    fx adjust hue:10\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        assert!(svg.contains("<image x=\"5\" y=\"2\""), "inside{feather}: the child did not bake: {svg}");
+        let clip = svg.split(def).nth(1).unwrap_or_else(|| panic!("inside{feather}: no {def} in {svg}"));
+        let clip = &clip[..clip.find("</").unwrap()];
+        assert!(clip.contains("M 15 5L 45 5L 45 35L 15 35Z") && !clip.contains("transform"), "inside{feather}: the clip is not in the tile's coordinates: {svg}");
+    }
+}
+
+#[test]
 fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     let s = scene(
         "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",

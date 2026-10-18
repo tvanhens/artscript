@@ -83,7 +83,7 @@ impl Writer {
     ) -> Result<(), RenderError> {
         let pad = "  ".repeat(depth);
         let id = xml_id(&node.path);
-        let outer = outer.to_local(&node.transform);
+        // A baked tile is in the parent's coordinates, as `outer` is.
         if bakes(node) {
             let baked = bake_node(scene, node, bake_scale, self.backend)?;
             self.body.push_str(&pad);
@@ -94,7 +94,7 @@ impl Writer {
             if let Some(path) = &outer.region {
                 self.clip_ref(&format!("{id}-clip"), path);
             }
-            let masks: Vec<_> = self.pushed_mask(&id, &outer).into_iter().collect();
+            let masks: Vec<_> = self.pushed_mask(&id, outer).into_iter().collect();
             self.mask_ref(&id, &masks);
             self.body.push_str(">\n");
             self.body.push_str(&pad);
@@ -113,6 +113,7 @@ impl Writer {
             self.body.push_str("</g>\n");
             return Ok(());
         }
+        let outer = outer.to_local(&node.transform);
 
         self.body.push_str(&pad);
         self.body.push_str("<g id=\"");
