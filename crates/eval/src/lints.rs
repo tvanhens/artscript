@@ -1,14 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
 use artscript_syntax::ast::{
-    Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
-    SwatchKind,
+    BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
+    Span, SwatchKind,
 };
 use artscript_syntax::{Diagnostic, Severity};
 
 use crate::identity::PositionalUses;
 use crate::project::{LintLevel, Manifest};
+use crate::targets;
 
 fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnostic> {
     let severity = match level {
@@ -226,6 +227,116 @@ pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic
                 out.push(
                     d.in_file(path)
                         .with_fix("add it to a palette block and refer to it as `p.<name>`"),
+                );
+            }
+        });
+    }
+    out
+}
+
+/// Names an entry file binds itself, whose value only evaluation knows.
+fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
+    let mut out: HashSet<String> = file
+        .directives
+        .iter()
+        .flat_map(|d| d.each.iter().map(|n| n.key.clone()))
+        .collect();
+    for d in file.decls() {
+        if let DeclKind::Def { params, .. }
+        | DeclKind::Rule { params, .. }
+        | DeclKind::Finish { params, .. }
+        | DeclKind::Shader { params, .. } = &d.kind
+        {
+            out.extend(params.iter().map(|p| p.key.clone()));
+        }
+    }
+    all_scenes(&file.items, &mut |s| {
+        if let SceneKind::Let { name, .. } | SceneKind::Each { var: name, .. } = &s.kind {
+            out.insert(name.clone());
+        }
+    });
+    for (e, _) in exprs {
+        walk_expr(e, &mut |x| {
+            if let Expr::Each { var, .. } = x {
+                out.insert(var.clone());
+            }
+        });
+    }
+    out
+}
+
+/// `target == x` or `target != x` where `x` is a word or string that no `@target` in the entry
+/// file labels. A name the file binds or imports (`bound`) is left alone.
+pub fn unknown_target(
+    file: &File,
+    path: &str,
+    manifest: &Manifest,
+    bound: impl Fn(&str) -> bool,
+) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("unknown-target");
+    let mut labels = BTreeSet::new();
+    let mut unlabeled = false;
+    for d in file.directives.iter().filter(|d| d.name == "target") {
+        match targets::label(d) {
+            Some(l) => {
+                labels.insert(l);
+            }
+            None => unlabeled = true,
+        }
+    }
+    let (note, fix) = match labels.first() {
+        None => (
+            "no `@target` here sets `as:`, so `target` is always `none`".to_string(),
+            "add `as:<label>` to a `@target`".to_string(),
+        ),
+        Some(first) => {
+            let names: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let none = if unlabeled {
+                ", and a target without `as:` makes it `none`"
+            } else {
+                ""
+            };
+            (
+                format!("its targets are labeled {}{none}", names.join(", ")),
+                format!("compare `target` with an `as:` label, such as `target == {first}`"),
+            )
+        }
+    };
+    let exprs = file_exprs(file, false);
+    let local = local_names(file, &exprs);
+    let is_target = |e: &Expr| matches!(e, Expr::Ident(n) if n == "target");
+    let mut out = Vec::new();
+    for (e, span) in &exprs {
+        walk_expr(e, &mut |x| {
+            let Expr::Binary(BinOp::Eq | BinOp::Ne, a, b) = x else {
+                return;
+            };
+            let other = match (is_target(a), is_target(b)) {
+                (true, false) => &**b,
+                (false, true) => &**a,
+                _ => return,
+            };
+            let (shown, possible) = match other {
+                Expr::Str(s) => (format!("\"{s}\""), labels.contains(s)),
+                Expr::Ident(w) if w == "none" => (w.clone(), unlabeled),
+                Expr::Ident(w) if w == "t" || w == "clip" || local.contains(w) || bound(w) => {
+                    return;
+                }
+                Expr::Ident(w) => (w.clone(), labels.contains(w)),
+                _ => return,
+            };
+            if !possible
+                && let Some(d) = diag(
+                    level,
+                    "L0106",
+                    *span,
+                    format!("`target` is never `{shown}` in this file"),
+                )
+            {
+                out.push(
+                    d.in_file(path)
+                        .with_note(note.clone())
+                        .with_fix(fix.clone()),
                 );
             }
         });
