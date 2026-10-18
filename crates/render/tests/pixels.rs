@@ -201,6 +201,22 @@ fn svg_outline_on_a_translucent_fill_is_not_faded() {
 }
 
 #[test]
+fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
+    let rect = Path::rect(skia_safe::Rect::from_xywh(20000.0, -30000.0, 40.0, 40.0), None);
+    let mut node = solid("far", rect, color(0, 0, 255, 128));
+    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    let svg = render_svg(&scene(64.0, 64.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let mask = svg.split("<mask").nth(1).and_then(|s| s.split('>').next()).expect(&svg);
+    let attr = |name: &str| -> f32 {
+        let key = format!(" {name}=\"");
+        mask.split(&key).nth(1).and_then(|s| s.split('"').next()).and_then(|v| v.parse().ok()).expect(&svg)
+    };
+    let (x, y, w, h) = (attr("x"), attr("y"), attr("width"), attr("height"));
+    assert!(x <= 19997.0 && x + w >= 20043.0, "{svg}");
+    assert!(y <= -30003.0 && y + h >= -29957.0, "{svg}");
+}
+
+#[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));

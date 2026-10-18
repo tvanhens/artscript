@@ -224,7 +224,7 @@ impl Writer {
             self.body.push_str(&pad);
             self.body.push_str("<g");
             if !translucent.is_empty() {
-                self.erase_mask_def(id, &translucent);
+                self.erase_mask_def(id, &regions, width, &translucent);
                 self.body.push_str(" mask=\"url(#");
                 self.body.push_str(id);
                 self.body.push_str(")\"");
@@ -257,11 +257,26 @@ impl Writer {
         Ok(())
     }
 
-    fn erase_mask_def(&mut self, id: &str, erased: &[&Region]) {
+    fn erase_mask_def(&mut self, id: &str, regions: &[Region], width: f32, erased: &[&Region]) {
+        let mut ring = *regions[0].path.bounds();
+        for region in &regions[1..] {
+            ring.join(region.path.bounds());
+        }
+        let ring = ring.with_outset((width + 1.0, width + 1.0));
+        let area = format!(
+            "x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"",
+            fmt_num(ring.left),
+            fmt_num(ring.top),
+            fmt_num(ring.width()),
+            fmt_num(ring.height())
+        );
         self.defs.push_str("    <mask id=\"");
         self.defs.push_str(id);
-        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\">\n");
-        self.defs.push_str("      <rect x=\"-10000\" y=\"-10000\" width=\"20000\" height=\"20000\" fill=\"#ffffff\"/>\n");
+        self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
+        self.defs.push_str(&area);
+        self.defs.push_str(">\n      <rect ");
+        self.defs.push_str(&area);
+        self.defs.push_str(" fill=\"#ffffff\"/>\n");
         for region in erased {
             self.defs.push_str("      <path d=\"");
             self.defs.push_str(&path_data(&region.path));
