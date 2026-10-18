@@ -273,9 +273,14 @@ impl Node {
         }
     }
 
-    /// Visual bounds in this node's parent coordinates: geometry plus half the stroke width,
-    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
+    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the transform.
     pub fn bounds(&self) -> Option<Rect> {
+        self.local_bounds().map(|local| self.transform.map_rect(local).0)
+    }
+
+    /// Visual bounds in this node's own coordinates: geometry plus half the stroke width,
+    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
+    pub fn local_bounds(&self) -> Option<Rect> {
         let mut local = match &self.kind {
             NodeKind::Shape(s) => {
                 let mut r = s.geometry.compute_tight_bounds();
@@ -291,7 +296,7 @@ impl Node {
                 return None;
             }
         }
-        Some(self.transform.map_rect(local).0)
+        Some(local)
     }
 
     /// Local bounds this node's `inside` clip and node mask keep, grown by three feather sigmas.
