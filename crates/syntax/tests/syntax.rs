@@ -1132,3 +1132,62 @@ fn calling_a_member_at_the_end_of_a_line_is_e0101() {
         assert_eq!(errs[0].span.line, 1);
     }
 }
+
+#[test]
+fn a_color_glued_to_an_operator_round_trips() {
+    let src = "let p = (#ff0000)+(1,0)\nlet q = #ff0000*2\n";
+    round_trip_source(src);
+    round_trip_ast(&must_parse(src));
+    assert_eq!(
+        format_source(src).unwrap(),
+        "let p = #ff0000+(1,0)\nlet q = #ff0000*2\n"
+    );
+}
+
+#[test]
+fn a_member_of_a_number_keeps_its_member_when_formatted() {
+    let src = "let a = 1.00.0001\nlet b = 2.5.x\n";
+    let file = must_parse(src);
+    assert_eq!(
+        format(&file),
+        "let a = (1).0001\nlet b = (2.5).x\n"
+    );
+    assert_eq!(must_parse(&format(&file)), file);
+    round_trip_source(src);
+}
+
+#[test]
+fn a_braced_name_keeps_its_braces_when_formatted() {
+    let src = "circle 4 name:{x}\n";
+    let file = must_parse(src);
+    assert_eq!(format(&file), src);
+    assert_eq!(must_parse(&format(&file)), file);
+    round_trip_source(src);
+}
+
+#[test]
+fn a_directive_without_a_path_keeps_its_positionals_out_of_the_path() {
+    for src in ["@target r:4 .3\n", "@target a:d/v \"\"\n"] {
+        let file = must_parse(src);
+        assert_eq!(file.directives[0].path, None, "{src}");
+        assert_eq!(format(&file), src);
+        assert_eq!(must_parse(&format(&file)), file);
+    }
+}
+
+#[test]
+fn fmt_keeps_the_parens_the_parser_needs() {
+    for src in [
+        "circle 3 at:(if true then (1,2) else (3,4))\n",
+        "let v = (if true then 1 else (2,3))\n",
+        "let v = ((if true then 1 else 2),3)\n",
+    ] {
+        let file = must_parse(src);
+        assert_eq!(must_parse(&format(&file)), file, "{src}");
+        round_trip_source(src);
+    }
+    for src in ["let v = -(-x)\n", "let v = not (not b)\n"] {
+        assert_eq!(format(&must_parse(src)), src);
+        round_trip_source(src);
+    }
+}

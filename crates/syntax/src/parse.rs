@@ -163,6 +163,9 @@ impl<'a> Parser<'a> {
     }
 
     fn looks_like_path(&self) -> bool {
+        if self.is_named() {
+            return false;
+        }
         let Some(chunk) = self.peek_glued_source() else {
             return false;
         };

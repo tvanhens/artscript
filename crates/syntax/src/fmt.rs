@@ -22,14 +22,13 @@ pub(crate) fn format_file_with_comments(
     };
     for d in &file.directives {
         let mut parts = vec![format!("@{}", d.name)];
+        let args = d.args.iter().map(fmt_expr);
+        let named = d.named.iter().filter(|n| n.key != "clip").map(fmt_named);
         if let Some(path) = &d.path {
             parts.push(path.clone());
-        }
-        for arg in &d.args {
-            parts.push(fmt_expr(arg));
-        }
-        for named in d.named.iter().filter(|n| n.key != "clip") {
-            parts.push(fmt_named(named));
+            parts.extend(args.chain(named));
+        } else {
+            parts.extend(named.chain(args));
         }
         if !d.each.is_empty() {
             parts.push("each".into());
@@ -439,7 +438,10 @@ fn join_head(kw: &str, name: &str, args: &[Expr], named: &[Named]) -> String {
 }
 
 fn fmt_named(n: &Named) -> String {
-    format!("{}:{}", n.key, fmt_expr(&n.value))
+    match &n.value {
+        Expr::Tuple(xs) if n.key == "name" && xs.len() == 1 => format!("name:{{{}}}", fmt_expr(&xs[0])),
+        value => format!("{}:{}", n.key, fmt_expr(value)),
+    }
 }
 
 pub(crate) fn fmt_expr(e: &Expr) -> String {
@@ -501,6 +503,7 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Str(s) => fmt_string(s),
         Expr::Ident(s) => s.clone(),
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
+        Expr::Member(base, seg) if matches!(**base, Expr::Num(_)) => format!("({}).{seg}", fmt_body(base)),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
         Expr::Tuple(xs) => {
             // An `else` branch takes the rest of the tuple, so only the last element may be a bare `if`.
@@ -519,8 +522,8 @@ fn fmt_body(e: &Expr) -> String {
             format!("[each {var} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
         }
         Expr::Range(lo, hi) => format!("{}..{}", fmt_at(lo, 7, false), fmt_at(hi, 7, true)),
-        Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, false)),
-        Expr::Unary(UnOp::Not, inner) => format!("not {}", fmt_at(inner, 4, false)),
+        Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, true)),
+        Expr::Unary(UnOp::Not, inner) => format!("not {}", fmt_at(inner, 4, true)),
         Expr::Binary(op, l, r) => {
             let prec = prec_of(e);
             let ls = fmt_at(l, prec, false);
