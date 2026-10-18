@@ -4528,6 +4528,18 @@ fn an_unknown_key_on_a_builtin_verb_is_e0321() {
 }
 
 #[test]
+fn a_group_passes_its_paint_keys_to_its_children() {
+    let s = scene("@target t.png 64x64\ngroup g fill:#ff0000\n  circle 4 name:a\n  circle 4 fill:#0000ff name:b\n");
+    assert_eq!(fill_hex(node(&s, "a")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "b")), "#0000ff");
+
+    let ev = run_with("@target t.png 64x64\ncanvas fil:#000000\n", &[]);
+    let d = diag(&ev, "E0321");
+    assert_eq!(d.message, "`canvas` has no key `fil`");
+    assert_eq!(d.fix.as_deref(), Some("did you mean `fill:`?"));
+}
+
+#[test]
 fn a_vector_is_a_size_and_filtered_words_still_pass() {
     let s = scene(
         "@target t.png 64x64\nlet w = 30\nlet h = 6\nrect w,h at:32,32 name:r\nlayer bg\n  group g at:32,32\n    mirror x\n      circle 4 at:10,0 name:ear\ncurve 0,0 10,-5 20,0 30,5 40,0 name:wave\ncurve 0,0 10,10 20,0 closed name:loop\n",
