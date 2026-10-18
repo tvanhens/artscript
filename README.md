@@ -168,7 +168,7 @@ artscript build
 
 | Command | What it does |
 |---|---|
-| `artscript build [--only GLOB]` | Render every `@target` and write the manifest |
+| `artscript build [--only GLOB]...` | Render every `@target` and write the manifest |
 | `artscript check [--json]` | Evaluate every target and run its checks, without rendering |
 | `artscript fmt [--check]` | Rewrite `.art` files in the canonical style |
 | `artscript explain <file>` | Print the evaluated node tree |
