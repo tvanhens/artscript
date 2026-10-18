@@ -6091,3 +6091,12 @@ fn an_index_picks_one_copy_of_a_family() {
     assert_eq!(at(node(&s, "a")), (15.0, 30.0));
     assert_eq!(at(node(&s, "b")), (25.0, 40.0));
 }
+
+#[test]
+fn a_vector_branch_of_an_if_evaluates_in_a_let() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 3\nlet p = if k < 19 then k*32,200 else 576,300\nlet q = if k > 19 then k*32,200 else 576,300\ncircle 2 at:p name:a\ncircle 2 at:q name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (96.0, 200.0));
+    assert_eq!(at(node(&s, "b")), (576.0, 300.0));
+}
