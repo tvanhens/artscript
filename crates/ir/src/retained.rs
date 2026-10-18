@@ -50,7 +50,11 @@ fn mark_bytes(mark: &AreaMark) -> u64 {
 }
 
 fn stroke_bytes(stroke: &Stroke) -> u64 {
-    paint_bytes(&stroke.paint) + vec_bytes(&stroke.dash, |_| 0)
+    let ribbon = stroke.ribbon.as_ref().map_or(0, |r| {
+        vec_bytes(&r.marks, |m| vec_bytes(&m.stage.uniforms, |(name, _)| str_bytes(name)))
+            + vec_bytes(&r.contours, |c| vec_bytes(&c.knots, |_| 0))
+    });
+    paint_bytes(&stroke.paint) + vec_bytes(&stroke.dash, |_| 0) + ribbon
 }
 
 fn paint_bytes(paint: &Paint) -> u64 {

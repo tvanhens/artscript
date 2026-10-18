@@ -74,6 +74,7 @@ pub(crate) fn draw_area(
             .map(|child| match child.name() {
                 "u_prev" => Ok(prev.clone().into()),
                 "u_sdf" => Ok(sdf.clone().into()),
+                "u_field" | "u_chan" => Ok(shaders::color(skia_safe::Color::TRANSPARENT).into()),
                 other => Err(internal(origin, format!("program declares an unknown child `{other}`"))),
             })
             .collect::<Result<_, _>>()?;

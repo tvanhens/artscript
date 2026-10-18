@@ -159,10 +159,105 @@ pub struct Stage {
 #[derive(Clone, Debug)]
 pub struct Stroke {
     pub paint: Paint,
+    /// The widest the stroke gets. A ribbon's half width at each point is in its knots.
     pub width: f32,
     pub cap: Cap,
     pub join: Join,
     pub dash: Vec<f32>,
+    /// The brush stages that shade the stroke as a ribbon along the shape's geometry. `None` is a
+    /// plain stroke. A ribbon has round caps and joins and no dash.
+    pub ribbon: Option<Ribbon>,
+}
+
+/// A brushed stroke. The spine is the shape's geometry; each of its contours is one ribbon with
+/// its own channel knots. The stages run in order over the ribbon's `(s, d)` field: stage 0 reads
+/// `paint` as `m.paint`, each later stage reads the previous stage's color, and coverages multiply.
+#[derive(Clone, Debug)]
+pub struct Ribbon {
+    pub marks: Vec<RibbonMark>,
+    /// One per contour of the geometry, in path order.
+    pub contours: Vec<RibbonContour>,
+    /// Arc length of every contour together, in local units.
+    pub len: f32,
+    /// The fraction of `len` over which the start and the end thin, through [`taper_ramp`].
+    pub taper: [f32; 2],
+}
+
+impl Ribbon {
+    pub fn reach(&self) -> f32 {
+        self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+    }
+}
+
+/// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the
+/// nearest point of the spine, `m.edge` is the half width there minus the distance to it.
+#[derive(Clone, Debug)]
+pub struct RibbonMark {
+    pub stage: Stage,
+    /// Local units the stage may paint past the ribbon's edge. Grows bounds and bake tiles.
+    pub reach: f32,
+}
+
+/// The channel knots of one contour. Between knots every value interpolates linearly by `s`.
+#[derive(Clone, Debug)]
+pub struct RibbonContour {
+    /// Arc length along the whole geometry at which this contour starts.
+    pub start: f32,
+    pub len: f32,
+    pub closed: bool,
+    /// Rising `s`, the first at 0 and the last at `len`.
+    pub knots: Vec<Knot>,
+}
+
+impl RibbonContour {
+    /// The channels at arc length `s`, clamped to the contour.
+    pub fn at(&self, s: f32) -> Knot {
+        let k = &self.knots;
+        let i = k.partition_point(|n| n.s <= s);
+        if i == 0 {
+            return k[0];
+        }
+        if i == k.len() {
+            return k[i - 1];
+        }
+        let (a, b) = (k[i - 1], k[i]);
+        let t = ((s - a.s) / (b.s - a.s).max(1e-9)).clamp(0.0, 1.0);
+        let mix = |x: f32, y: f32| x + (y - x) * t;
+        Knot {
+            s,
+            half_width: mix(a.half_width, b.half_width),
+            pressure: mix(a.pressure, b.pressure),
+            angle: mix(a.angle, b.angle),
+            tilt: mix(a.tilt, b.tilt),
+            velocity: mix(a.velocity, b.velocity),
+        }
+    }
+}
+
+/// The ribbon's channels at one arc length. `half_width` is before the taper.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Knot {
+    pub s: f32,
+    pub half_width: f32,
+    pub pressure: f32,
+    pub angle: f32,
+    pub tilt: f32,
+    pub velocity: f32,
+}
+
+/// How much of its width a stroke keeps at fraction `u` of its length under `taper`, the start
+/// and end fractions over which it thins. Shared by the tapered outline and the ribbon.
+pub fn taper_ramp(u: f64, taper: (f64, f64)) -> f64 {
+    const FLOOR: f64 = 0.12;
+    let ease = |x: f64| (x.clamp(0.0, 1.0) * std::f64::consts::PI / 2.0).sin().powf(0.8);
+    let mut w = 1.0;
+    if taper.0 > 0.0 {
+        w *= FLOOR + (1.0 - FLOOR) * ease(u / taper.0);
+    }
+    if taper.1 > 0.0 {
+        w *= FLOOR + (1.0 - FLOOR) * ease((1.0 - u) / taper.1);
+    }
+    w
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -341,9 +436,12 @@ pub enum EffectOp {
 }
 
 impl Shape {
-    /// Local units the fill's brush marks may paint past `geometry`. 0 without marks.
+    /// Local units the brush marks may paint past the fill's geometry or the ribbon's edge. 0
+    /// without marks.
     pub fn mark_reach(&self) -> f32 {
-        self.fill.as_ref().map_or(0.0, Fill::reach)
+        let fill = self.fill.as_ref().map_or(0.0, Fill::reach);
+        let stroke = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).map_or(0.0, Ribbon::reach);
+        fill.max(stroke)
     }
 }
 
@@ -535,7 +633,7 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Geometry plus half the stroke width, plus what the fill's brush marks may paint past it.
+/// Geometry plus half the stroke width, plus what the brush marks may paint past it.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
     if let Some(st) = &s.stroke {

@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use artscript_ir::{AreaMark, Scene, UniformValue};
+use artscript_ir::{AreaMark, Ribbon, Scene, UniformValue};
 use artscript_syntax::Diagnostic;
 
 use crate::{Project, evaluate, plan};
@@ -28,6 +28,14 @@ fn marks<'a>(s: &'a Scene, path: &str) -> &'a [AreaMark] {
 
 fn seeds(s: &Scene, path: &str) -> Vec<u32> {
     marks(s, path).iter().map(|m| m.stage.seed).collect()
+}
+
+fn ribbon<'a>(s: &'a Scene, path: &str) -> &'a Ribbon {
+    shape(s, path).stroke.as_ref().expect("stroke").ribbon.as_ref().expect("ribbon")
+}
+
+fn col(d: &Diagnostic) -> (u32, u32) {
+    (d.span.line, d.span.col)
 }
 
 fn ok(src: &str, libs: &[(&str, &str)]) -> Scene {
@@ -122,32 +130,120 @@ fn a_word_that_is_not_a_brush_is_e0364_at_the_key() {
 }
 
 #[test]
-fn a_brush_that_reaches_a_stroke_is_e0362_and_on_fill_narrows_it() {
-    let ev = run_with("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,[2 6 3] taper:.3 brush:dry name:a\n", &[LIB]);
-    let d = diag(&ev, "E0362");
-    assert!(d.message.contains("brushed strokes"), "{d}");
-    assert_eq!((d.span.line, d.span.col), (3, 54), "{d}");
-    assert!(d.fix.as_deref().unwrap().contains("on:fill"), "{d}");
-    let d = first("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry name:a\n", &[LIB], "E0362");
-    assert!(d.message.contains("brushed strokes"), "{d}");
+fn a_brush_on_a_stroke_makes_a_ribbon_and_on_fill_narrows_it() {
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,4 brush:dry name:a\n", &[LIB]);
+    let sh = shape(&s, "a");
+    assert!(sh.fill.is_none());
+    let r = ribbon(&s, "a");
+    assert_eq!(r.marks.len(), 1);
+    assert_eq!(r.contours.len(), 1);
+    let c = &r.contours[0];
+    assert!(!c.closed);
+    assert_eq!(c.start, 0.0);
+    assert!((c.len - r.len).abs() < 1e-4 && r.len > 90.0, "len {}", r.len);
+    assert_eq!(c.knots.first().unwrap().s, 0.0);
+    assert_eq!(c.knots.last().unwrap().s, c.len);
+    assert!(c.knots.iter().all(|k| k.half_width == 2.0 && k.pressure == 1.0 && k.angle == 0.0 && k.tilt == 0.0));
+    assert_eq!(sh.stroke.as_ref().unwrap().width, 4.0);
+    assert!(!sh.geometry.is_last_contour_closed(), "the geometry stays the open spine");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry(on:fill) name:a\n", &[LIB]);
     assert_eq!(marks(&s, "a").len(), 1);
-    assert!(shape(&s, "a").stroke.is_some());
+    assert!(shape(&s, "a").stroke.as_ref().unwrap().ribbon.is_none());
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry(on:stroke) name:a\n", &[LIB]);
+    assert_eq!(marks(&s, "a").len(), 0);
+    assert!(ribbon(&s, "a").contours[0].closed, "a rect outline wraps");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nlayer back brush:dry(on:fill)\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:line\n", &[LIB]);
     assert!(shape(&s, "line").fill.is_none(), "an inherited brush with no matching slot does nothing");
+    assert!(shape(&s, "line").stroke.as_ref().unwrap().ribbon.is_none());
 }
 
 #[test]
-fn an_inherited_brush_on_a_stroke_only_node_is_e0362_at_the_statement() {
-    let d = first("@target t.png 100x100\nuse brushes { dry }\nlayer back brush:dry\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:line\n", &[LIB], "E0362");
-    assert_eq!((d.span.line, d.span.col), (4, 3), "{d}");
-    assert!(d.notes.iter().any(|n| n.contains("inherited")), "{d}");
+fn a_fill_and_a_stroke_on_one_node_get_two_marks_seeded_apart() {
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry name:a\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry seed:7 name:b\n", &[LIB]);
+    let fill_seed = seeds(&s, "a")[0];
+    let stroke_seed = ribbon(&s, "a").marks[0].stage.seed;
+    assert_ne!(fill_seed, stroke_seed);
+    assert_eq!(seeds(&s, "b")[0], ribbon(&s, "b").marks[0].stage.seed, "seed: pins both");
+    assert_ne!(seeds(&s, "b")[0], fill_seed);
+}
+
+#[test]
+fn a_brushed_tapered_stroke_is_a_ribbon_whose_half_width_follows_the_knots() {
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 10,0 40,0 stroke:#000000,[2 6 3] taper:.3 brush:dry name:a\n", &[LIB]);
+    let r = ribbon(&s, "a");
+    assert_eq!(r.taper, [0.3, 0.3]);
+    let c = &r.contours[0];
+    assert!((c.len - 40.0).abs() < 1e-3, "{}", c.len);
+    let hw: Vec<(f32, f32)> = c.knots.iter().map(|k| ((k.s * 10.0).round() / 10.0, k.half_width)).collect();
+    assert_eq!(hw, vec![(0.0, 1.0), (10.0, 3.0), (40.0, 1.5)], "widths sit on the knots by chord fraction");
+    assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().width, 6.0);
+    assert_eq!(shape(&s, "a").geometry.count_points(), 7, "three knots, two cubics: not an outline");
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 10,0 40,0 stroke:#000000,[2 6] brush:dry name:a\n", &[LIB]);
+    let hw: Vec<(f32, f32)> = ribbon(&s, "a").contours[0].knots.iter().map(|k| ((k.s * 10.0).round() / 10.0, k.half_width)).collect();
+    assert_eq!(hw, vec![(0.0, 1.0), (10.0, 1.5), (40.0, 3.0)], "two widths on three knots spread evenly; the middle knot holds the lerp");
+}
+
+#[test]
+fn channels_sit_on_the_knots_or_spread_evenly_and_velocity_follows_knot_spacing() {
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 10,0 40,0 stroke:#000000,4 brush:dry pressure:[.2 1 .5] angle:45 tilt:[0 1] name:a\n",
+        &[LIB],
+    );
+    let c = &ribbon(&s, "a").contours[0];
+    let at = |s: f32| c.at(s);
+    assert_eq!(at(0.0).pressure, 0.2);
+    assert!((at(10.0).pressure - 1.0).abs() < 1e-3, "{:?}", at(10.0));
+    assert!((at(5.0).pressure - 0.6).abs() < 1e-3, "linear between knots: {:?}", at(5.0));
+    assert_eq!(at(40.0).pressure, 0.5);
+    assert!(c.knots.iter().all(|k| k.angle == 45.0), "a number is constant along the path");
+    assert!((at(20.0).tilt - 0.5).abs() < 1e-3, "two values spread over the whole length");
+    assert!((at(0.0).velocity - 0.5).abs() < 1e-3, "chords 10 and 30, mean 20");
+    assert!((at(10.0).velocity - 1.0).abs() < 1e-3);
+    assert!((at(40.0).velocity - 1.5).abs() < 1e-3);
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 stroke:#000000,4 brush:dry pressure:[.2 1 .5] name:a\n", &[LIB]);
+    let c = &ribbon(&s, "a").contours[0];
+    assert!((c.at(c.len / 2.0).pressure - 1.0).abs() < 1e-3, "no knots: the list spreads by arc length");
+    assert!(c.knots.iter().all(|k| k.velocity == 1.0));
+}
+
+#[test]
+fn a_channel_key_without_a_brushed_stroke_is_e0362_at_the_key() {
+    let d = first("@target t.png 100x100\nrect 40x40 at:50,50 fill:#ff0000 pressure:[.2 1] name:a\n", &[], "E0362");
+    assert!(d.message.contains("`pressure:` has no effect without a brushed stroke"), "{d}");
+    assert_eq!(col(&d), (2, 34), "{d}");
+    let d = first("@target t.png 100x100\ncurve 0,0 50,20 90,0 stroke:#000000,2 tilt:.5 name:a\n", &[], "E0362");
+    assert!(d.message.contains("`tilt:`"), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("no brush")), "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { dry }\nlayer back angle:30\n  rect 40x40 at:50,50 fill:#ff0000 brush:dry name:a\n", &[LIB], "E0362");
+    assert_eq!(col(&d), (4, 3), "an inherited channel reports on the statement: {d}");
+    assert!(d.notes.iter().any(|n| n.contains("`angle:` is inherited")), "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 brush:dry pressure:#ff0000 name:a\n", &[LIB], "E0320");
+    assert!(d.message.contains("`pressure:` takes a number or a list of numbers, got a color"), "{d}");
+    assert_eq!(col(&d), (3, 49), "{d}");
+}
+
+#[test]
+fn a_dash_on_a_brushed_stroke_is_e0362_at_the_dash() {
+    let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 brush:dry dash:4,2 name:a\n", &[LIB], "E0362");
+    assert!(d.message.contains("`dash:` on a brushed stroke"), "{d}");
+    assert_eq!(col(&d), (3, 49), "{d}");
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry(on:fill) dash:4,2 name:a\n", &[LIB]);
+    assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().dash, vec![4.0, 2.0], "the plain stroke keeps its dash");
+}
+
+#[test]
+fn an_inherited_brush_reaches_a_stroke_only_node_as_a_ribbon() {
+    let s = ok("@target t.png 100x100\nuse brushes { dry }\nlayer back brush:dry\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:line\n", &[LIB]);
+    assert_eq!(ribbon(&s, "line").marks.len(), 1);
+    assert!(shape(&s, "line").fill.is_none());
 }
 
 #[test]
 fn a_brush_with_no_paint_to_brush_and_blur_with_a_brush_are_e0362() {
     let d = first("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:none brush:dry name:a\n", &[LIB], "E0362");
     assert!(d.message.contains("no paint to brush"), "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 blur:3 brush:dry name:a\n", &[LIB], "E0362");
+    assert!(d.message.contains("`blur:`"), "{d}");
     let d = first("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 blur:4 brush:dry name:a\n", &[LIB], "E0362");
     assert!(d.message.contains("`blur:`"), "{d}");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nlayer back brush:dry\n  rect 40x40 at:50,50 fill:none name:a\n", &[LIB]);

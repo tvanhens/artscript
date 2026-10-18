@@ -240,6 +240,7 @@ fn stroked(geometry: Path, cap: Cap, join: Join) -> Node {
     if let NodeKind::Shape(s) = &mut n.kind {
         s.fill = None;
         s.stroke = Some(Stroke {
+            ribbon: None,
             paint: Paint::Solid(color(0, 0, 0, 255)),
             width: 10.0,
             cap,

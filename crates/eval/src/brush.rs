@@ -1,6 +1,7 @@
-//! Brush declarations, brush values with overrides, and the fill marks a node's `brush:` key
-//! becomes. The SkSL contract itself lives in `artscript_brush`; this module binds `.art` values
-//! to it and reports every failure at the author's line.
+//! Brush declarations, brush values with overrides, the marks a node's `brush:` key becomes on
+//! its fill and its stroke, and the ribbon a brushed stroke's channels become. The SkSL contract
+//! itself lives in `artscript_brush`; this module binds `.art` values to it and reports every
+//! failure at the author's line.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -9,20 +10,32 @@ use artscript_brush::{
     HELPERS, MARK_FIELDS, MainKind, Origin, PLACEMENT_KEYS, Program, RESERVED_PREFIX,
     UniformKind, UniformValue,
 };
-use artscript_ir::{AreaMark, Stage};
+use artscript_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
 use artscript_syntax::ast::{Expr, Named, SkslBlock, Span};
+use skia_safe::ContourMeasureIter;
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
+use crate::geom::P;
 use crate::identity::{self, Key};
 use crate::scope::Module;
 use crate::value::{Kind, Value};
 
-/// A `brush` declaration after `check` accepted its program. Shared by every value made from it.
+/// A `brush` declaration after `check` accepted its programs. Shared by every value made from it.
 pub struct BrushDecl {
     pub name: String,
     /// Declared uniforms in head order.
     pub params: Vec<(String, UniformKind)>,
-    pub program: Arc<Program>,
+    /// The body under each main, indexed by [`MainKind`]: area first, ribbon second.
+    programs: [Arc<Program>; 2],
+}
+
+impl BrushDecl {
+    pub fn program(&self, kind: MainKind) -> &Arc<Program> {
+        &self.programs[match kind {
+            MainKind::Area => 0,
+            MainKind::Ribbon => 1,
+        }]
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,13 +311,20 @@ impl Evaluator<'_> {
         if head_failed {
             return Err(errors);
         }
-        let program = Program::assemble(MainKind::Area, &decl_params, &block.text);
-        if let Err(errs) = artscript_brush::check(&program) {
+        let area = Program::assemble(MainKind::Area, &decl_params, &block.text);
+        // The body is the same text under both mains, so the area check reports its errors once.
+        // The ribbon main is checked too, so render never meets a program eval did not.
+        let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
+        if let Err(errs) = artscript_brush::check(&area) {
             errors.extend(errs.into_iter().map(|e| {
                 let f = fail("E0360", format!("SkSL: {}", e.message))
                     .note(format!("in brush `{name}`"))
                     .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
                 (f, at(e.origin))
+            }));
+        } else if let Err(errs) = artscript_brush::check(&ribbon) {
+            errors.extend(errs.into_iter().map(|e| {
+                (fail("E0360", format!("SkSL on a stroke: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
             }));
         }
         if !errors.is_empty() {
@@ -314,7 +334,7 @@ impl Evaluator<'_> {
             decl: Rc::new(BrushDecl {
                 name: name.to_string(),
                 params: decl_params,
-                program: Arc::new(program),
+                programs: [Arc::new(area), Arc::new(ribbon)],
             }),
             uniforms,
             place,
@@ -423,8 +443,38 @@ impl Evaluator<'_> {
         names
     }
 
-    /// The fill's marks: one stage per brush, each seeded from this node's key, the slot, and
+    /// One stage per brush of `stack` on `slot`, each seeded from this node's key, the slot, and
     /// its index in the stack, through `identity::seed` so `seed:` pins it and L0104 sees it.
+    fn stages<'b>(
+        &mut self,
+        stack: &'b [Rc<BrushVal>],
+        slot: Slot,
+        kind: MainKind,
+        key: &Key,
+        explicit: Option<u64>,
+        file: &str,
+    ) -> Vec<(Stage, &'b Placement)> {
+        stack
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let seed = identity::seed(file, &key.brush(slot.word(), i as u32), explicit, &mut self.uses);
+                let stage = Stage {
+                    program: b.decl.program(kind).clone(),
+                    uniforms: b
+                        .decl
+                        .params
+                        .iter()
+                        .zip(&b.uniforms)
+                        .map(|((n, _), u)| (n.clone(), *u))
+                        .collect(),
+                    seed: (seed ^ (seed >> 32)) as u32,
+                };
+                (stage, &b.place)
+            })
+            .collect()
+    }
+
     pub(crate) fn area_marks(
         &mut self,
         stack: &[Rc<BrushVal>],
@@ -432,31 +482,159 @@ impl Evaluator<'_> {
         explicit: Option<u64>,
         file: &str,
     ) -> Vec<AreaMark> {
-        stack
-            .iter()
-            .enumerate()
-            .map(|(i, b)| {
-                let seed = identity::seed(file, &key.brush(Slot::Fill.word(), i as u32), explicit, &mut self.uses);
-                let rad = b.place.dir_deg.to_radians();
+        self.stages(stack, Slot::Fill, MainKind::Area, key, explicit, file)
+            .into_iter()
+            .map(|(stage, place)| {
+                let rad = place.dir_deg.to_radians();
                 AreaMark {
-                    stage: Stage {
-                        program: b.decl.program.clone(),
-                        uniforms: b
-                            .decl
-                            .params
-                            .iter()
-                            .zip(&b.uniforms)
-                            .map(|((n, _), u)| (n.clone(), *u))
-                            .collect(),
-                        seed: (seed ^ (seed >> 32)) as u32,
-                    },
-                    dir_deg: b.place.dir_deg as f32,
+                    stage,
+                    dir_deg: place.dir_deg as f32,
                     cos_sin: [rad.cos() as f32, rad.sin() as f32],
-                    reach: b.place.reach as f32,
+                    reach: place.reach as f32,
                 }
             })
             .collect()
     }
+
+    pub(crate) fn ribbon_marks(
+        &mut self,
+        stack: &[Rc<BrushVal>],
+        key: &Key,
+        explicit: Option<u64>,
+        file: &str,
+    ) -> Vec<RibbonMark> {
+        self.stages(stack, Slot::Stroke, MainKind::Ribbon, key, explicit, file)
+            .into_iter()
+            .map(|(stage, place)| RibbonMark { stage, reach: place.reach as f32 })
+            .collect()
+    }
+}
+
+/// The per-point channels of a brushed stroke, as authored. `None` is the channel's default.
+#[derive(Default)]
+pub struct Channels {
+    pub pressure: Option<Vec<f64>>,
+    pub angle: Option<Vec<f64>>,
+    pub tilt: Option<Vec<f64>>,
+}
+
+/// The key, default, and spelling of each channel, in the order the Mark lists them.
+pub const CHANNEL_KEYS: &[(&str, f64, &str)] =
+    &[("pressure", 1.0, "pressure:[.3 1 .5]"), ("angle", 0.0, "angle:[0 45 90]"), ("tilt", 0.0, "tilt:[0 .5 1]")];
+
+impl Channels {
+    pub fn get(&self, key: &str) -> Option<&[f64]> {
+        match key {
+            "pressure" => self.pressure.as_deref(),
+            "angle" => self.angle.as_deref(),
+            "tilt" => self.tilt.as_deref(),
+            _ => unreachable!("channels are {CHANNEL_KEYS:?}"),
+        }
+    }
+
+    pub fn set(&mut self, key: &str, values: Vec<f64>) {
+        match key {
+            "pressure" => self.pressure = Some(values),
+            "angle" => self.angle = Some(values),
+            "tilt" => self.tilt = Some(values),
+            _ => unreachable!("channels are {CHANNEL_KEYS:?}"),
+        }
+    }
+}
+
+/// Where a list of `n` values sits along a path of length `len`: on the knots when there is one
+/// value per knot, else spread evenly by arc length. Knot positions are chord fractions, as the
+/// tapered outline places widths.
+fn positions(n: usize, knots: &[P], len: f64) -> Vec<f64> {
+    if n >= 2 && n == knots.len() {
+        let mut acc = vec![0.0];
+        for w in knots.windows(2) {
+            acc.push(acc.last().unwrap() + (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1));
+        }
+        let total = acc.last().copied().unwrap().max(1e-9);
+        acc.iter().map(|a| a / total * len).collect()
+    } else {
+        (0..n).map(|i| if n < 2 { 0.0 } else { i as f64 / (n - 1) as f64 * len }).collect()
+    }
+}
+
+/// A piecewise-linear channel along the whole path.
+struct Channel {
+    at: Vec<f64>,
+    values: Vec<f64>,
+}
+
+impl Channel {
+    fn new(values: &[f64], default: f64, knots: &[P], len: f64) -> Channel {
+        if values.is_empty() {
+            return Channel { at: vec![0.0], values: vec![default] };
+        }
+        Channel { at: positions(values.len(), knots, len), values: values.to_vec() }
+    }
+
+    fn at(&self, s: f64) -> f64 {
+        let i = self.at.partition_point(|a| *a <= s);
+        if i == 0 {
+            return self.values[0];
+        }
+        if i == self.at.len() {
+            return self.values[i - 1];
+        }
+        let t = ((s - self.at[i - 1]) / (self.at[i] - self.at[i - 1]).max(1e-9)).clamp(0.0, 1.0);
+        self.values[i - 1] + (self.values[i] - self.values[i - 1]) * t
+    }
+}
+
+/// The ribbon a brushed stroke along `path` becomes. `widths` and each channel list sit on the
+/// knots when they have one value per knot and spread evenly otherwise. Velocity comes from knot
+/// spacing: knots are evenly timed, so a long chord is a fast segment, and a path without knots
+/// moves at 1.
+pub fn ribbon(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), ch: &Channels, marks: Vec<RibbonMark>) -> Ribbon {
+    let spans: Vec<(f64, bool)> = ContourMeasureIter::new(path, false, None)
+        .map(|m| (f64::from(m.length()), m.is_closed()))
+        .collect();
+    let len: f64 = spans.iter().map(|(l, _)| l).sum();
+    let width = Channel::new(widths, 1.0, knots, len);
+    let channel = |key: &str, default: f64| Channel::new(ch.get(key).unwrap_or(&[]), default, knots, len);
+    let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
+    let velocity = if knots.len() >= 2 {
+        let chords: Vec<f64> = knots.windows(2).map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1)).collect();
+        let mean = (chords.iter().sum::<f64>() / chords.len() as f64).max(1e-9);
+        let v: Vec<f64> = (0..knots.len())
+            .map(|i| {
+                let before = chords[i.saturating_sub(1).min(chords.len() - 1)];
+                let after = chords[i.min(chords.len() - 1)];
+                (before + after) / 2.0 / mean
+            })
+            .collect();
+        Channel::new(&v, 1.0, knots, len)
+    } else {
+        Channel::new(&[], 1.0, knots, len)
+    };
+    let mut at: Vec<f64> = [&width, &pressure, &angle, &tilt, &velocity].iter().flat_map(|c| c.at.iter().copied()).collect();
+    let mut contours = Vec::with_capacity(spans.len());
+    let mut start = 0.0;
+    for (clen, closed) in spans {
+        let end = start + clen;
+        at.extend([start, end]);
+        at.sort_by(f64::total_cmp);
+        at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+        let knots = at
+            .iter()
+            .filter(|s| **s >= start - 1e-6 && **s <= end + 1e-6)
+            .map(|&s| Knot {
+                s: (s - start).clamp(0.0, clen) as f32,
+                half_width: (width.at(s) / 2.0) as f32,
+                pressure: pressure.at(s) as f32,
+                angle: angle.at(s) as f32,
+                tilt: tilt.at(s) as f32,
+                velocity: velocity.at(s) as f32,
+            })
+            .collect();
+        contours.push(RibbonContour { start: start as f32, len: clen as f32, closed, knots });
+        start = end;
+    }
+    Ribbon { marks, contours, len: len as f32, taper: [taper.0 as f32, taper.1 as f32] }
 }
 
 /// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime

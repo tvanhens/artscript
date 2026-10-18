@@ -6,7 +6,7 @@ use std::f64::consts::PI;
 
 use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
 
-use artscript_ir::{Path, Point, Rect};
+use artscript_ir::{Path, Point, Rect, taper_ramp};
 
 use crate::seed::Rng;
 
@@ -120,10 +120,6 @@ fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
     ys[ys.len() - 1]
 }
 
-fn ease(x: f64) -> f64 {
-    (x.clamp(0.0, 1.0) * PI / 2.0).sin().powf(0.8)
-}
-
 /// Filled outline of a variable-width stroke along `path`'s first contour, with round caps.
 /// `widths` has one width per control point in `knots` (chord fractions follow the knots);
 /// with no knots the widths are spread evenly along the length.
@@ -153,19 +149,9 @@ pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), step: 
         vec![0.0, 1.0]
     };
     let ws: Vec<f64> = if widths.len() >= 2 { widths.to_vec() } else { vec![widths[0]; 2] };
-    let floor = 0.12;
     let w: Vec<f64> = s
         .iter()
-        .map(|&si| {
-            let mut w = interp(si / length, &chord, &ws);
-            if taper.0 > 0.0 {
-                w *= floor + (1.0 - floor) * ease(si / (taper.0 * length));
-            }
-            if taper.1 > 0.0 {
-                w *= floor + (1.0 - floor) * ease((length - si) / (taper.1 * length));
-            }
-            w
-        })
+        .map(|&si| interp(si / length, &chord, &ws) * taper_ramp(si / length, taper))
         .collect();
     let n = c.pos.len();
     let normal = |i: usize| (-c.tan[i].1, c.tan[i].0);

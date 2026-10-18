@@ -64,6 +64,9 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
         }
         if let Some(st) = &s.stroke {
             let _ = write!(out, "  stroke:{},{}", paint(&st.paint), num(st.width as f64));
+            if let Some(r) = &st.ribbon {
+                let _ = write!(out, "  brush:{}", r.marks.len());
+            }
         }
         if s.blur > 0.0 {
             let _ = write!(out, "  blur:{}", num(s.blur as f64));
