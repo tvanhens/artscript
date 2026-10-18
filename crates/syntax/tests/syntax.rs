@@ -196,6 +196,10 @@ fn directive_target_matrix() {
         format(&file),
         "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
     );
+    assert_eq!(
+        format(&must_parse("@target a.png 8x8 viewport\n")),
+        "@target a.png 8x8 viewport\n"
+    );
     let clip = must_parse("@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n");
     assert_eq!(clip.directives[0].each[0].key, "c");
     assert_eq!(

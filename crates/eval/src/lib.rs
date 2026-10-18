@@ -150,7 +150,10 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
-    let mut placement = lints::off_canvas(&scene, &project.manifest, &job.source);
+    let mut placement = Vec::new();
+    if !job.viewport {
+        placement = lints::off_canvas(&scene, &project.manifest, &job.source);
+    }
     placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
     stamp_target(job, &mut placement);
     diagnostics.extend(placement);
