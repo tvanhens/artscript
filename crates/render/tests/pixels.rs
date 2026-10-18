@@ -198,7 +198,22 @@ fn haloed(halo: Option<EffectOp>, outline: bool) -> artscript_ir::Scene {
 }
 
 fn glow() -> EffectOp {
-    EffectOp::Glow { radius: 10.0, color: color(232, 179, 58, 255) }
+    EffectOp::Glow { radius: 10.0, color: color(232, 179, 58, 255), strength: 1.0 }
+}
+
+#[test]
+fn glow_strength_multiplies_the_halo_alpha_up_to_opaque() {
+    let alpha_at = |strength: f32, x: i32| {
+        let halo = EffectOp::Glow { radius: 4.0, color: color(232, 179, 58, 255), strength };
+        let png = render_png(&haloed(Some(halo), false), 1.0, Backend::Cpu).unwrap();
+        i32::from(pixel(&png, x, 32)[3])
+    };
+    let faint = alpha_at(1.0, 9);
+    assert!((10..60).contains(&faint), "the plain halo is faint at x=9: {faint}");
+    let strong = alpha_at(4.0, 9);
+    assert!((strong - 4 * faint).abs() <= 4, "strength 4 gives {strong}, want about {}", 4 * faint);
+    assert_eq!(alpha_at(20.0, 11), 255, "a strong halo clamps to opaque");
+    assert_eq!(alpha_at(0.0, 11), 0, "strength 0 draws no halo");
 }
 
 fn blur() -> EffectOp {

@@ -274,8 +274,10 @@ pub enum EffectOp {
     /// Shadow cast inward from the edges, on top of the input and inside its alpha.
     /// Offset 0,6 darkens the top edge (CSS `inset` semantics).
     Inner { dx: f32, dy: f32, blur: f32, color: Color },
-    /// Soft halo of `color` behind the input, `radius` sigma.
-    Glow { radius: f32, color: Color },
+    /// Soft halo of `color` behind the input, `radius` sigma. `strength` multiplies the halo's
+    /// alpha, clamped to 1. The blur kernel's support bounds the halo, so a strength above 1
+    /// brightens it and reaches no further than a glow at full alpha.
+    Glow { radius: f32, color: Color, strength: f32 },
     /// Thin light band just inside the edge on the side facing `dir` (screen space, y down),
     /// brightest at the edge and fading inward over `width`.
     Rim { width: f32, dir: Point, color: Color },
@@ -417,9 +419,11 @@ impl Node {
             let input = env.resolve(&effect.input, current, source, &named);
             current = match &effect.op {
                 EffectOp::Blur { sigma } => grow(input, blur_reach(*sigma, 1.0)),
-                EffectOp::Glow { radius, color } => {
-                    join(input, grow(input, blur_reach(*radius, color.a)))
-                }
+                EffectOp::Glow {
+                    radius,
+                    color,
+                    strength,
+                } => join(input, grow(input, blur_reach(*radius, color.a * strength))),
                 EffectOp::Shadow {
                     dx,
                     dy,

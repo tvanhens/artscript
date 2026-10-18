@@ -1,0 +1,15 @@
+# A row of four cells on dark ink (bg:p.ink), cells 48 px wide, each a small gold dot of radius 4 with fx glow 3 in pale gold at a:1. Only strength: changes, left to right.
+# 1. strength 0: the bare gold dot with no halo at all.
+# 2. no strength (the default, 1): the dot with a thin faint halo, 1 to 2 px of visible gold before it fades into the ink.
+# 3. strength:3: the same halo much brighter, a clearly lit gold ring around the dot that fades out over a few px.
+# 4. strength:12: an opaque pale gold disc around the dot, with a short soft edge. It ends about where the halos of cells 2 and 3 end, no wider.
+@target fx/glow-strength.png 192x48 bg:p.ink
+
+circle 4 at:24,24 fill:p.gold
+  fx glow 3 color:p.gold.4 a:1 strength:0
+circle 4 at:72,24 fill:p.gold
+  fx glow 3 color:p.gold.4 a:1
+circle 4 at:120,24 fill:p.gold
+  fx glow 3 color:p.gold.4 a:1 strength:3
+circle 4 at:168,24 fill:p.gold
+  fx glow 3 color:p.gold.4 a:1 strength:12

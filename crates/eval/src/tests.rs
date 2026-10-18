@@ -5301,6 +5301,37 @@ fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
 }
 
 #[test]
+fn glow_strength_defaults_to_one_and_a_negative_one_is_an_error() {
+    let s = scene("@target t.png 64x64\ncircle 4 at:32,32 fill:#4af name:a\n  fx glow 3\ncircle 4 at:32,32 fill:#4af name:b\n  fx glow 3 strength:2.5\n");
+    let strength = |n: &str| match node(&s, n).effects[0].op {
+        artscript_ir::EffectOp::Glow { strength, .. } => strength,
+        ref op => panic!("{op:?}"),
+    };
+    assert_eq!((strength("a"), strength("b")), (1.0, 2.5));
+    let ev = run_with("@target t.png 64x64\ncircle 4 at:32,32 fill:#4af\n  fx glow 3 strength:-1\n", &[]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0320").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.span.line, 3, "{d}");
+}
+
+#[test]
+fn a_strong_faint_glow_reaches_as_far_as_its_scaled_alpha() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 40x10 at:50,50 fill:#4af name:full\n  fx glow 4 a:1\n\
+         rect 40x10 at:50,50 fill:#4af name:strong\n  fx glow 4 a:.25 strength:40\n\
+         rect 40x10 at:50,50 fill:#4af name:lifted\n  fx glow 4 a:.1 strength:4\n\
+         rect 40x10 at:50,50 fill:#4af name:faint\n  fx glow 4 a:.4\n\
+         circle 1 at:@full.outer.left,0 name:pf\n\
+         circle 1 at:@strong.outer.left,0 name:ps\n\
+         circle 1 at:@lifted.outer.left,0 name:pl\n\
+         circle 1 at:@faint.outer.left,0 name:pa\n",
+    );
+    let left = |n: &str| at(node(&s, n)).0;
+    assert_eq!(left("ps"), left("pf"), "a halo clamped to opaque reaches as far as a full-alpha one");
+    assert_eq!(left("pl"), left("pa"), "a:.1 strength:4 reaches as far as a:.4");
+}
+
+#[test]
 fn inside_outer_fails_where_plain_inside_passes() {
     let ev = run_with(
         &format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"),
