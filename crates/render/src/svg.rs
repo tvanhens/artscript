@@ -542,6 +542,11 @@ impl Writer {
     /// `transform` maps the clip's coordinates to the masked element's, so the blur keeps the
     /// clip's units.
     fn soft_mask_def(&mut self, mid: &str, clip: &Clip, area: &str, transform: Option<&str>) {
+        let blur = (clip.feather > 0.0).then(|| {
+            let fid = format!("{mid}blur");
+            self.blur_filter(&fid, clip.feather);
+            fid
+        });
         self.defs.push_str("    <mask id=\"");
         self.defs.push_str(mid);
         self.defs.push_str("\" maskUnits=\"userSpaceOnUse\" ");
@@ -563,9 +568,7 @@ impl Writer {
         self.defs.push_str("\" fill=\"");
         self.defs.push_str(fill);
         self.defs.push('"');
-        if clip.feather > 0.0 {
-            let fid = format!("{mid}blur");
-            self.blur_filter(&fid, clip.feather);
+        if let Some(fid) = blur {
             self.defs.push_str(" filter=\"url(#");
             self.defs.push_str(&fid);
             self.defs.push_str(")\"");

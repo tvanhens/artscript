@@ -4370,6 +4370,19 @@ fn an_svg_feathered_inside_block_masks_its_blended_child_not_the_block() {
 }
 
 #[test]
+fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
+    for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
+        let s = scene(&format!("@target t.svg 40x20\nrect 30x20 at:15,10 fill:none name:frame\n{clip}\n  rect 40x20 at:20,10 fill:#80c0ff\n"));
+        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        assert!(svg.contains("<feGaussianBlur"), "{clip}: no blur: {svg}");
+        assert!(
+            svg.lines().all(|l| !l.contains("<filter") || l.trim_start().starts_with("<filter")),
+            "{clip}: a filter element inside another tag: {svg}"
+        );
+    }
+}
+
+#[test]
 fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     let s = scene(
         "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
