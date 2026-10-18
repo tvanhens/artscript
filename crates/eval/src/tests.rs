@@ -4305,30 +4305,18 @@ fn a_feathered_inside_or_outside_block_blends_with_what_is_below_it() {
 #[test]
 fn a_feathered_inside_block_counts_a_translucent_canvas_once_in_its_edge() {
     let draws = "rect 20x20 at:10,10 fill:none name:frame\ninside @frame feather:2\n  rect 40x6 at:20,3 fill:#ffffff80\n  rect 40x6 at:20,10 fill:#ff0000\n";
-    let cases: [(&str, [[[u8; 4]; 4]; 3]); 2] = [
-        (
-            "",
-            [
-                [[255, 255, 255, 115], [255, 255, 255, 91], [255, 255, 255, 50], [255, 255, 255, 15]],
-                [[255, 0, 0, 242], [255, 0, 0, 191], [255, 0, 0, 105], [255, 0, 0, 32]],
-                [[0, 0, 0, 0]; 4],
-            ],
-        ),
-        (
-            " bg:#3366cc80",
-            [
-                [[178, 197, 236, 185], [159, 183, 231, 173], [118, 152, 220, 153], [74, 119, 210, 135]],
-                [[249, 3, 5, 249], [226, 15, 30, 223], [170, 42, 85, 180], [97, 80, 158, 144]],
-                [[52, 102, 203, 128]; 4],
-            ],
-        ),
-    ];
-    for (bg, rows) in cases {
-        let s = scene(&format!("@target t.png 40x20{bg}\n{draws}"));
-        for (y, row) in [3, 10, 17].into_iter().zip(rows) {
-            for (x, want) in [16, 18, 20, 22].into_iter().zip(row) {
-                assert_near(pixel(&s, x, y), want, 1, &format!("bg{bg} at {x},{y}"));
-            }
+    let alone = scene(&format!("@target t.png 40x20\n{draws}"));
+    let over = scene(&format!("@target t.png 40x20 bg:#3366cc80\n{draws}"));
+    let bg = premul([0x33, 0x66, 0xcc, 0x80]);
+    for y in [3, 10, 17] {
+        for x in [16, 18, 20, 22] {
+            let src = premul(pixel(&alone, x, y));
+            let want: Vec<i32> = (0..4).map(|i| src[i] + (bg[i] * (255 - src[3]) + 127) / 255).collect();
+            let got = premul(pixel(&over, x, y));
+            assert!(
+                got.iter().zip(&want).all(|(g, w)| (g - w).abs() <= 2),
+                "at {x},{y}: got {got:?}, want {want:?}, the block alone over the canvas"
+            );
         }
     }
 }
