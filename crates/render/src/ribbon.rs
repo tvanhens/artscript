@@ -5,14 +5,11 @@
 //! only, so both backends read the same texels. Cost follows the pixels within reach, not the
 //! pixels times the segments.
 
-// The draw path binds this in the next change.
-#![allow(dead_code)]
-
 use std::collections::HashMap;
 
 use artscript_brush::S_CHUNK;
 use artscript_ir::{Knot, RibbonContour, taper_ramp};
-use skia_safe::{AlphaType, ColorType, ContourMeasure, Data, IRect, ISize, Image, ImageInfo, Matrix, Point, images};
+use skia_safe::{AlphaType, ColorType, ContourMeasure, Data, IRect, ISize, Image, ImageInfo, Matrix, Point, RoundOut, images};
 
 use crate::RenderError;
 use crate::sdf::f16_bits;
@@ -192,14 +189,31 @@ impl Spine {
         })
     }
 
-    /// Whether any segment reaches the device rect `r`.
-    pub(crate) fn touches(&self, r: IRect) -> bool {
+    /// The part of the device rect `r` that some segment reaches: the device bounds of its live
+    /// cells, clipped to `r`. `None` when no segment reaches it.
+    pub(crate) fn live_rect(&self, r: IRect) -> Option<IRect> {
         let local = self.dtl.map_rect(skia_safe::Rect::from_irect(r)).0;
-        let cx0 = (((local.left - self.grid_origin.x) / self.cell).floor() as i32).clamp(0, self.grid_w - 1);
-        let cx1 = (((local.right - self.grid_origin.x) / self.cell).floor() as i32).clamp(0, self.grid_w - 1);
-        let cy0 = (((local.top - self.grid_origin.y) / self.cell).floor() as i32).clamp(0, self.grid_h - 1);
-        let cy1 = (((local.bottom - self.grid_origin.y) / self.cell).floor() as i32).clamp(0, self.grid_h - 1);
-        (cy0..=cy1).any(|cy| (cx0..=cx1).any(|cx| !self.bins[(cy * self.grid_w + cx) as usize].is_empty()))
+        let cell_at = |v: f32, origin: f32, n: i32| (((v - origin) / self.cell).floor() as i32).clamp(0, n - 1);
+        let (cx0, cx1) = (cell_at(local.left, self.grid_origin.x, self.grid_w), cell_at(local.right, self.grid_origin.x, self.grid_w));
+        let (cy0, cy1) = (cell_at(local.top, self.grid_origin.y, self.grid_h), cell_at(local.bottom, self.grid_origin.y, self.grid_h));
+        let mut live: Option<skia_safe::Rect> = None;
+        for cy in cy0..=cy1 {
+            for cx in cx0..=cx1 {
+                if self.bins[(cy * self.grid_w + cx) as usize].is_empty() {
+                    continue;
+                }
+                let cell = skia_safe::Rect::from_xywh(
+                    self.grid_origin.x + cx as f32 * self.cell,
+                    self.grid_origin.y + cy as f32 * self.cell,
+                    self.cell,
+                    self.cell,
+                );
+                let dev = self.ltd.map_rect(cell).0;
+                live = Some(live.map_or(dev, |l| skia_safe::Rect::join2(l, dev)));
+            }
+        }
+        let live: IRect = live?.round_out();
+        IRect::intersect(&live, &r).filter(|r| !r.is_empty())
     }
 
     /// The nearest point of the spine to local `q`: arc length (unclamped past an open end),
@@ -351,6 +365,11 @@ mod tests {
             let [hi, lo, d, hw] = self.at(&self.field, x, y);
             (lo >= 0.0).then_some((hi * S_CHUNK + lo, d, hw))
         }
+
+        /// Pressure, angle, tilt and velocity at texel `(x, y)`.
+        fn channels(&self, x: usize, y: usize) -> [f32; 4] {
+            self.at(&self.chan, x, y)
+        }
     }
 
     fn field_of(path: &skia_safe::Path, ltd: Matrix, contour: &RibbonContour, reach: f32, rect: IRect) -> Field {
@@ -378,6 +397,8 @@ mod tests {
             assert_eq!(hw, 3.0);
         }
         assert!(worst < 0.05, "worst s error {worst} px");
+        assert_eq!(t.channels(2000, 8), [1.0, 0.0, 0.0, 1.0], "the knots' channels at the texel");
+        assert_eq!(t.channels(0, 8), [0.0; 4], "nothing past the reach");
         let (s, _, _) = t.sd(2, 8).unwrap();
         assert!((s - -2.5).abs() < 0.05, "past the start s keeps running: {s}");
         assert!(t.sd(0, 8).is_none(), "4.5 px before the start is past reach 3 + 1");

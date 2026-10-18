@@ -65,6 +65,8 @@ pub struct DrawCtx<'a> {
     visiting: RefCell<HashSet<String>>,
     /// Signed distance fields built for brushed fills in this render.
     pub(crate) sdf: RefCell<crate::sdf::SdfMemo>,
+    /// Ribbon fields built for brushed strokes in this render.
+    pub(crate) ribbons: RefCell<crate::ribbon::FieldMemo>,
 }
 
 impl<'a> DrawCtx<'a> {
@@ -74,6 +76,7 @@ impl<'a> DrawCtx<'a> {
             backend,
             visiting: RefCell::new(HashSet::new()),
             sdf: RefCell::new(crate::sdf::SdfMemo::default()),
+            ribbons: RefCell::new(crate::ribbon::FieldMemo::default()),
         }
     }
 }
@@ -496,8 +499,13 @@ fn draw_shape(
             }
         }
         if let Some(stroke) = &shape.stroke {
-            let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
-            canvas.draw_path(&shape.geometry, &paint);
+            match &stroke.ribbon {
+                None => {
+                    let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
+                    canvas.draw_path(&shape.geometry, &paint);
+                }
+                Some(ribbon) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
+            }
         }
         Ok(())
     };
