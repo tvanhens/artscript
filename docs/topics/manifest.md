@@ -36,7 +36,7 @@ Every table and key is optional, and a missing key takes the default named below
 
 `[build]`:
 
-- `backend` is `auto`, `gpu`, or `cpu`. The default is `auto`, which uses the GPU when one is available and the CPU otherwise. `build --backend` overrides it. Builds are byte-identical only for one backend on one machine. CPU and GPU output can differ, so `auto` can give different bytes on two machines. A team that compares outputs across machines pins `backend`, so every machine renders with the same backend.
+- `backend` is `auto`, `gpu`, or `cpu`. The default is `auto`, which uses the GPU when one is available and the CPU otherwise. `build --backend` overrides it. Builds are byte-identical only for one backend on one machine. GPU output can differ from CPU output and between machines, so `auto` or `gpu` can give different bytes on two machines. A team that compares outputs across machines pins `backend = "cpu"`.
 
 `[lint]` sets the level of each lint:
 

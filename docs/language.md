@@ -14,7 +14,7 @@ Hold these before you draw:
 - A brush shades a fill with SkSL: `brush:dry` on a shape, or on a layer for everything in it. `use std/brushes { dry chip }` imports the bundled ones. See `brushes`.
 - Paint with palette ramps, not raw hex. `p` is the manifest's default palette, and `p.skin.3` picks a ramp stop. `palette:elite` on a `@target` or an instance swaps it.
 - Name the nodes that matter with `name:`. A named node is addressable from checks, patches, and anims, and it keeps its seed when other nodes change. A name may be a reserved word such as `mask`, in `name:mask` or `layer mask`, because it is only read as `@mask` or `.mask`.
-- Builds are deterministic on one machine. The same source, manifest, and backend produce byte-identical outputs. CPU and GPU output can differ, so a team that compares outputs across machines pins `backend` in the manifest.
+- Builds are deterministic on one machine. The same source, manifest, and backend produce byte-identical outputs. GPU output can differ from CPU output and between machines, so a team that compares outputs across machines pins `backend = "cpu"` in the manifest.
 
 A complete entry file:
 
