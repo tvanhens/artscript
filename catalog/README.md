@@ -2,6 +2,8 @@
 
 The catalog is an artscript project with one entry file per language feature. `crates/cli/tests/visual.rs` builds it on the CPU backend and compares a PNG view of every output with a golden in `golden/`. A PNG output is its own view. A GIF view is a strip of its frames, eight to a row, with a gray gap between frames. An SVG view is the SVG rasterized by resvg.
 
+A view matches its golden when at most one pixel in 1000 changed, where a pixel changed when one of its channels moved by more than 8. Skia rounds a little differently on each platform, so goldens blessed on macOS still match on Linux CI. A change you can see moves far more pixels than that.
+
 A golden is locked once a reviewer has judged it correct. When a change alters a golden, the test fails until you bless the new view, and the PR reviewer then compares the old and new golden.
 
 ## Run the check
@@ -18,7 +20,7 @@ A failure lists each golden that changed and writes a sheet to `target/visual-di
 ARTSCRIPT_BLESS=1 cargo test -p artscript --test visual
 ```
 
-Bless writes only the views that changed, and it removes goldens that no output makes. Open each changed golden before you commit it. To build part of the catalog, set `ARTSCRIPT_VISUAL_ONLY` to an `--only` glob, such as `ARTSCRIPT_VISUAL_ONLY='art/fx/**'`. A filtered run never removes goldens.
+Bless rewrites a golden when any of its pixels changed, even when the check would pass, and it removes goldens that no output makes. Rounding noise below the tolerance never rewrites a golden. Open each changed golden before you commit it. To build part of the catalog, set `ARTSCRIPT_VISUAL_ONLY` to an `--only` glob, such as `ARTSCRIPT_VISUAL_ONLY='art/fx/**'`. A filtered run never removes goldens.
 
 ## Write a fixture
 

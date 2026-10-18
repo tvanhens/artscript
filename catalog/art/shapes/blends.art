@@ -1,9 +1,12 @@
-# Blend modes on paper, 256x64. Six cells left to right; each is a gold 36x36 square with a blue circle of radius 13
-# centered 10px right of the square's center, so the circle covers the square's right half and spills past its right
-# edge. The circle carries a blend: key. Cell 1: no blend, a plain blue circle. Cell 2: multiply, the circle is a dark
-# olive green, darker than both gold and blue. Cell 3: screen, the circle is pale pink, lighter than both. Cell 4:
-# overlay, the circle is a muted tan-gold, distinct from plain blue. Cell 5: add, the circle is plain white. Cell 6:
-# erase, the circle cuts a round hole through the square and shows paper through it.
+# Blend modes on paper, 256x64. Six cells left to right; each is a gold (232,179,58) 36x36 square with a blue
+# (79,127,224) circle of radius 13 centered 10px right of the square's center, so the circle covers the square's right
+# half and spills past its right edge. The circle carries a blend: key. `layer cells` is isolated, so the blend sees
+# only the layer's own pixels: the part of the circle past the square's right edge has nothing under it and stays plain
+# blue (79,127,224) in cells 2-5, same as cell 1. Only the overlap with the square changes.
+# Cell 1: no blend, a plain blue circle. Cell 2: multiply, the overlap is a dark olive green, darker than both gold and
+# blue. Cell 3: screen, the overlap is pale pink, lighter than both. Cell 4: overlay, the overlap is a muted tan-gold,
+# distinct from plain blue. Cell 5: add, the overlap is plain white. Cell 6: erase, the circle cuts a round hole through
+# the square and shows paper through it; the spill past the square's right edge erases nothing, so no blue shows there.
 @target shapes/blends.png 256x64
 
 layer cells

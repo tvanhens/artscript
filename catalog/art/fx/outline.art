@@ -3,13 +3,19 @@
 # 1. A blue circle with a thick dark navy ring of even width, crisp on both sides.
 # 2. A blue circle with a red ring (color:p.red), same width as cell 1.
 # 3. fx blur 3 then outline: the blue circle is soft, its edge fading into the ring, but the ring's outer edge is crisp. The ring is not blurred.
+# KNOWN BUG #123: the earlier blur paints over the ring, so the ring is lightened and soft. When fixed, the ring is unchanged by the blur: a crisp full-strength dark ring of even width, as documented.
 # 4. fx shadow 8,8 blur:2 then outline: a blue square with a crisp dark ring on all four sides and a soft blue-gray shadow to the lower right. The ring has no soft edge and no offset copy.
+# KNOWN BUG #123: the earlier shadow paints over the ring. When fixed, the ring is unchanged by the shadow: crisp and dark on all four sides, with no offset copy.
 # Bottom row, left to right:
 # 5. fx glow in gold then outline: a blue circle with a crisp dark ring and a pale gold halo fading outward beyond the ring. The ring is unchanged by the glow.
+# KNOWN BUG #123: the earlier glow paints over the ring: the ring renders from (79,56,73) to (94,67,67) instead of the ink color (12,0,72)-ish dark. When fixed, the ring is the unchanged dark ring color and the glow shows only beyond it.
 # 6. A circle with a translucent blue fill (pale blue-lavender over paper) and a dark ink ring. The ring is full strength and no ring ink shows through the inside of the circle.
 # 7. A parent circle with fill:none holding a green circle on the left and a gold circle on the right that overlap. One dark ink ring wraps the union of the two, with no ring line across the overlap.
 # 8. A gold circle with a thick red stroke. A dark ink ring surrounds the red stroke on its outside, the gold interior is clean.
-@target fx/outline.png 256x128
+# Third row, left to right:
+# 9. A blue 40x40 square masked by `mask @m9`, an invisible circle (radius 16), with fx outline 4 in ink: the ring follows the masked silhouette, a dark ring around a blue disc of radius 16, with no square corners and no ring around the square.
+# 10. A blue circle with `a:.5` and fx outline 4 in ink: the node's own alpha fades the whole node, ring included, so the disc and the ring are both half strength: a pale blue disc (160,183,228) inside a gray ring (142,137,148).
+@target fx/outline.png 256x192
 
 circle 18 at:32,32 fill:p.blue
   fx outline 4
@@ -31,4 +37,10 @@ circle 22 at:160,96 fill:none
   circle 14 at:8,0 fill:p.gold
   fx outline 4 color:p.ink
 circle 16 at:224,96 fill:p.gold stroke:p.red,6
+  fx outline 4 color:p.ink
+circle 16 at:32,160 name:m9 fill:none
+rect 40x40 at:32,160 fill:p.blue
+  mask @m9
+  fx outline 4 color:p.ink
+circle 18 at:96,160 fill:p.blue a:.5
   fx outline 4 color:p.ink

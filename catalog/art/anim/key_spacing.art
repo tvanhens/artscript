@@ -1,8 +1,8 @@
 # Four circles (r 6, ink outline) move over 1s in an 8-frame strip, one per row, top to bottom at y 12, 30, 48, 66.
-# Row 1 red: key(12 84 12 ease:linear) spaced evenly: it reaches x=84 at frame 5 (t=.5s) and is back to about x=30 in frame 8; the path is a symmetric triangle.
-# Row 2 blue: the same three values with at:[0 .25 1]: it reaches x=84 at frame 3 (t=.25s), earlier than red, then returns slowly, ending near x=24 in frame 8.
-# Row 3 green: ease:[hold linear] per segment: it sits at x=12 in frames 1-4, jumps to x=84 in frame 5 (t=.5s), then moves linearly back, reaching about x=30 in frame 8.
-# Row 4 gold: key(12 84 loop dur:.5s) wraps, so it climbs from x=12 to about x=67 over frames 1-4, drops back to x=12 in frame 5, and climbs again through frames 6-8.
+# Row 1 red: key(12 84 12 ease:linear) spaced evenly: it reaches x=84 at frame 5 (t=.5s) and is back to x=30 in frame 8; the path is a symmetric triangle.
+# Row 2 blue: the same three values with at:[0 .25 1]: it reaches x=84 at frame 3 (t=.25s), earlier than red, then returns slowly, ending at x=24 in frame 8.
+# Row 3 green: ease:[hold linear] per segment: it sits at x=12 in frames 1-4, jumps to x=84 in frame 5 (t=.5s), then moves linearly back, reaching x=30 in frame 8.
+# Row 4 gold: key(12 84 loop dur:.5s) wraps, so it climbs from x=12 to its peak of x=66 over frames 1-4, drops back to x=12 in frame 5, and climbs again through frames 6-8.
 @target anim/key_spacing.gif 96x96 fps:8 dur:1s
 
 circle 6 at:key(12 84 12 ease:linear dur:1s),12 fill:p.red stroke:p.ink,1

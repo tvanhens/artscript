@@ -7,8 +7,9 @@
 # Bottom row, left to right:
 # 5. A red 36x36 square (ink outline) with `inside @frame`: a green circle drawn inside the square, cut off at the square's right edge.
 # 6. A red 36x36 square (ink outline) with `outside @frame2`: a green circle drawn outside the square; the part of the circle over the square is cut away,
-# so only a green sliver shows to the right of the square's right edge and the square stays solid red.
-# 7. A gold ellipse parent with a blue circle child clipped to it, whose own child (a small red circle) is clipped to the blue circle, so only a small red sliver shows at the blue circle's right edge.
+# so only a green sliver 6px wide (x 90 to 96) shows to the right of the square's right edge and the square stays solid red.
+# 7. A gold ellipse parent (radii 22,16, x 98 to 142) holding a blue circle (radius 10, at the ellipse center, x 110 to 130) that lies fully inside it, and a small red circle (radius 6, centered at x=130 on the blue circle's right edge) as the blue circle's child.
+# The red is cut by the blue circle's round edge at x=130, so only a red half-disc (x 124 to 130) shows inside the blue circle's right side, and no red lies on the gold; the ellipse's edge cuts nothing.
 # 8. A gold 36x36 rect parent with r:10 round corners and a blue circle child placed at its top-right corner; the blue is cut off along the rounded corner, not at the square bounding box.
 @target structure/clip_nesting.png 192x96
 
@@ -31,10 +32,10 @@ inside @frame
 
 rect 36x36 at:72,72 fill:p.red stroke:p.ink,2 name:frame2
 outside @frame2
-  circle 16 at:88,72 fill:p.green
+  circle 16 at:80,72 fill:p.green
 
 ellipse 22,16 at:120,72 fill:p.gold
-  circle 12 at:14,0 fill:p.blue
+  circle 10 at:0,0 fill:p.blue
     circle 6 at:10,0 fill:p.red
 
 rect 36x36 r:10 at:168,72 fill:p.gold

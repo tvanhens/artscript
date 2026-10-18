@@ -4,9 +4,9 @@
 # 2. Blue square masked by a noise field `mask simplex(10) > .5`: the square shows as a scatter of hard-edged blue blobs with paper gaps, no soft gradients.
 # 3. Green square masked by a `mask` block holding two circles (radius 12, at the square's local offsets -10,-10 and 10,10: one upper left, one lower right): two separate green discs on paper, nothing between them.
 # Bottom row, left to right:
-# 4. Gold 56x56 square masked by `mask @m4` with `feather:5` on the draw: a gold disc (core radius about 14) whose edge fades softly into paper over about 10px, no hard rim, fully paper before the square's edge.
+# 4. Gold 56x56 square masked by `mask @m4` with `feather:5` on the draw: a gold disc that fades softly into paper with no hard rim: solid gold only near the center (r<=4), 84% strength at r 8, half strength at r 12 to 13, under 15% by r 18, and paper by r 25 (inside the square's 28px half-width).
 # 5. A `layer` holding a red left half and a blue right half (two 24x48 rects), masked by `mask @m5` (a circle, radius 20): one disc split down the middle, red left and blue right, hard edge.
-# 6. Gold 56x56 square clipped by `inside @m6` with `feather:5`: same soft-edged gold disc idea as cell 4, but made by a clip, so the disc fades softly into paper in the same way.
+# 6. Gold 56x56 square clipped by `inside @m6` with `feather:5`: made by a clip instead of a mask, with the same fade as cell 4: solid only near the center (r<=4), half strength at r 12 to 13, paper by r 25.
 @target structure/mask.png 192x128
 
 circle 18 at:32,32 name:m1 fill:none

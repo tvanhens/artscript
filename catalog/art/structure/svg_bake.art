@@ -5,10 +5,11 @@
 # 3. A green 48x48 square with an ink outline holding a red circle (radius 16) pushed against its right edge: the circle is cut off flat at the square's right edge.
 # Bottom row, left to right:
 # 4. A blue 48x48 square masked by `mask @m4`, an invisible circle (radius 20): a hard-edged blue disc.
+# KNOWN BUG #124: the upper part of the disc is cut flat at canvas y=83 (the default <mask> region). When fixed, a full round disc of radius 20 centered at (32,96).
 # 5. A blue 48x48 square masked by the noise field `mask simplex(10) > .5`: a scatter of blue blobs with paper gaps, same idea as the raster mask fixture.
 # 6. A gold 48x48 square masked by a `mask` block of two circles (radius 12, at local offsets -10,-10 and 10,10): two separate gold discs, one upper left and one lower right.
-# SUSPECT: cells 4 and 6 (shape masks) should show a full disc, but the upper-left part is cut off flat at the canvas y=83 line, which is the <mask> default region (-10% of the 128px viewport in the masked rect's local space, no x/y/width/height written) clipping above the rect's origin.
-# SUSPECT: `feather:` with a shape mask on a profile:svg target writes an invalid <g <filter ...> tag inside <mask> and the SVG does not parse, so this fixture has no feathered cell.
+# KNOWN BUG #124: the upper-left disc is cut flat at canvas y=83. When fixed, both discs are full circles of radius 12.
+# No feathered-mask cell: `feather:` with a shape mask on a profile:svg target writes invalid XML (KNOWN BUG #125), so the SVG would not parse. When #125 is fixed, add a gold square with `mask @m` and `feather:5` that fades from solid at the center to paper at the edge.
 @target structure/svg_bake.svg 192x128 profile:svg
 
 rect 24x48 at:20,32 fill:p.blue

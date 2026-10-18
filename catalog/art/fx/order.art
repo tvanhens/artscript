@@ -1,12 +1,14 @@
 # A 4x2 grid on paper, cells 64 px wide, circles of radius 20. Several fx sit on one node and run in written order, so swapping two lines changes the picture.
 # Top row, left to right:
 # 1. fx blur 4 then outline 4 in dark ink: the blue body is soft at its edge but the ring around it is crisp and dark.
+# KNOWN BUG #123: the blurred body paints over the ring and lightens it across its whole width. When fixed, the ring is crisp, full-strength dark ink, and only the body is soft.
 # 2. fx outline 4 then blur 4: the ring is blurred along with the body, so the whole circle is a soft blue disc with a blurry dark halo and no crisp edge.
 # 3. fx rim 6 dir:1,1 in gold, then adjust hue:120: the body is red (hue shifted from blue) and the lower-right rim band is shifted too, so it reads teal.
 # 4. fx adjust hue:120, then rim 6 dir:1,1 in gold: the body is the same red, and the lower-right rim band stays gold-orange because it was added after the shift.
 # Bottom row, left to right:
 # 5. fx shadow 6,6 in red then adjust sat:-1: the green circle is gray and its shadow, down and right, is gray too, with no red.
 # 6. fx adjust sat:-1 then shadow 6,6 in red: the circle is gray and its shadow, down and right, stays red.
+# 7. A blue circle parent with `fx adjust hue:120` and a gold circle child (radius 8, at -6,-6). Undocumented, current behavior: the fx runs on the node's rendered subtree, so the child is hue-shifted with the parent: the blue circle turns red (208,85,86) and the gold child turns cyan (0,213,228).
 @target fx/order.png 256x128
 
 circle 20 at:32,32 fill:p.blue
@@ -27,3 +29,6 @@ circle 20 at:32,96 fill:p.green
 circle 20 at:96,96 fill:p.green
   fx adjust sat:-1
   fx shadow 6,6 blur:2 color:p.red a:1
+circle 20 at:160,96 fill:p.blue
+  fx adjust hue:120
+  circle 8 at:-6,-6 fill:p.gold

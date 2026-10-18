@@ -1,6 +1,6 @@
 # Control flow and style inside defs. 256x128 canvas, two rows of four 64x64 cells. Outlines come from `style ink`, a 2-wide dark ink stroke.
 # Top row, left to right: dots 2 (two red circles of radius 6 side by side, centered on the cell, made by each over 0..n); dots 3 (three of the same circles in a centered row, wider than cell 1);
-# dots 3 big:1 (three larger red circles of radius 8 in a centered row, chosen by an if/else on the big parameter; they nearly fill the cell width); ramp_row (four blue circles in a row whose radii 3, 5, 7, 9 grow left to right, neighbors touching or just overlapping at the right, from a list comprehension).
+# dots 3 big:1 (three larger red circles of radius 8 in a centered row, chosen by an if/else on the big parameter; they nearly fill the cell width); ramp_row (four blue circles of radii 3, 5, 7, 9 from a list comprehension, centers at x=200, 214, 228, 242 and y=32, so the row is centered on the cell; centers are 14 apart, so the gaps between neighbors shrink from 6 to 2 and the last two circles overlap by 2; the r9 circle ends at x=251, clear of the canvas edge).
 # All top-row circles have the ink outline.
 # Bottom row, left to right: a gold square and a blue circle each drawn with `style:ink` (both outlined); the same pair with no style (no outlines, flat fills);
 # a group with `style:ink` holding the same gold square and blue circle without style of their own (both outlined, inherited from the group); a group with no style holding the same pair (no outlines).
@@ -17,7 +17,7 @@ def dots n:2 big:0
 def ramp_row n:4
   let radii = [each k in 0..n -> 3+k*2]
   each r in radii
-    circle r at:(r-6)*7,0 fill:p.blue style:ink
+    circle r at:(r-6)*7-3,0 fill:p.blue style:ink
 
 dots 2 at:32,32
 dots 3 at:96,32

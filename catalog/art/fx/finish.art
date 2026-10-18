@@ -5,8 +5,8 @@
 # 3. fx surface width:8 a:1 strength:.3 scale:4: a strong dark band 8 px wide on the lower right and heavy coarse blotchy grain, much stronger than cell 2.
 # 4. fx surface then fx outline 4 in ink: the cell 2 look with a crisp dark ring around it, drawn last.
 # Bottom row, two cells, the 1st centered at x 64 and the 2nd at x 160, each a blue circle of radius 24 holding a small gold circle offset up-left:
-# 5. fx surface width:8 a:1 on the parent: the blue circle gets a dark lower-right band and grain, and the small gold circle stays flat gold with no grain and no band, since children do not get the finish.
-# 6. The same lines written out (fx rim 8 dir:1,1 color ink a:1 and fx grain .1 scale:2): the picture matches cell 5 in structure, a banded grainy blue circle with a flat gold circle.
+# 5. fx surface width:8 a:1 on the parent: the blue circle gets a dark lower-right band and grain, and the gold circle shares the parent's grain but has no dark rim band on its own lower-right edge. Undocumented, current behavior: fx run on the node's rendered subtree, so the child is grained too.
+# 6. The same lines written out (fx rim 8 dir:1,1 color ink a:1 and fx grain .1 scale:2): the picture matches cell 5 in structure: a banded grainy blue circle, with the gold circle grained and no dark band on it.
 @target fx/finish.png 256x128
 
 finish surface width:4 a:.5 strength:.1 scale:2

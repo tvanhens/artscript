@@ -1,9 +1,11 @@
 # Components passed as values. def tunic is a red 20x20 rect, def cape is a gold 30x14 rect, and def doll draws a circle head of radius 14 in its tone (default blue) with a parameter `outfit` that defaults to none (draws nothing)
-# and, when set to a component, is placed with `outfit` below the head. doll also has `fx outline 3` in its body, so every instance gets a dark ring about 3 wide around everything it draws.
-# 256x96 canvas, four dolls in a row, each centered in a 64-wide cell.
+# and, when set to a component, is placed with `outfit` below the head. doll also has `fx outline 3` in its body, so every instance gets a ring 3 wide around everything it draws.
+# Undocumented, current behavior: on a def instance with no fill of its own, the default outline color is line() of the first fill in the instance's subtree. That is navy for the blue-headed dolls 1-3 and dark green for doll 4, including around its red tunic.
+# 256x192 canvas, two rows of four 64-wide cells; the top row is 96 tall, dolls centered in it.
 # Left to right: doll with the default outfit none (only a blue circle head with a dark ring, nothing below it); doll outfit:tunic (the same head with a red square below it, the ring following the head and square together);
-# doll outfit:cape (the same head with a wider-than-tall gold rect below it, ringed); doll tone:p.green outfit:tunic (green head, the same red square, with a darker green ring).
-@target components/values_fx.png 256x96
+# doll outfit:cape (the same head with a wider-than-tall gold rect below it, ringed); doll tone:p.green outfit:tunic (green head, the same red square, with a dark green ring).
+# Bottom row, left to right: doll outfit:tunic with a call-site `fx shadow 8,8 blur:0 color:p.ink` after the def's outline (a hard ink copy of the whole outlined silhouette, ring included, offset 8 right and 8 down behind the doll; the effect order is def outline first, call-site shadow second).
+@target components/values_fx.png 256x192
 
 def tunic size:20
   rect 100%,100% fill:p.red
@@ -20,3 +22,5 @@ doll at:32,48 name:d1
 doll at:96,48 outfit:tunic name:d2
 doll at:160,48 outfit:cape name:d3
 doll at:224,48 tone:p.green outfit:tunic name:d4
+doll at:32,144 outfit:tunic name:d5
+  fx shadow 8,8 blur:0 color:p.ink

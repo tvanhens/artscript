@@ -9,7 +9,7 @@
 # 6. `union` of a wide rect (36x12) and a tall rect (12x36) (blue): a plus sign, one solid shape.
 # 7. `subtract` using `copy @moon`: a gold crescent made by copying the blue circle's outline and subtracting a copy shifted up and left; the crescent is thick at the lower right and open toward the upper left. The blue circle (radius 16, named moon) is drawn first and shows where the crescent is absent, filling the upper-left part of the round shape.
 # 8. `intersect` of a rect (36x36) and a 5-point star (radius 28) (green): a star whose five points are cut off flat where they pass the square's edges, so the top point, the two side points and the two lower points all end in short straight edges on the square's outline.
-# SUSPECT: a shape child with no `at:` should sit at its parent's origin, but it renders at the canvas center, ignoring the parent's `at:`; rect and star operands here write `at:0,0` to pin the intended place.
+# KNOWN BUG #79: a shape child with no `at:` ignores its group's `at:` and renders at the canvas center; rect and star operands here write `at:0,0` to pin the place. When fixed, they would sit at the parent's origin without `at:0,0`.
 @target structure/booleans.png 192x96
 
 union at:24,24 fill:p.red stroke:p.ink,2

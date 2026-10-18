@@ -3,7 +3,8 @@
 
 usage: scripts/visual_review.py BASE OUT_DIR
 
-Each sheet is `base | head | diff`. The diff dims matching pixels and paints changed pixels red.
+Each sheet is `base | head | diff`. The diff dims unchanged pixels and paints changed pixels red,
+where a pixel changed when a channel moved by more than TOLERANCE, as in the visual test.
 An added golden's sheet is the head view alone, and a deleted golden's sheet is the base view
 alone. OUT_DIR/index.md lists every changed golden with its fixture and its sheet.
 """
@@ -17,6 +18,7 @@ from pathlib import Path
 GOLDEN = "catalog/golden/"
 GAP = 2
 GAP_RGBA = (128, 128, 128, 255)
+TOLERANCE = 8  # matches crates/cli/tests/visual.rs: a channel must move by more than this
 
 
 def decode_png(data):
@@ -88,7 +90,7 @@ def diff(base, head):
     for y in range(h):
         row = []
         for x in range(w):
-            if bp[y][x] == hp[y][x]:
+            if max(abs(b - h) for b, h in zip(bp[y][x], hp[y][x])) <= TOLERANCE:
                 r, g, b, a = hp[y][x]
                 level = (r + g + b) // 3 * a // 255 // 3 + 170
                 row.append((level, level, level, 255))

@@ -1,20 +1,21 @@
 # Paint keys on paper, 256x128, fill and stroke forms. Left to right, top to bottom:
-# (1) circle with fill:p.red only: red disc, no outline. (2) circle with stroke:p.ink,4 only: a ring of ink 4px thick,
-# paper showing through the middle.
-# SUSPECT: docs show stroke: alone as a ring (no fill key means no fill) vs the circle renders with a gray
-# fill inside the ring (so does stroke:3 in cell 4 and an open path with stroke: only) (3) circle with fill:p.gold and stroke:p.ink,6: gold disc with a thick 6px ink
-# outline. (4) circle with stroke:3 alone (width-only): a thin dark ring of 3px, derived from the fill (line(fill)), not
-# ink black; same gray inside as cell 2.
-# Bottom row: (5) circle with blur:6 filled blue: a soft disc with fuzzy edge, no crisp boundary. (6) the same circle
-# with blur:0, crisp edge, for contrast. (7) a green rect 44x44 with name:j1 jitter:1.5,60: the outline is visibly wobbly,
-# not a straight-sided square. (8) the same rect with name:j2 jitter:4,30: a stronger, tighter wobble than cell 7.
+# (1) circle r18 with fill:p.red only: red disc, no outline. (2) circle r18 with fill:none stroke:p.ink,4: a ring of ink
+# 4px thick, paper showing through the middle. (3) circle r18 with fill:p.gold and stroke:p.ink,6: gold disc with a
+# thick 6px ink outline.
+# (4) circle r18 with fill:p.green stroke:3 (width only): the ring is 3px of dark green, line(p.green), not ink and not
+# the fill green; the inside is p.green.
+# Bottom row: (5) circle r18 filled blue with blur:6: a soft disc with fuzzy edge, no crisp boundary. (6) the same
+# circle with blur:0, crisp edge, for contrast. (7) a green 40x40 rect with name:j1 jitter:1.5,60: the outline is
+# visibly wobbly, not a straight-sided square: amplitude 1.5px, wavelength 60px, so the edges bend in a few gentle
+# curves. (8) the same rect with name:j2 jitter:3,12: amplitude 3px, wavelength 12px, so the outline is visibly rougher
+# than cell 7, with a ragged edge of many short bumps, up to 3px off a straight side.
 @target shapes/paint.png 256x128
 
 circle 18 at:32,32 fill:p.red
-circle 18 at:96,32 stroke:p.ink,4
+circle 18 at:96,32 fill:none stroke:p.ink,4
 circle 18 at:160,32 fill:p.gold stroke:p.ink,6
-circle 18 at:224,32 stroke:3
+circle 18 at:224,32 fill:p.green stroke:3
 circle 18 at:32,96 fill:p.blue blur:6
 circle 18 at:96,96 fill:p.blue blur:0
 rect 40x40 at:160,96 fill:p.green name:j1 jitter:1.5,60
-rect 40x40 at:224,96 fill:p.green name:j2 jitter:4,30
+rect 40x40 at:224,96 fill:p.green name:j2 jitter:3,12

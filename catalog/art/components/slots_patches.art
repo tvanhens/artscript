@@ -4,7 +4,7 @@
 # card 40 with its mark slot filled by the caller with a red circle of radius 6 (the red circle sits below the center, inside the blue square); card 40 patched with `.body fill:p.green` (the same square, now green, dots unchanged);
 # card 40 patched with `.dot off` (blue square with only the gold dot at top-left, the paper dot is gone).
 # Bottom row, left to right: pair as declared (two small blue squares side by side, each with a paper dot and a gold dot); pair patched with `.left.dot off` (the left square has no paper dot, the right one still has it, a nested patch);
-# pair patched with `.right off` (only the left card remains, the right half of the cell is empty paper); pair patched with `.left.body fill:p.red` and `.right.body fill:p.gold` (left card red with a gold tag and paper dot, right card gold with a paper dot; its gold tag cannot be seen against the gold body).
+# pair patched with `.right off` (only the left card remains, the right half of the cell is empty paper); pair patched with `.left.body fill:p.red` and `.right.body fill:p.green` (left card red, right card green, each with a gold tag at its top-left and a paper dot).
 @target components/slots_patches.png 256x128
 
 def card size:40 tone:p.blue
@@ -32,4 +32,4 @@ pair at:160,96 name:p3
   .right off
 pair at:224,96 name:p4
   .left.body fill:p.red
-  .right.body fill:p.gold
+  .right.body fill:p.green

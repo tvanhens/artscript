@@ -1,6 +1,6 @@
 //! Visual goldens for `catalog/`. A cold CPU build turns every output into a PNG view: a PNG as
 //! itself, a GIF as a strip of its frames, an SVG rasterized. Each view must match
-//! `catalog/golden/<output path>[.png]` pixel for pixel. See `catalog/README.md`.
+//! `catalog/golden/<output path>[.png]` within a small tolerance. See `catalog/README.md`.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -12,8 +12,9 @@ const ONLY: &str = "ARTSCRIPT_VISUAL_ONLY";
 const FRAMES_PER_ROW: usize = 8;
 const GAP: usize = 2;
 const GAP_RGBA: [u8; 4] = [128, 128, 128, 255];
+const TOLERANCE: u8 = 8;
+const OUTLIER_RATIO: usize = 1000;
 
-#[derive(PartialEq)]
 struct View {
     width: usize,
     height: usize,
@@ -106,20 +107,36 @@ impl View {
     }
 }
 
-/// `golden | actual | diff`, where the diff dims the actual view and paints changed pixels red.
-fn diff_sheet(golden: &View, actual: &View) -> (View, usize) {
+/// Skia's CPU raster rounds differently across platforms, so a pixel counts as changed only when
+/// a channel moves by more than `TOLERANCE`, and a view still matches with up to one changed pixel
+/// in `OUTLIER_RATIO`, which absorbs field-threshold pixels that flip. Bless rewrites a golden on any
+/// changed pixel, so small intended edits never leave a stale golden behind.
+fn changed(g: [u8; 4], a: [u8; 4]) -> bool {
+    g.iter().zip(a).any(|(g, a)| g.abs_diff(a) > TOLERANCE)
+}
+
+fn changed_pixels(golden: &View, actual: &View) -> usize {
+    if (golden.width, golden.height) != (actual.width, actual.height) {
+        return actual.width * actual.height;
+    }
+    golden.rgba.chunks(4).zip(actual.rgba.chunks(4)).filter(|(g, a)| changed((*g).try_into().unwrap(), (*a).try_into().unwrap())).count()
+}
+
+fn matches(golden: &View, actual: &View) -> bool {
+    (golden.width, golden.height) == (actual.width, actual.height)
+        && changed_pixels(golden, actual) * OUTLIER_RATIO <= actual.width * actual.height
+}
+
+/// `golden | actual | diff`, where the diff dims unchanged pixels and paints changed pixels red.
+fn diff_sheet(golden: &View, actual: &View) -> View {
     let mut diff = View::blank(actual.width, actual.height, [255, 0, 0, 255]);
-    let mut changed = actual.width * actual.height;
     if (golden.width, golden.height) == (actual.width, actual.height) {
-        changed = 0;
         for y in 0..actual.height {
             for x in 0..actual.width {
-                let (g, a) = (golden.px(x, y), actual.px(x, y));
-                if g == a {
+                let a = actual.px(x, y);
+                if !changed(golden.px(x, y), a) {
                     let l = ((a[0] as u32 + a[1] as u32 + a[2] as u32) / 3 * a[3] as u32 / 255) as u8;
                     diff.put(x, y, [l / 3 + 170, l / 3 + 170, l / 3 + 170, 255]);
-                } else {
-                    changed += 1;
                 }
             }
         }
@@ -129,7 +146,7 @@ fn diff_sheet(golden: &View, actual: &View) -> (View, usize) {
     sheet.paste(golden, 0, 0);
     sheet.paste(actual, golden.width + GAP, 0);
     sheet.paste(&diff, golden.width + actual.width + 2 * GAP, 0);
-    (sheet, changed)
+    sheet
 }
 
 fn view_of(path: &Path) -> View {
@@ -218,7 +235,12 @@ fn catalog_matches_its_goldens() {
         let actual = view_of(&work.join("build").join(output));
         let golden_path = golden_dir.join(&name);
         let golden = fs::read(&golden_path).ok().map(|b| View::decode_png(&b));
-        if golden.as_ref() == Some(&actual) {
+        let settled = match &golden {
+            Some(g) if bless => changed_pixels(g, &actual) == 0,
+            Some(g) => matches(g, &actual),
+            None => false,
+        };
+        if settled {
             continue;
         }
         if bless {
@@ -229,8 +251,7 @@ fn catalog_matches_its_goldens() {
         }
         let (sheet, what) = match &golden {
             Some(golden) => {
-                let (sheet, changed) = diff_sheet(golden, &actual);
-                (sheet, format!("{changed} pixels differ"))
+                (diff_sheet(golden, &actual), format!("{} pixels changed", changed_pixels(golden, &actual)))
             }
             None => (actual, "no golden".to_string()),
         };

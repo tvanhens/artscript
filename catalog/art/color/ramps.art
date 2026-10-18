@@ -2,22 +2,26 @@
 # Row 1 (y 16): garden.peach, a single-color ramp of 5 steps from #f3a2a6. Steps 0..4 go from a deep
 # color on the left to a highlight on the right. The deep end is darker and shifted toward violet; the
 # highlight end is lighter and shifted toward yellow. Step 2 (middle) is the pink base.
-# Row 2 (y 40): garden.leaf, 5 steps from #7db956 with hue:12. Dark left to light right, and the hue
-# rotates a little at each step, so the row reads greener-blue on the left and more yellow on the right.
+# Row 2 (y 40): two 5-step ramps from #7db956. Cells 1-5 (x 14..110) are garden.leaf with hue:0, cells
+# 6-10 (x 134..230) are garden.leaf40 with hue:40. Both run dark to light. The two ramps must differ:
+# hue:40 runs from deep teal to yellow. Undocumented, current behavior: the light steps shift 0.65*hue
+# toward 75 degrees. (The default hue is 15, so hue:12 gave no visible change from the default.)
 # Row 3 (y 64): garden.sky, 7 steps between two endpoints, navy #1b1f3a on the left to orange #f2a65a
 # on the right. Seven distinct swatches that pass through a purple or pink middle, not a gray middle.
 # Row 4 (y 88): night.peach, from `palette night from garden` which overrides peach with a blue-violet
 # #5a4fc0 ramp. 5 steps, dark to light, all blue-violet and clearly unlike row 1.
-# Row 5 (y 112), 6 swatches: garden.peach.line (dark saturated crimson-magenta), garden.leaf.line (dark saturated
-# green), garden.sky.line (very dark indigo), night.leaf.2 (inherited, the same green as the middle of
-# row 2), garden.ink (very dark plum, a color row), night.moon (pale lavender white, a color row
-# that exists only in night).
-@target color/ramps.png 168x136
-@target color/ramps.svg 168x136 profile:vector
+# Row 5 (y 112), 6 swatches: garden.peach.line (dark saturated crimson-magenta), garden.leaf.line (dark
+# saturated green), garden.sky.line (#230025, near-black purple-magenta), night.leaf.2 (inherited, the
+# same green as the middle of the hue:0 ramp in row 2), garden.ink (very dark plum, a color row),
+# night.moon (pale lavender white, a color row that exists only in night).
+# Undocumented, current behavior: a two-endpoint ramp's base is stop (n-1)/2, so garden.sky.line derives
+# from the middle step.
+@target color/ramps.png 256x136
 
 palette garden
   ramp peach #f3a2a6 5
-  ramp leaf #7db956 5 hue:12
+  ramp leaf #7db956 5 hue:0
+  ramp leaf40 #7db956 5 hue:40
   ramp sky #1b1f3a #f2a65a 7
   color ink #3d2632
 palette night from garden
@@ -34,6 +38,11 @@ rect 20x20 at:38,40 fill:garden.leaf.1
 rect 20x20 at:62,40 fill:garden.leaf.2
 rect 20x20 at:86,40 fill:garden.leaf.3
 rect 20x20 at:110,40 fill:garden.leaf.4
+rect 20x20 at:134,40 fill:garden.leaf40.0
+rect 20x20 at:158,40 fill:garden.leaf40.1
+rect 20x20 at:182,40 fill:garden.leaf40.2
+rect 20x20 at:206,40 fill:garden.leaf40.3
+rect 20x20 at:230,40 fill:garden.leaf40.4
 rect 20x20 at:14,64 fill:garden.sky.0
 rect 20x20 at:38,64 fill:garden.sky.1
 rect 20x20 at:62,64 fill:garden.sky.2

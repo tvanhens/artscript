@@ -1,6 +1,6 @@
 # The same scene on three backgrounds, each a 64x64 PNG: an ink-outlined blue circle (r 18) centered, with a gold 16x16 square at its center.
 # bg_modes_paper.png: the default paper background (light warm gray-beige) fills the canvas.
-# bg_modes_none.png: bg:none, so the canvas outside the circle is transparent (the golden keeps alpha: the view shows the corners as transparent / checker-free black or empty, not paper beige).
+# bg_modes_none.png: bg:none. Every pixel outside the circle's outline has alpha 0. Antialiased edge pixels are ink with partial alpha, never mixed with paper.
 # bg_modes_color.png: bg:#2b2440, a solid dark ink-violet fill behind the circle; the ink outline of the circle is nearly invisible against it.
 @target targets/bg_modes_paper.png 64x64
 @target targets/bg_modes_none.png 64x64 bg:none

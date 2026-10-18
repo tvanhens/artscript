@@ -1,10 +1,14 @@
 # Eight shapes on a 256x128 canvas, two rows of four 56-64px cells.
-# Top row, left to right: a square of simplex noise through the red ramp (smooth dark-red to light-orange blobs); a circle of worley noise through the color list red, gold, blue (mostly gold with round blue spots and red rims, only those three hues);
+# Top row, left to right: a square of simplex noise through the red ramp (smooth dark-red to light-orange blobs); a circle of worley noise through the color list red, gold, blue (orange-gold seams, blue-cyan spot centers ringed by green and teal, almost no red);
 # a square of simplex noise through the gold ramp (dark brown to light yellow blobs); a square of fbm(simplex) through the blue ramp (grainy, finer detail than the simplex cells).
-# Bottom row, left to right: a circle of solid ink color masked by worley(12) > .6 (only separate round ink dots remain inside the circle outline, the rest is paper);
-# a green square masked by simplex(16) > 0 (mostly green with a few irregular paper-colored holes and notches along the edges);
-# two blue simplex circles of the same size with seed:3 and seed:4 (both soft blobby blue textures, the two arrangements differ from each other).
+# Undocumented, current behavior: a color list interpolates in OKLCH, so the hues between red, gold and blue pass through green and cyan.
+# Bottom row, left to right: a circle of solid ink color masked by worley(12) > .6 (only separate round ink dots remain inside the circle outline, the rest is paper; the mask edges are hard per pixel, with no soft ramp. Undocumented, current behavior);
+# a green square masked by simplex(16) > .5 (about half of the square stays green, the rest is paper-colored holes and notches along the edges);
+# two blue simplex circles of the same size with seed:3 and seed:4 (soft blobby blue textures; the two cells differ from each other).
+# KNOWN BUG #127: simplex clips about 24 percent flat, so the simplex cells show flat patches and cell f's coverage is skewed. When fixed, the flat patches should go and cell f should keep about half of its square.
+# The .svg target uses profile:svg: the fields are baked into raster tiles inside the SVG, so each cell looks like the PNG's.
 @target fields/fills_masks.png 256x128
+@target fields/fills_masks.svg 256x128 profile:svg
 
 rect 56x56 at:32,32 fill:simplex(14 seed:1) -> p.red name:a
 circle 28 at:96,32 fill:worley(14 seed:1) -> [p.red.2 p.gold.2 p.blue.2] name:b
@@ -13,6 +17,6 @@ rect 56x56 at:224,32 fill:fbm(simplex(20 seed:3)) -> p.blue name:d
 circle 28 at:32,96 fill:p.ink name:e
   mask worley(12 seed:1) > .6
 rect 56x56 at:96,96 fill:p.green name:f
-  mask simplex(16 seed:1) > 0
+  mask simplex(16 seed:1) > .5
 circle 28 at:160,96 fill:simplex(16 seed:3) -> p.blue name:g
 circle 28 at:224,96 fill:simplex(16 seed:4) -> p.blue name:h
