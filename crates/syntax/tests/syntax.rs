@@ -931,6 +931,15 @@ fn a_node_name_may_be_a_reserved_word() {
 }
 
 #[test]
+fn a_positional_name_may_be_a_reserved_word() {
+    for word in ["mask", "light", "shader", "if", "true"] {
+        must_parse(&format!(
+            "layer {word}\n  circle 4\ngroup {word}\n  circle 4\n  anchor {word} 0,-20\n"
+        ));
+    }
+}
+
+#[test]
 fn a_def_parameter_cannot_be_a_reserved_word() {
     for word in ["fx", "mask", "slot", "finish"] {
         let e = one_error(&format!("def cup {word}:1\n  circle 4\n"));
