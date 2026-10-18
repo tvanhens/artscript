@@ -97,12 +97,10 @@ float perlin2w(float2 p, float2 n, float2 sd) {
     return clamp(0.5 + 0.5 * v * 1.41421356, 0.0, 1.0);
 }
 
-// Simplex on the lattice v(i, j) = (i + s*j, j), whose triangles are (0,0) (1,0) (s,1).
-// It repeats every n.x along x and every n.y along y when s*n.y is the integer k:
-// moving by n.y in y is the lattice step (-k, n.y), which simplexw_cell folds away.
-// r2 is the squared kernel radius, the smallest altitude of the triangle, so a kernel
-// never reaches past the triangle it belongs to. amp maps the sum onto 0..1.
-float2 simplexw_cell(float2 i, float2 n, float k) {
+// Simplex on the lattice v(i, j) = (i + s*j, j). A step of n.y in y is the lattice
+// step (-k, n.y) when s*n.y is the integer k, so folding the cell index by that step
+// makes the field periodic.
+float2 simplexw_fold(float2 i, float2 n, float k) {
     float m = floor(i.y / n.y);
     return float2(mod(i.x + m * k, n.x), i.y - m * n.y);
 }
@@ -119,9 +117,9 @@ float simplex2w(float2 p, float2 n, float2 sd, float k, float s, float r2, float
     float2 d2 = p - float2(i2.x + s * i2.y, i2.y);
     float3 w = max(r2 - float3(dot(d0, d0), dot(d1, d1), dot(d2, d2)), 0.0);
     float3 v = w * w * w * w * float3(
-        dot(grad2(simplexw_cell(i0, n, k), sd), d0),
-        dot(grad2(simplexw_cell(i1, n, k), sd), d1),
-        dot(grad2(simplexw_cell(i2, n, k), sd), d2)
+        dot(grad2(simplexw_fold(i0, n, k), sd), d0),
+        dot(grad2(simplexw_fold(i1, n, k), sd), d1),
+        dot(grad2(simplexw_fold(i2, n, k), sd), d2)
     );
     return clamp(0.5 + amp * (v.x + v.y + v.z), 0.0, 1.0);
 }
@@ -218,6 +216,9 @@ impl Gen {
                     None => format!("{func}(p / {scale:.8}, {sd})"),
                     Some([wx, wy]) => {
                         let (nx, ny) = ((wx / scale).round().max(1.0), (wy / scale).round().max(1.0));
+                        // Half a cell keeps the seam off the lattice lines, and the golden
+                        // fraction per octave keeps an fbm's octaves from sharing a lattice
+                        // phase there, which made the seam the steepest line of every tile.
                         let q = format!("p * float2({:.8}, {:.8}) + 0.5 + oct * 0.38196601", nx / wx, ny / wy);
                         let n = format!("float2({nx:.1}, {ny:.1})");
                         match kind {

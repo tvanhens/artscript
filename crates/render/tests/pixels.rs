@@ -897,34 +897,38 @@ fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
     rgba(&png).iter().map(|p| p[0] as f64).collect()
 }
 
-/// Mean absolute red step from each column to the next and from each row to the next on a
-/// `w` by `h` tile. The last entry of each list is the step across the wrap seam, from the
-/// last column or row back to the first.
-fn line_steps(reds: &[f64], w: usize, h: usize) -> (Vec<f64>, Vec<f64>) {
-    let at = |x: usize, y: usize| reds[y * w + x];
-    let cols = (0..w)
-        .map(|x| (0..h).map(|y| (at(x, y) - at((x + 1) % w, y)).abs()).sum::<f64>() / h as f64)
-        .collect();
-    let rows = (0..h)
-        .map(|y| (0..w).map(|x| (at(x, y) - at(x, (y + 1) % h)).abs()).sum::<f64>() / w as f64)
-        .collect();
-    (cols, rows)
+struct LineSteps {
+    seam: f64,
+    interior: Vec<f64>,
 }
 
-/// The seam between two copies of a wrapped tile is one more line of the texture: it steps no
-/// more than the steepest line inside the tile, and about as much as the average one.
+/// Mean absolute red step from each line of pixels to the next along `axis`, with the step
+/// from the last line back to the first set apart as the wrap seam.
+fn line_steps(reds: &[f64], w: usize, h: usize, axis: char) -> LineSteps {
+    let at = |x: usize, y: usize| reds[y * w + x];
+    let (lines, across) = if axis == 'x' { (w, h) } else { (h, w) };
+    let step = |i: usize, j: usize| match axis {
+        'x' => (at(i, j) - at((i + 1) % w, j)).abs(),
+        _ => (at(j, i) - at(j, (i + 1) % h)).abs(),
+    };
+    let mut all: Vec<f64> = (0..lines)
+        .map(|i| (0..across).map(|j| step(i, j)).sum::<f64>() / across as f64)
+        .collect();
+    let seam = all.pop().unwrap();
+    LineSteps { seam, interior: all }
+}
+
 fn assert_seam_hides(name: &str, field: Field, w: usize, h: usize) {
-    let (cols, rows) = line_steps(&ramp_tile(field, w as f32, h as f32), w, h);
-    for (axis, lines) in [("x", cols), ("y", rows)] {
-        let (seam, interior) = lines.split_last().unwrap();
+    let reds = ramp_tile(field, w as f32, h as f32);
+    for axis in ['x', 'y'] {
+        let LineSteps { seam, interior } = line_steps(&reds, w, h, axis);
         let mean = interior.iter().sum::<f64>() / interior.len() as f64;
         let max = interior.iter().cloned().fold(0.0, f64::max);
         assert!(mean > 0.5, "{name}: interior {axis} step {mean:.1} is flat");
-        assert!(*seam <= max * 1.1, "{name}: {axis} seam {seam:.1} against steepest interior line {max:.1}");
-        assert!(*seam < mean * 2.0, "{name}: {axis} seam {seam:.1} against mean interior line {mean:.1}");
+        assert!(seam <= max * 1.1, "{name}: {axis} seam {seam:.1} against steepest interior line {max:.1}");
+        assert!(seam < mean * 2.0, "{name}: {axis} seam {seam:.1} against mean interior line {mean:.1}");
     }
 }
-
 #[test]
 fn a_wrapped_field_tiles_across_its_seam_like_its_interior() {
     let wrapped = |kind, scale| Field::Noise { kind, scale, seed: 1, wrap: Some([64.0, 64.0]) };
