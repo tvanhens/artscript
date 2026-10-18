@@ -480,3 +480,70 @@ fn a_baked_svg_tile_keeps_a_blurred_mask_fringe() {
     let svg = render_svg(&scene(64.0, 64.0, vec![cell]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<image x=\"10\" y=\"10\" width=\"44\" height=\"44\""), "{svg}");
 }
+
+fn masked_bar(mask: artscript_ir::MaskSource, outline: bool) -> artscript_ir::Scene {
+    let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255));
+    bar.mask = Some(Box::new(artscript_ir::Mask { source: mask, luminance: false, feather: 0.0, invert: false }));
+    if outline {
+        bar.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    }
+    scene(80.0, 80.0, vec![bar])
+}
+
+#[test]
+fn outline_traces_the_shape_a_node_mask_keeps() {
+    let window = solid("window", Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None), red());
+    let png = render_png(&masked_bar(artscript_ir::MaskSource::Nodes(vec![window]), true), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 28, 40), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 40, 28), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 20, 40), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 60, 40), [0, 0, 0, 0]);
+}
+
+#[test]
+fn outline_shows_nothing_through_a_field_mask() {
+    let half = || artscript_ir::MaskSource::Field { field: Field::Const(0.5), threshold: None };
+    let outlined = render_png(&masked_bar(half(), true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&masked_bar(half(), false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(40, 40), (12, 32), (68, 48)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+    assert_eq!(pixel(&outlined, 8, 40), [0, 0, 0, 255]);
+}
+
+#[test]
+fn outline_shows_nothing_through_a_feathered_mask_edge() {
+    let window = || solid("window", Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None), red());
+    let feathered = |outline: bool| {
+        let mut s = masked_bar(artscript_ir::MaskSource::Nodes(vec![window()]), outline);
+        s.children[0].mask.as_mut().unwrap().feather = 3.0;
+        s
+    };
+    let outlined = render_png(&feathered(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&feathered(false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(31, 40), (49, 40), (40, 31)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}
+
+#[test]
+fn outline_shows_nothing_through_a_feathered_clip_edge() {
+    let clipped = |outline: bool| {
+        let mut s = scene(80.0, 80.0, vec![solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255))]);
+        s.children[0].clip = Some(artscript_ir::Clip {
+            path: Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None),
+            feather: 3.0,
+            invert: false,
+        });
+        if outline {
+            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+        }
+        s
+    };
+    let outlined = render_png(&clipped(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&clipped(false), 1.0, Backend::Cpu).unwrap();
+    for (x, y) in [(31, 40), (49, 40)] {
+        assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
+    }
+}
