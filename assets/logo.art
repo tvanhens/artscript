@@ -27,7 +27,7 @@ let avatar = target == avatar_dark or target == avatar_paper or target == avatar
 if avatar
   # The bar is 15% heavier than in the full-size mark so the coral survives at 16px.
   layer seal
-    circle 214 at:256,256 fill:if mono then brand.ink else radial(brand.ink.3 brand.ink.1 at:.35,.3 r:420) stroke:if mono then brand.ink else brand.ink.3,3 name:tile
+    circle 214 at:256,256 fill:if mono then brand.ink else radial(brand.ink.3 brand.ink.1 at:.35,.3 r:420) stroke:(if mono then brand.ink else brand.ink.3),3 name:tile
     if mono
       brush_a ink:brand.ink bar:brand.ink bw:1.15 at:253,255 scale:.685 blend:erase name:letter
     else

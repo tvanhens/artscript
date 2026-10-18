@@ -1453,12 +1453,12 @@ impl<'a> Parser<'a> {
             );
             return cond;
         }
-        let then_e = self.parse_prec(PREC_IF);
+        let then_e = self.parse_tuple();
         if !self.eat_kw(Word::Else) {
             self.fail_here("expected `else`", "add `else <expr>`");
             return then_e;
         }
-        let otherwise = self.parse_prec(PREC_IF);
+        let otherwise = self.parse_tuple();
         Expr::If {
             cond: Box::new(cond),
             then: Box::new(then_e),

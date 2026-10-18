@@ -83,6 +83,23 @@ fn fmt_tight_tuple_is_canonical() {
         ("draw a -b\n", "draw a -b\n"),
         ("let v = shade(c -2)\n", "let v = shade(c -2)\n"),
         ("let v = shade(c - 2)\n", "let v = shade(c-2)\n"),
+        (
+            "let v = if k < 2 then (3,4) else (5,6)\n",
+            "let v = if k < 2 then 3,4 else 5,6\n",
+        ),
+        (
+            "let v = (if k < 2 then a else b),6\n",
+            "let v = (if k < 2 then a else b),6\n",
+        ),
+        (
+            "let v = a,(if k < 2 then b else c)\n",
+            "let v = a,if k < 2 then b else c\n",
+        ),
+        ("let v = (a,b),c\n", "let v = (a,b),c\n"),
+        (
+            "let v = if (if a then b else c) then d else e\n",
+            "let v = if (if a then b else c) then d else e\n",
+        ),
     ];
     for (src, expected) in cases {
         let once = format_source(src).unwrap_or_else(|errs| panic!("{src}\n{errs:?}"));
