@@ -4040,6 +4040,52 @@ fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
 }
 
 #[test]
+fn extra_positional_items_on_a_builtin_verb_are_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\nlet w = 30\nlet h = 6\nrect w x h at:32,32 name:r\n",
+        &[],
+    );
+    let d = diag(&ev, "E0321");
+    assert!(
+        d.message.contains("`rect`") && d.message.contains("`x`"),
+        "{d}"
+    );
+    assert_eq!(d.span.line, 4);
+    assert!(
+        d.fix.as_deref().unwrap_or_default().contains("rect w,h"),
+        "{d}"
+    );
+
+    for (src, verb, extra) in [
+        ("circle 5 9", "circle", "9"),
+        ("rect 30x6 7", "rect", "7"),
+        ("group g\n  repeat 3 4\n    circle 2", "repeat", "4"),
+        ("group g\n  grid 2x2 3\n    circle 2", "grid", "3"),
+        ("layer bg 5\n  circle 2", "layer", "5"),
+        ("group g\n  mirror x 2\n    circle 2", "mirror", "2"),
+    ] {
+        let ev = run_with(&format!("@target t.png 64x64\n{src}\n"), &[]);
+        let d = diag(&ev, "E0321");
+        assert!(
+            d.message.contains(&format!("`{verb}`")) && d.message.contains(&format!("`{extra}`")),
+            "{src}: {d}"
+        );
+    }
+}
+
+#[test]
+fn a_vector_is_a_size_and_filtered_words_still_pass() {
+    let s = scene(
+        "@target t.png 64x64\nlet w = 30\nlet h = 6\nrect w,h at:32,32 name:r\nlayer bg\n  group g at:32,32\n    mirror x\n      circle 4 at:10,0 name:ear\ncurve 0,0 10,-5 20,0 30,5 40,0 name:wave\ncurve 0,0 10,10 20,0 closed name:loop\n",
+    );
+    let b = shape(&s, "r").geometry.compute_tight_bounds();
+    assert_eq!((b.width(), b.height()), (30.0, 6.0));
+    assert!(paths(&s).contains(&"ear~m".to_string()));
+    assert!(paths(&s).iter().any(|p| p.ends_with("wave")));
+    assert!(paths(&s).iter().any(|p| p.ends_with("loop")));
+}
+
+#[test]
 fn a_reference_inside_a_def_reads_in_the_def_s_local_frame() {
     scene(
         "@target t.png 64x64\n\
