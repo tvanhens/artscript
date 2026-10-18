@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use artscript_ir::{Matrix, Node, NodeKind, Rect};
+use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect, union_bounds};
 use artscript_syntax::ast::{
     Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
     SwatchKind,
@@ -355,16 +355,61 @@ pub fn unused(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
     out
 }
 
-/// Shapes not clipped by a parent shape whose bounds leave the canvas.
+/// Local bounds a node's `inside` clip and node mask keep, grown by three feather sigmas.
+/// `outside`, inverted masks, and field masks keep everything.
+fn kept_bounds(n: &Node) -> impl Iterator<Item = Rect> + '_ {
+    let clip = n.clip.as_ref().filter(|c| !c.invert).map(|c| {
+        c.path
+            .compute_tight_bounds()
+            .with_outset((3.0 * c.feather, 3.0 * c.feather))
+    });
+    let mask = n
+        .mask
+        .as_ref()
+        .filter(|m| !m.invert)
+        .and_then(|m| match &m.source {
+            MaskSource::Nodes(nodes) => {
+                union_bounds(nodes).map(|r| r.with_outset((3.0 * m.feather, 3.0 * m.feather)))
+            }
+            MaskSource::Field { .. } => None,
+        });
+    clip.into_iter().chain(mask)
+}
+
+/// Shapes not clipped by a parent shape whose visible bounds leave the canvas. A shape's
+/// bounds are cut to every `inside` clip and node mask on it and its groups first.
 pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
     let level = manifest.lint_level("off-canvas", LintLevel::Warn);
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();
-    fn walk(n: &Node, parent: Matrix, canvas: Rect, hits: &mut Vec<(String, String, Rect)>) {
+    fn walk(
+        n: &Node,
+        parent: Matrix,
+        mut kept: Option<Rect>,
+        canvas: Rect,
+        hits: &mut Vec<(String, String, Rect)>,
+    ) {
+        let world = parent * n.transform;
+        for r in kept_bounds(n) {
+            let r = world.map_rect(r).0;
+            match &mut kept {
+                Some(k) => {
+                    if !k.intersect(r) {
+                        return;
+                    }
+                }
+                None => kept = Some(r),
+            }
+        }
         match &n.kind {
             NodeKind::Shape(_) => {
                 if let Some(b) = n.bounds() {
-                    let b = parent.map_rect(b).0;
+                    let mut b = parent.map_rect(b).0;
+                    if let Some(k) = kept
+                        && !b.intersect(k)
+                    {
+                        return;
+                    }
                     if !(b.left >= canvas.left
                         && b.top >= canvas.top
                         && b.right <= canvas.right
@@ -375,11 +420,9 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
                 }
             }
             NodeKind::Group { children, .. } => {
-                if n.clip.is_some() {
-                    return;
-                }
-                let world = parent * n.transform;
-                children.iter().for_each(|c| walk(c, world, canvas, hits));
+                children
+                    .iter()
+                    .for_each(|c| walk(c, world, kept, canvas, hits));
             }
         }
     }
@@ -387,7 +430,7 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     scene
         .children
         .iter()
-        .for_each(|c| walk(c, Matrix::new_identity(), canvas, &mut hits));
+        .for_each(|c| walk(c, Matrix::new_identity(), None, canvas, &mut hits));
     for (path, origin, b) in hits {
         let line = origin
             .rsplit(':')

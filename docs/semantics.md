@@ -359,7 +359,7 @@ These record behavior the sections above do not mention. When this section disag
 - **Measurements.** `.area` is the bounds area, `w * h`.
 - **Lints.**
   - `raw-color` only scans statements. `@target` keys such as `bg:` are exempt.
-  - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. A `play` name counts as a use of that import. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape.
+  - `unused` (L0103) covers `let` bindings, def parameters other than `needs` and `size`, and imported names. A `play` name counts as a use of that import. `off-canvas` (L0102) covers shapes that are not clipped by a parent shape. It measures a shape after its clips and masks. The bounds it checks are cut to every `inside` path and node mask on the shape and its groups, each grown by three times its feather. An `outside` clip, an inverted mask, and a field mask cut nothing. A shape that these cuts hide entirely is not reported.
   - `positional-seed` (L0104) warns by default. It fires when `rand`, `pick`, a noise field, `jitter:`, `blob`, or `fx grain` hashes a key that has a `~`. It reports each unnamed statement on that key once, at that statement, and the fix is `add name:`. Set it to `off` or `error` in `[lint]`. It is aggregated across frames the same way as `off-canvas`, one diagnostic per site. A throwaway that nothing addresses and that does not feed a key-derived seed stays unnamed and warns nothing.
   - A lint set to `error` makes `build` exit with 2, the same as a failed `assert`.
   - A lint level in `[lint]` other than `off`, `info`, `warn` or `error` is E0200 at that line.
