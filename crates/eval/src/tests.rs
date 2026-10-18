@@ -4575,3 +4575,20 @@ fn a_final_star_patch_skips_anchors() {
     assert_eq!(hits[0].span.line, 5);
     assert!(hits[0].message.contains("matches nothing"), "{hits:?}");
 }
+
+#[test]
+fn a_path_is_closed_only_when_every_subpath_ends_in_z() {
+    let s = scene(
+        "@target t.png 64x64\n\
+         path \"M-24 0 Q-12 -24 0 0 T24 0\" stroke:#111,3 name:wave\n\
+         path \"M0 0 L10 0 L10 10 Z\" name:tri\n\
+         path \"M0 0 L10 0 L10 10 z M20 0 L30 0\" name:mixed\n\
+         path \"M0 0 L10 0 L10 10\" name:bare\n",
+    );
+    assert!(shape(&s, "wave").fill.is_none());
+    assert!(shape(&s, "mixed").fill.is_none());
+    assert_eq!(fill_hex(node(&s, "tri")), "#8a8a8a");
+    let bare = shape(&s, "bare");
+    assert!(bare.fill.is_none());
+    assert!(bare.stroke.is_some(), "an open path gets the open-curve default stroke");
+}

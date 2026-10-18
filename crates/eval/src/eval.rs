@@ -2400,7 +2400,9 @@ impl<'a> Evaluator<'a> {
                 let p = skia_safe::utils::parse_path::from_svg(&d).ok_or_else(|| {
                     fail("E0320", "invalid SVG path data").fix("check the path string")
                 })?;
-                (p, None, true)
+                let closed =
+                    skia_safe::ContourMeasureIter::new(&p, false, None).all(|c| c.is_closed());
+                (p, None, closed)
             }
             "blob" => {
                 let r = first
