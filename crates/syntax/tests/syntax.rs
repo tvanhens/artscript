@@ -1174,3 +1174,20 @@ fn a_directive_without_a_path_keeps_its_positionals_out_of_the_path() {
         assert_eq!(must_parse(&format(&file)), file);
     }
 }
+
+#[test]
+fn fmt_keeps_the_parens_the_parser_needs() {
+    for src in [
+        "circle 3 at:(if true then (1,2) else (3,4))\n",
+        "let v = (if true then 1 else (2,3))\n",
+        "let v = ((if true then 1 else 2),3)\n",
+    ] {
+        let file = must_parse(src);
+        assert_eq!(must_parse(&format(&file)), file, "{src}");
+        round_trip_source(src);
+    }
+    for src in ["let v = -(-x)\n", "let v = not (not b)\n"] {
+        assert_eq!(format(&must_parse(src)), src);
+        round_trip_source(src);
+    }
+}

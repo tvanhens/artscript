@@ -522,8 +522,8 @@ fn fmt_body(e: &Expr) -> String {
             format!("[each {var} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
         }
         Expr::Range(lo, hi) => format!("{}..{}", fmt_at(lo, 7, false), fmt_at(hi, 7, true)),
-        Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, false)),
-        Expr::Unary(UnOp::Not, inner) => format!("not {}", fmt_at(inner, 4, false)),
+        Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, true)),
+        Expr::Unary(UnOp::Not, inner) => format!("not {}", fmt_at(inner, 4, true)),
         Expr::Binary(op, l, r) => {
             let prec = prec_of(e);
             let ls = fmt_at(l, prec, false);
