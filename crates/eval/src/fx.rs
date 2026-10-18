@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Point};
+use artscript_ir::{Effect, EffectInput, EffectOp, Point, Sides};
 use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
@@ -19,6 +19,36 @@ const PHASE2: &[&str] = &["bevel", "displace", "halftone", "posterize"];
 
 fn is_effect_name(s: &str) -> bool {
     EFFECTS.contains(&s) || PHASE2.contains(&s)
+}
+
+const SIDE_WORDS: [&str; 4] = ["top", "right", "bottom", "left"];
+
+/// `sides:top,left` is read as words, not evaluated, so `top` never looks up a name.
+fn sides(named: &[Named]) -> R<Sides> {
+    let Some(n) = named.iter().find(|n| n.key == "sides") else {
+        return Ok(Sides::ALL);
+    };
+    let bad = |what: String| {
+        fail("E0320", what)
+            .note(format!("sides: {}", SIDE_WORDS.join(" ")))
+            .fix("write `sides:top,left`, a comma list of side words")
+    };
+    let words: Vec<&Expr> = match &n.value {
+        Expr::Tuple(items) => items.iter().collect(),
+        one => vec![one],
+    };
+    let mut out = Sides { top: false, right: false, bottom: false, left: false };
+    for word in words {
+        match ident_of(word) {
+            Some("top") => out.top = true,
+            Some("right") => out.right = true,
+            Some("bottom") => out.bottom = true,
+            Some("left") => out.left = true,
+            Some(other) => return Err(bad(format!("`{other}` is not a side in `sides:`"))),
+            None => return Err(bad("`sides:` expects side words".into())),
+        }
+    }
+    Ok(out)
 }
 
 fn effects_note() -> String {
@@ -118,9 +148,10 @@ impl Evaluator<'_> {
             given.push((n.key.clone(), self.expr(&n.value, site.scope)?));
         }
         let module = self.modules.get(&def.module).cloned().ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", def.module)))?;
-        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span)?;
+        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span, site.scope)?;
         let mut fsc = self.module_scope(&module);
         fsc.env = env;
+        fsc.palette = site.scope.palette.clone();
         Ok(fsc)
     }
 
@@ -160,7 +191,11 @@ impl Evaluator<'_> {
                 _ => return Err(fail("E0320", "an effect input is `self`, a name, or `@node`")),
             })
         };
-        let plain_named: Vec<Named> = named.iter().filter(|n| n.key != "of" && n.key != "as").cloned().collect();
+        let plain_named: Vec<Named> = named
+            .iter()
+            .filter(|n| n.key != "of" && n.key != "as" && !(op_name == "outline" && n.key == "sides"))
+            .cloned()
+            .collect();
         let a = if op_name == "merge" {
             self.eval_args(&[], &plain_named, sc, 0)?
         } else {
@@ -205,7 +240,7 @@ impl Evaluator<'_> {
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
+            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)? },
             "grain" => {
                 let explicit = a.num("seed").map(|s| s as u64);
                 EffectOp::Grain {

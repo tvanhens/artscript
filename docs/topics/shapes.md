@@ -17,6 +17,8 @@ Shapes are centered on their local origin, and `at:` places that origin in the p
 
 Any node takes `at: rot: scale: skew: pivot: a:` (opacity), `blend:` (`multiply screen overlay soft_light add erase` …), `z:behind|front|N`, `name:`, `style:`. `scale:` and `skew:` take a number or a vector, a skew stays strictly between -90 and 90 degrees, and the transform must be finite; anything else is E0320. A key that a built-in verb does not read is E0321, and the fix names the closest key it does read.
 
+`at:` takes a vector, or an anchor such as `at:@body.neck`, which places the origin on that anchor. A reference to a node is E0320.
+
 Paint keys work on a shape. On `layer`, `group`, `inside`, `outside`, `mirror`, `repeat`, and `grid`, they pass to every shape in the block, and a shape's own key wins.
 
 Paint keys:

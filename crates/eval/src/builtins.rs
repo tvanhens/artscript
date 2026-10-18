@@ -11,6 +11,13 @@ use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
 
+fn wrap_period(v: &Value) -> Option<[f32; 2]> {
+    match v.pair()? {
+        (Coord::Num(x), Coord::Num(y)) if x > 0.0 && y > 0.0 => Some([x as f32, y as f32]),
+        _ => None,
+    }
+}
+
 fn f32_field(v: &Value) -> Option<Field> {
     match v {
         Value::Field(f) => Some((**f).clone()),
@@ -275,10 +282,18 @@ impl Evaluator<'_> {
                 };
                 let scale = a.first().and_then(Value::num).unwrap_or(32.0) as f32;
                 let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let wrap = match get("wrap") {
+                    None => None,
+                    Some(v) => Some(wrap_period(&v).ok_or_else(|| {
+                        fail("E0320", format!("`wrap:` on `{func}` is a positive number or a pair, got {}", v.show()))
+                            .fix(format!("write `{func}({scale} wrap:64)` or `wrap:64,32`"))
+                    })?),
+                };
                 let base = Field::Noise {
                     kind,
                     scale,
                     seed: self.next_seed(explicit) as u32,
+                    wrap,
                 };
                 match get("oct").and_then(|v| v.num()) {
                     Some(o) if o > 1.0 => Value::Field(Rc::new(Field::Fbm {

@@ -32,6 +32,23 @@ impl Color {
     }
 }
 
+/// The sides of a node's local box an effect draws on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sides {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl Sides {
+    pub const ALL: Sides = Sides { top: true, right: true, bottom: true, left: true };
+
+    pub fn is_all(self) -> bool {
+        self == Sides::ALL
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
     /// Pure SVG; any raster-only feature is an error.
@@ -158,8 +175,10 @@ pub enum MaskSource {
 /// Scalar field over the owning node's local coordinates, nominally 0..1.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Field {
-    /// `scale` is the feature size in canvas units.
-    Noise { kind: NoiseKind, scale: f32, seed: u32 },
+    /// `scale` is the feature size in canvas units. `wrap` is a period per axis in the same
+    /// units: the field repeats every `wrap[0]` along x and every `wrap[1]` along y, with the
+    /// feature size snapped so a whole number of cells fits each period.
+    Noise { kind: NoiseKind, scale: f32, seed: u32, wrap: Option<[f32; 2]> },
     /// Fractal sum of `octaves` copies of `base` at doubling frequency and halving amplitude,
     /// renormalised to 0..1. `ridged` folds each octave as `1 - |2v - 1|`.
     Fbm { base: Box<Field>, octaves: u32, ridged: bool },
@@ -259,8 +278,9 @@ pub enum EffectOp {
     /// OKLCH shift of every pixel: hue degrees, chroma fraction (+.2 = 20% more), OKLab lightness.
     Adjust { hue: f32, sat: f32, light: f32 },
     /// Line of `width` around the node's shape geometry, drawn behind the content.
-    /// Earlier effects do not change the traced path.
-    Outline { width: f32, color: Color },
+    /// Earlier effects do not change the traced path. Ink past an edge of the traced
+    /// geometry's box is dropped on every side `sides` leaves out.
+    Outline { width: f32, color: Color, sides: Sides },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.
@@ -373,10 +393,18 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, .. } = effect.op
+            if let EffectOp::Outline { width, sides, .. } = effect.op
                 && width > 0.0
             {
-                let traced = self.local_ink().map(|r| r.with_outset((width, width)));
+                let traced = self.local_ink().map(|r| {
+                    let reach = |on: bool| if on { width } else { 0.0 };
+                    Rect::new(
+                        r.left - reach(sides.left),
+                        r.top - reach(sides.top),
+                        r.right + reach(sides.right),
+                        r.bottom + reach(sides.bottom),
+                    )
+                });
                 current = join(current, traced);
                 source = current;
                 named.clear();

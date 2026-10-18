@@ -70,7 +70,7 @@ fn outline_traces_the_children_a_fill_none_parent_shows() {
         }
         _ => unreachable!(),
     }
-    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255) }));
+    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let png = render_png(&scene(80.0, 80.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255]);
@@ -109,7 +109,7 @@ fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
 #[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 80, 60), [0, 0, 0, 255]);
@@ -127,7 +127,7 @@ fn outline_ring_is_round() {
 #[test]
 fn svg_outline_is_a_round_stroked_path() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let scene = scene(140.0, 140.0, vec![node]);
     let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let outline_at = svg.find("stroke-linejoin=\"round\"").expect(&svg);
@@ -144,7 +144,7 @@ fn glass(outline: bool) -> artscript_ir::Scene {
     let rect = Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None);
     let mut node = solid("glass", rect, color(0, 0, 255, 128));
     if outline {
-        node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+        node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     }
     scene(64.0, 64.0, vec![node])
 }
@@ -172,7 +172,7 @@ fn translucent_group(outline: bool) -> artscript_ir::Scene {
     let mut group = solid("pair", circle_at(0.0, 0.0, 1.0), red());
     group.kind = NodeKind::Group { isolate: false, children: vec![tinted, faded] };
     if outline {
-        group.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+        group.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     }
     scene(80.0, 64.0, vec![group])
 }
@@ -192,7 +192,7 @@ fn haloed(halo: Option<EffectOp>, outline: bool) -> artscript_ir::Scene {
     let mut node = solid("disc", circle_at(32.0, 32.0, 18.0), color(79, 127, 224, 255));
     node.effects.extend(halo.map(effect));
     if outline {
-        node.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(12, 0, 72, 255) }));
+        node.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(12, 0, 72, 255), sides: artscript_ir::Sides::ALL }));
     }
     scene(64.0, 64.0, vec![node])
 }
@@ -259,7 +259,7 @@ fn outline_ring_stays_on_top_of_an_earlier_shadow() {
 fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
     let rings = |halo: bool| {
         let mut s = haloed(halo.then(glow), true);
-        s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255) }));
+        s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255), sides: artscript_ir::Sides::ALL }));
         render_png(&s, 1.0, Backend::Cpu).unwrap()
     };
     let (plain, ringed) = (rings(false), rings(true));
@@ -318,7 +318,7 @@ fn svg_outline_on_a_translucent_fill_is_not_faded() {
 fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
     let rect = Path::rect(skia_safe::Rect::from_xywh(20000.0, -30000.0, 40.0, 40.0), None);
     let mut node = solid("far", rect, color(0, 0, 255, 128));
-    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let svg = render_svg(&scene(64.0, 64.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let mask = svg.split("<mask").nth(1).and_then(|s| s.split('>').next()).expect(&svg);
     let attr = |name: &str| -> f32 {
@@ -415,7 +415,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
 #[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255) }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 160, 120), [0, 0, 0, 255]);
@@ -534,7 +534,7 @@ fn adjust_keeps_soft_edges_dark() {
     if let NodeKind::Shape(s) = &mut leaf.kind {
         s.blur = 3.0;
     }
-    leaf.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(10, 40, 25, 255) }));
+    leaf.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(10, 40, 25, 255), sides: artscript_ir::Sides::ALL }));
     let mut layer = solid("layer", circle_at(0.0, 0.0, 1.0), color(0, 0, 0, 0));
     layer.kind = NodeKind::Group { isolate: true, children: vec![leaf] };
     layer.effects.push(effect(EffectOp::Adjust { hue: 0.0, sat: 0.05, light: -0.06 }));
@@ -581,7 +581,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
         let mut node = solid("rock", circle_at(70.0, 20.0, 10.0), red());
         if let artscript_ir::NodeKind::Shape(shape) = &mut node.kind {
             shape.fill = Some(Paint::Field {
-                field: Field::Noise { kind: NoiseKind::Value, scale: 6.0, seed: 4 },
+                field: Field::Noise { kind: NoiseKind::Value, scale: 6.0, seed: 4, wrap: None },
                 stops: vec![
                     artscript_ir::Stop { pos: 0.0, color: color(90, 80, 70, 255) },
                     artscript_ir::Stop { pos: 1.0, color: color(210, 190, 160, 255) },
@@ -681,7 +681,7 @@ fn masked_bar(mask: artscript_ir::MaskSource, outline: bool) -> artscript_ir::Sc
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255));
     bar.mask = Some(Box::new(artscript_ir::Mask { source: mask, luminance: false, feather: 0.0, invert: false }));
     if outline {
-        bar.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+        bar.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
     }
     scene(80.0, 80.0, vec![bar])
 }
@@ -710,7 +710,7 @@ fn outline_shows_nothing_through_a_field_mask() {
 
 fn outline_hugs_what_a_thresholded_field_keeps(invert: bool) {
     let blobs = |outline: bool| {
-        let field = Field::Noise { kind: NoiseKind::Simplex, scale: 8.0, seed: 1 };
+        let field = Field::Noise { kind: NoiseKind::Simplex, scale: 8.0, seed: 1, wrap: None };
         let mut s = masked_bar(artscript_ir::MaskSource::Field { field, threshold: Some(0.5) }, outline);
         s.children[0].mask.as_mut().unwrap().invert = invert;
         s
@@ -772,7 +772,7 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
             invert: false,
         });
         if outline {
-            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255) }));
+            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
         }
         s
     };
@@ -787,7 +787,7 @@ fn noise_ramp(kind: NoiseKind) -> Vec<u8> {
     let mut node = solid("noise", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 192.0, 192.0), None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Paint::Field {
-            field: Field::Noise { kind, scale: 16.0, seed: 1 },
+            field: Field::Noise { kind, scale: 16.0, seed: 1, wrap: None },
             stops: vec![
                 artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
                 artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
@@ -823,5 +823,175 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
         let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
         let bar = doc.descendants().find(|n| n.attribute("id") == Some("bar")).expect(&svg);
         assert!(bar.attribute("mask").is_some(), "{svg}");
+    }
+}
+
+fn sided_tile(sides: artscript_ir::Sides, turn: f32) -> Vec<u8> {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides }));
+    render_png(&scene(100.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+}
+
+const TOP_ONLY: artscript_ir::Sides = artscript_ir::Sides { top: true, right: false, bottom: false, left: false };
+
+#[test]
+fn outline_on_the_top_side_leaves_the_other_three_bare() {
+    let png = sided_tile(TOP_ONLY, 0.0);
+    assert_eq!(pixel(&png, 50, 50), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 28, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 72, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+}
+
+#[test]
+fn a_one_sided_band_ends_square_at_the_edges_of_the_box() {
+    let png = sided_tile(TOP_ONLY, 0.0);
+    assert_eq!(pixel(&png, 30, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 69, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 29, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 70, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 28, 28), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 30, 24), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 30, 23), [0, 0, 0, 0]);
+}
+
+#[test]
+fn two_adjacent_sides_leave_the_corner_between_them_filled() {
+    let top_left = artscript_ir::Sides { top: true, right: false, bottom: false, left: true };
+    let png = sided_tile(top_left, 0.0);
+    assert_eq!(pixel(&png, 27, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 27, 50), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 72, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 72, 27), [0, 0, 0, 0]);
+}
+
+#[test]
+fn all_sides_draws_the_full_ring() {
+    let png = sided_tile(artscript_ir::Sides::ALL, 0.0);
+    for (x, y) in [(50, 27), (28, 50), (72, 50), (50, 73), (27, 27)] {
+        assert_eq!(pixel(&png, x, y)[3], 255, "{x},{y}");
+    }
+}
+
+#[test]
+fn a_rotated_node_keeps_its_sides_in_its_own_frame() {
+    let png = sided_tile(TOP_ONLY, 90.0);
+    assert_eq!(pixel(&png, 73, 50), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 50, 27), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 27, 50), [0, 0, 0, 0]);
+    assert_eq!(pixel(&png, 50, 73), [0, 0, 0, 0]);
+}
+
+#[test]
+fn svg_bakes_a_one_sided_outline_like_the_png() {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: TOP_ONLY }));
+    let scene = scene(100.0, 100.0, vec![node]);
+    assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline sides"));
+    assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<image"), "{svg}");
+}
+
+fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
+    let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, w, h), None), red());
+    if let NodeKind::Shape(shape) = &mut node.kind {
+        shape.fill = Some(Paint::Field {
+            field,
+            stops: vec![
+                artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
+                artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
+            ],
+        });
+    }
+    let png = render_png(&scene(w, h, vec![node]), 1.0, Backend::Cpu).unwrap();
+    rgba(&png).iter().map(|p| p[0] as f64).collect()
+}
+
+struct LineSteps {
+    seam: f64,
+    interior: Vec<f64>,
+}
+
+/// Mean absolute red step from each line of pixels to the next along `axis`, with the step
+/// from the last line back to the first set apart as the wrap seam.
+fn line_steps(reds: &[f64], w: usize, h: usize, axis: char) -> LineSteps {
+    let at = |x: usize, y: usize| reds[y * w + x];
+    let (lines, across) = if axis == 'x' { (w, h) } else { (h, w) };
+    let step = |i: usize, j: usize| match axis {
+        'x' => (at(i, j) - at((i + 1) % w, j)).abs(),
+        _ => (at(j, i) - at(j, (i + 1) % h)).abs(),
+    };
+    let mut all: Vec<f64> = (0..lines)
+        .map(|i| (0..across).map(|j| step(i, j)).sum::<f64>() / across as f64)
+        .collect();
+    let seam = all.pop().unwrap();
+    LineSteps { seam, interior: all }
+}
+
+fn assert_seam_hides(name: &str, field: Field, w: usize, h: usize) {
+    let reds = ramp_tile(field, w as f32, h as f32);
+    for axis in ['x', 'y'] {
+        let LineSteps { seam, interior } = line_steps(&reds, w, h, axis);
+        let mean = interior.iter().sum::<f64>() / interior.len() as f64;
+        let max = interior.iter().cloned().fold(0.0, f64::max);
+        assert!(mean > 0.5, "{name}: interior {axis} step {mean:.1} is flat");
+        assert!(seam <= max * 1.1, "{name}: {axis} seam {seam:.1} against steepest interior line {max:.1}");
+        assert!(seam < mean * 2.0, "{name}: {axis} seam {seam:.1} against mean interior line {mean:.1}");
+    }
+}
+#[test]
+fn a_wrapped_field_tiles_across_its_seam_like_its_interior() {
+    let wrapped = |kind, scale| Field::Noise { kind, scale, seed: 1, wrap: Some([64.0, 64.0]) };
+    let fields = [
+        ("fbm(simplex)", Field::Fbm { base: Box::new(wrapped(NoiseKind::Simplex, 16.0)), octaves: 4, ridged: false }),
+        ("fbm(perlin)", Field::Fbm { base: Box::new(wrapped(NoiseKind::Perlin, 16.0)), octaves: 4, ridged: false }),
+        ("simplex", wrapped(NoiseKind::Simplex, 16.0)),
+        ("perlin", wrapped(NoiseKind::Perlin, 16.0)),
+        ("worley", wrapped(NoiseKind::Worley, 16.0)),
+        ("value", wrapped(NoiseKind::Value, 16.0)),
+        ("ridged(value) snapped from 14", Field::Fbm { base: Box::new(wrapped(NoiseKind::Value, 14.0)), octaves: 3, ridged: true }),
+    ];
+    for (name, field) in fields {
+        assert_seam_hides(name, field, 64, 64);
+    }
+}
+
+#[test]
+fn a_wrapped_field_with_two_periods_tiles_on_each_axis() {
+    let field = Field::Noise { kind: NoiseKind::Perlin, scale: 10.0, seed: 2, wrap: Some([64.0, 32.0]) };
+    assert_seam_hides("perlin 64,32", field, 64, 32);
+}
+
+#[test]
+fn a_wrapped_field_is_the_same_in_every_window_of_its_period() {
+    let field = Field::Noise { kind: NoiseKind::Simplex, scale: 16.0, seed: 3, wrap: Some([64.0, 64.0]) };
+    let reds = ramp_tile(field, 128.0, 128.0);
+    let at = |x: usize, y: usize| reds[y * 128 + x];
+    let mut off = 0;
+    for y in 0..64 {
+        for x in 0..64 {
+            for (dx, dy) in [(64, 0), (0, 64), (64, 64)] {
+                if (at(x, y) - at(x + dx, y + dy)).abs() > 2.0 {
+                    off += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(off, 0, "{off} pixel pairs one period apart differ");
+}
+
+#[test]
+fn wrapped_noise_fills_the_ramp_without_clipping_its_ends() {
+    for kind in [NoiseKind::Simplex, NoiseKind::Perlin, NoiseKind::Worley, NoiseKind::Value] {
+        let reds = ramp_tile(Field::Noise { kind, scale: 16.0, seed: 1, wrap: Some([192.0, 192.0]) }, 192.0, 192.0);
+        let clipped = reds.iter().filter(|&&r| r == 0.0 || r == 255.0).count() as f64 / reds.len() as f64;
+        let (lo, hi) = reds.iter().fold((255.0_f64, 0.0_f64), |(lo, hi), &r| (lo.min(r), hi.max(r)));
+        assert!(clipped < 0.01, "{kind:?} puts {:.1}% of pixels on a ramp end", clipped * 100.0);
+        assert!(lo < 20.0 && hi > 225.0, "{kind:?} spans only {lo}..{hi} of the ramp");
     }
 }

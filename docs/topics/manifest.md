@@ -29,7 +29,7 @@ Every table and key is optional, and a missing key takes the default named below
 
 `[defaults]` sets the value for each target that leaves out the matching `@target` key (see `targets`):
 
-- `palette` is a library path such as `palette/house`. Every file reads that palette as `p`. A palette that no lib root holds is E0200. With no `palette` key, `p` is not defined.
+- `palette` is a library path such as `palette/house`. Every file reads that palette as `p`, unless a `palette:` key on a target or an instance swaps it. A palette that no lib root holds is E0200. With no `palette` key, `p` is not defined.
 - `scale` is a positive number or a list of them. The default is `[1]`.
 - `bg` is `"none"` or a hex color such as `"#f4f1ea"`. The default is `"none"`.
 - `profile` is `vector`, `svg`, `raster`, or `auto`. The default is `auto`.
