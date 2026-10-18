@@ -693,3 +693,21 @@ fn noise_fills_the_ramp_without_clipping_its_ends() {
         assert!(lo < 20 && hi > 225, "{kind:?} spans only {lo}..{hi} of the ramp");
     }
 }
+
+#[test]
+fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
+    for (feather, invert) in [(3.0, false), (3.0, true)] {
+        let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
+        bar.clip = Some(artscript_ir::Clip { path: circle_at(0.0, 0.0, 10.0), feather, invert });
+        bar.mask = Some(Box::new(artscript_ir::Mask {
+            source: artscript_ir::MaskSource::Nodes(vec![solid("window", circle_at(0.0, 0.0, 20.0), red())]),
+            luminance: false,
+            feather: 0.0,
+            invert: false,
+        }));
+        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
+        let masks: Vec<&str> = doc.descendants().filter_map(|n| n.attribute("mask")).collect();
+        assert_eq!(masks.len(), 2, "the node mask and the soft clip inside it: {svg}");
+    }
+}
