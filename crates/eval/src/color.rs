@@ -1,5 +1,5 @@
 //! OKLab / OKLCH, hue-shifted ramps, lineart colors and OKLCH gradient densification.
-//! Ported from chibi `color.py`; the ramp step formula is the one in docs/semantics.md section 6.
+//! Ported from chibi `color.py`.
 
 const COOL_HUE: f64 = 275.0;
 const WARM_HUE: f64 = 75.0;

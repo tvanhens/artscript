@@ -177,7 +177,6 @@ artscript build
 ## Learn more
 
 - [`docs/language.md`](docs/language.md) is the core language card, and [`docs/topics/`](docs/topics) holds one file per topic. `artscript docs` prints both.
-- [`docs/semantics.md`](docs/semantics.md) holds the details the card leaves out.
 - [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
 
 artscript is a v0.1 draft. Expect breaking changes.
