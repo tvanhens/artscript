@@ -1,6 +1,6 @@
 # shapes: the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter)
 
-Shapes are centered on their local origin, and `at:` places that origin in the parent.
+Shapes are centered on their local origin, and `at:` places that origin in the parent. A `curve` or `path` is the exception: its points are in its local frame, so `at:` moves the `0,0` of its points. Children are placed in the parent's local frame. Under `circle 40 at:100,80`, a child at `0,0` sits at the circle's center. Under a closed `curve`, a child at `0,0` sits at the `0,0` of the curve's points.
 
 | shape | example |
 |---|---|
