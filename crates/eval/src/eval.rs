@@ -138,8 +138,16 @@ pub(crate) struct Scope {
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
     /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
     pub site: Option<u32>,
+    provisional: Option<Rc<Provisional>>,
     top: bool,
     publish: bool,
+}
+
+/// The first copy of a `grid` without `cell:`, which moves once the grid has measured it.
+struct Provisional {
+    names: Rc<RefCell<Names>>,
+    /// Records that existed before the copy.
+    before: BTreeSet<usize>,
 }
 
 impl Scope {
@@ -480,6 +488,11 @@ fn new_node(path: String, origin: String, transform: Matrix, kind: NodeKind) -> 
     }
 }
 
+/// A grid cell's offset is a translation, so it changes every measurement but a size.
+fn moves(m: &str) -> bool {
+    !matches!(m, "w" | "h" | "area")
+}
+
 fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
 }
@@ -502,15 +515,11 @@ fn records_after(names: &Rc<RefCell<Names>>, seen: &BTreeSet<usize>) -> Vec<Rc<R
         .collect()
 }
 
-/// `grid` learns its cell pitch after the copies are drawn, then moves the nodes.
-/// Records were placed before that move, so the same translation has to land on them.
-fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
-    let Some(inv) = base.invert() else {
-        return;
-    };
-    let shift = *base * *t * inv;
+/// `roots` and the records in every scope they open.
+fn placed_tree(roots: &[Rc<RefCell<Record>>]) -> Vec<Rc<RefCell<Record>>> {
     let mut stack: Vec<Rc<RefCell<Record>>> = roots.to_vec();
     let mut seen = BTreeSet::new();
+    let mut out = Vec::new();
     while let Some(rec) = stack.pop() {
         if !seen.insert(Rc::as_ptr(&rec) as usize) {
             continue;
@@ -518,6 +527,19 @@ fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
         if let Some(inner) = rec.borrow().inner.clone() {
             stack.extend(inner.borrow().records());
         }
+        out.push(rec);
+    }
+    out
+}
+
+/// Without `cell:`, `grid` learns its pitch from its first copy, then moves that copy's nodes.
+/// Records were placed before that move, so the same translation has to land on them.
+fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
+    let Some(inv) = base.invert() else {
+        return;
+    };
+    let shift = *base * *t * inv;
+    for rec in placed_tree(roots) {
         let mut r = rec.borrow_mut();
         r.parent_world = shift * r.parent_world;
         if let Some(p) = r.anchor {
@@ -1147,6 +1169,7 @@ impl<'a> Evaluator<'a> {
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
             site: None,
+            provisional: None,
             top: false,
             publish: false,
         }
@@ -1835,6 +1858,7 @@ impl<'a> Evaluator<'a> {
                             .fix(format!("write `{verb} @torso`")));
                     }
                 };
+                self.outside_copy(&r, sc)?;
                 let to_local = inverse(&world);
                 let sil = r.silhouette().make_transform(&to_local);
                 inner.frame = geom::bounds(&sil);
@@ -1912,6 +1936,7 @@ impl<'a> Evaluator<'a> {
                                 .fix("write `copy @body`"));
                         }
                     };
+                    self.outside_copy(&r, sc)?;
                     (
                         r.silhouette().make_transform(&inverse(&sc.world)),
                         None,
@@ -2051,6 +2076,7 @@ impl<'a> Evaluator<'a> {
             Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
                 Value::None => None,
                 Value::Ref(r) => {
+                    self.outside_copy(&r, sc)?;
                     let geometry = r.silhouette().make_transform(&inverse(&world));
                     let shape = Shape {
                         geometry,
@@ -2209,7 +2235,12 @@ impl<'a> Evaluator<'a> {
         })?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
-        let mut copies = Vec::new();
+        let mut pitch = a.get("cell").and_then(Value::vec2).map(|(cw, ch)| (cw + gap, ch + gap));
+        let cell_at = |(sx, sy): (f64, f64), row: usize, col: usize| {
+            let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
+            Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32))
+        };
+        let mut out = Vec::new();
         for row in 0..rows {
             for col in 0..cols {
                 let i = row * cols + col;
@@ -2217,33 +2248,34 @@ impl<'a> Evaluator<'a> {
                 inner.env.push(("i".into(), Value::Num(i as f64)));
                 inner.env.push(("row".into(), Value::Num(row as f64)));
                 inner.env.push(("col".into(), Value::Num(col as f64)));
-                let seen = record_ids(&sc.names);
-                let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
-                let fresh = records_after(&sc.names, &seen);
-                copies.push(((row, col), nodes, fresh));
+                let (t, nodes) = match pitch {
+                    Some(p) => {
+                        let t = cell_at(p, row, col);
+                        inner.world = sc.world * t;
+                        (t, self.eval_block_nodes(body.scenes(), &mut inner))
+                    }
+                    None => {
+                        let before = record_ids(&sc.names);
+                        if rows * cols > 1 {
+                            inner.provisional = Some(Rc::new(Provisional {
+                                names: sc.names.clone(),
+                                before: before.clone(),
+                            }));
+                        }
+                        let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
+                        let b = artscript_ir::union_bounds(&nodes).unwrap_or(Rect::new_empty());
+                        let p = (b.width() as f64 + gap, b.height() as f64 + gap);
+                        pitch = Some(p);
+                        let t = cell_at(p, row, col);
+                        shift_placed(&records_after(&sc.names, &before), &sc.world, &t);
+                        (t, nodes)
+                    }
+                };
+                for mut n in nodes {
+                    n.transform = t * n.transform;
+                    out.push(n);
+                }
             }
-        }
-        let (cw, ch) = match a.get("cell").and_then(Value::vec2) {
-            Some(c) => c,
-            None => {
-                let b = copies
-                    .first()
-                    .and_then(|(_, ns, _)| artscript_ir::union_bounds(ns))
-                    .unwrap_or(Rect::new_empty());
-                (b.width() as f64, b.height() as f64)
-            }
-        };
-        let (sx, sy) = (cw + gap, ch + gap);
-        let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
-        let mut out = Vec::new();
-        for ((row, col), nodes, fresh) in copies {
-            let t =
-                Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32));
-            for mut n in nodes {
-                n.transform = t * n.transform;
-                out.push(n);
-            }
-            shift_placed(&fresh, &sc.world, &t);
         }
         Ok(out)
     }
@@ -3975,6 +4007,7 @@ impl<'a> Evaluator<'a> {
                     decl: None,
                     inner: None,
                 },
+                source: None,
                 canvas: Some(self.canvas),
             }))),
             _ => None,
@@ -4288,7 +4321,30 @@ impl<'a> Evaluator<'a> {
         if self.check.is_some() { Matrix::new_identity() } else { inverse(&sc.world) }
     }
 
+    /// A position read from outside the first copy of a `grid` without `cell:` would not move
+    /// with that copy.
+    fn outside_copy(&self, r: &RefVal, sc: &Scope) -> R<()> {
+        let Some(p) = sc.provisional.as_ref().filter(|_| self.check.is_none()) else {
+            return Ok(());
+        };
+        let fresh = placed_tree(&records_after(&p.names, &p.before));
+        if fresh.iter().any(|rec| Some(Rc::as_ptr(rec) as usize) == r.source) {
+            return Ok(());
+        }
+        Err(fail(
+            "E0352",
+            format!(
+                "a `grid` without `cell:` sizes its cells from the first copy, so that copy cannot read `@{}` from outside the grid",
+                r.label
+            ),
+        )
+        .fix("give the grid a `cell:` size, such as `cell:20x20`"))
+    }
+
     pub fn measure(&mut self, r: &RefVal, m: &str, sc: &Scope) -> R<Value> {
+        if moves(m) {
+            self.outside_copy(r, sc)?;
+        }
         let b = r
             .bounds_in(&self.view(sc))
             .ok_or_else(|| fail("E0351", format!("@{} has no geometry", r.label)))?;
@@ -4315,6 +4371,7 @@ impl<'a> Evaluator<'a> {
             let cur = RefVal {
                 label: "self".into(),
                 record: rec.borrow().clone(),
+                source: Some(Rc::as_ptr(&rec) as usize),
                 canvas: None,
             };
             return self.walk_ref(vec![cur], segs, 1, "self".into(), sc, 0);
@@ -4406,6 +4463,9 @@ impl<'a> Evaluator<'a> {
             if seg == "geom" && i + 1 < segs.len() {
                 let one = self.one_ref(&cur, &label, sc)?;
                 let m = segs[i + 1].as_str();
+                if moves(m) {
+                    self.outside_copy(&one, sc)?;
+                }
                 let b = one
                     .geom_bounds_in(&self.view(sc))
                     .ok_or_else(|| fail("E0351", format!("@{label} has no geometry")))?;

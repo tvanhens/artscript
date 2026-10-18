@@ -165,6 +165,8 @@ pub struct RefVal {
     /// The reference as written, without `@` (`eye_r`, `hero.head`).
     pub label: String,
     pub record: Record,
+    /// Address of the record this was read from. `None` for the canvas.
+    pub source: Option<usize>,
     /// `canvas`: the canvas rect itself.
     pub canvas: Option<Rect>,
 }
@@ -289,6 +291,7 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
     RefVal {
         label: label.to_string(),
         record: entry.record.borrow().clone(),
+        source: Some(Rc::as_ptr(&entry.record) as usize),
         canvas: None,
     }
 }

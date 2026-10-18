@@ -1881,6 +1881,50 @@ fn play_marks_an_imported_anim_as_used() {
 }
 
 #[test]
+fn a_library_let_and_a_parent_palette_are_not_unused() {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
+    let files = [
+        (
+            "art/t.art".to_string(),
+            "@target t.png 64x64\nuse grid { tile cell }\nuse elite { elite }\nlet spare = 1\ncell\nrect 10x10 at:tile/2,tile/2 fill:elite.sky name:r\n".to_string(),
+        ),
+        (
+            "lib/grid.art".to_string(),
+            "let tile = 64\nlet _pad = 3\ndef cell\n  let gap = 2\n  rect 4x4\n".to_string(),
+        ),
+        (
+            "lib/house.art".to_string(),
+            "palette house\n  color sky #446688\n".to_string(),
+        ),
+        (
+            "lib/elite.art".to_string(),
+            "use house { house }\n\npalette elite from house\n  ramp sky #9a8fb8 5\n".to_string(),
+        ),
+    ]
+    .into();
+    let p = Project::from_sources(manifest, files).unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    let unused: Vec<String> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0103")
+        .map(|d| format!("{} {}", d.file, d.message))
+        .collect();
+    assert_eq!(
+        unused,
+        [
+            "art/t.art `let spare` is never used",
+            "lib/grid.art `let _pad` is never used",
+            "lib/grid.art `let gap` is never used",
+        ],
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+#[test]
 fn an_alias_counts_under_the_word_written() {
     let s = lib_scene(
         "@target t.png 40x40\nuse d\nlet alias = eye\nalias\neye\n",
@@ -3791,6 +3835,55 @@ fn a_grid_copy_measures_where_it_was_drawn() {
         "@target t.png 80x40\ndef gem\n  circle 4 fill:#ffffff name:mark\ngrid 2x1 gap:0 cell:20x20\n  gem name:tile\nassert @tile.1.mark.cx - @tile.0.mark.cx ~= 20\n",
     );
     assert!(paths(&nested).contains(&"tile.1.mark".to_string()));
+}
+
+#[test]
+fn a_grid_copy_reads_references_in_its_own_cell() {
+    let s = scene(
+        "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1 cell:20,20\n  circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n  copy @hub fill:#ffffff name:echo\nassert @dot.0.cx ~= @hub.cx\nassert @dot.1.cx ~= @hub.cx\nassert @echo.0.cx ~= @hub.cx\nassert @echo.1.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&s).contains(&"dot.1".to_string()));
+}
+
+#[test]
+fn a_later_grid_copy_without_a_cell_reads_in_its_own_cell() {
+    let later = scene(
+        "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  if col == 1\n    circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n  else\n    circle 2 fill:#ffffff name:dot\nassert @dot.1.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&later).contains(&"dot.1".to_string()));
+}
+
+#[test]
+fn the_first_copy_of_a_grid_without_a_cell_cannot_read_outside_it() {
+    for (src, line) in [
+        (
+            "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  circle 2 at:@hub.cx,@hub.cy fill:#ffffff name:dot\n",
+            4,
+        ),
+        (
+            "@target t.png 64x64\ngrid 2x1\n  circle 2 fill:#ffffff name:base\n  circle 1 at:@canvas.cx,0 fill:#ffffff name:dot\n",
+            4,
+        ),
+        (
+            "@target t.png 64x64\ncircle 4 at:32,32 fill:#ffffff name:hub\ngrid 2x1\n  copy @hub fill:#ffffff name:echo\n",
+            4,
+        ),
+    ] {
+        let ev = run_with(src, &[]);
+        let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0352").collect();
+        assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+        assert_eq!(hits[0].file, "art/t.art");
+        assert_eq!(hits[0].span.line, line);
+        assert!(hits[0].fix.as_deref().unwrap().contains("cell:"), "{hits:?}");
+    }
+}
+
+#[test]
+fn a_grid_without_a_cell_reads_its_own_copy() {
+    let s = scene(
+        "@target t.png 80x40\ndef gem\n  circle 4 fill:#ffffff name:mark\n  circle 1 at:@mark.cx,@mark.cy fill:#ffffff name:dot\ncircle 8 fill:#ffffff name:hub\ngrid 2x1 gap:4\n  circle (@hub.w / 4) at:0,0 fill:#ffffff name:base\n  circle 1 at:@base.cx,@base.cy fill:#ffffff name:dot\n  gem at:0,0 name:gem\nassert @dot.0.cx ~= @base.0.cx\nassert @dot.1.cx ~= @base.1.cx\nassert @base.1.cx - @base.0.cx ~= 12\nassert @gem.1.dot.cx ~= @gem.1.mark.cx\ngrid 1x1\n  circle 1 at:@hub.cx,@hub.cy fill:#ffffff name:one\nassert @one.0.cx ~= @hub.cx\n",
+    );
+    assert!(paths(&s).contains(&"gem.1.dot".to_string()));
 }
 
 #[test]
