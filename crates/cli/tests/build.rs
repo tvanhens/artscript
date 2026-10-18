@@ -629,3 +629,55 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
     }
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-only-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"o\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    for (file, out) in [("tiles/x/a", "a"), ("tiles/x/b", "b"), ("props/x/c", "c")] {
+        fs::create_dir_all(dir.join("art").join(file).parent().unwrap()).unwrap();
+        fs::write(dir.join(format!("art/{file}.art")), format!("@target {out}.png 8x8\nrect 0 0 4 4\n")).unwrap();
+    }
+    let built = |args: &[&str]| -> (Option<i32>, String, Vec<String>) {
+        let _ = fs::remove_dir_all(dir.join("assets"));
+        let out = artscript(&dir, &[&["build"], args].concat());
+        let mut pngs: Vec<String> = fs::read_dir(dir.join("assets"))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".png"))
+            .collect();
+        pngs.sort();
+        (out.status.code(), text(&out), pngs)
+    };
+    let all = vec!["a.png".to_string(), "b.png".into(), "c.png".into()];
+
+    let (code, err, pngs) = built(&["--only", "art/tiles/x/*.art", "--only=art/props/x/*.art"]);
+    assert_eq!((code, &pngs), (Some(0), &all), "{err}");
+    let (code, err, pngs) = built(&["--only", "art/{tiles,props}/x/*.art"]);
+    assert_eq!((code, &pngs), (Some(0), &all), "{err}");
+
+    for glob in ["art/tiles/*", "art/nope.art"] {
+        let (code, err, pngs) = built(&["--only", "art/props/x/c.art", "--only", glob]);
+        assert_eq!(code, Some(1), "{err}");
+        assert!(err.contains(&format!("`--only '{glob}'` matches no target")), "{err}");
+        assert_eq!(err.matches("error[").count(), 1, "{err}");
+        assert!(pngs.is_empty(), "{pngs:?}");
+    }
+    let (code, err, _) = built(&["--only", "art/{tiles"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("`{` without `}` in glob `art/{tiles`"), "{err}");
+
+    fs::write(dir.join("art/props/x/c.art"), "@target c.png 8x8\nrect (\n").unwrap();
+    let (code, err, _) = built(&["--only", "art/props/x/c.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(!err.contains("matches no target"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
