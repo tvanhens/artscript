@@ -649,3 +649,28 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
         assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
     }
 }
+
+fn noise_ramp(kind: NoiseKind) -> Vec<u8> {
+    let mut node = solid("noise", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 192.0, 192.0), None), red());
+    if let NodeKind::Shape(shape) = &mut node.kind {
+        shape.fill = Some(Paint::Field {
+            field: Field::Noise { kind, scale: 16.0, seed: 1 },
+            stops: vec![
+                artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
+                artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
+            ],
+        });
+    }
+    render_png(&scene(192.0, 192.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+}
+
+#[test]
+fn noise_fills_the_ramp_without_clipping_its_ends() {
+    for kind in [NoiseKind::Simplex, NoiseKind::Perlin, NoiseKind::Worley, NoiseKind::Value] {
+        let reds: Vec<u8> = rgba(&noise_ramp(kind)).iter().map(|p| p[0]).collect();
+        let clipped = reds.iter().filter(|&&r| r == 0 || r == 255).count() as f64 / reds.len() as f64;
+        let (lo, hi) = (*reds.iter().min().unwrap(), *reds.iter().max().unwrap());
+        assert!(clipped < 0.01, "{kind:?} puts {:.1}% of pixels on a ramp end", clipped * 100.0);
+        assert!(lo < 20 && hi > 225, "{kind:?} spans only {lo}..{hi} of the ramp");
+    }
+}
