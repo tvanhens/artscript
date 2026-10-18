@@ -159,6 +159,8 @@ pub(crate) struct Scope {
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
+    /// Where an `fx` line under a taken `if` goes: the draw or def that owns this block.
+    branch_fx: Option<Rc<RefCell<Vec<BranchFx>>>>,
     /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
     pub site: Option<u32>,
     provisional: Option<Rc<Provisional>>,
@@ -187,6 +189,7 @@ impl Scope {
             parent_copies: Vec::new(),
             frame,
             world,
+            branch_fx: None,
             top: false,
             publish: false,
             ..self.clone()
@@ -225,6 +228,7 @@ impl Scope {
             world,
             depth,
             operand_of: None,
+            branch_fx: None,
             top: false,
             publish: false,
             ..self.clone()
@@ -233,6 +237,25 @@ impl Scope {
 
     pub(crate) fn file(&self) -> &str {
         &self.module.path
+    }
+
+    /// Gives this block's `fx` lines under a taken `if` to a fresh list the owner lowers.
+    fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<BranchFx>>> {
+        let fx = Rc::new(RefCell::new(Vec::new()));
+        self.branch_fx = Some(fx.clone());
+        fx
+    }
+
+    fn branch_fx(&self, line: &ast::Fx) -> R<()> {
+        let fx = self.branch_fx.as_ref().ok_or_else(|| {
+            fail("E0101", "`fx` under this `if` has no draw or def to apply to")
+                .fix("indent the `if` directly under the shape, group, def, or component call")
+        })?;
+        fx.borrow_mut().push(BranchFx {
+            line: line.clone(),
+            env: self.env.clone(),
+        });
+        Ok(())
     }
 
     pub(crate) fn owner(&self) -> &Key {
@@ -387,6 +410,31 @@ fn is_copy_index(seg: &str) -> bool {
     !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit())
 }
 
+/// An `fx` line under a taken `if`, with the bindings in effect where the branch reached it.
+struct BranchFx {
+    line: ast::Fx,
+    env: Vec<(String, Value)>,
+}
+
+/// A block's direct `fx` lines and those under its taken `if`s, merged by line, each with the
+/// scope it evaluates in. One block is one file.
+fn in_source_order<'a>(
+    direct: impl Iterator<Item = &'a ast::Fx>,
+    branch: &'a [BranchFx],
+    scope: &Scope,
+) -> Vec<(&'a ast::Fx, Scope)> {
+    let mut all: Vec<(&ast::Fx, Scope)> = direct
+        .map(|line| (line, scope.clone()))
+        .chain(branch.iter().map(|b| {
+            let mut sc = scope.clone();
+            sc.env = b.env.clone();
+            (&b.line, sc)
+        }))
+        .collect();
+    all.sort_by_key(|(line, _)| line.span);
+    all
+}
+
 fn holds_play(scenes: &[Scene]) -> bool {
     scenes.iter().any(|st| match &st.kind {
         SceneKind::Play { name, .. } => name.is_some(),
@@ -397,7 +445,8 @@ fn holds_play(scenes: &[Scene]) -> bool {
         SceneKind::Let { .. }
         | SceneKind::Check { .. }
         | SceneKind::Slot { .. }
-        | SceneKind::Draw(_) => false,
+        | SceneKind::Draw(_)
+        | SceneKind::Fx(_) => false,
     })
 }
 
@@ -1200,6 +1249,7 @@ impl<'a> Evaluator<'a> {
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
+            branch_fx: None,
             site: None,
             provisional: None,
             operand_of: None,
@@ -1423,6 +1473,7 @@ impl<'a> Evaluator<'a> {
             )
             .fix("move `play` out of this block, or indent it under the instance it drives")),
             SceneKind::Draw(draw) => self.eval_node(st, draw, sc, out),
+            SceneKind::Fx(line) => sc.branch_fx(line),
         }
     }
 
@@ -1934,10 +1985,12 @@ impl<'a> Evaluator<'a> {
         let mut node;
         let mut record = None;
         let body_frame;
+        let mut branch_fx = None;
         if group_like {
             let local_frame = self.child_frame(&a, animated, default_at, frame, sc, verb != "repeat")?;
             let mut inner = sc.child(key.clone(), local_frame, world);
             inner.style = child_style;
+            branch_fx = Some(inner.collect_branch_fx());
             let mut clip = None;
             if matches!(verb, "inside" | "outside") {
                 let r = match a.pos.first() {
@@ -2013,6 +2066,7 @@ impl<'a> Evaluator<'a> {
                     let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
                     operand_frame = Some(local_frame);
                     let mut inner = sc.child(key.clone(), local_frame, inner_world);
+                    branch_fx = Some(inner.collect_branch_fx());
                     inner.operand_of = Some(Rc::new(OperandOf {
                         verb: verb.to_string(),
                         name: named
@@ -2108,6 +2162,7 @@ impl<'a> Evaluator<'a> {
             if operand_frame.is_none() && body.scenes().next().is_some() {
                 let mut inner = sc.child(key.clone(), gb, inner_world);
                 inner.style = child_style;
+                branch_fx = Some(inner.collect_branch_fx());
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
                 if let NodeKind::Shape(s) = &mut node.kind {
                     s.children = kids;
@@ -2116,12 +2171,14 @@ impl<'a> Evaluator<'a> {
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = sc.child(key.clone(), sc.frame, world);
-        let sites: Vec<FxSite> = body
-            .fx()
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
+        let branch_fx = branch_fx.map(|fx| fx.take()).unwrap_or_default();
+        if let Some(of) = sc.operand_of.clone() {
+            self.report_operand_fx(&of, &branch_fx, sc);
+        }
+        let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
+        let sites: Vec<FxSite> = lines
+            .iter()
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
@@ -2311,14 +2368,6 @@ impl<'a> Evaluator<'a> {
         comp: Option<&Component>,
         sc: &Scope,
     ) {
-        let fix = match &of.name {
-            Some(name) => format!("to paint over the result, draw it in `inside @{name}`"),
-            None => format!(
-                "to paint over the result, name the `{}` and draw it in `inside @<name>`",
-                of.verb
-            ),
-        };
-        let (file, node) = (sc.file().to_string(), sc.node_name());
         let ignored = named.iter().filter(|n| {
             OPERAND_IGNORES.contains(&n.key.as_str())
                 && !comp.is_some_and(|c| c.params.iter().any(|p| p.key == n.key))
@@ -2327,6 +2376,27 @@ impl<'a> Evaluator<'a> {
             .map(|n| (format!("`{}:`", n.key), n.span))
             .chain(body.fx().map(|f| (format!("`fx {}`", f.op), f.span)))
             .collect();
+        self.report_operand_ignored(of, ignored, sc);
+    }
+
+    /// The `fx` lines under a taken `if`, known only once the operand's block has run.
+    fn report_operand_fx(&mut self, of: &OperandOf, fx: &[BranchFx], sc: &Scope) {
+        let ignored = fx
+            .iter()
+            .map(|b| (format!("`fx {}`", b.line.op), b.line.span))
+            .collect();
+        self.report_operand_ignored(of, ignored, sc);
+    }
+
+    fn report_operand_ignored(&mut self, of: &OperandOf, ignored: Vec<(String, Span)>, sc: &Scope) {
+        let fix = match &of.name {
+            Some(name) => format!("to paint over the result, draw it in `inside @{name}`"),
+            None => format!(
+                "to paint over the result, name the `{}` and draw it in `inside @<name>`",
+                of.verb
+            ),
+        };
+        let (file, node) = (sc.file().to_string(), sc.node_name());
         for (what, span) in ignored {
             let f = fail(
                 "E0321",
@@ -2937,6 +3007,7 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
+        let call_fx = call_sc.collect_branch_fx();
         let mut call_patches = Vec::new();
         for b in block.items() {
             self.absorb_item(b, &mut call_sc, &key, &comp.name, &mut fills, &mut call_patches)?;
@@ -2970,6 +3041,7 @@ impl<'a> Evaluator<'a> {
         body_scope.host = None;
         body_scope.checks = checks.clone();
         body_scope.style = sc.style.clone();
+        let def_fx = body_scope.collect_branch_fx();
         let placeholder = new_node(
             path.clone(),
             origin.clone(),
@@ -3021,18 +3093,15 @@ impl<'a> Evaluator<'a> {
         );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(key.clone(), body_scope.frame, world);
-        let sites: Vec<FxSite> = comp
-            .body
+        let (def_fx, call_fx) = (def_fx.take(), call_fx.take());
+        if let Some(of) = sc.operand_of.clone() {
+            self.report_operand_fx(&of, &call_fx, sc);
+        }
+        let mut lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
+        lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
+        let sites: Vec<FxSite> = lines
             .iter()
-            .filter_map(DefItem::fx)
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
-            .chain(block.fx().map(|line| FxSite {
-                line,
-                scope: &call_sc,
-            }))
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
@@ -3542,7 +3611,10 @@ impl<'a> Evaluator<'a> {
                 self.collect_draw(draw, sc, st.span);
                 Ok(())
             }
-            SceneKind::Play { .. } | SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
+            SceneKind::Play { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Slot { .. }
+            | SceneKind::Fx(_) => Ok(()),
         }
     }
 
@@ -3746,10 +3818,11 @@ impl<'a> Evaluator<'a> {
                 });
                 Ok(())
             }
+            SceneKind::Fx(line) => sc.branch_fx(line),
             _ if nested => {
                 self.report(
-                    fail("E0330", format!("only patches and `play` may sit inside `if` or `each` under `{def_name}`"))
-                        .fix("keep slot fills, fx and checks as direct lines under the instance"),
+                    fail("E0330", format!("only patches, `play`, and `fx` under `if` may sit inside `if` or `each` under `{def_name}`"))
+                        .fix("keep slot fills and checks as direct lines under the instance"),
                     sc.file(),
                     st.span,
                     &node,
@@ -4853,7 +4926,10 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                     }
                 }
             }
-            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+            SceneKind::Let { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Play { .. }
+            | SceneKind::Fx(_) => {}
         }
     }
     None
@@ -4896,7 +4972,10 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
             }
             None
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Play { .. }
+        | SceneKind::Fx(_) => None,
     }
 }
 

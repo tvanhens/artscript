@@ -213,6 +213,9 @@ pub enum SceneKind {
         start: Option<Expr>,
     },
     Draw(Draw),
+    /// An `fx` line in a branch of an `if` that sits directly under a draw or def. It applies to
+    /// that owner, at its position, when the branch is taken.
+    Fx(Fx),
 }
 
 /// Every drawing statement: `verb positional… key:value… [block]`. The verb is a shape, a

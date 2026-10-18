@@ -150,11 +150,13 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
+    let mut placement = Vec::new();
     if !job.viewport {
-        let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
-        stamp_target(job, &mut off_canvas);
-        diagnostics.extend(off_canvas);
+        placement = lints::off_canvas(&scene, &project.manifest, &job.source);
     }
+    placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
+    stamp_target(job, &mut placement);
+    diagnostics.extend(placement);
     Evaluation {
         scene: Some(scene),
         diagnostics,
@@ -465,6 +467,7 @@ impl AggAcc {
                     .collect::<Vec<_>>(),
             );
             if let Some(agg) = self.groups.iter_mut().find(|g| g.key == key) {
+                agg.frames += 1;
                 let mag = note_magnitude(d);
                 if let Some(mag) = mag
                     && (!agg.has_mag || mag > agg.mag)
@@ -486,6 +489,7 @@ impl AggAcc {
                     worst: t,
                     mag: mag.unwrap_or(0.0),
                     has_mag: mag.is_some(),
+                    frames: 1,
                 });
             }
         }
@@ -502,6 +506,12 @@ impl AggAcc {
     fn finish(mut self) -> Vec<Diagnostic> {
         let frames = self.frames;
         for mut agg in self.groups {
+            if agg.diag.code == "L0105" {
+                if agg.frames == frames {
+                    self.out.push(agg.diag);
+                }
+                continue;
+            }
             if frames > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
                 agg.diag
                     .notes
@@ -523,10 +533,13 @@ struct Agg {
     worst: f64,
     mag: f64,
     has_mag: bool,
+    /// The frames that raised it. A child hidden only on some frames, such as an eye
+    /// highlight under a blink, is drawn on the others and L0105 drops it.
+    frames: usize,
 }
 
 fn folded_lint(code: &str) -> bool {
-    code == "L0102" || code == "L0104"
+    matches!(code, "L0102" | "L0104" | "L0105")
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.

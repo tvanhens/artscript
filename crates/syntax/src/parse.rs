@@ -328,12 +328,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn draw_line(&mut self) -> Option<DrawItem> {
+    /// `fx_branches` is false for a body that runs once per copy, where an `fx` under an `if`
+    /// would have no single answer for the one node it applies to.
+    fn draw_line(&mut self, fx_branches: bool) -> Option<DrawItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DrawItem::Fx),
             Head::Mask => self.parse_mask(),
             Head::SlotFill(name) => self.parse_slot_fill(name).map(DrawItem::SlotFill),
             Head::Patch => self.parse_patch().map(DrawItem::Patch),
+            Head::Scene if fx_branches && self.at_kw(Word::If) => {
+                self.parse_if(true).map(DrawItem::Scene)
+            }
             head => self.scene_head(head, "under a draw").map(DrawItem::Scene),
         }
     }
@@ -341,6 +346,7 @@ impl<'a> Parser<'a> {
     fn def_line(&mut self) -> Option<DefItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DefItem::Fx),
+            Head::Scene if self.at_kw(Word::If) => self.parse_if(true).map(DefItem::Scene),
             Head::Mask => {
                 self.reject_line_and_block(
                     "a `def` body cannot hold a mask",
@@ -478,7 +484,7 @@ impl<'a> Parser<'a> {
             Tok::Kw(Word::Let) => self.parse_let(),
             Tok::Kw(Word::Assert) => self.parse_check(CheckKind::Assert),
             Tok::Kw(Word::Expect) => self.parse_check(CheckKind::Expect),
-            Tok::Kw(Word::If) => self.parse_if(),
+            Tok::Kw(Word::If) => self.parse_if(false),
             Tok::Kw(Word::Each) => self.parse_each(),
             Tok::Kw(Word::Slot) => self.parse_slot(),
             Tok::Kw(Word::Play) => self.parse_play(),
@@ -931,14 +937,25 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_if(&mut self) -> Option<Scene> {
+    fn parse_if(&mut self, fx: bool) -> Option<Scene> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        self.finish_if(span, indent)
+        self.finish_if(span, indent, fx)
     }
 
-    fn finish_if(&mut self, span: Span, indent: usize) -> Option<Scene> {
+    fn branch_line(&mut self, fx: bool, error_where: &str) -> Option<Scene> {
+        match self.head() {
+            Head::Fx if fx => self.parse_fx().map(|f| Scene {
+                span: f.span,
+                kind: SceneKind::Fx(f),
+            }),
+            Head::Scene if fx && self.at_kw(Word::If) => self.parse_if(true),
+            head => self.scene_head(head, error_where),
+        }
+    }
+
+    fn finish_if(&mut self, span: Span, indent: usize, fx: bool) -> Option<Scene> {
         let cond = if self.eol() {
             self.fail(span, "expected a condition after `if`", "write `if <expr>`");
             None
@@ -954,10 +971,12 @@ impl<'a> Parser<'a> {
         } else {
             self.expect_eol("the `if` condition must fit on one line");
         }
-        let then = self.block(indent, span.line, |p| p.scene_line("directly under `if`"));
+        let then = self.block(indent, span.line, |p| {
+            p.branch_line(fx, "directly under `if`")
+        });
         let otherwise = if self.next_is_kw(indent, Word::Else) {
             self.enter(self.li + 1);
-            self.parse_else(indent)
+            self.parse_else(indent, fx)
         } else {
             Vec::new()
         };
@@ -971,16 +990,18 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_else(&mut self, indent: usize) -> Vec<Scene> {
+    fn parse_else(&mut self, indent: usize, fx: bool) -> Vec<Scene> {
         let else_line = self.cur_line_no();
         self.bump();
         if self.at_kw(Word::If) {
             let span = self.cur_span();
             self.bump();
-            self.finish_if(span, indent).into_iter().collect()
+            self.finish_if(span, indent, fx).into_iter().collect()
         } else {
             self.expect_eol("`else` takes a block, or write `else if`");
-            self.block(indent, else_line, |p| p.scene_line("directly under `else`"))
+            self.block(indent, else_line, |p| {
+                p.branch_line(fx, "directly under `else`")
+            })
         }
     }
 
@@ -1065,7 +1086,8 @@ impl<'a> Parser<'a> {
             );
         }
         let mut body = DrawBody::default();
-        for item in self.block(indent, span.line, Self::draw_line) {
+        let fx_branches = !matches!(verb.as_str(), "repeat" | "grid");
+        for item in self.block(indent, span.line, |p| p.draw_line(fx_branches)) {
             if let Err(SecondMask(span)) = body.push(item) {
                 self.errors.push(
                     Diagnostic::error("E0101", span, "a draw takes one mask")

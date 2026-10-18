@@ -82,7 +82,10 @@ fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
                 }
             }
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Play { .. }
+        | SceneKind::Fx(_) => {}
     }
 }
 
@@ -134,6 +137,7 @@ fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'
                 out.push((e, s.span));
             }
         }
+        SceneKind::Fx(fx) => fx_exprs(fx, out),
         SceneKind::Draw(d) => {
             d.args.iter().for_each(|a| out.push((a, s.span)));
             named(&d.named, out);
@@ -249,6 +253,9 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     for s in scenes {
         if let SceneKind::Play { name: Some(n), .. } = &s.kind {
             out.insert(n.clone());
+        }
+        if let SceneKind::Fx(fx) = &s.kind {
+            out.insert(fx.op.clone());
         }
         if let SceneKind::Draw(d) = &s.kind {
             out.insert(d.verb.clone());
@@ -461,15 +468,7 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     }
     let hits = walk.hits;
     for (path, origin, b, site) in hits {
-        let line = origin
-            .rsplit(':')
-            .next()
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1);
-        let src = origin
-            .rsplit_once(':')
-            .map(|(f, _)| f.to_string())
-            .unwrap_or(file.to_string());
+        let (src, line) = source_line(&origin, file);
         let msg = if b.intersects(canvas) {
             "is clipped by the canvas edge"
         } else {
@@ -497,6 +496,160 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             }
             out.push(d);
         }
+    }
+    out
+}
+
+/// The file and line a node's `origin` names, or line 1 of `file` when it names none.
+fn source_line(origin: &str, file: &str) -> (String, u32) {
+    let line = origin
+        .rsplit(':')
+        .next()
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(1);
+    let src = origin
+        .rsplit_once(':')
+        .map(|(f, _)| f.to_string())
+        .unwrap_or(file.to_string());
+    (src, line)
+}
+
+/// Lines whose every node nested under one shape draws ([`Node::outer_bounds`]) wholly outside
+/// that shape or a clipping shape above it, so the line draws nothing there. A scatter whose
+/// copies only partly land outside the shape is not reported. A hidden node's children are not
+/// measured.
+pub fn hidden_child(
+    scene: &artscript_ir::Scene,
+    manifest: &Manifest,
+    file: &str,
+) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("hidden-child");
+    type Find<'n, 'f> = &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>;
+    struct Hit<'n> {
+        node: &'n Node,
+        by: &'n str,
+        bounds: Rect,
+        site: Option<&'n str>,
+    }
+    /// The nodes one line drew under one parent shape.
+    #[derive(Default)]
+    struct Line<'n> {
+        drawn: usize,
+        hidden: Vec<Hit<'n>>,
+    }
+    struct Walk<'n, 'f> {
+        entry: &'f str,
+        find: Find<'n, 'f>,
+        /// The clipping shapes above the current node, innermost last, in canvas coordinates.
+        clips: Vec<(Rect, &'n str)>,
+        lines: Vec<Line<'n>>,
+        by_key: HashMap<(&'n str, &'n str), usize>,
+    }
+    impl<'n> Walk<'n, '_> {
+        fn node(&mut self, n: &'n Node, parent: Matrix, mut site: Option<&'n str>) {
+            if n.origin
+                .rsplit_once(':')
+                .is_some_and(|(f, _)| f == self.entry)
+            {
+                site = Some(&n.origin);
+            }
+            if let Some(&(_, parent_shape)) = self.clips.last()
+                && let Some(b) = n.outer_bounds(&parent, self.find)
+            {
+                let bounds = parent.map_rect(b).0;
+                let next = self.lines.len();
+                let i = *self
+                    .by_key
+                    .entry((n.origin.as_str(), parent_shape))
+                    .or_insert(next);
+                if i == next {
+                    self.lines.push(Line::default());
+                }
+                let line = &mut self.lines[i];
+                line.drawn += 1;
+                let hider = self
+                    .clips
+                    .iter()
+                    .rev()
+                    .find(|(r, _)| !bounds.intersects(*r));
+                if let Some(&(_, by)) = hider {
+                    line.hidden.push(Hit {
+                        node: n,
+                        by,
+                        bounds,
+                        site,
+                    });
+                    return;
+                }
+            }
+            let world = parent * n.transform;
+            let clip = match &n.kind {
+                NodeKind::Shape(s) => {
+                    let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
+                    self.clips.push((r, n.path.as_str()));
+                    true
+                }
+                NodeKind::Group { .. } => false,
+            };
+            for c in n.children() {
+                self.node(c, world, site);
+            }
+            if clip {
+                self.clips.pop();
+            }
+        }
+    }
+    let mut paths = HashMap::new();
+    index(&scene.children, Matrix::new_identity(), &mut paths);
+    let find = |p: &str| paths.get(p).copied();
+    let mut walk = Walk {
+        entry: file,
+        find: &find,
+        clips: Vec::new(),
+        lines: Vec::new(),
+        by_key: HashMap::new(),
+    };
+    for c in &scene.children {
+        walk.node(c, Matrix::new_identity(), None);
+    }
+    let mut out = Vec::new();
+    for line in walk.lines {
+        if line.hidden.len() < line.drawn {
+            continue;
+        }
+        let hit = &line.hidden[0];
+        let (src, line_no) = source_line(&hit.node.origin, file);
+        let path = &hit.node.path;
+        let Some(d) = diag(
+            level,
+            "L0105",
+            Span {
+                line: line_no,
+                col: 1,
+            },
+            format!("`{path}` is entirely outside `{}`, which clips it", hit.by),
+        ) else {
+            continue;
+        };
+        let b = hit.bounds;
+        let mut d = d
+            .in_file(&src)
+            .at_node(path)
+            .with_note(format!(
+                "bounds {},{} {}x{}",
+                b.left.round(),
+                b.top.round(),
+                b.width().round(),
+                b.height().round()
+            ))
+            .with_fix("move it inside the shape it is nested under, or draw it beside that shape");
+        if line.drawn > 1 {
+            d = d.with_note(format!("so are the {} other copies", line.drawn - 1));
+        }
+        if let Some(site) = hit.site.filter(|_| src != file) {
+            d = d.with_note(format!("in {site}"));
+        }
+        out.push(d);
     }
     out
 }

@@ -1994,6 +1994,69 @@ fn off_canvas_on_a_later_frame_is_kept() {
     assert_eq!(offs[0].node, "c");
 }
 
+fn hidden_children(src: &str) -> Vec<Diagnostic> {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [("art/t.art".to_string(), src.to_string())].into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::sample(&p, &plan.jobs[0])
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0105")
+        .collect()
+}
+
+#[test]
+fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
+    let hidden = hidden_children(
+        "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
+    );
+    let nodes: Vec<_> = hidden.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["f.eye_l", "f.eye_r"], "{}", show(&hidden));
+    assert_eq!(hidden[0].span.line, 4);
+    assert!(
+        hidden[0].message.contains("`f.skull`"),
+        "{}",
+        hidden[0].message
+    );
+}
+
+#[test]
+fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
+    let partly = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*12-18,0 name:dot\n",
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
+    let all = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*4,20 name:dot\n",
+    );
+    assert_eq!(all.len(), 1, "{}", show(&all));
+    assert!(
+        all[0]
+            .notes
+            .iter()
+            .any(|n| n == "so are the 3 other copies"),
+        "{:?}",
+        all[0].notes
+    );
+}
+
+#[test]
+fn a_child_hidden_on_only_some_frames_is_not_reported() {
+    let some = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(0 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert!(some.is_empty(), "{}", show(&some));
+    let every = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(20 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert_eq!(every.len(), 1, "{}", show(&every));
+}
+
 #[test]
 fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
@@ -5363,4 +5426,63 @@ fn a_wrap_that_is_not_a_positive_number_or_pair_is_e0320_at_its_line() {
         assert_eq!(d.span.line, 3, "{bad}: {d}");
         assert!(d.message.contains("wrap"), "{bad}: {d}");
     }
+}
+
+#[test]
+fn fx_under_a_taken_if_applies_to_the_draw_in_source_order() {
+    let src = |on: bool| {
+        format!(
+            "@target t.png 100x100\nlet on = {on}\ncircle 10 name:c\n  fx shadow 0,4\n  if on\n    fx blur 2\n  else\n    fx glow 3\n  fx outline 3\n"
+        )
+    };
+    let s = scene(&src(true));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Blur", "Outline"]);
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx shadow 0,4\n  fx blur 2\n  fx outline 3\n",
+    );
+    assert_eq!(fx_debug(&s, "c"), fx_debug(&written, "c"));
+    let s = scene(&src(false));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Glow", "Outline"]);
+
+    let s = scene(
+        "@target t.png 100x100\nlet on = false\nlayer l\n  circle 10 name:c\n  if on\n    fx blur 2\n  else if true\n    if true\n      fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "l")), ["Outline"]);
+    assert!(node(&s, "c").effects.is_empty());
+}
+
+#[test]
+fn fx_under_an_if_in_a_def_body_or_call_block_applies_to_the_instance() {
+    let s = scene(
+        "@target t.png 100x100\nlet on = true\ndef badge glow:false\n  circle 10\n  fx shadow 0,4\n  if glow\n    fx glow 3\nbadge name:a\nbadge glow:true name:b\n  if on\n    fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "a")), ["Shadow"]);
+    assert_eq!(fx_ops(node(&s, "b")), ["Shadow", "Glow", "Outline"]);
+}
+
+#[test]
+fn fx_under_an_if_reads_the_lets_of_its_branch() {
+    let s = scene(
+        "@target t.png 100x100\nlet w = 1\ncircle 10 name:c\n  if true\n    let w = 5\n    fx blur w\ndef badge\n  circle 4\n  if true\n    let w = 5\n    fx blur w\nbadge name:a\nbadge name:b\n  if true\n    let w = 5\n    fx glow w\n",
+    );
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx blur 5\ndef badge\n  circle 4\n  fx blur 5\nbadge name:a\nbadge name:b\n  fx glow 5\n",
+    );
+    for path in ["c", "a", "b"] {
+        assert_eq!(fx_debug(&s, path), fx_debug(&written, path), "{path}");
+    }
+}
+
+#[test]
+fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\nsubtract name:wall\n  rect 60,60 at:32,32\n  circle 10 at:32,32\n    if true\n      fx glow 2\n",
+        &[],
+    );
+    let d = diag(&ev, "E0321");
+    assert_eq!(
+        d.message,
+        "`fx glow` on an operand of `subtract` is ignored; an operand gives only its geometry"
+    );
+    assert_eq!(d.span.line, 6);
 }
