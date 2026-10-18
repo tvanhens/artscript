@@ -5368,6 +5368,15 @@ fn copy_of_an_outer_ref_is_its_box() {
 }
 
 #[test]
+fn the_outer_extent_grows_only_on_the_sides_an_outline_draws() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3 sides:top,left\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 60.0, 55.0));
+}
+
+#[test]
 fn a_part_named_outer_wins_over_the_outer_extent() {
     let s = scene(
         "@target t.png 100x100\n\
@@ -5625,6 +5634,77 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert_eq!(d.len(), 1, "{}", show(d));
     assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
+}
+
+fn outline_sides(src: &str) -> artscript_ir::Sides {
+    let s = scene(&format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {src}\n"));
+    node(&s, "c")
+        .effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Outline { sides, .. } => Some(sides),
+            _ => None,
+        })
+        .expect("outline")
+}
+
+#[test]
+fn outline_sides_names_the_sides_it_draws_on() {
+    use artscript_ir::Sides;
+    assert_eq!(outline_sides(""), Sides::ALL);
+    assert_eq!(outline_sides("sides:top"), Sides { top: true, right: false, bottom: false, left: false });
+    assert_eq!(
+        outline_sides("sides:top,left"),
+        Sides { top: true, right: false, bottom: false, left: true }
+    );
+    assert_eq!(outline_sides("sides:left,top"), outline_sides("sides:top,left"));
+    assert_eq!(outline_sides("sides:top,right,bottom,left"), Sides::ALL);
+}
+
+#[test]
+fn outline_sides_rejects_what_is_not_a_side_word() {
+    for bad in ["sides:up", "sides:top,lef", "sides:3", "sides:[]", "sides:#ff0000", "sides:\"top\""] {
+        let ev = run_with(
+            &format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {bad}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("sides"), "{bad}: {d}");
+    }
+}
+
+fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
+    match &shape(s, path).fill {
+        Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
+        other => panic!("{path} has fill {other:?}"),
+    }
+}
+
+#[test]
+fn wrap_sets_a_period_per_axis_on_a_noise_field() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 20x20 fill:simplex(16 wrap:64) -> [#000 #fff] name:a\n\
+         rect 20x20 fill:worley(16 wrap:64,32) -> [#000 #fff] name:b\n\
+         rect 20x20 fill:value(16) -> [#000 #fff] name:c\n",
+    );
+    assert_eq!(noise_wrap(&s, "a"), Some([64.0, 64.0]));
+    assert_eq!(noise_wrap(&s, "b"), Some([64.0, 32.0]));
+    assert_eq!(noise_wrap(&s, "c"), None);
+}
+
+#[test]
+fn a_wrap_that_is_not_a_positive_number_or_pair_is_e0320_at_its_line() {
+    for bad in ["wrap:tile", "wrap:0", "wrap:-64", "wrap:64,0", "wrap:50%"] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\ncircle 10 name:spacer\nrect 20x20 fill:perlin(16 {bad}) -> [#000 #fff] name:a\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("wrap"), "{bad}: {d}");
+    }
 }
 
 #[test]

@@ -71,7 +71,7 @@ fn body(hi: Color, lo: Color, ink: Color) -> Node {
     node.effects = vec![
         fx(EffectOp::Rim { width: 16.0, dir: Point::new(1.0, 1.0), color: Color { r: 1.0, g: 0.96, b: 0.9, a: 0.85 } }),
         fx(EffectOp::Grain { strength: 0.07, scale: 1.6, seed: 11 }),
-        fx(EffectOp::Outline { width: 2.5, color: ink }),
+        fx(EffectOp::Outline { width: 2.5, color: ink, sides: artscript_ir::Sides::ALL }),
     ];
     node
 }
@@ -126,7 +126,7 @@ fn rock() -> Node {
         Path::oval(skia_safe::Rect::from_xywh(286.0, 300.0, 48.0, 36.0), None),
         Paint::Field {
             field: Field::Fbm {
-                base: Box::new(Field::Noise { kind: NoiseKind::Worley, scale: 10.0, seed: 5 }),
+                base: Box::new(Field::Noise { kind: NoiseKind::Worley, scale: 10.0, seed: 5, wrap: None }),
                 octaves: 3,
                 ridged: false,
             },

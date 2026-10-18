@@ -1549,6 +1549,12 @@ impl<'u, 'd> Gen<'u, 'd> {
                 if self.chance(5) {
                     let _ = write!(extra, " oct:{}", self.n(1, 4));
                 }
+                if self.chance(5) {
+                    let _ = write!(extra, " wrap:{}", self.n(8, 96));
+                    if self.chance(2) {
+                        let _ = write!(extra, ",{}", self.n(8, 96));
+                    }
+                }
                 format!("{kind}({}{extra})", self.lit(4, 60))
             }
             F::Wrap => {
