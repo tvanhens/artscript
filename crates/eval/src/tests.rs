@@ -5629,7 +5629,7 @@ fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
         ("scale:1/0", "this node's transform is not finite"),
         ("at:1/0,0", "this node's transform is not finite"),
         ("skew:0,-90", "`skew:` must be between -90 and 90 degrees"),
-        ("scale:red", "`scale:` expects a number or a vector like 2,1, got a word"),
+        ("scale:red", "`scale:` expects a vector like 4,2, got a word"),
     ] {
         let ev = run_with(&format!("@target t.png 40x40\ncurve 0,0 10,10 stroke:#000,[2 4] {attr}\n"), &[]);
         assert_eq!(diag(&ev, "E0320").message, message, "{attr}");
@@ -6099,4 +6099,57 @@ fn a_vector_branch_of_an_if_evaluates_in_a_let() {
     );
     assert_eq!(at(node(&s, "a")), (96.0, 200.0));
     assert_eq!(at(node(&s, "b")), (576.0, 300.0));
+}
+
+#[test]
+fn a_comma_before_a_vector_sum_is_e0320_with_the_parenthesized_fix() {
+    let fix = "wrap the vector in parentheses, as in `(a,b) + v`, because `+` binds tighter than `,`";
+    for (line, key) in [
+        ("circle 2 at:(a),(b) + v", "at"),
+        ("circle 2 at:a,b + v", "at"),
+        ("circle 2 at:a + v,b", "at"),
+        ("rect 4x4 at:8,8 pivot:a,b + v", "pivot"),
+        ("repeat 3 step:a,b + v\n  circle 2", "step"),
+        ("grid 2x2 cell:a,b + v\n  circle 2", "cell"),
+        ("circle 4 fill:radial(#fff #000 at:a,b + v)", "at"),
+        ("circle 4 fill:conic(#fff #000 at:a,b + v)", "at"),
+        ("rect 4x4 scale:a,b + v", "scale"),
+        ("rect 4x4 skew:a,b + v", "skew"),
+        ("circle 4\n  fx rim 3 dir:a,b + v", "dir"),
+    ] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\n{line}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, format!("`{key}:` expects a vector like 4,2, got a list"), "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
+}
+
+#[test]
+fn a_parenthesized_vector_sum_is_a_vector_in_every_vector_key() {
+    let s = scene(
+        "@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\ncircle 2 at:(a,b) + v name:c\nrepeat 2 step:(a,b) + v\n  circle 2 name:r\ngrid 2x2 cell:(a,b) + v\n  circle 2 name:g\nrect 4x4 at:5,5 pivot:(a,b) + v scale:(1,2) + v name:p\n",
+    );
+    assert_eq!(at(node(&s, "c")), (13.0, 14.0));
+    assert_eq!(at(node(&s, "r.1")), (33.0, 34.0));
+}
+
+#[test]
+fn a_vector_key_that_is_not_a_vector_names_the_key() {
+    for (line, message, fix) in [
+        ("rect 4x4 pivot:red", "`pivot:` expects a vector like 4,2, got a word", "write `pivot:4,2`"),
+        ("repeat 3 step:[1 2 3]\n  circle 2", "`step:` expects a vector like 4,2, got a list", "write `step:4,2`"),
+        ("grid 2x2 cell:red\n  circle 2", "`cell:` expects a vector like 4,2, got a word", "write `cell:4,2`"),
+        ("circle 4 fill:radial(#fff #000 at:red)", "`at:` expects a vector like 4,2, got a word", "write `at:4,2`"),
+        ("circle 4\n  fx rim 3 dir:red", "`dir:` expects a vector like 4,2, got a word", "write `dir:4,2`"),
+        ("repeat 3 step:10%,2\n  circle 2", "`step:` takes numbers, not percents", "write `step:4,2` in canvas units"),
+        ("curve 0,0 20,0 stroke:#000,[2 4] taper:red", "`taper:` expects a vector like 4,2, got a word", "write `taper:4,2`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 40x40\n{line}\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
 }

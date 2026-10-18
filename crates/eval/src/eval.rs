@@ -1609,19 +1609,14 @@ impl<'a> Evaluator<'a> {
         let at = match a.get("at") {
             Some(Value::Ref(r)) => self.anchor_point(r, sc)?,
             Some(v) => {
-                let (x, y) = v.pair().ok_or_else(|| {
-                    fail(
-                        "E0320",
-                        format!("`at:` expects a vector like 4,2, got {}", v.kind()),
-                    )
-                })?;
+                let (x, y) = v.pair_for("at")?;
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
                 (x.pos(fx, fw), y.pos(fy, fh))
             }
             None => default_at,
         };
-        let pivot = match a.get("pivot").and_then(Value::pair) {
+        let pivot = match a.get("pivot").map(|v| v.pair_for("pivot")).transpose()? {
             Some((x, y)) => {
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
@@ -1636,9 +1631,7 @@ impl<'a> Evaluator<'a> {
         };
         let vector = |key: &str, default: (f64, f64)| match a.get(key) {
             None => Ok(default),
-            Some(v) => v.vec2().ok_or_else(|| {
-                fail("E0320", format!("`{key}:` expects a number or a vector like 2,1, got {}", v.kind()))
-            }),
+            Some(v) => v.vec2_for(key),
         };
         let scale = vector("scale", (1.0, 1.0))?;
         let skew = match a.get("skew") {
@@ -2491,7 +2484,7 @@ impl<'a> Evaluator<'a> {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
         let rot = a.num("rot").unwrap_or(0.0);
-        let step = a.get("step").and_then(Value::vec2).unwrap_or((0.0, 0.0));
+        let step = a.get("step").map(|v| v.vec2_for("step")).transpose()?.unwrap_or((0.0, 0.0));
         let mut out = Vec::new();
         for i in 0..(n.max(0.0) as usize).min(10_000) {
             let fi = i as f64;
@@ -2520,7 +2513,11 @@ impl<'a> Evaluator<'a> {
         })?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
-        let mut pitch = a.get("cell").and_then(Value::vec2).map(|(cw, ch)| (cw + gap, ch + gap));
+        let mut pitch = a
+            .get("cell")
+            .map(|v| v.vec2_for("cell"))
+            .transpose()?
+            .map(|(cw, ch)| (cw + gap, ch + gap));
         let cell_at = |(sx, sy): (f64, f64), row: usize, col: usize| {
             let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
             Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32))
@@ -2781,7 +2778,7 @@ impl<'a> Evaluator<'a> {
         };
         let taper = match pick("taper") {
             Some(Value::Num(t)) => Some((t, t)),
-            Some(v) => v.vec2(),
+            Some(v) => Some(v.vec2_for("taper")?),
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;

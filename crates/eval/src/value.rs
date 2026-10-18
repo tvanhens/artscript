@@ -6,6 +6,7 @@ use std::rc::Rc;
 use artscript_ir::Field;
 
 use crate::color::{Ramp, Rgba};
+use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
 use crate::range::Range;
 use crate::scope::{Component, Module, Palette, RefVal, RuleDef};
@@ -185,6 +186,36 @@ impl Value {
             Value::List(xs) if xs.len() == 2 => Some((xs[0].coord()?, xs[1].coord()?)),
             _ => None,
         }
+    }
+
+    /// The value of a vector key such as `at:`, `pivot:` or `step:`, or E0320 naming the key.
+    pub fn pair_for(&self, key: &str) -> R<(Coord, Coord)> {
+        self.pair().ok_or_else(|| self.not_a_vector(key))
+    }
+
+    /// Like [`Value::pair_for`], for a key whose coordinates are canvas units, never percents.
+    pub fn vec2_for(&self, key: &str) -> R<(f64, f64)> {
+        match self.pair() {
+            Some((Coord::Num(x), Coord::Num(y))) => Ok((x, y)),
+            Some(_) => Err(fail("E0320", format!("`{key}:` takes numbers, not percents"))
+                .fix(format!("write `{key}:4,2` in canvas units"))),
+            None => Err(self.not_a_vector(key)),
+        }
+    }
+
+    /// `a,b + v` is the tuple `a,(b + v)`: a comma binds looser than `+`. A pair holding a
+    /// vector is the trace of that mistake.
+    fn not_a_vector(&self, key: &str) -> Fail {
+        let swallowed = matches!(
+            self,
+            Value::Tuple(xs) if xs.len() == 2 && xs.iter().any(|x| matches!(x, Value::Vec2(..) | Value::Size(..)))
+        );
+        let fix = if swallowed {
+            "wrap the vector in parentheses, as in `(a,b) + v`, because `+` binds tighter than `,`".to_string()
+        } else {
+            format!("write `{key}:4,2`")
+        };
+        fail("E0320", format!("`{key}:` expects a vector like 4,2, got {}", self.kind())).fix(fix)
     }
 
     pub fn coord(&self) -> Option<Coord> {
