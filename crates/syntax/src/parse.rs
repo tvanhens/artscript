@@ -1050,7 +1050,13 @@ impl<'a> Parser<'a> {
         let indent = self.cur_indent();
         self.reject_reserved(&verb, span);
         self.bump();
-        let (args, named) = self.parse_items();
+        let name = matches!(verb.as_str(), "layer" | "group" | "anchor")
+            .then(|| self.reserved_positional_name())
+            .flatten();
+        let (mut args, named) = self.parse_items();
+        if let Some(name) = name {
+            args.insert(0, Expr::Ident(name));
+        }
         if let Some(m) = named.iter().find(|n| n.key == "mask") {
             self.fail(
                 m.span,
@@ -1233,6 +1239,18 @@ impl<'a> Parser<'a> {
         } else {
             args.push(self.parse_tuple());
         }
+    }
+
+    fn reserved_positional_name(&mut self) -> Option<String> {
+        let Some(Tok::Kw(k)) = self.cur().map(|t| t.kind.clone()) else {
+            return None;
+        };
+        let next = self.lines[self.li].tokens.get(self.ti + 1);
+        if next.is_some_and(|t| !t.ws_before) {
+            return None;
+        }
+        self.bump();
+        Some(k.as_str().to_string())
     }
 
     fn is_named(&self) -> bool {

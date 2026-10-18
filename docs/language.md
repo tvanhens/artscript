@@ -11,7 +11,7 @@ Hold these before you draw:
 - The canvas origin is top-left, with y down, so `at:256,256` is the center of a 512x512 canvas. Shapes are centered on their local origin, and `at:` places that origin in the parent.
 - **Nesting under a shape clips the children to that shape.** Highlights, shadows, and textures go inside the form they belong to.
 - Paint with palette ramps, not raw hex. `p` is the manifest's default palette, and `p.skin.3` picks a ramp stop.
-- Name the nodes that matter with `name:`. A named node is addressable from checks, patches, and anims, and it keeps its seed when other nodes change. A name may be a reserved word such as `mask`, because it is only read as `@mask` or `.mask`.
+- Name the nodes that matter with `name:`. A named node is addressable from checks, patches, and anims, and it keeps its seed when other nodes change. A name may be a reserved word such as `mask`, in `name:mask` or `layer mask`, because it is only read as `@mask` or `.mask`.
 - Builds are deterministic. The same source and manifest produce byte-identical outputs.
 
 A complete entry file:
