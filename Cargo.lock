@@ -47,6 +47,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "artscript-brush"
+version = "0.1.0"
+dependencies = [
+ "skia-safe",
+]
+
+[[package]]
 name = "artscript-eval"
 version = "0.1.0"
 dependencies = [
