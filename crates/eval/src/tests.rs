@@ -4554,3 +4554,24 @@ fn an_off_patch_on_one_copy_hides_that_copy_and_counts_as_a_match() {
         assert!(!paths(&s).iter().any(|p| p == "b.dot8.1"), "{src}\n{:?}", paths(&s));
     }
 }
+
+#[test]
+fn a_final_star_patch_skips_anchors() {
+    let def = "@target t.png 64x64\ndef comp\n  poly 4 name:tail7\n  anchor anc8 38,6\n";
+    for src in [
+        format!("{def}comp name:b at:32,32\n  .* a:.5\n"),
+        format!("{def}anim fade dur:1s\n  .* a:.5\ncomp name:b at:32,32\n  play fade\n"),
+    ] {
+        let s = scene(&src);
+        assert!((node(&s, "b.tail7").opacity - 0.5).abs() < 1e-4, "{src}");
+    }
+
+    let only = run_with(
+        "@target t.png 64x64\ndef comp\n  anchor anc8 38,6\ncomp name:b at:32,32\n  .* a:.5\n",
+        &[],
+    );
+    let hits: Vec<_> = only.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&only.diagnostics));
+    assert_eq!(hits[0].span.line, 5);
+    assert!(hits[0].message.contains("matches nothing"), "{hits:?}");
+}

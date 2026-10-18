@@ -383,6 +383,10 @@ impl NameKind {
     pub fn opens_scope(self) -> bool {
         matches!(self, NameKind::Instance | NameKind::Slot)
     }
+
+    pub fn has_node(self) -> bool {
+        self != NameKind::Anchor
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -1440,7 +1444,7 @@ impl Pending {
             if matches!(patch.rest.first(), Some(Hop::Star)) && region.is_private(d.name.as_str()) {
                 continue;
             }
-            let Some(rest) = take(patch, &d.name, d.tree_parent, &d.loops, copies) else {
+            let Some(rest) = take(patch, d, copies) else {
                 continue;
             };
             if rest.is_empty() {
@@ -1462,16 +1466,11 @@ impl Pending {
     }
 }
 
-fn take(
-    patch: &PendingPatch,
-    name: &Name,
-    tree_parent: Option<DeclId>,
-    loops: &[Span],
-    copies: &[u32],
-) -> Option<Vec<Hop>> {
+fn take(patch: &PendingPatch, decl: &NameDecl, copies: &[u32]) -> Option<Vec<Hop>> {
+    let loops = &decl.loops;
     match patch.rest.first() {
-        Some(Hop::Star) => (tree_parent.is_none()).then(Vec::new),
-        Some(Hop::Name(n)) if n == name => {
+        Some(Hop::Star) => (decl.tree_parent.is_none() && decl.kind.has_node()).then(Vec::new),
+        Some(Hop::Name(n)) if *n == decl.name => {
             let mut i = 1;
             let mut c = 0;
             while i < patch.rest.len()
@@ -1531,7 +1530,7 @@ fn validate(
             if region
                 .decls
                 .iter()
-                .any(|d| d.tree_parent.is_none() && !region.is_private(d.name.as_str()))
+                .any(|d| d.tree_parent.is_none() && d.kind.has_node() && !region.is_private(d.name.as_str()))
             {
                 return true;
             }
@@ -1657,7 +1656,7 @@ fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]
         let mut kids = Vec::new();
         for id in region.decl_ids() {
             let decl = region.decl(id);
-            if decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
+            if decl.kind.has_node() && decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
                 let name = decl.name.to_string();
                 if !kids.contains(&name) {
                     kids.push(name);
