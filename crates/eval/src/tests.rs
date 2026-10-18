@@ -65,7 +65,7 @@ fn at(n: &Node) -> (f32, f32) {
 
 fn fill_hex(n: &Node) -> String {
     match &n.kind {
-        NodeKind::Shape(s) => match &s.fill {
+        NodeKind::Shape(s) => match s.fill.as_ref().map(|f| &f.paint) {
             Some(Paint::Solid(c)) => c.hex(),
             other => panic!("{} has fill {other:?}", n.path),
         },
@@ -631,12 +631,6 @@ fn each_expr_respects_e0306() {
         "{}",
         show(&huge.diagnostics)
     );
-    let mixed = run_with("@target t.png 10x10\ncurve [0,0 10,0] 20,0\n", &[]);
-    assert!(
-        mixed.diagnostics.iter().any(|d| d.code == "E0320"),
-        "{}",
-        show(&mixed.diagnostics)
-    );
 }
 
 #[test]
@@ -701,7 +695,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(band) = &node(&s, "band").kind else {
         panic!("band")
     };
-    let Some(Paint::Linear { from, to, stops }) = &band.fill else {
+    let Some(Paint::Linear { from, to, stops }) = band.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", band.fill)
     };
     assert_eq!((from.x, from.y, to.x, to.y), (10.0, 5.0, 70.0, -15.0));
@@ -712,7 +706,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(down) = &node(&s, "down").kind else {
         panic!("down")
     };
-    let Some(Paint::Linear { from, to, .. }) = &down.fill else {
+    let Some(Paint::Linear { from, to, .. }) = down.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", down.fill)
     };
     assert!(
@@ -726,7 +720,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(angle) = &node(&s, "angle").kind else {
         panic!("angle")
     };
-    let Some(Paint::Linear { from, .. }) = &angle.fill else {
+    let Some(Paint::Linear { from, .. }) = angle.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", angle.fill)
     };
     assert_ne!((from.x, from.y), (17.0, 17.0));
@@ -1544,7 +1538,7 @@ fn a_private_name_is_not_an_export() {
     );
     let s = public.scene.unwrap();
     assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
-    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+    let Some(Paint::Solid(color)) = shape(&s, "cap").fill.as_ref().map(|f| &f.paint) else {
         panic!("fill")
     };
     assert_eq!(color.hex(), "#112233");
@@ -1563,7 +1557,7 @@ fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
     assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
-    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+    let Some(Paint::Solid(color)) = shape(&s, "cap").fill.as_ref().map(|f| &f.paint) else {
         panic!("fill")
     };
     assert_eq!(color.hex(), "#112233");
@@ -1992,6 +1986,166 @@ fn off_canvas_on_a_later_frame_is_kept() {
         .collect();
     assert_eq!(offs.len(), 1, "{}", show(&sampled.diagnostics));
     assert_eq!(offs[0].node, "c");
+}
+
+fn hidden_children(src: &str) -> Vec<Diagnostic> {
+    let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [("art/t.art".to_string(), src.to_string())].into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::sample(&p, &plan.jobs[0])
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0105")
+        .collect()
+}
+
+#[test]
+fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
+    let hidden = hidden_children(
+        "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
+    );
+    let nodes: Vec<_> = hidden.iter().map(|d| d.node.as_str()).collect();
+    assert_eq!(nodes, ["f.eye_l", "f.eye_r"], "{}", show(&hidden));
+    assert_eq!(hidden[0].span.line, 4);
+    assert!(
+        hidden[0].message.contains("`f.skull`"),
+        "{}",
+        hidden[0].message
+    );
+}
+
+#[test]
+fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
+    let partly = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*12-18,0 name:dot\n",
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
+    let all = hidden_children(
+        "@target t.png 64x64\ncircle 10 at:32,32 name:blob\n  each i in 0..4\n    circle 2 at:i*4,20 name:dot\n",
+    );
+    assert_eq!(all.len(), 1, "{}", show(&all));
+    assert!(
+        all[0]
+            .notes
+            .iter()
+            .any(|n| n == "so are the 3 other copies"),
+        "{:?}",
+        all[0].notes
+    );
+}
+
+#[test]
+fn a_child_hidden_on_only_some_frames_is_not_reported() {
+    let some = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(0 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert!(some.is_empty(), "{}", show(&some));
+    let every = hidden_children(
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(20 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+    );
+    assert_eq!(every.len(), 1, "{}", show(&every));
+}
+
+fn unknown_targets(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
+    run_with(src, libs)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0106")
+        .collect()
+}
+
+const TWO_LABELS: &str = "@target a.png 8x8 as:villain\n@target b.png 8x8 as:hero\n";
+
+#[test]
+fn comparing_target_with_a_path_warns_and_names_the_labels() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}if target == \"a.png\"\n  circle 2\nif target != \"a.png\"\n  circle 3\n"
+        ),
+        &[],
+    );
+    let lines: Vec<u32> = hits.iter().map(|d| d.span.line).collect();
+    assert_eq!(lines, [3, 5], "{}", show(&hits));
+    let d = &hits[0];
+    assert_eq!(d.severity, artscript_syntax::Severity::Warning);
+    assert_eq!(d.message, "`target` is never `\"a.png\"` in this file");
+    assert_eq!(d.notes, ["its targets are labeled hero, villain"]);
+    assert_eq!(
+        d.fix.as_deref(),
+        Some("compare `target` with an `as:` label, such as `target == hero`")
+    );
+}
+
+#[test]
+fn comparing_target_with_one_of_its_labels_is_quiet() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}if target == hero\n  circle 2\nif target == \"villain\"\n  circle 3\nlet lead = target != hero\n"
+        ),
+        &[],
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn target_is_none_only_when_a_target_has_no_label() {
+    let src = "if target == none\n  circle 2\n";
+    let partly = unknown_targets(
+        &format!("@target a.png 8x8 as:hero\n@target b.png 8x8\n{src}"),
+        &[],
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
+    let labeled = unknown_targets(&format!("{TWO_LABELS}{src}"), &[]);
+    assert_eq!(labeled.len(), 1, "{}", show(&labeled));
+    assert_eq!(labeled[0].message, "`target` is never `none` in this file");
+    let unlabeled = unknown_targets("@target a.png 8x8\nif target == hero\n  circle 2\n", &[]);
+    assert_eq!(unlabeled.len(), 1, "{}", show(&unlabeled));
+    assert_eq!(
+        unlabeled[0].notes,
+        ["no `@target` here sets `as:`, so `target` is always `none`"]
+    );
+    assert_eq!(
+        unlabeled[0].fix.as_deref(),
+        Some("add `as:<label>` to a `@target`")
+    );
+}
+
+#[test]
+fn a_name_compared_with_target_is_quiet_because_its_value_is_unknown() {
+    let hits = unknown_targets(
+        &format!(
+            "{TWO_LABELS}let lead = hero\nif target == lead\n  circle 2\neach v in [hero villain]\n  if target == v\n    circle 3\nuse names\nif target == star\n  circle 4\n"
+        ),
+        &[("lib/names.art", "let star = villain\n")],
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+}
+
+#[test]
+fn unknown_target_off_is_silent() {
+    let manifest = "[project]\nout = \"out\"\n\n[lint]\nunknown-target = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [(
+            "art/t.art".to_string(),
+            format!("{TWO_LABELS}if target == \"a.png\"\n  circle 2\n"),
+        )]
+        .into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0106"),
+        "{}",
+        show(&ev.diagnostics)
+    );
 }
 
 #[test]
@@ -3030,6 +3184,345 @@ fn an_unnamed_node_with_an_explicit_seed_does_not_warn_l0104() {
     );
 }
 
+/// Every unseeded draw a def body can make: a field fill, a `let` and a draw-site `rand`, a
+/// `blob`, `jitter:`, and `fx grain`.
+const BLOT_LIB: &str = "\
+def blot
+  rect 40x40 fill:fbm(simplex(6)) -> [#000 #fff] name:field
+  let r = rand(3 8)
+  circle r at:rand(-10 10),rand(-10 10) fill:#ff0000 name:dot
+  blob 8 wobble:.4 fill:#00ff00 name:lump
+  rect 30x4 at:0,15 jitter:1.5,8 fill:#0000ff name:bar
+  fx grain .3
+";
+
+/// The 48x48 pixels centered on `cx`,`cy`. Paint dithers on an 8px device grid, so two crops
+/// match byte for byte only when their centers differ by a multiple of 8.
+fn crop(scene: &Scene, cx: i32, cy: i32) -> Vec<u8> {
+    let (w, h, buf) =
+        artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
+    assert!(cx >= 24 && cy >= 24 && cx + 24 <= w as i32 && cy + 24 <= h as i32);
+    let mut out = Vec::new();
+    for y in cy - 24..cy + 24 {
+        let row = (y as usize * w as usize + (cx - 24) as usize) * 4;
+        out.extend_from_slice(&buf[row..row + 48 * 4]);
+    }
+    out
+}
+
+#[test]
+fn two_instances_with_the_same_seed_draw_the_same_pixels() {
+    let s = lib_scene(
+        "@target t.png 300x96 bg:#ffffff\nuse d { blot }\n\
+         blot at:48,48 seed:7 name:a\n\
+         group name:g at:96,0\n  blot at:48,48 seed:7 name:b\n\
+         blot at:240,48 seed:8 name:c\n",
+        BLOT_LIB,
+    );
+    let (a, b, c) = (crop(&s, 48, 48), crop(&s, 144, 48), crop(&s, 240, 48));
+    assert!(a == b, "seed:7 drew different pixels at a and g.b");
+    assert!(a != c, "seed:7 and seed:8 drew the same pixels");
+}
+
+#[test]
+fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
+    let wrap = "use d { blot }\ndef wrap\n  blot seed:7 name:w\n    fx grain .3\n";
+    let libs = [("lib/d.art", BLOT_LIB), ("lib/e.art", wrap)];
+    let ev = run_with(
+        "@target t.png 200x96 bg:#ffffff\nuse d { blot }\nuse e { wrap }\n\
+         blot at:48,48 seed:7 name:a\n  fx grain .3\nwrap at:144,48 name:x\n",
+        &libs,
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert!(
+        crop(&s, 48, 48) == crop(&s, 144, 48),
+        "the call in lib/e.art drew different pixels"
+    );
+
+    let asset = run_with(
+        "@target t.png 48x48 bg:#ffffff\nuse d { blot }\nblot at:24,24 seed:7 name:block\n  fx grain .3\n",
+        &libs,
+    );
+    assert!(asset.diagnostics.is_empty(), "{}", show(&asset.diagnostics));
+    assert!(
+        crop(&asset.scene.unwrap(), 24, 24) == crop(&s, 48, 48),
+        "the asset entry file drew different pixels"
+    );
+}
+
+#[test]
+fn a_seeded_instance_seeds_slot_content_from_the_seed_in_any_file() {
+    let fill = |indent: &str| format!("{indent}top:\n{indent}  circle 4 at:rand(0 40),0 name:c\n");
+    let wrap = format!(
+        "use d {{ holder }}\ndef wrap\n  holder seed:7 name:w\n{}",
+        fill("    ")
+    );
+    let libs = [
+        ("lib/d.art", "def holder\n  slot top\n"),
+        ("lib/e.art", wrap.as_str()),
+    ];
+    let ev = run_with(
+        &format!(
+            "@target t.png 96x48\nuse d {{ holder }}\nuse e {{ wrap }}\n\
+             holder seed:7 name:a\n{}wrap name:x\nholder seed:8 name:b\n{}",
+            fill("  "),
+            fill("  ")
+        ),
+        &libs,
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(at(node(&s, "a.top.c")), at(node(&s, "x.w.top.c")));
+    assert_ne!(at(node(&s, "a.top.c")), at(node(&s, "b.top.c")));
+}
+
+#[test]
+fn an_unnamed_instance_with_a_seed_does_not_warn_l0104() {
+    let src = |call: &str| {
+        format!(
+            "@target t.png 40x40\ndef speck\n  rect 20x20 fill:#888888\n  fx grain .3\n{call}\n"
+        )
+    };
+    let seeded = eval_lint(&src("speck seed:7"), "");
+    assert!(
+        seeded.diagnostics.is_empty(),
+        "{}",
+        show(&seeded.diagnostics)
+    );
+    let bare = eval_lint(&src("speck"), "");
+    assert!(
+        bare.diagnostics
+            .iter()
+            .any(|d| d.code == "L0104" && d.span.line == 5),
+        "{}",
+        show(&bare.diagnostics)
+    );
+}
+
+#[test]
+fn a_def_with_a_seed_parameter_still_receives_seed() {
+    let s = scene(
+        "@target t.png 100x100\ndef tile seed:1\n  rect 20x20 fill:simplex(6 seed:seed) -> [#000 #fff] name:f\n\
+         tile seed:5 name:a\nrect 20x20 fill:simplex(6 seed:5) -> [#000 #fff] name:r\n",
+    );
+    assert_eq!(
+        format!("{:?}", shape(&s, "a.f").fill),
+        format!("{:?}", shape(&s, "r").fill)
+    );
+}
+
+#[test]
+fn an_instance_seed_that_is_not_a_number_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\ndef speck\n  rect 20x20 fill:#888888\nspeck seed:#ff0000 name:s\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 4);
+}
+
+const PALETTE_MANIFEST: &str = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[defaults]\npalette = \"palette/house\"\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\npositional-seed = \"off\"\n";
+
+const HOUSE: &str = "palette house\n  color sky #111111\n";
+
+const ELITE: &str = "palette elite\n  color sky #222222\n\npalette hollow\n  color sky #333333\n";
+
+const PAINT_LIB: &str = "\
+palette inner
+  color sky #333333
+
+def swatch
+  rect 10x10 fill:p.sky name:a
+
+def eye iris:p.sky
+  circle 5 fill:iris name:i
+
+def holder
+  slot top
+
+def wrap
+  swatch name:s
+  swatch palette:inner name:t
+";
+
+fn palette_project(manifest: &str, src: &str, libs: &[(&str, &str)]) -> Project {
+    let mut files = vec![
+        ("art/t.art".to_string(), src.to_string()),
+        ("lib/palette/house.art".to_string(), HOUSE.to_string()),
+    ];
+    files.extend(libs.iter().map(|(k, v)| (k.to_string(), v.to_string())));
+    Project::from_sources(manifest, files.into_iter().collect()).unwrap()
+}
+
+fn palette_run(src: &str, libs: &[(&str, &str)]) -> Evaluation {
+    let p = palette_project(PALETTE_MANIFEST, src, libs);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    evaluate(&p, &plan.jobs[0])
+}
+
+fn palette_scene(src: &str) -> Scene {
+    let src = format!("{src}\n{ELITE}");
+    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    ev.scene.unwrap()
+}
+
+#[test]
+fn an_instance_palette_recolors_the_def_body_and_its_parameter_defaults() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { swatch eye }\n\
+         swatch name:plain\nswatch palette:elite name:swapped\n\
+         eye name:plain_eye\neye palette:elite name:swapped_eye\n",
+    );
+    assert_eq!(fill_hex(node(&s, "plain.a")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "plain_eye.i")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped_eye.i")), "#222222");
+}
+
+#[test]
+fn an_argument_written_at_the_call_keeps_the_callers_palette() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { eye }\neye palette:elite iris:p.sky name:e\n",
+    );
+    assert_eq!(fill_hex(node(&s, "e.i")), "#111111");
+}
+
+#[test]
+fn a_target_palette_recolors_every_draw_under_it() {
+    let s = palette_scene(
+        "@target t.png 100x100 palette:elite\nuse d { swatch holder }\n\
+         rect 4x4 fill:p.sky name:direct\nswatch name:inst\n\
+         each i in 0..2\n  rect 4x4 fill:p.sky name:looped\n\
+         if true\n  rect 4x4 fill:p.sky name:cond\n\
+         holder name:h\n  top:\n    rect 4x4 fill:p.sky name:filled\n",
+    );
+    for path in ["direct", "inst.a", "looped.0", "looped.1", "cond", "h.top.filled"] {
+        assert_eq!(fill_hex(node(&s, path)), "#222222", "{path}");
+    }
+}
+
+#[test]
+fn an_instance_palette_reaches_slot_content_written_in_the_caller() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { holder }\n\
+         holder palette:elite name:h\n  top:\n    rect 4x4 fill:p.sky name:filled\n\
+         holder name:g\n  top:\n    rect 4x4 fill:p.sky name:filled\n",
+    );
+    assert_eq!(fill_hex(node(&s, "h.top.filled")), "#222222");
+    assert_eq!(fill_hex(node(&s, "g.top.filled")), "#111111");
+}
+
+#[test]
+fn an_inner_instance_palette_replaces_an_outer_one() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { wrap swatch }\n\
+         wrap palette:elite name:w\nswatch palette:hollow name:x\n",
+    );
+    assert_eq!(fill_hex(node(&s, "w.s.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "w.t.a")), "#333333");
+    assert_eq!(fill_hex(node(&s, "x.a")), "#333333");
+
+    let s = palette_scene(
+        "@target t.png 100x100 palette:elite\nuse d { swatch }\n\
+         swatch name:outer\nswatch palette:hollow name:inner\n",
+    );
+    assert_eq!(fill_hex(node(&s, "outer.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "inner.a")), "#333333");
+}
+
+#[test]
+fn a_file_that_binds_p_itself_keeps_its_own_p() {
+    let libs = [
+        (
+            "lib/own.art",
+            "palette p\n  color sky #444444\ndef mine\n  rect 10x10 fill:p.sky name:a\n",
+        ),
+        (
+            "lib/imp.art",
+            "use palette/house as p\ndef theirs\n  rect 10x10 fill:p.sky name:a\n",
+        ),
+    ];
+    let src = format!(
+        "@target t.png 100x100 palette:elite\nuse own {{ mine }}\nuse imp {{ theirs }}\n\
+         mine name:m\nmine palette:elite name:n\ntheirs palette:elite name:t\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "m.a")), "#444444");
+    assert_eq!(fill_hex(node(&s, "n.a")), "#444444");
+    assert_eq!(fill_hex(node(&s, "t.a")), "#111111");
+}
+
+#[test]
+fn an_entry_file_top_level_let_p_keeps_its_own_p_in_its_defs() {
+    let src = format!(
+        "@target t.png 100x100 palette:elite\n{ELITE}\nlet p = hollow\n\
+         def mine\n  rect 10x10 fill:p.sky name:a\n\
+         mine name:m\nrect 10x10 fill:p.sky name:r\n"
+    );
+    let ev = palette_run(&src, &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "r")), "#333333");
+    assert_eq!(fill_hex(node(&s, "m.a")), "#333333");
+}
+
+#[test]
+fn an_instance_palette_that_is_not_a_palette_is_e0320() {
+    let src = format!(
+        "@target t.png 40x40\nuse d {{ swatch }}\nswatch name:ok\nswatch palette:#ff0000 name:bad\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    let d = diag(&ev, "E0320");
+    assert_eq!((d.span.line, d.file.as_str()), (4, "art/t.art"));
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:elite")));
+}
+
+#[test]
+fn a_target_palette_that_is_not_a_palette_is_reported_at_the_target() {
+    let ev = palette_run("@target t.png 40x40 palette:3\nrect 4x4 fill:p.sky name:r\n", &[]);
+    let d = diag(&ev, "E0206");
+    assert_eq!((d.span.line, d.file.as_str()), (1, "art/t.art"));
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:")));
+}
+
+#[test]
+fn a_palette_passed_as_a_module_parameter_hints_at_the_palette_key() {
+    let lib = "def blob_t pal:p\n  rect 10x10 fill:pal.sky name:a\n";
+    let src = format!(
+        "@target t.png 40x40\nuse d {{ blob_t }}\nblob_t pal:elite name:b\n\n{ELITE}"
+    );
+    let ev = palette_run(&src, &[("lib/d.art", lib)]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 3);
+    let fix = d.fix.as_deref().unwrap();
+    assert!(fix.contains("palette:elite"), "{fix}");
+    assert!(!fix.contains(".art"), "{fix}");
+}
+
+#[test]
+fn a_palette_key_counts_as_reading_the_palette_it_names() {
+    let manifest = PALETTE_MANIFEST.replace("unused = \"off\"\n", "");
+    let src = "@target t.png 40x40 palette:elite\nuse d { swatch }\nuse palette/elite as elite\nuse palette/hollow as hollow\nswatch palette:hollow name:s\n";
+    let libs = [
+        ("lib/palette/elite.art", "palette elite\n  color sky #222222\n"),
+        ("lib/palette/hollow.art", "palette hollow\n  color sky #333333\n"),
+        ("lib/d.art", PAINT_LIB),
+    ];
+    let p = palette_project(&manifest, src, &libs);
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0103"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
 #[test]
 fn wrapping_a_named_node_in_a_group_keeps_its_key_and_grain_seed() {
     let bare = scene("@target t.png 40x40\ncircle 8 name:head\n  fx grain .2\n");
@@ -3377,6 +3870,84 @@ fn a_reference_through_a_group_names_the_key() {
     scene(
         "@target t.png 40x40\ngroup name:body\n  rect 10x10\n  anchor neck 5,7\nassert @body.neck.x ~= 5\n",
     );
+}
+
+#[test]
+fn at_takes_an_anchor_reference_like_its_x_and_y() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "group name:body at:30,20 rot:90\n",
+        "  rect 10x10\n",
+        "  anchor neck 5,7\n",
+        "circle 2 at:@body.neck name:a\n",
+        "circle 2 at:@body.neck.x,@body.neck.y name:b\n",
+        "group at:10,10 rot:30 scale:2\n",
+        "  circle 2 at:@body.neck name:c\n",
+        "  circle 2 at:@body.neck.x,@body.neck.y name:d\n",
+    ));
+    near(at(node(&s, "a")), (23.0, 25.0));
+    let b = at(node(&s, "b"));
+    near(at(node(&s, "a")), (f64::from(b.0), f64::from(b.1)));
+    let (c, d) = (at(node(&s, "c")), at(node(&s, "d")));
+    near(c, (f64::from(d.0), f64::from(d.1)));
+    assert!(c.0.abs() + c.1.abs() > 1.0, "{c:?}");
+}
+
+#[test]
+fn at_takes_an_anchor_through_an_instance() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "def hero\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "hero at:40,50 name:hero\n",
+        "circle 2 at:@hero.neck name:a\n",
+    ));
+    near(at(node(&s, "a")), (40.0, 44.0));
+}
+
+#[test]
+fn an_anim_offset_adds_to_an_anchor_rest_at() {
+    let s = scene(concat!(
+        "@target t.png 100x100 t:.5s\n",
+        "anim bob dur:1s\n",
+        "  .dot at:key(0,0 0,-10 ease:linear)\n",
+        "group name:body at:30,40\n",
+        "  rect 10x10\n",
+        "  anchor neck 0,-6\n",
+        "circle 2 at:@body.neck name:dot\n",
+        "play bob\n",
+    ));
+    near(at(node(&s, "dot")), (30.0, 29.0));
+}
+
+#[test]
+fn an_anim_offset_on_a_node_rest_at_reports_the_node_once() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 40x40\n",
+            "anim bob dur:1s\n",
+            "  .dot at:key(0,0 0,-10)\n",
+            "rect 10x10 name:body\n",
+            "circle 2 at:@body name:dot\n",
+            "play bob\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.code.starts_with('E')).collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(errors[0].message.contains("`at:@body` is a node, not a point"), "{}", errors[0]);
+}
+
+#[test]
+fn at_names_the_node_when_the_reference_is_not_a_point() {
+    let ev = run_with(
+        "@target t.png 40x40\nrect 10x10 name:body\ncircle 2 at:@body\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("`at:@body` is a node, not a point"), "{d}");
+    assert!(d.fix.as_deref().unwrap_or("").contains("at:@body.neck"), "{d}");
 }
 
 #[test]
@@ -4673,6 +5244,54 @@ fn canvas_inside_a_transformed_group_reads_in_the_group_s_frame() {
     );
 }
 
+#[test]
+fn a_child_with_no_at_sits_at_its_moved_group_s_origin() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:48,48 name:g\n  circle 5 fill:#000000 name:dot\n  rect 4x4 at:50%,0% fill:#000000 name:pct\n\
+         layer l at:16,40\n  rect 6 fill:#000000 name:sq\n\
+         assert @dot.cx == 48\n\
+         assert @dot.cy == 48\n\
+         assert @pct.cx == 48\n\
+         assert @pct.cy == 16\n\
+         assert @sq.cx == 16\n\
+         assert @sq.cy == 40\n",
+    );
+}
+
+#[test]
+fn a_style_before_at_keeps_the_moved_group_s_frame() {
+    scene(
+        "@target t.png 64x64\n\
+         style ink stroke:#000000,2\n\
+         group style:ink at:48,48 name:g\n  circle 5 fill:#000000 name:dot\n\
+         assert @dot.cx == 48\n\
+         assert @dot.cy == 48\n",
+    );
+}
+
+#[test]
+fn a_mask_with_no_at_in_a_moved_group_covers_its_content() {
+    scene(
+        "@target t.png 64x64\n\
+         group at:48,16 name:g\n  mask\n    rect 10x10 fill:#ffffff\n  circle 8 fill:#000000 name:dot\n\
+         assert @g.w == 10\n\
+         assert @g.cx == 48\n",
+    );
+}
+
+#[test]
+fn an_anim_that_moves_a_group_with_no_at_carries_its_children() {
+    let s = scene(
+        "@target t.png 64x64\n\
+         anim slide dur:1s\n  .g at:20,0\n\
+         group name:g\n  circle 5 fill:#000000 name:dot\n\
+         play slide\n",
+    );
+    near(at(node(&s, "g")), (20.0, 0.0));
+    near(at(node(&s, "dot")), (32.0, 32.0));
+}
+
 fn off_canvas_hits(src: &str) -> Vec<Diagnostic> {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
     let p = Project::from_sources(
@@ -4773,6 +5392,37 @@ fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
 }
 
 #[test]
+fn glow_strength_defaults_to_one_and_a_negative_one_is_an_error() {
+    let s = scene("@target t.png 64x64\ncircle 4 at:32,32 fill:#4af name:a\n  fx glow 3\ncircle 4 at:32,32 fill:#4af name:b\n  fx glow 3 strength:2.5\n");
+    let strength = |n: &str| match node(&s, n).effects[0].op {
+        artscript_ir::EffectOp::Glow { strength, .. } => strength,
+        ref op => panic!("{op:?}"),
+    };
+    assert_eq!((strength("a"), strength("b")), (1.0, 2.5));
+    let ev = run_with("@target t.png 64x64\ncircle 4 at:32,32 fill:#4af\n  fx glow 3 strength:-1\n", &[]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0320").unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!(d.span.line, 3, "{d}");
+}
+
+#[test]
+fn a_strong_faint_glow_reaches_as_far_as_its_scaled_alpha() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 40x10 at:50,50 fill:#4af name:full\n  fx glow 4 a:1\n\
+         rect 40x10 at:50,50 fill:#4af name:strong\n  fx glow 4 a:.25 strength:40\n\
+         rect 40x10 at:50,50 fill:#4af name:lifted\n  fx glow 4 a:.1 strength:4\n\
+         rect 40x10 at:50,50 fill:#4af name:faint\n  fx glow 4 a:.4\n\
+         circle 1 at:@full.outer.left,0 name:pf\n\
+         circle 1 at:@strong.outer.left,0 name:ps\n\
+         circle 1 at:@lifted.outer.left,0 name:pl\n\
+         circle 1 at:@faint.outer.left,0 name:pa\n",
+    );
+    let left = |n: &str| at(node(&s, n)).0;
+    assert_eq!(left("ps"), left("pf"), "a halo clamped to opaque reaches as far as a full-alpha one");
+    assert_eq!(left("pl"), left("pa"), "a:.1 strength:4 reaches as far as a:.4");
+}
+
+#[test]
 fn inside_outer_fails_where_plain_inside_passes() {
     let ev = run_with(
         &format!("{CUT_FX}assert inside(@bar canvas margin:3)\n"),
@@ -4837,6 +5487,15 @@ fn copy_of_an_outer_ref_is_its_box() {
     );
     let b = node(&s, "c").bounds().unwrap();
     assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 63.0, 58.0));
+}
+
+#[test]
+fn the_outer_extent_grows_only_on_the_sides_an_outline_draws() {
+    let s = scene(
+        "@target t.png 100x100\nrect 20x10 at:50,50 fill:#4af name:r\n  fx outline 3 sides:top,left\ncopy @r.outer fill:#4af name:c\n",
+    );
+    let b = node(&s, "c").bounds().unwrap();
+    assert_eq!((b.left, b.top, b.right, b.bottom), (37.0, 42.0, 60.0, 55.0));
 }
 
 #[test]
@@ -4964,7 +5623,7 @@ fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
         ("scale:1/0", "this node's transform is not finite"),
         ("at:1/0,0", "this node's transform is not finite"),
         ("skew:0,-90", "`skew:` must be between -90 and 90 degrees"),
-        ("scale:red", "`scale:` expects a number or a vector like 2,1, got a word"),
+        ("scale:red", "`scale:` expects a vector like 4,2, got a word"),
     ] {
         let ev = run_with(&format!("@target t.png 40x40\ncurve 0,0 10,10 stroke:#000,[2 4] {attr}\n"), &[]);
         assert_eq!(diag(&ev, "E0320").message, message, "{attr}");
@@ -5098,3 +5757,446 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert_eq!((d[0].code.as_str(), d[0].node.as_str()), ("E0301", "d.0"));
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
+
+fn outline_sides(src: &str) -> artscript_ir::Sides {
+    let s = scene(&format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {src}\n"));
+    node(&s, "c")
+        .effects
+        .iter()
+        .find_map(|e| match e.op {
+            EffectOp::Outline { sides, .. } => Some(sides),
+            _ => None,
+        })
+        .expect("outline")
+}
+
+#[test]
+fn outline_sides_names_the_sides_it_draws_on() {
+    use artscript_ir::Sides;
+    assert_eq!(outline_sides(""), Sides::ALL);
+    assert_eq!(outline_sides("sides:top"), Sides { top: true, right: false, bottom: false, left: false });
+    assert_eq!(
+        outline_sides("sides:top,left"),
+        Sides { top: true, right: false, bottom: false, left: true }
+    );
+    assert_eq!(outline_sides("sides:left,top"), outline_sides("sides:top,left"));
+    assert_eq!(outline_sides("sides:top,right,bottom,left"), Sides::ALL);
+}
+
+#[test]
+fn outline_sides_rejects_what_is_not_a_side_word() {
+    for bad in ["sides:up", "sides:top,lef", "sides:3", "sides:[]", "sides:#ff0000", "sides:\"top\""] {
+        let ev = run_with(
+            &format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {bad}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("sides"), "{bad}: {d}");
+    }
+}
+
+fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
+    match shape(s, path).fill.as_ref().map(|f| &f.paint) {
+        Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
+        other => panic!("{path} has fill {other:?}"),
+    }
+}
+
+#[test]
+fn wrap_sets_a_period_per_axis_on_a_noise_field() {
+    let s = scene(
+        "@target t.png 100x100\n\
+         rect 20x20 fill:simplex(16 wrap:64) -> [#000 #fff] name:a\n\
+         rect 20x20 fill:worley(16 wrap:64,32) -> [#000 #fff] name:b\n\
+         rect 20x20 fill:value(16) -> [#000 #fff] name:c\n",
+    );
+    assert_eq!(noise_wrap(&s, "a"), Some([64.0, 64.0]));
+    assert_eq!(noise_wrap(&s, "b"), Some([64.0, 32.0]));
+    assert_eq!(noise_wrap(&s, "c"), None);
+}
+
+#[test]
+fn a_wrap_that_is_not_a_positive_number_or_pair_is_e0320_at_its_line() {
+    for bad in ["wrap:tile", "wrap:0", "wrap:-64", "wrap:64,0", "wrap:50%"] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\ncircle 10 name:spacer\nrect 20x20 fill:perlin(16 {bad}) -> [#000 #fff] name:a\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.span.line, 3, "{bad}: {d}");
+        assert!(d.message.contains("wrap"), "{bad}: {d}");
+    }
+}
+
+#[test]
+fn fx_under_a_taken_if_applies_to_the_draw_in_source_order() {
+    let src = |on: bool| {
+        format!(
+            "@target t.png 100x100\nlet on = {on}\ncircle 10 name:c\n  fx shadow 0,4\n  if on\n    fx blur 2\n  else\n    fx glow 3\n  fx outline 3\n"
+        )
+    };
+    let s = scene(&src(true));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Blur", "Outline"]);
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx shadow 0,4\n  fx blur 2\n  fx outline 3\n",
+    );
+    assert_eq!(fx_debug(&s, "c"), fx_debug(&written, "c"));
+    let s = scene(&src(false));
+    assert_eq!(fx_ops(node(&s, "c")), ["Shadow", "Glow", "Outline"]);
+
+    let s = scene(
+        "@target t.png 100x100\nlet on = false\nlayer l\n  circle 10 name:c\n  if on\n    fx blur 2\n  else if true\n    if true\n      fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "l")), ["Outline"]);
+    assert!(node(&s, "c").effects.is_empty());
+}
+
+#[test]
+fn fx_under_an_if_in_a_def_body_or_call_block_applies_to_the_instance() {
+    let s = scene(
+        "@target t.png 100x100\nlet on = true\ndef badge glow:false\n  circle 10\n  fx shadow 0,4\n  if glow\n    fx glow 3\nbadge name:a\nbadge glow:true name:b\n  if on\n    fx outline 2\n",
+    );
+    assert_eq!(fx_ops(node(&s, "a")), ["Shadow"]);
+    assert_eq!(fx_ops(node(&s, "b")), ["Shadow", "Glow", "Outline"]);
+}
+
+#[test]
+fn fx_under_an_if_reads_the_lets_of_its_branch() {
+    let s = scene(
+        "@target t.png 100x100\nlet w = 1\ncircle 10 name:c\n  if true\n    let w = 5\n    fx blur w\ndef badge\n  circle 4\n  if true\n    let w = 5\n    fx blur w\nbadge name:a\nbadge name:b\n  if true\n    let w = 5\n    fx glow w\n",
+    );
+    let written = scene(
+        "@target t.png 100x100\ncircle 10 name:c\n  fx blur 5\ndef badge\n  circle 4\n  fx blur 5\nbadge name:a\nbadge name:b\n  fx glow 5\n",
+    );
+    for path in ["c", "a", "b"] {
+        assert_eq!(fx_debug(&s, path), fx_debug(&written, path), "{path}");
+    }
+}
+
+#[test]
+fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\nsubtract name:wall\n  rect 60,60 at:32,32\n  circle 10 at:32,32\n    if true\n      fx glow 2\n",
+        &[],
+    );
+    let d = diag(&ev, "E0321");
+    assert_eq!(
+        d.message,
+        "`fx glow` on an operand of `subtract` is ignored; an operand gives only its geometry"
+    );
+    assert_eq!(d.span.line, 6);
+}
+
+fn outputs(src: &str) -> crate::OutputScenes {
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::evaluate_outputs(&p, &plan.jobs[0])
+}
+
+fn width_at(out: &crate::OutputScenes, scale: f32, path: &str) -> f64 {
+    let scene = &out.at(scale).unwrap_or_else(|| panic!("no scene at {scale}")).scene;
+    f64::from(shape(scene, path).geometry.compute_tight_bounds().width())
+}
+
+#[test]
+fn scale_reads_each_png_outputs_own_scale() {
+    let out = outputs("@target t.png 40x40 scale:.5,1,2.5\ncircle 5*scale name:c\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(out.scenes.len(), 3);
+    for scale in [0.5, 1.0, 2.5] {
+        let w = width_at(&out, scale, "c");
+        assert!((w - 10.0 * f64::from(scale)).abs() < 0.05, "{scale}: {w}");
+    }
+}
+
+#[test]
+fn scale_is_the_number_the_target_wrote() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1.1\nlet r = if scale == 1.1 then 6 else 3\ncircle r name:c\n",
+    );
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 1.1, "c"), 12.0);
+}
+
+#[test]
+fn scale_is_one_for_an_svg_and_a_gif_whatever_scale_they_list() {
+    for target in [
+        "@target t.svg 40x40 scale:1,2",
+        "@target t.gif 40x40 scale:2 bg:#ffffff",
+    ] {
+        let p = project(&[("art/t.art", &format!("{target}\ncircle 5*scale name:c\n"))]);
+        let plan = plan(&p);
+        let ev = evaluate(&p, &plan.jobs[0]);
+        assert!(ev.diagnostics.is_empty(), "{target}: {}", show(&ev.diagnostics));
+        let s = ev.scene.unwrap();
+        assert_eq!(shape(&s, "c").geometry.compute_tight_bounds().width(), 10.0, "{target}");
+    }
+}
+
+#[test]
+fn a_parameter_named_scale_wins_over_the_output_scale() {
+    let out = outputs("@target t.png 40x40 scale:2\ndef dot scale:3\n  circle scale name:c\ndot name:d\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 2.0, "d.c"), 6.0);
+}
+
+#[test]
+fn diagnostics_from_every_scale_are_kept_and_a_shared_one_appears_once() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1,2\nexpect scale in 0..1.5 \"scale stays small\"\nexpect 5 in 0..1 \"always\"\n",
+    );
+    let always = out.diagnostics.iter().filter(|d| d.message.contains("always")).count();
+    let small = out.diagnostics.iter().filter(|d| d.message.contains("scale stays small")).count();
+    assert_eq!((always, small), (1, 1), "{}", show(&out.diagnostics));
+}
+
+#[test]
+fn each_scale_has_the_rig_its_own_scene_placed() {
+    let out = outputs(
+        "@target t.png 40x40 scale:1,2 pivot:@body.hip\ndef doll\n  circle 4\n  anchor hip 0,5*scale\ndoll at:10,10 name:body\n",
+    );
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(out.at(1.0).unwrap().rig.pivot, Some((10.0, 15.0)));
+    assert_eq!(out.at(2.0).unwrap().rig.pivot, Some((10.0, 20.0)));
+}
+
+#[test]
+fn a_let_named_scale_wins_over_the_output_scale() {
+    let out = outputs("@target t.png 40x40 scale:2\nlet scale = 3\ncircle scale name:c\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(width_at(&out, 2.0, "c"), 6.0);
+}
+
+#[test]
+fn a_library_let_named_scale_wins_inside_its_own_defs() {
+    let ev = run_with(
+        "@target t.png 40x40 scale:2\nuse lib/dots\ndot name:d\n",
+        &[("lib/dots.art", "let scale = 3\ndef dot\n  circle scale name:c\n")],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(shape(&s, "d.c").geometry.compute_tight_bounds().width(), 6.0);
+}
+
+#[test]
+fn a_patch_under_an_instance_palette_reads_that_palette() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { swatch }\nswatch palette:elite name:s\n  .a fill:p.sky\n  fx grain .1\nswatch name:u\n  .a fill:p.sky\n",
+    );
+    assert_eq!(fill_hex(node(&s, "s.a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "u.a")), "#111111");
+}
+
+#[test]
+fn each_binds_a_loop_index_before_the_value() {
+    let s = scene(
+        "@target t.png 80x80\nlet list = [5 6 7]\nlayer l\n  each i, x in list\n    circle 1 at:i*10,x\n",
+    );
+    assert_eq!(at(node(&s, "l.circle~1.0")), (0.0, 5.0));
+    assert_eq!(at(node(&s, "l.circle~1.1")), (10.0, 6.0));
+    assert_eq!(at(node(&s, "l.circle~1.2")), (20.0, 7.0));
+}
+
+#[test]
+fn the_loop_index_counts_positions_over_a_range() {
+    let s = scene("@target t.png 80x80\neach i, x in 4..7\n  circle 1 at:i,x\n");
+    assert_eq!(at(node(&s, "circle~1.0")), (0.0, 4.0));
+    assert_eq!(at(node(&s, "circle~1.2")), (2.0, 6.0));
+}
+
+#[test]
+fn each_expr_binds_a_loop_index() {
+    scene(
+        "@target t.png 80x80\nlet pts = [each i, x in [5 6 7] -> i,x]\nexpect pts == [0,5 1,6 2,7]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn a_loop_index_inside_a_def_body_and_nested_loops() {
+    let s = scene(
+        "@target t.png 80x80\ndef dots\n  each i, x in [1 2]\n    circle 1 at:i,x name:dot\ndots name:d\neach r, _a in [0 0]\n  each c, _b in [0 0 0]\n    rect 1 at:c,r name:cell\n",
+    );
+    assert_eq!(at(node(&s, "d.dot.1")), (1.0, 2.0));
+    assert_eq!(at(node(&s, "cell.1.2")), (2.0, 1.0));
+}
+
+#[test]
+fn adding_a_loop_index_keeps_the_seeds_inside_the_loop() {
+    let plain = scene("@target t.png 80x80\neach x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    let indexed = scene("@target t.png 80x80\neach i, x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    for k in 0..3 {
+        let path = format!("circle~1.{k}");
+        assert_eq!(at(node(&plain, &path)), at(node(&indexed, &path)), "{path}");
+    }
+    assert_ne!(
+        at(node(&plain, "circle~1.0")).0,
+        at(node(&plain, "circle~1.1")).0
+    );
+}
+
+#[test]
+fn a_list_is_indexed_by_an_expression() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\nlet row = 4\nlet i = 1\ncircle 2 fill:tones.{mod(row 3)} name:a\ncircle 2 fill:tones.{i+1} name:b\ncircle 2 fill:tones.{i} name:c\ncircle 2 fill:tones.2 name:d\n",
+    );
+    assert_eq!(fill_hex(node(&s, "a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "b")), "#333333");
+    assert_eq!(fill_hex(node(&s, "c")), "#222222");
+    assert_eq!(fill_hex(node(&s, "d")), "#333333");
+}
+
+#[test]
+fn an_index_inside_each_reads_the_loop_names() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\neach i, x in 0..4\n  circle 2 fill:tones.{mod(i 3)} name:dot\n",
+    );
+    let fills: Vec<String> = (0..4).map(|k| fill_hex(node(&s, &format!("dot.{k}")))).collect();
+    assert_eq!(fills, ["#111111", "#222222", "#333333", "#111111"]);
+}
+
+#[test]
+fn an_index_that_is_not_a_name_or_a_number_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\nlet tones = [1 2 3]\nlet v = 1,2\ncircle tones.{v}\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "an index is a name or a number, got a vector like 4,2");
+    assert_eq!(
+        d.fix.as_deref(),
+        Some("write a number or a name inside `{}`, such as `list.{i}`")
+    );
+}
+
+#[test]
+fn an_unbound_name_in_an_index_is_the_member_name() {
+    let ev = run_with("@target t.png 40x40\nlet tones = [1 2 3]\ncircle tones.{nope}\n", &[]);
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.message, "a list has no member `nope`");
+}
+
+#[test]
+fn an_index_picks_one_copy_of_a_family() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 1\neach i in 0..3\n  circle 2 at:i*10+5,10 name:dot\ncircle 2 at:@dot.{k}.cx,30 name:a\ncircle 2 at:@dot.{k+1}.cx,40 name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (15.0, 30.0));
+    assert_eq!(at(node(&s, "b")), (25.0, 40.0));
+}
+
+#[test]
+fn a_vector_branch_of_an_if_evaluates_in_a_let() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 3\nlet p = if k < 19 then k*32,200 else 576,300\nlet q = if k > 19 then k*32,200 else 576,300\ncircle 2 at:p name:a\ncircle 2 at:q name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (96.0, 200.0));
+    assert_eq!(at(node(&s, "b")), (576.0, 300.0));
+}
+
+#[test]
+fn a_comma_before_a_vector_sum_is_e0320_with_the_parenthesized_fix() {
+    let fix = "wrap the vector in parentheses, as in `(a,b) + v`, because `+` binds tighter than `,`";
+    for (line, key) in [
+        ("circle 2 at:(a),(b) + v", "at"),
+        ("circle 2 at:a,b + v", "at"),
+        ("circle 2 at:a + v,b", "at"),
+        ("rect 4x4 at:8,8 pivot:a,b + v", "pivot"),
+        ("repeat 3 step:a,b + v\n  circle 2", "step"),
+        ("grid 2x2 cell:a,b + v\n  circle 2", "cell"),
+        ("circle 4 fill:radial(#fff #000 at:a,b + v)", "at"),
+        ("circle 4 fill:conic(#fff #000 at:a,b + v)", "at"),
+        ("rect 4x4 scale:a,b + v", "scale"),
+        ("rect 4x4 skew:a,b + v", "skew"),
+        ("circle 4\n  fx rim 3 dir:a,b + v", "dir"),
+    ] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\n{line}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, format!("`{key}:` expects a vector like 4,2, got a list"), "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
+}
+
+#[test]
+fn a_parenthesized_vector_sum_is_a_vector_in_every_vector_key() {
+    let s = scene(
+        "@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\ncircle 2 at:(a,b) + v name:c\nrepeat 2 step:(a,b) + v\n  circle 2 name:r\ngrid 2x2 cell:(a,b) + v\n  circle 2 name:g\nrect 4x4 at:5,5 pivot:(a,b) + v scale:(1,2) + v name:p\n",
+    );
+    assert_eq!(at(node(&s, "c")), (13.0, 14.0));
+    assert_eq!(at(node(&s, "r.1")), (33.0, 34.0));
+}
+
+#[test]
+fn a_vector_key_that_is_not_a_vector_names_the_key() {
+    for (line, message, fix) in [
+        ("rect 4x4 pivot:red", "`pivot:` expects a vector like 4,2, got a word", "write `pivot:4,2`"),
+        ("repeat 3 step:[1 2 3]\n  circle 2", "`step:` expects a vector like 4,2, got a list", "write `step:4,2`"),
+        ("grid 2x2 cell:red\n  circle 2", "`cell:` expects a vector like 4,2, got a word", "write `cell:4,2`"),
+        ("circle 4 fill:radial(#fff #000 at:red)", "`at:` expects a vector like 4,2, got a word", "write `at:4,2`"),
+        ("circle 4\n  fx rim 3 dir:red", "`dir:` expects a vector like 4,2, got a word", "write `dir:4,2`"),
+        ("repeat 3 step:10%,2\n  circle 2", "`step:` takes numbers, not percents", "write `step:4,2` in canvas units"),
+        ("curve 0,0 20,0 stroke:#000,[2 4] taper:red", "`taper:` expects a vector like 4,2, got a word", "write `taper:4,2`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 40x40\n{line}\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
+}
+
+#[test]
+fn concat_joins_lists_and_ranges_in_order() {
+    scene(
+        "@target t.png 10x10\nexpect concat([1 2] [3]) == [1 2 3]\nexpect concat(0..2 [5] 7..9) == [0 1 5 7 8]\nexpect concat([0,0 1,1] [2,2]) == [0,0 1,1 2,2]\nexpect concat([] [1]) == [1]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn concat_reports_what_is_not_a_list() {
+    for (call, message, fix) in [
+        (
+            "concat([1] 2)",
+            "`concat` argument 2 must be a list, got a number",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        (
+            "concat([1] 3,4)",
+            "`concat` argument 2 must be a list, got a vector like 4,2",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        ("concat([1])", "`concat` joins two or more lists", "write `concat(a b)`"),
+        ("concat()", "`concat` joins two or more lists", "write `concat(a b)`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 10x10\nlet xs = {call}\ncircle 1\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{call}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{call}");
+    }
+}
+
+#[test]
+fn a_curve_takes_points_and_lists_of_points_in_order() {
+    let geometry = |src: &str| {
+        let s = scene(&format!("@target t.png 80x80\nlet pts = [10,10 50,10]\n{src} name:c\n"));
+        shape(&s, "c").geometry.to_svg()
+    };
+    let literal = geometry("curve 10,10 50,10 50,50 0,50");
+    assert_eq!(geometry("curve pts 50,50 0,50"), literal);
+    assert_eq!(geometry("curve 10,10 [50,10 50,50] 0,50"), literal);
+    assert_eq!(geometry("curve concat(pts [50,50 0,50])"), literal);
+    assert_eq!(geometry("curve pts [50,50] [0,50]"), literal);
+    assert_eq!(geometry("curve [10,10 50,10 50,50 0,50]"), literal);
+}
+
+#[test]
+fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
+    let ev = run_with("@target t.png 80x80\nlet pts = [10,10 50,10]\ncurve pts red\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
+}
+
+mod brush;

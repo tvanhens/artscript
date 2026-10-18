@@ -26,10 +26,18 @@ fn effect(e: &Effect) -> String {
         EffectOp::Blur { sigma } => format!("blur {}", num(*sigma as f64)),
         EffectOp::Shadow { dx, dy, blur, color } => format!("shadow {},{} blur:{} {}", num(*dx as f64), num(*dy as f64), num(*blur as f64), color.hex()),
         EffectOp::Inner { dx, dy, blur, color } => format!("inner {},{} blur:{} {}", num(*dx as f64), num(*dy as f64), num(*blur as f64), color.hex()),
-        EffectOp::Glow { radius, color } => format!("glow {} {}", num(*radius as f64), color.hex()),
+        EffectOp::Glow { radius, color, strength: 1.0 } => format!("glow {} {}", num(*radius as f64), color.hex()),
+        EffectOp::Glow { radius, color, strength } => format!("glow {} {} strength:{}", num(*radius as f64), color.hex(), num(*strength as f64)),
         EffectOp::Rim { width, color, .. } => format!("rim {} {}", num(*width as f64), color.hex()),
         EffectOp::Adjust { hue, sat, light } => format!("adjust {} {} {}", num(*hue as f64), num(*sat as f64), num(*light as f64)),
-        EffectOp::Outline { width, color } => format!("outline {} {}", num(*width as f64), color.hex()),
+        EffectOp::Outline { width, color, sides } => {
+            let kept: Vec<&str> = [(sides.top, "top"), (sides.right, "right"), (sides.bottom, "bottom"), (sides.left, "left")]
+                .into_iter()
+                .filter_map(|(on, word)| on.then_some(word))
+                .collect();
+            let only = if sides.is_all() { String::new() } else { format!(" sides:{}", kept.join(",")) };
+            format!("outline {} {}{only}", num(*width as f64), color.hex())
+        }
         EffectOp::Grain { strength, .. } => format!("grain {}", num(*strength as f64)),
         EffectOp::Merge { inputs, .. } => format!("merge ({})", inputs.len()),
     }
@@ -49,7 +57,10 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
     }
     if let NodeKind::Shape(s) = &n.kind {
         if let Some(f) = &s.fill {
-            let _ = write!(out, "  fill:{}", paint(f));
+            let _ = write!(out, "  fill:{}", paint(&f.paint));
+            if !f.marks.is_empty() {
+                let _ = write!(out, "  brush:{}", f.marks.len());
+            }
         }
         if let Some(st) = &s.stroke {
             let _ = write!(out, "  stroke:{},{}", paint(&st.paint), num(st.width as f64));

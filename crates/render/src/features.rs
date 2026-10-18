@@ -46,7 +46,10 @@ fn features_of(node: &Node, out: &mut Vec<Unsupported>) {
     }
     if let NodeKind::Shape(shape) = &node.kind {
         if let Some(fill) = &shape.fill {
-            paint_feature(node, fill, true, out);
+            if !fill.marks.is_empty() {
+                push(out, node, "brush fill");
+            }
+            paint_feature(node, &fill.paint, true, out);
         }
         if let Some(stroke) = &shape.stroke {
             paint_feature(node, &stroke.paint, false, out);
@@ -64,6 +67,7 @@ fn paint_feature(node: &Node, paint: &Paint, fill: bool, out: &mut Vec<Unsupport
 
 fn effect_feature(op: &EffectOp) -> Option<&'static str> {
     match op {
+        EffectOp::Outline { sides, .. } if !sides.is_all() => Some("fx outline sides"),
         EffectOp::Inner { .. } => Some("fx inner"),
         EffectOp::Rim { .. } => Some("fx rim"),
         EffectOp::Grain { .. } => Some("fx grain"),

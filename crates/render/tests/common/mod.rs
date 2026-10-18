@@ -19,7 +19,7 @@ pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
             geometry,
-            fill: Some(Paint::Solid(fill)),
+            fill: Some(artscript_ir::Fill::plain(Paint::Solid(fill))),
             stroke: None,
             blur: 0.0,
             children: vec![],

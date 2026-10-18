@@ -1,0 +1,7 @@
+[package]
+name = "artscript-brush"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+skia-safe.workspace = true

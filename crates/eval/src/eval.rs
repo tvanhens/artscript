@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect,
-    Shape, Stroke,
+    Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
+    Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::ast::{
     self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
@@ -15,6 +15,7 @@ use artscript_syntax::ast::{
 };
 use artscript_syntax::{Diagnostic, format_expr};
 
+use crate::brush::{BrushVal, Slot};
 use crate::checks::{CheckState, Pending as CheckPending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
@@ -80,10 +81,10 @@ const NODE_KEYS: &[&str] = &[
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
-const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur"];
+const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush"];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "a", "blend",
 ];
 
 struct Builtin {
@@ -141,13 +142,16 @@ pub(crate) struct Host {
 #[derive(Clone)]
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
+    /// Def parameters whose default is a brush, by their index in `env`. A call on one is
+    /// checked against the default's declaration whatever the instance bound.
+    pub brush_params: Rc<Vec<(usize, Rc<BrushVal>)>>,
     pub module: Rc<Module>,
     owner: Key,
     parent: Key,
     scope_copies: Vec<u32>,
     parent_copies: Vec<u32>,
     scope_loops: Vec<Span>,
-    names: Rc<RefCell<Names>>,
+    pub(crate) names: Rc<RefCell<Names>>,
     lookup: Lookup,
     pending: Rc<Pending>,
     ids: Rc<ModuleIds>,
@@ -156,9 +160,12 @@ pub(crate) struct Scope {
     /// Canvas from local coordinates.
     pub world: Matrix,
     pub style: Rc<Vec<(String, Value)>>,
+    pub palette: Option<Value>,
     pub inst: Option<Rc<Instance>>,
     host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
+    /// Where an `fx` line under a taken `if` goes: the draw or def that owns this block.
+    branch_fx: Option<Rc<RefCell<Vec<BranchFx>>>>,
     /// Line of the entry-file statement being evaluated, so a check deferred from a library knows it.
     pub site: Option<u32>,
     provisional: Option<Rc<Provisional>>,
@@ -187,10 +194,18 @@ impl Scope {
             parent_copies: Vec::new(),
             frame,
             world,
+            branch_fx: None,
             top: false,
             publish: false,
             ..self.clone()
         }
+    }
+
+    fn bind_loop(&mut self, index: Option<&str>, var: &str, i: usize, v: Value) {
+        if let Some(index) = index {
+            self.env.push((index.to_string(), Value::Num(i as f64)));
+        }
+        self.env.push((var.to_string(), v));
     }
 
     fn iteration(&self, span: Span, i: u32) -> Scope {
@@ -225,6 +240,7 @@ impl Scope {
             world,
             depth,
             operand_of: None,
+            branch_fx: None,
             top: false,
             publish: false,
             ..self.clone()
@@ -233,6 +249,25 @@ impl Scope {
 
     pub(crate) fn file(&self) -> &str {
         &self.module.path
+    }
+
+    /// Gives this block's `fx` lines under a taken `if` to a fresh list the owner lowers.
+    fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<BranchFx>>> {
+        let fx = Rc::new(RefCell::new(Vec::new()));
+        self.branch_fx = Some(fx.clone());
+        fx
+    }
+
+    fn branch_fx(&self, line: &ast::Fx) -> R<()> {
+        let fx = self.branch_fx.as_ref().ok_or_else(|| {
+            fail("E0101", "`fx` under this `if` has no draw or def to apply to")
+                .fix("indent the `if` directly under the shape, group, def, or component call")
+        })?;
+        fx.borrow_mut().push(BranchFx {
+            line: line.clone(),
+            env: self.env.clone(),
+        });
+        Ok(())
     }
 
     pub(crate) fn owner(&self) -> &Key {
@@ -311,7 +346,6 @@ pub(crate) struct Evaluator<'a> {
     loading: Vec<String>,
     pub diags: Vec<Diagnostic>,
     pub canvas: Rect,
-    pub anchors: HashMap<String, Point>,
     pub background: Option<Rgba>,
     pub check: Option<CheckState>,
     ids: HashMap<String, Rc<ModuleIds>>,
@@ -388,6 +422,31 @@ fn is_copy_index(seg: &str) -> bool {
     !seg.is_empty() && seg.chars().all(|c| c.is_ascii_digit())
 }
 
+/// An `fx` line under a taken `if`, with the bindings in effect where the branch reached it.
+struct BranchFx {
+    line: ast::Fx,
+    env: Vec<(String, Value)>,
+}
+
+/// A block's direct `fx` lines and those under its taken `if`s, merged by line, each with the
+/// scope it evaluates in. One block is one file.
+fn in_source_order<'a>(
+    direct: impl Iterator<Item = &'a ast::Fx>,
+    branch: &'a [BranchFx],
+    scope: &Scope,
+) -> Vec<(&'a ast::Fx, Scope)> {
+    let mut all: Vec<(&ast::Fx, Scope)> = direct
+        .map(|line| (line, scope.clone()))
+        .chain(branch.iter().map(|b| {
+            let mut sc = scope.clone();
+            sc.env = b.env.clone();
+            (&b.line, sc)
+        }))
+        .collect();
+    all.sort_by_key(|(line, _)| line.span);
+    all
+}
+
 fn holds_play(scenes: &[Scene]) -> bool {
     scenes.iter().any(|st| match &st.kind {
         SceneKind::Play { name, .. } => name.is_some(),
@@ -398,7 +457,8 @@ fn holds_play(scenes: &[Scene]) -> bool {
         SceneKind::Let { .. }
         | SceneKind::Check { .. }
         | SceneKind::Slot { .. }
-        | SceneKind::Draw(_) => false,
+        | SceneKind::Draw(_)
+        | SceneKind::Fx(_) => false,
     })
 }
 
@@ -459,6 +519,10 @@ fn blend_arg(
                 Coord::Num(default_at.0),
                 Coord::Num(default_at.1),
             ));
+            // A rest `at:` that is still a reference names a node, and `transform` reports it.
+            if matches!(base, Value::Ref(_)) {
+                return Ok(());
+            }
             let base = ground_percent_rest(&base, value, frame, sc)?;
             let sum = arith(Arith::Add, &base, value).map_err(|m| fail("E0320", m))?;
             a.named.push(("at".into(), sum));
@@ -609,6 +673,17 @@ fn check_percent(coord: Coord, frame: Rect, sc: &Scope) -> R<()> {
 
 fn size_box(w: f64, h: f64) -> Rect {
     Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
+}
+
+fn param_fix(key: &str, default: &Value, given: &Value) -> String {
+    match (default, given) {
+        (Value::Module(_), Value::Palette(p)) => format!(
+            "write `palette:{}` on the instance to swap `p`, or pass a module from `use`, like `{key}:hollow`",
+            p.name
+        ),
+        (Value::Module(_), _) => format!("pass a module from `use`, like `{key}:hollow`"),
+        _ => format!("pass {} like `{key}:{}`", default.kind(), default.show()),
+    }
 }
 
 /// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
@@ -764,6 +839,7 @@ fn first_fill(n: &Node) -> Option<Rgba> {
         NodeKind::Shape(s) => s
             .fill
             .as_ref()
+            .map(|f| &f.paint)
             .or(s.stroke.as_ref().map(|st| &st.paint))
             .map(key_color),
         NodeKind::Group { children, .. } => children.iter().find_map(first_fill),
@@ -780,7 +856,6 @@ impl<'a> Evaluator<'a> {
             loading: Vec::new(),
             diags: Vec::new(),
             canvas: Rect::from_wh(job.size.0, job.size.1),
-            anchors: HashMap::new(),
             background: None,
             check: None,
             ids: HashMap::new(),
@@ -818,7 +893,7 @@ impl<'a> Evaluator<'a> {
         self.diags.push(d.in_file(file).at_node(node));
     }
 
-    fn begin_seed(&mut self, file: &str, key: Key) {
+    pub(crate) fn begin_seed(&mut self, file: &str, key: Key) {
         self.seed_file = file.to_string();
         self.seed_key = key;
         self.seed_count = 0;
@@ -899,8 +974,7 @@ impl<'a> Evaluator<'a> {
         }
         let src = self
             .project
-            .files
-            .get(file)
+            .source(file)
             .ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
         match artscript_syntax::parse(src) {
             Ok(f) => {
@@ -926,7 +1000,9 @@ impl<'a> Evaluator<'a> {
         }
         let parsed = self.parse(file)?;
         self.loading.push(file.to_string());
-        let module = Rc::new(Module::new(file));
+        let mut module = Module::new(file);
+        module.bundled = self.project.is_bundled(file);
+        let module = Rc::new(module);
         if let Some(pal) = self.project.manifest.palette.clone()
             && let Some(pfile) = self.project.resolve_use(&pal)
             && pfile != file
@@ -968,7 +1044,9 @@ impl<'a> Evaluator<'a> {
             }) if !entry => {
                 let sc = self.module_scope(module);
                 self.begin_seed(&module.path, Key::binding(name));
-                let v = self.expr(value, &sc)?;
+                let v = self.expr(value, &sc).inspect_err(|_| {
+                    module.lost.borrow_mut().insert(name.clone());
+                })?;
                 module.define(name, v);
                 return Ok(());
             }
@@ -1073,17 +1151,13 @@ impl<'a> Evaluator<'a> {
                 module.anims.borrow_mut().insert(name.clone(), anim);
                 Ok(())
             }
-            DeclKind::Shader { .. } | DeclKind::Light { .. } | DeclKind::Brush { .. } => {
-                let what = match &decl.kind {
-                    DeclKind::Shader { .. } => "shader (Phase 2)",
-                    DeclKind::Light { .. } => "light (Phase 2)",
-                    _ => "brush (Phase 2)",
-                };
-                Err(
-                    fail("E0390", format!("{what} is not yet implemented in v0.1"))
-                        .fix("remove the declaration, or use built-in fields and fx lines"),
-                )
+            DeclKind::Brush { name, params, sksl } => {
+                self.declare_brush(module, name, params, sksl.as_ref(), decl.span)
             }
+            DeclKind::Light { .. } => Err(
+                fail("E0390", "light (Phase 2) is not yet implemented in v0.1")
+                    .fix("remove the declaration, or use built-in fields and fx lines"),
+            ),
         }
     }
 
@@ -1099,15 +1173,18 @@ impl<'a> Evaluator<'a> {
             Some(f) => f,
             None if self.project.files.contains_key(&rooted) => rooted,
             None => {
-                return Err(fail("E0210", format!("no library `{path}`"))
-                    .note(format!(
-                        "libraries: {}",
-                        self.project.library_names().join(", ")
-                    ))
-                    .fix(format!(
+                let f = fail("E0210", format!("no library `{path}`")).note(format!(
+                    "libraries: {}",
+                    self.project.library_names().join(", ")
+                ));
+                return Err(if path.starts_with("std/") {
+                    f.fix("`std/` names only the bundled libraries; `artscript std` lists them")
+                } else {
+                    f.fix(format!(
                         "create `{}/{path}.art`, or fix the path",
                         self.project.manifest.lib[0]
-                    )));
+                    ))
+                });
             }
         };
         let parsed = self.parse(&target)?;
@@ -1120,20 +1197,20 @@ impl<'a> Evaluator<'a> {
         }
         let m = self.load_module(&target, false)?;
         if let Some(a) = alias {
-            module
-                .globals
-                .borrow_mut()
-                .insert(a.clone(), Value::Module(m));
+            module.bind(a, Value::Module(m));
             return Ok(());
         }
         let exports = m.exports();
         let styles = m.styles.borrow().clone();
         let finishes = m.finishes.borrow().clone();
         let anims = m.anims.borrow().clone();
+        // A declaration the library already reported as failed stays quiet at its use sites here.
+        let lost = m.lost.borrow().clone();
         if items.is_empty() {
             for (k, v) in exports {
-                module.globals.borrow_mut().insert(k, v);
+                module.bind(&k, v);
             }
+            module.lost.borrow_mut().extend(lost);
             for (k, s) in styles.into_iter().filter(|(k, _)| !k.starts_with('_')) {
                 module.styles.borrow_mut().insert(k, s);
             }
@@ -1148,7 +1225,11 @@ impl<'a> Evaluator<'a> {
         for item in items {
             let mut found = false;
             if let Some((_, v)) = exports.iter().find(|(k, _)| k == item) {
-                module.globals.borrow_mut().insert(item.clone(), v.clone());
+                module.bind(item, v.clone());
+                found = true;
+            }
+            if lost.contains(item) {
+                module.lost.borrow_mut().insert(item.clone());
                 found = true;
             }
             if !item.starts_with('_')
@@ -1185,6 +1266,7 @@ impl<'a> Evaluator<'a> {
         let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
+            brush_params: Rc::default(),
             module: module.clone(),
             owner: Key::root(),
             parent: Key::root(),
@@ -1199,9 +1281,11 @@ impl<'a> Evaluator<'a> {
             frame: Rect::new_empty(),
             world: Matrix::new_identity(),
             style: Rc::new(Vec::new()),
+            palette: None,
             inst: None,
             host: None,
             checks: Rc::new(RefCell::new(Vec::new())),
+            branch_fx: None,
             site: None,
             provisional: None,
             operand_of: None,
@@ -1373,10 +1457,7 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -1394,14 +1475,19 @@ impl<'a> Evaluator<'a> {
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.eval_block(body, &mut inner, out);
                 }
                 Ok(())
@@ -1425,6 +1511,7 @@ impl<'a> Evaluator<'a> {
             )
             .fix("move `play` out of this block, or indent it under the instance it drives")),
             SceneKind::Draw(draw) => self.eval_node(st, draw, sc, out),
+            SceneKind::Fx(line) => sc.branch_fx(line),
         }
     }
 
@@ -1452,7 +1539,12 @@ impl<'a> Evaluator<'a> {
         Ok(out)
     }
 
-    fn style_named(&mut self, name: &str, home: &Rc<Module>) -> R<Vec<(String, Value)>> {
+    fn style_named(
+        &mut self,
+        name: &str,
+        home: &Rc<Module>,
+        sc: &Scope,
+    ) -> R<Vec<(String, Value)>> {
         if home.lost(name) && !home.styles.borrow().contains_key(name) {
             return Err(Fail::reported());
         }
@@ -1472,7 +1564,8 @@ impl<'a> Evaluator<'a> {
             .get(&style.module)
             .cloned()
             .unwrap_or_else(|| home.clone());
-        let msc = self.module_scope(&module);
+        let mut msc = self.module_scope(&module);
+        msc.palette = sc.palette.clone();
         style
             .named
             .iter()
@@ -1492,7 +1585,7 @@ impl<'a> Evaluator<'a> {
             .as_ref()
             .and_then(|(file, _, _)| self.modules.get(file).cloned())
             .unwrap_or_else(|| sc.module.clone());
-        let mut styled = match (self.style_named(&sname, &home), site) {
+        let mut styled = match (self.style_named(&sname, &home, sc), site) {
             (Ok(styled), _) => styled,
             (Err(f), Some((file, span, anim))) => {
                 self.report(f.note(format!("in anim `{anim}`")), &file, span, path);
@@ -1529,20 +1622,16 @@ impl<'a> Evaluator<'a> {
             frame.height() as f64,
         );
         let at = match a.get("at") {
+            Some(Value::Ref(r)) => self.anchor_point(r, sc)?,
             Some(v) => {
-                let (x, y) = v.pair().ok_or_else(|| {
-                    fail(
-                        "E0320",
-                        format!("`at:` expects a vector like 4,2, got {}", v.kind()),
-                    )
-                })?;
+                let (x, y) = v.pair_for("at")?;
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
                 (x.pos(fx, fw), y.pos(fy, fh))
             }
             None => default_at,
         };
-        let pivot = match a.get("pivot").and_then(Value::pair) {
+        let pivot = match a.get("pivot").map(|v| v.pair_for("pivot")).transpose()? {
             Some((x, y)) => {
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
@@ -1557,9 +1646,7 @@ impl<'a> Evaluator<'a> {
         };
         let vector = |key: &str, default: (f64, f64)| match a.get(key) {
             None => Ok(default),
-            Some(v) => v.vec2().ok_or_else(|| {
-                fail("E0320", format!("`{key}:` expects a number or a vector like 2,1, got {}", v.kind()))
-            }),
+            Some(v) => v.vec2_for(key),
         };
         let scale = vector("scale", (1.0, 1.0))?;
         let skew = match a.get("skew") {
@@ -1665,6 +1752,7 @@ impl<'a> Evaluator<'a> {
         )
     }
 
+    /// Returns `None` when a live `off` hides the node, else how many named args the anims appended.
     fn land(
         &mut self,
         a: &mut Args,
@@ -1673,7 +1761,7 @@ impl<'a> Evaluator<'a> {
         frame: Rect,
         sc: &Scope,
         path: &str,
-    ) -> bool {
+    ) -> Option<usize> {
         let win = |a: &&PendingPatch, b: &&PendingPatch| {
             b.origin_depth
                 .cmp(&a.origin_depth)
@@ -1684,6 +1772,12 @@ impl<'a> Evaluator<'a> {
         for p in statics {
             a.named.extend(p.named.iter().cloned());
         }
+        if let Some(Value::Ref(r)) = a.get("at").cloned()
+            && let Ok((x, y)) = self.anchor_point(&r, sc)
+        {
+            a.named.push(("at".into(), Value::Vec2(Coord::Num(x), Coord::Num(y))));
+        }
+        let rest = a.named.len();
         let mut chans: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_some()).collect();
         chans.sort_by(win);
         let mut hide = false;
@@ -1717,7 +1811,31 @@ impl<'a> Evaluator<'a> {
                 );
             }
         }
-        hide
+        (!hide).then_some(a.named.len() - rest)
+    }
+
+    /// A container with `at:` in its rest pose centers its children's frame on its origin.
+    /// An anim offset moves the container and leaves that frame alone.
+    fn child_frame(
+        &mut self,
+        a: &Args,
+        animated: usize,
+        default_at: (f64, f64),
+        frame: Rect,
+        sc: &Scope,
+        with_rot: bool,
+    ) -> R<Rect> {
+        let rest = Args {
+            pos: a.pos.clone(),
+            named: a.named[..a.named.len() - animated].to_vec(),
+        };
+        let (m, _) = self.transform(&rest, default_at, frame, sc, with_rot)?;
+        let local = inverse(&m).map_rect(frame).0;
+        Ok(if rest.get("at").is_some() {
+            size_box(local.width() as f64, local.height() as f64)
+        } else {
+            local
+        })
     }
 
     fn eval_node(&mut self, st: &Scene, draw: &Draw, sc: &mut Scope, out: &mut Siblings) -> R<()> {
@@ -1845,12 +1963,12 @@ impl<'a> Evaluator<'a> {
         } else {
             (0.0, 0.0)
         };
-        if self.land(&mut a, &arrival.own, default_at, frame, sc, &path) {
+        let Some(animated) = self.land(&mut a, &arrival.own, default_at, frame, sc, &path) else {
             if let Some(comp) = &comp {
                 self.admit_forward(comp, &arrival.forward, &path, body, &sc.ids);
             }
             return Ok(());
-        }
+        };
         self.expand_style(&mut a, sc, &path)?;
         let origin = format!("{}:{}", sc.file(), st.span.line);
         if let Some(comp) = comp {
@@ -1909,10 +2027,13 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let mut node;
         let mut record = None;
+        let body_frame;
+        let mut branch_fx = None;
         if group_like {
-            let local_frame = inverse(&m).map_rect(frame).0;
+            let local_frame = self.child_frame(&a, animated, default_at, frame, sc, verb != "repeat")?;
             let mut inner = sc.child(key.clone(), local_frame, world);
             inner.style = child_style;
+            branch_fx = Some(inner.collect_branch_fx());
             let mut clip = None;
             if matches!(verb, "inside" | "outside") {
                 let r = match a.pos.first() {
@@ -1973,8 +2094,10 @@ impl<'a> Evaluator<'a> {
                 },
             );
             node.clip = clip;
+            body_frame = inner.frame;
         } else {
             let inner_world = world;
+            let mut operand_frame = None;
             let (geometry, knots, closed) = match verb {
                 "subtract" | "union" | "intersect" | "xor" => {
                     let op = match verb {
@@ -1983,8 +2106,10 @@ impl<'a> Evaluator<'a> {
                         "intersect" => BoolOp::Intersect,
                         _ => BoolOp::Xor,
                     };
-                    let local_frame = inverse(&m).map_rect(frame).0;
+                    let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
+                    operand_frame = Some(local_frame);
                     let mut inner = sc.child(key.clone(), local_frame, inner_world);
+                    branch_fx = Some(inner.collect_branch_fx());
                     inner.operand_of = Some(Rc::new(OperandOf {
                         verb: verb.to_string(),
                         name: named
@@ -2050,14 +2175,17 @@ impl<'a> Evaluator<'a> {
             } else {
                 stroke_expr(named, expanded_style.as_deref(), sc)
             };
+            let brush_site = named.iter().find(|n| n.key == "brush").map(|n| n.span);
             let shape = self.paint_shape(
                 &a,
                 geometry,
                 knots.as_deref(),
                 closed,
-                &sc.style,
+                sc,
                 &world,
                 stroke_src.as_ref(),
+                &key,
+                brush_site,
             )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(id) = decl {
@@ -2072,15 +2200,15 @@ impl<'a> Evaluator<'a> {
                     None,
                 ));
             }
-            if !matches!(verb, "subtract" | "union" | "intersect" | "xor")
-                && body.scenes().next().is_some()
-            {
-                let gb = match &node.kind {
-                    NodeKind::Shape(s) => geom::bounds(&s.geometry),
-                    _ => Rect::new_empty(),
-                };
+            let gb = match &node.kind {
+                NodeKind::Shape(s) => geom::bounds(&s.geometry),
+                _ => Rect::new_empty(),
+            };
+            body_frame = operand_frame.unwrap_or(gb);
+            if operand_frame.is_none() && body.scenes().next().is_some() {
                 let mut inner = sc.child(key.clone(), gb, inner_world);
                 inner.style = child_style;
+                branch_fx = Some(inner.collect_branch_fx());
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
                 if let NodeKind::Shape(s) = &mut node.kind {
                     s.children = kids;
@@ -2089,15 +2217,17 @@ impl<'a> Evaluator<'a> {
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = sc.child(key.clone(), sc.frame, world);
-        let sites: Vec<FxSite> = body
-            .fx()
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
+        let branch_fx = branch_fx.map(|fx| fx.take()).unwrap_or_default();
+        if let Some(of) = sc.operand_of.clone() {
+            self.report_operand_fx(&of, &branch_fx, sc);
+        }
+        let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
+        let sites: Vec<FxSite> = lines
+            .iter()
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
-        self.mask(&mut node, &a, body.mask(), sc, world, &key)?;
+        self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
@@ -2128,12 +2258,14 @@ impl<'a> Evaluator<'a> {
         matches!(self.binding(verb, sc), Some(Value::Component(_))) || identity::calls_def(verb)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn mask(
         &mut self,
         node: &mut Node,
         a: &Args,
         mask: Option<&ast::Mask>,
         sc: &Scope,
+        frame: Rect,
         world: Matrix,
         key: &Key,
     ) -> R<()> {
@@ -2142,7 +2274,7 @@ impl<'a> Evaluator<'a> {
         let source = match mask {
             None => None,
             Some(ast::Mask::Block(body)) => {
-                let mut inner = sc.child(mask_key.clone(), sc.frame, world);
+                let mut inner = sc.child(mask_key.clone(), frame, world);
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
             Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
@@ -2152,7 +2284,7 @@ impl<'a> Evaluator<'a> {
                     let geometry = r.silhouette().make_transform(&inverse(&world));
                     let shape = Shape {
                         geometry,
-                        fill: Some(Paint::Solid(
+                        fill: Some(IrFill::plain(Paint::Solid(
                             Rgba {
                                 r: 1.0,
                                 g: 1.0,
@@ -2160,7 +2292,7 @@ impl<'a> Evaluator<'a> {
                                 a: 1.0,
                             }
                             .to_ir(),
-                        )),
+                        ))),
                         stroke: None,
                         blur: 0.0,
                         children: vec![],
@@ -2204,6 +2336,47 @@ impl<'a> Evaluator<'a> {
         Ok(())
     }
 
+    pub(crate) fn target_palette(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
+        match self.expr(e, sc)? {
+            v @ (Value::Palette(_) | Value::Module(_)) => Ok(v),
+            other => Err(fail(
+                "E0206",
+                format!("`palette:` takes a palette, got {}", other.kind()),
+            )
+            .fix("write `palette:elite`")),
+        }
+    }
+
+    /// The target's `pivot:` point in canvas units.
+    pub(crate) fn pivot(&mut self, e: &Expr, sc: &Scope) -> R<(f64, f64)> {
+        let bad = || {
+            fail("E0206", "`pivot:` needs a point")
+                .fix("write `pivot:48,96`, `pivot:50%,100%`, or `pivot:@leg.hip`")
+        };
+        let value = self.expr(e, sc)?;
+        if let Value::Ref(r) = &value {
+            return match (r.record.anchor, r.canvas) {
+                (Some(p), None) => Ok((p.x as f64, p.y as f64)),
+                _ => Err(fail(
+                    "E0206",
+                    format!("`pivot:@{}` is a node, not a point", r.label),
+                )
+                .fix(format!(
+                    "name an anchor such as `pivot:@{0}.hip`, or write `pivot:@{0}.cx,@{0}.cy`",
+                    r.label
+                ))),
+            };
+        }
+        let (x, y) = value.pair().ok_or_else(bad)?;
+        let (w, h) = self.job.size;
+        let at = (x.pos(0.0, w as f64), y.pos(0.0, h as f64));
+        if at.0.is_finite() && at.1.is_finite() {
+            Ok(at)
+        } else {
+            Err(bad())
+        }
+    }
+
     fn anchor(&mut self, span: Span, args: &[Expr], sc: &Scope) -> R<()> {
         args.first().and_then(ident_of).ok_or_else(|| {
             fail("E0320", "`anchor` needs a name").fix("write `anchor neck 0,-4`")
@@ -2214,7 +2387,6 @@ impl<'a> Evaluator<'a> {
         };
         let p = sc.world.map_point(Point::new(at.0 as f32, at.1 as f32));
         let key = sc.node_key(span);
-        self.anchors.insert(key.to_string(), p);
         if let Some(id) = sc.decl_at(span) {
             let region = sc.names.borrow().region();
             let own = sc.pending.arrive(id, &region, &sc.scope_copies).own;
@@ -2253,14 +2425,6 @@ impl<'a> Evaluator<'a> {
         comp: Option<&Component>,
         sc: &Scope,
     ) {
-        let fix = match &of.name {
-            Some(name) => format!("to paint over the result, draw it in `inside @{name}`"),
-            None => format!(
-                "to paint over the result, name the `{}` and draw it in `inside @<name>`",
-                of.verb
-            ),
-        };
-        let (file, node) = (sc.file().to_string(), sc.node_name());
         let ignored = named.iter().filter(|n| {
             OPERAND_IGNORES.contains(&n.key.as_str())
                 && !comp.is_some_and(|c| c.params.iter().any(|p| p.key == n.key))
@@ -2269,6 +2433,27 @@ impl<'a> Evaluator<'a> {
             .map(|n| (format!("`{}:`", n.key), n.span))
             .chain(body.fx().map(|f| (format!("`fx {}`", f.op), f.span)))
             .collect();
+        self.report_operand_ignored(of, ignored, sc);
+    }
+
+    /// The `fx` lines under a taken `if`, known only once the operand's block has run.
+    fn report_operand_fx(&mut self, of: &OperandOf, fx: &[BranchFx], sc: &Scope) {
+        let ignored = fx
+            .iter()
+            .map(|b| (format!("`fx {}`", b.line.op), b.line.span))
+            .collect();
+        self.report_operand_ignored(of, ignored, sc);
+    }
+
+    fn report_operand_ignored(&mut self, of: &OperandOf, ignored: Vec<(String, Span)>, sc: &Scope) {
+        let fix = match &of.name {
+            Some(name) => format!("to paint over the result, draw it in `inside @{name}`"),
+            None => format!(
+                "to paint over the result, name the `{}` and draw it in `inside @<name>`",
+                of.verb
+            ),
+        };
+        let (file, node) = (sc.file().to_string(), sc.node_name());
         for (what, span) in ignored {
             let f = fail(
                 "E0321",
@@ -2317,7 +2502,7 @@ impl<'a> Evaluator<'a> {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
         let rot = a.num("rot").unwrap_or(0.0);
-        let step = a.get("step").and_then(Value::vec2).unwrap_or((0.0, 0.0));
+        let step = a.get("step").map(|v| v.vec2_for("step")).transpose()?.unwrap_or((0.0, 0.0));
         let mut out = Vec::new();
         for i in 0..(n.max(0.0) as usize).min(10_000) {
             let fi = i as f64;
@@ -2346,7 +2531,11 @@ impl<'a> Evaluator<'a> {
         })?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
-        let mut pitch = a.get("cell").and_then(Value::vec2).map(|(cw, ch)| (cw + gap, ch + gap));
+        let mut pitch = a
+            .get("cell")
+            .map(|v| v.vec2_for("cell"))
+            .transpose()?
+            .map(|(cw, ch)| (cw + gap, ch + gap));
         let cell_at = |(sx, sy): (f64, f64), row: usize, col: usize| {
             let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
             Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32))
@@ -2454,14 +2643,13 @@ impl<'a> Evaluator<'a> {
                 (p, None, true)
             }
             "curve" => {
-                let values: Vec<Value> = match a.pos.as_slice() {
-                    [Value::List(xs)] => xs.as_ref().clone(),
-                    _ if a.pos.iter().any(|v| matches!(v, Value::List(_))) => {
-                        return Err(fail("E0320", "`curve` takes points, or one list of points")
-                            .fix("write `curve pts` or `curve [each k in 0..n -> x,y]`"));
+                let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
+                for v in &a.pos {
+                    match v {
+                        Value::List(xs) => values.extend(xs.iter().cloned()),
+                        point => values.push(point.clone()),
                     }
-                    _ => a.pos.clone(),
-                };
+                }
                 let mut pts = Vec::with_capacity(values.len());
                 for v in &values {
                     let (x, y) = v
@@ -2522,6 +2710,8 @@ impl<'a> Evaluator<'a> {
         })
     }
 
+    /// `brush_site` is the span of this line's own `brush:` key. A brush error is reported there;
+    /// an inherited brush's error lands on the statement with a note.
     #[allow(clippy::too_many_arguments)]
     fn paint_shape(
         &mut self,
@@ -2529,10 +2719,13 @@ impl<'a> Evaluator<'a> {
         geometry: Path,
         knots: Option<&[P]>,
         closed: bool,
-        style: &[(String, Value)],
+        sc: &Scope,
         world: &Matrix,
         stroke_src: Option<&Expr>,
+        key: &Key,
+        brush_site: Option<Span>,
     ) -> R<Shape> {
+        let style: &[(String, Value)] = &sc.style;
         let pick = |k: &str| {
             a.get(k).cloned().or_else(|| {
                 style
@@ -2607,10 +2800,60 @@ impl<'a> Evaluator<'a> {
         };
         let taper = match pick("taper") {
             Some(Value::Num(t)) => Some((t, t)),
-            Some(v) => v.vec2(),
+            Some(v) => Some(v.vec2_for("taper")?),
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
+        let marks = match pick("brush") {
+            None => Vec::new(),
+            Some(bv) => {
+                let (file, node) = (sc.file().to_string(), sc.node_name());
+                let at_brush = |this: &mut Self, f: Fail| -> Fail {
+                    match brush_site {
+                        Some(span) => {
+                            this.report(f, &file, span, &node);
+                            Fail::reported()
+                        }
+                        None => f.note("the brush is inherited from an enclosing line or style"),
+                    }
+                };
+                let stack = match self.brush_stack(&bv, sc) {
+                    Ok(stack) => stack,
+                    Err(f) => return Err(at_brush(self, f)),
+                };
+                let reaches = |slot: Slot| stack.iter().any(|b| b.place.on.is_none_or(|on| on == slot));
+                if width.is_some() && reaches(Slot::Stroke) {
+                    let f = fail("E0362", "brushed strokes are not implemented yet")
+                        .note("a brush applies to every paint slot the node has; this node has a stroke")
+                        .fix("add `on:fill` to the brush, or draw the outline as its own node");
+                    return Err(at_brush(self, f));
+                }
+                let lands = |b: &BrushVal| fill.is_some() && b.place.on.is_none_or(|on| on == Slot::Fill);
+                if brush_site.is_some() && stack.iter().any(|b| !lands(b)) {
+                    for (i, b) in stack.iter().enumerate().filter(|(_, b)| !lands(b)) {
+                        let what = if stack.len() == 1 {
+                            "`brush:` on a node with no paint to brush".to_string()
+                        } else {
+                            format!("stage {} of `brush:` (`{}`) has no paint to brush on this node", i + 1, b.decl.name)
+                        };
+                        let f = fail("E0362", what)
+                            .note(if fill.is_none() { "this node has no fill" } else { "the brush is narrowed to a slot this node does not have" })
+                            .fix("give the node a fill, or remove the brush");
+                        at_brush(self, f);
+                    }
+                    return Err(Fail::reported());
+                }
+                let fill_stack: Vec<Rc<BrushVal>> = stack.iter().filter(|b| lands(b)).cloned().collect();
+                if blur > 0.0 && !fill_stack.is_empty() {
+                    let f = fail("E0362", "`blur:` on a brushed shape")
+                        .fix("blur the parent instead: wrap the node in a `group` with `fx blur`");
+                    return Err(at_brush(self, f));
+                }
+                let explicit = a.num("seed").map(|s| s as u64);
+                self.area_marks(&fill_stack, key, explicit, &file)
+            }
+        };
+        let fill = fill.map(|paint| IrFill { paint, marks });
         let Some(width) = width else {
             return Ok(Shape {
                 geometry,
@@ -2643,7 +2886,7 @@ impl<'a> Evaluator<'a> {
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             return Ok(Shape {
                 geometry: outline,
-                fill: Some(paint),
+                fill: Some(IrFill::plain(paint)),
                 stroke: None,
                 blur,
                 children: vec![],
@@ -2693,8 +2936,10 @@ impl<'a> Evaluator<'a> {
         module: &Rc<Module>,
         given: &[(String, Value)],
         span: Span,
+        caller: &Scope,
     ) -> R<Vec<(String, Value)>> {
-        let def_scope = self.module_scope(module);
+        let mut def_scope = self.module_scope(module);
+        def_scope.palette = caller.palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
         for p in params {
             let mut dsc = def_scope.clone();
@@ -2714,12 +2959,7 @@ impl<'a> Evaluator<'a> {
                                 v.kind()
                             ),
                         )
-                        .fix(format!(
-                            "pass {} like `{}:{}`",
-                            d.kind(),
-                            p.key,
-                            d.show()
-                        )));
+                        .fix(param_fix(&p.key, d, v)));
                     }
                     v.clone()
                 }
@@ -2778,9 +3018,26 @@ impl<'a> Evaluator<'a> {
             pos: Vec::new(),
             named: Vec::new(),
         };
+        let mut key = key;
+        let mut palette = sc.palette.clone();
         for (k, v) in &a.named {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
+            } else if k == "seed" {
+                let seed = v.num().ok_or_else(|| {
+                    fail("E0320", format!("`seed:` takes a number, got {}", v.kind()))
+                        .fix("write `seed:7`")
+                })?;
+                key = key.seeded(&comp.module, &comp.name, seed as u64);
+            } else if k == "palette" {
+                if !matches!(v, Value::Palette(_) | Value::Module(_)) {
+                    return Err(fail(
+                        "E0320",
+                        format!("`palette:` takes a palette, got {}", v.kind()),
+                    )
+                    .fix("write `palette:elite`"));
+                }
+                palette = Some(v.clone());
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
@@ -2794,13 +3051,18 @@ impl<'a> Evaluator<'a> {
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
         let caller_local = inverse(&m).map_rect(sc.frame).0;
         let mut box_frame = Rect::new_empty();
-        let def_scope = self.module_scope(&module);
+        let mut def_scope = self.module_scope(&module);
+        def_scope.palette = palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
+        let mut brush_params = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
             let default = self.expr(&p.value, &dsc);
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
+            if let Ok(Value::Brush(b)) = &default {
+                brush_params.push((env.len(), b.clone()));
+            }
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
                     if let Ok(d) = &default
@@ -2816,12 +3078,7 @@ impl<'a> Evaluator<'a> {
                                 v.kind()
                             ),
                         )
-                        .fix(format!(
-                            "pass {} like `{}:{}`",
-                            d.kind(),
-                            p.key,
-                            d.show()
-                        )));
+                        .fix(param_fix(&p.key, d, v)));
                     }
                     v.clone()
                 }
@@ -2872,6 +3129,8 @@ impl<'a> Evaluator<'a> {
         let world = sc.world * m;
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
+        call_sc.palette = palette.clone();
+        let call_fx = call_sc.collect_branch_fx();
         let mut call_patches = Vec::new();
         for b in block.items() {
             self.absorb_item(b, &mut call_sc, &key, &comp.name, &mut fills, &mut call_patches)?;
@@ -2899,12 +3158,15 @@ impl<'a> Evaluator<'a> {
             sc.depth + 1,
         );
         body_scope.env = env;
+        body_scope.brush_params = Rc::new(brush_params);
         body_scope.module = module;
         body_scope.ids = def_ids;
         body_scope.inst = Some(inst.clone());
         body_scope.host = None;
         body_scope.checks = checks.clone();
         body_scope.style = sc.style.clone();
+        body_scope.palette = palette;
+        let def_fx = body_scope.collect_branch_fx();
         let placeholder = new_node(
             path.clone(),
             origin.clone(),
@@ -2956,21 +3218,18 @@ impl<'a> Evaluator<'a> {
         );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
         let fx_scope = body_scope.child(key.clone(), body_scope.frame, world);
-        let sites: Vec<FxSite> = comp
-            .body
+        let (def_fx, call_fx) = (def_fx.take(), call_fx.take());
+        if let Some(of) = sc.operand_of.clone() {
+            self.report_operand_fx(&of, &call_fx, sc);
+        }
+        let mut lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
+        lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
+        let sites: Vec<FxSite> = lines
             .iter()
-            .filter_map(DefItem::fx)
-            .map(|line| FxSite {
-                line,
-                scope: &fx_scope,
-            })
-            .chain(block.fx().map(|line| FxSite {
-                line,
-                scope: &call_sc,
-            }))
+            .map(|(line, scope)| FxSite { line, scope })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
-        self.mask(&mut node, &node_args, block.mask(), &call_sc, world, &key)?;
+        self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
         rec.borrow_mut().node = Some(node.clone());
         *inst.record.borrow_mut() = Some(rec.clone());
@@ -3289,7 +3548,7 @@ impl<'a> Evaluator<'a> {
         }
         self.seed_node(sc.file(), &key);
         let mut a = self.eval_args(&[], named, sc, 0)?;
-        if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path) {
+        if self.land(&mut a, &arrival.own, (0.0, 0.0), sc.frame, sc, &path).is_none() {
             mark_used(&inst);
             let scope = self.slot_scope(&inst, name, st.span, fallback, sc);
             self.admit_scope(&scope, arrival.forward.clone(), &path);
@@ -3422,10 +3681,7 @@ impl<'a> Evaluator<'a> {
                     Err(_) => Value::None,
                 };
                 if sc.top && sc.publish {
-                    sc.module
-                        .globals
-                        .borrow_mut()
-                        .insert(name.clone(), v.clone());
+                    sc.module.bind(name, v.clone());
                 }
                 sc.env.push((name.clone(), v));
                 Ok(())
@@ -3450,7 +3706,12 @@ impl<'a> Evaluator<'a> {
                 self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = self.quiet_expr(iter, sc).and_then(each_items);
                 if schedule && holds_play(body) {
@@ -3463,7 +3724,7 @@ impl<'a> Evaluator<'a> {
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.collect_surface(body, &mut inner, schedule);
                 }
                 Ok(())
@@ -3477,7 +3738,10 @@ impl<'a> Evaluator<'a> {
                 self.collect_draw(draw, sc, st.span);
                 Ok(())
             }
-            SceneKind::Play { .. } | SceneKind::Check { .. } | SceneKind::Slot { .. } => Ok(()),
+            SceneKind::Play { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Slot { .. }
+            | SceneKind::Fx(_) => Ok(()),
         }
     }
 
@@ -3652,12 +3916,17 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     for child in body {
                         self.absorb_scene(child, &mut inner, owner, def_name, true, dest)?;
                     }
@@ -3681,10 +3950,11 @@ impl<'a> Evaluator<'a> {
                 });
                 Ok(())
             }
+            SceneKind::Fx(line) => sc.branch_fx(line),
             _ if nested => {
                 self.report(
-                    fail("E0330", format!("only patches and `play` may sit inside `if` or `each` under `{def_name}`"))
-                        .fix("keep slot fills, fx and checks as direct lines under the instance"),
+                    fail("E0330", format!("only patches, `play`, and `fx` under `if` may sit inside `if` or `each` under `{def_name}`"))
+                        .fix("keep slot fills and checks as direct lines under the instance"),
                     sc.file(),
                     st.span,
                     &node,
@@ -3811,7 +4081,11 @@ impl<'a> Evaluator<'a> {
         };
         let module = self.modules.get(&anim.module).cloned();
         let dur_scope = match &module {
-            Some(m) => self.module_scope(m),
+            Some(m) => {
+                let mut dur_scope = self.module_scope(m);
+                dur_scope.palette = sc.palette.clone();
+                dur_scope
+            }
             None => sc.clone(),
         };
         self.begin_seed(&anim.module, owner.at_stmt(&[], &format!("anim {}", anim.name)));
@@ -4104,10 +4378,17 @@ impl<'a> Evaluator<'a> {
                 MatrixValue::Num(n) => Value::Num(*n),
             });
         }
+        if name == "p"
+            && let Some(v) = &sc.palette
+            && !sc.module.binds_p.get()
+        {
+            return Some(v.clone());
+        }
         if let Some(v) = sc.module.global(name) {
             return Some(v);
         }
         match name {
+            "scale" => Some(Value::Num(self.job.draw_scale())),
             "true" => Some(Value::Bool(true)),
             "false" => Some(Value::Bool(false)),
             "none" => Some(Value::None),
@@ -4161,16 +4442,33 @@ impl<'a> Evaluator<'a> {
                 let b = self.expr(base, sc)?;
                 self.member(&b, seg, sc)?
             }
+            Expr::Index(base, key) => match &**base {
+                Expr::Ref(segs) => {
+                    let mut segs = segs.clone();
+                    segs.push(self.index_segment(key, sc)?);
+                    self.reference(&segs, sc)?
+                }
+                _ => {
+                    let b = self.expr(base, sc)?;
+                    let seg = self.index_segment(key, sc)?;
+                    self.member(&b, &seg, sc)?
+                }
+            },
             Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
             Expr::List(xs) => Value::List(Rc::new(
                 xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?,
             )),
-            Expr::Each { var, iter, body } => {
+            Expr::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 let items = each_items(self.expr(iter, sc)?)?;
                 let mut out = Vec::with_capacity(items.len());
-                for v in items {
+                for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     out.push(self.expr(body, &inner)?);
                 }
                 Value::List(Rc::new(out))
@@ -4350,17 +4648,21 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn index_segment(&mut self, key: &Expr, sc: &Scope) -> R<String> {
+        let k = self.expr(key, sc)?;
+        k.word()
+            .map(str::to_string)
+            .or(k.num().map(num))
+            .ok_or_else(|| {
+                fail(
+                    "E0320",
+                    format!("an index is a name or a number, got {}", k.kind()),
+                )
+                .fix("write a number or a name inside `{}`, such as `list.{i}`")
+            })
+    }
+
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
-        let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => match self.lookup_ident(var, sc) {
-                Some(Value::Unseen) => return Err(unseen(var)),
-                v => v
-                    .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
-                    .unwrap_or(var.to_string()),
-            },
-            None => seg.to_string(),
-        };
-        let seg = seg.as_str();
         let missing = |what: &str, names: Vec<String>| {
             fail("E0350", format!("{what} has no member `{seg}`"))
                 .note(format!("members: {}", names.join(", ")))
@@ -4464,6 +4766,24 @@ impl<'a> Evaluator<'a> {
             ),
         )
         .fix("give the grid a `cell:` size, such as `cell:20x20`"))
+    }
+
+    /// `at:@body.neck`: the anchor's position in the current local frame, the same point
+    /// `at:@body.neck.x,@body.neck.y` reads.
+    fn anchor_point(&mut self, r: &RefVal, sc: &Scope) -> R<(f64, f64)> {
+        let (Some(p), None) = (r.record.anchor, r.canvas) else {
+            return Err(
+                fail("E0320", format!("`at:@{}` is a node, not a point", r.label)).fix(format!(
+                    "name an anchor such as `at:@{0}.neck`, or write `at:@{0}.cx,@{0}.cy`",
+                    r.label
+                )),
+            );
+        };
+        self.outside_copy(r, sc)?;
+        let p = self.view(sc).map_point(p);
+        let (x, y) = (f64::from(p.x), f64::from(p.y));
+        self.note(format!("{} = {},{}", r.label, num(x), num(y)));
+        Ok((x, y))
     }
 
     pub fn measure(&mut self, r: &RefVal, m: &str, sc: &Scope) -> R<Value> {
@@ -4788,7 +5108,10 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                     }
                 }
             }
-            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+            SceneKind::Let { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Play { .. }
+            | SceneKind::Fx(_) => {}
         }
     }
     None
@@ -4831,7 +5154,10 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
             }
             None
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Play { .. }
+        | SceneKind::Fx(_) => None,
     }
 }
 
@@ -4927,7 +5253,7 @@ fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
     }
 }
 
-fn osa_distance(a: &str, b: &str) -> usize {
+pub(crate) fn osa_distance(a: &str, b: &str) -> usize {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
     let mut d = vec![vec![0; b.len() + 1]; a.len() + 1];
     for (i, row) in d.iter_mut().enumerate() {

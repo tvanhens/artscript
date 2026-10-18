@@ -10,7 +10,7 @@ use std::collections::HashMap;
 
 use artscript_ir::{
     Clip, Color, Effect, EffectInput, EffectOp, Field, Mask, MaskSource, Node, NodeKind,
-    Paint as IrPaint, Path, Shape, Stroke,
+    Paint as IrPaint, Path, Shape, Sides, Stroke,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
@@ -19,7 +19,7 @@ use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
     BlendMode, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix, Paint,
     PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, SamplingOptions,
-    TileMode, image_filters, path_utils, surfaces,
+    TileMode, color_filters, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
@@ -96,17 +96,11 @@ fn apply(
                 None,
             ),
         )?)),
-        EffectOp::Glow { radius, color } => Ok(Some(req(
-            "glow",
-            image_filters::drop_shadow(
-                (0.0, 0.0),
-                (*radius, *radius),
-                color4(*color),
-                None,
-                input,
-                None,
-            ),
-        )?)),
+        EffectOp::Glow {
+            radius,
+            color,
+            strength,
+        } => glow(*radius, *color, *strength, input),
         EffectOp::Inner {
             dx,
             dy,
@@ -123,6 +117,38 @@ fn apply(
         EffectOp::Adjust { hue, sat, light } => adjust(*hue, *sat, *light, input),
         EffectOp::Merge { inputs, alphas } => merge(inputs, alphas, &input, named, env),
     }
+}
+
+fn glow(
+    radius: f32,
+    color: Color,
+    strength: f32,
+    input: Option<ImageFilter>,
+) -> Result<Option<ImageFilter>, RenderError> {
+    let halo = req(
+        "glow",
+        image_filters::drop_shadow_only(
+            (0.0, 0.0),
+            (radius, radius),
+            color4(color),
+            None,
+            input.clone(),
+            None,
+        ),
+    )?;
+    // The matrix works on unpremultiplied color, so it scales only alpha and clamps it to 1.
+    let scale = ColorMatrix::new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+        strength, 0.0,
+    );
+    let halo = req(
+        "glow strength",
+        image_filters::color_filter(color_filters::matrix(&scale, None), halo, None),
+    )?;
+    Ok(Some(req(
+        "glow",
+        image_filters::merge([Some(halo), input], None),
+    )?))
 }
 
 fn inner(
@@ -491,7 +517,15 @@ half4 main(half4 c) {
 /// visible to a later one.
 pub enum LayerStep {
     Filter(ImageFilter),
-    Outline { width: f32, color: Color, cover_halo_past: Option<f32> },
+    Outline(OutlineStep),
+}
+
+#[derive(Clone, Copy)]
+pub struct OutlineStep {
+    pub width: f32,
+    pub color: Color,
+    pub sides: Sides,
+    pub cover_halo_past: Option<f32>,
 }
 
 fn paints_past_its_input(effect: &Effect) -> bool {
@@ -524,7 +558,7 @@ pub fn layer_steps(
     let mut halo = false;
     let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
-        let EffectOp::Outline { width, color } = effect.op else {
+        let EffectOp::Outline { width, color, sides } = effect.op else {
             continue;
         };
         if width <= 0.0 {
@@ -537,7 +571,7 @@ pub fn layer_steps(
             steps.push(LayerStep::Filter(filter));
             halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline { width, color, cover_halo_past: halo.then_some(inked) });
+        steps.push(LayerStep::Outline(OutlineStep { width, color, sides, cover_halo_past: halo.then_some(inked) }));
         inked = inked.max(width);
         start = i + 1;
     }
@@ -565,10 +599,9 @@ pub fn outline_geometry(
     src: Image,
     local_to_px: &Matrix,
     node: &Node,
-    width: f32,
-    color: Color,
-    cover_halo_past: Option<f32>,
+    step: OutlineStep,
 ) -> Result<Image, RenderError> {
+    let OutlineStep { width, color, sides, cover_halo_past } = step;
     if width <= 0.0 {
         return Ok(src);
     }
@@ -576,7 +609,7 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let ring = Ring { regions: &regions, local_to_px, width, color };
+    let ring = Ring { regions: &regions, local_to_px, width, color, sides };
     let mut under = ring.composite(backend, &src, BlendMode::DstOver)?;
     if let Some(inked) = cover_halo_past {
         let over = ring.composite(backend, &src, BlendMode::SrcOver)?.image_snapshot();
@@ -617,9 +650,26 @@ struct Ring<'a> {
     local_to_px: &'a Matrix,
     width: f32,
     color: Color,
+    sides: Sides,
 }
 
 impl Ring<'_> {
+    /// The traced geometry's box, open on every side the outline draws on.
+    fn kept_area(&self) -> Rect {
+        const FAR: f32 = 1.0e6;
+        let mut bounds = *self.regions[0].path.bounds();
+        for region in &self.regions[1..] {
+            bounds.join(region.path.bounds());
+        }
+        let edge = |on: bool, at: f32, open: f32| if on { open } else { at };
+        Rect::new(
+            edge(self.sides.left, bounds.left, -FAR),
+            edge(self.sides.top, bounds.top, -FAR),
+            edge(self.sides.right, bounds.right, FAR),
+            edge(self.sides.bottom, bounds.bottom, FAR),
+        )
+    }
+
     fn composite(&self, backend: Backend, src: &Image, mode: BlendMode) -> Result<skia_safe::Surface, RenderError> {
         let mut surface = gpu::surface(backend, (src.width(), src.height()))
             .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
@@ -636,12 +686,17 @@ impl Ring<'_> {
         ink.set_stroke_cap(Cap::Round);
         ink.set_stroke_join(Join::Round);
         ink.set_stroke_width(self.width * 2.0);
+        canvas.save();
+        if !self.sides.is_all() {
+            canvas.clip_rect(self.kept_area(), None, true);
+        }
         for region in self.regions {
             ink.set_style(Style::Fill);
             canvas.draw_path(&region.path, &ink);
             ink.set_style(Style::Stroke);
             canvas.draw_path(&region.path, &ink);
         }
+        canvas.restore();
         ink.set_style(Style::Fill);
         ink.set_blend_mode(BlendMode::DstOut);
         for region in self.regions.iter().filter(|r| r.coverage == Coverage::Translucent) {
@@ -685,7 +740,7 @@ fn gather(
     match &node.kind {
         NodeKind::Shape(shape) => {
             push_shape(shape, &mut local)?;
-            let fill_holds_children = shape.fill.as_ref().and_then(coverage).is_some();
+            let fill_holds_children = shape.fill.as_ref().and_then(|f| coverage(&f.paint)).is_some();
             let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
             for child in children {
                 let mut nested = Vec::new();
@@ -859,7 +914,7 @@ fn field_kept(
 
 /// Fill path, plus the stroke's own filled outline.
 fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
-    if let Some(coverage) = shape.fill.as_ref().and_then(coverage)
+    if let Some(coverage) = shape.fill.as_ref().and_then(|f| coverage(&f.paint))
         && !shape.geometry.is_empty()
     {
         out.push(Region {

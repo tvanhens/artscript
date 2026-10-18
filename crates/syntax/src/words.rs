@@ -9,7 +9,6 @@ pub(crate) enum Word {
     Def,
     Rule,
     Let,
-    Shader,
     Light,
     Brush,
     Assert,
@@ -44,6 +43,7 @@ pub(crate) enum Word {
     Play,
     Key,
     Clip,
+    Target,
     Loop,
     Set,
     Mark,
@@ -56,6 +56,9 @@ pub(crate) enum Class {
     Keyword,
     ReservedName,
     PaletteHead,
+    /// A declaration head only when it starts a line. Everywhere else it is an ordinary name,
+    /// so `brush:` is a key and `brush` a parameter.
+    DeclHead,
 }
 
 const WORDS: &[(Word, &str, Class)] = &[
@@ -68,9 +71,8 @@ const WORDS: &[(Word, &str, Class)] = &[
     (Word::Def, "def", Class::Keyword),
     (Word::Rule, "rule", Class::Keyword),
     (Word::Let, "let", Class::Keyword),
-    (Word::Shader, "shader", Class::Keyword),
     (Word::Light, "light", Class::Keyword),
-    (Word::Brush, "brush", Class::Keyword),
+    (Word::Brush, "brush", Class::DeclHead),
     (Word::Assert, "assert", Class::Keyword),
     (Word::Expect, "expect", Class::Keyword),
     (Word::If, "if", Class::Keyword),
@@ -103,6 +105,7 @@ const WORDS: &[(Word, &str, Class)] = &[
     (Word::Play, "play", Class::Keyword),
     (Word::Key, "key", Class::ReservedName),
     (Word::Clip, "clip", Class::ReservedName),
+    (Word::Target, "target", Class::ReservedName),
     (Word::Loop, "loop", Class::ReservedName),
     (Word::Set, "set", Class::ReservedName),
     (Word::Mark, "mark", Class::ReservedName),
@@ -131,7 +134,7 @@ impl Word {
     }
 
     pub(crate) fn reserved(self) -> bool {
-        self.class() != Class::PaletteHead
+        matches!(self.class(), Class::Keyword | Class::ReservedName)
     }
 }
 
@@ -141,4 +144,9 @@ pub(crate) fn keyword(text: &str) -> Option<Word> {
 
 pub(crate) fn is_reserved(text: &str) -> bool {
     Word::lookup(text).is_some_and(Word::reserved)
+}
+
+/// A name that opens a declaration when it is a line's first word.
+pub(crate) fn is_decl_head(text: &str) -> bool {
+    Word::lookup(text).is_some_and(|w| w.class() == Class::DeclHead)
 }

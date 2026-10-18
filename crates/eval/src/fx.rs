@@ -4,14 +4,14 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Point};
+use artscript_ir::{Effect, EffectInput, EffectOp, Point, Sides};
 use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of};
 use crate::identity::{self, Key};
 use crate::scope::{FinishDef, Module};
-use crate::value::Value;
+use crate::value::{Value, num};
 
 const EFFECTS: &[&str] = &["blur", "shadow", "inner", "glow", "rim", "adjust", "outline", "grain", "merge"];
 /// Parsed but not implemented in v0.1.
@@ -19,6 +19,36 @@ const PHASE2: &[&str] = &["bevel", "displace", "halftone", "posterize"];
 
 fn is_effect_name(s: &str) -> bool {
     EFFECTS.contains(&s) || PHASE2.contains(&s)
+}
+
+const SIDE_WORDS: [&str; 4] = ["top", "right", "bottom", "left"];
+
+/// `sides:top,left` is read as words, not evaluated, so `top` never looks up a name.
+fn sides(named: &[Named]) -> R<Sides> {
+    let Some(n) = named.iter().find(|n| n.key == "sides") else {
+        return Ok(Sides::ALL);
+    };
+    let bad = |what: String| {
+        fail("E0320", what)
+            .note(format!("sides: {}", SIDE_WORDS.join(" ")))
+            .fix("write `sides:top,left`, a comma list of side words")
+    };
+    let words: Vec<&Expr> = match &n.value {
+        Expr::Tuple(items) => items.iter().collect(),
+        one => vec![one],
+    };
+    let mut out = Sides { top: false, right: false, bottom: false, left: false };
+    for word in words {
+        match ident_of(word) {
+            Some("top") => out.top = true,
+            Some("right") => out.right = true,
+            Some("bottom") => out.bottom = true,
+            Some("left") => out.left = true,
+            Some(other) => return Err(bad(format!("`{other}` is not a side in `sides:`"))),
+            None => return Err(bad("`sides:` expects side words".into())),
+        }
+    }
+    Ok(out)
 }
 
 fn effects_note() -> String {
@@ -118,9 +148,10 @@ impl Evaluator<'_> {
             given.push((n.key.clone(), self.expr(&n.value, site.scope)?));
         }
         let module = self.modules.get(&def.module).cloned().ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", def.module)))?;
-        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span)?;
+        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span, site.scope)?;
         let mut fsc = self.module_scope(&module);
         fsc.env = env;
+        fsc.palette = site.scope.palette.clone();
         Ok(fsc)
     }
 
@@ -160,7 +191,11 @@ impl Evaluator<'_> {
                 _ => return Err(fail("E0320", "an effect input is `self`, a name, or `@node`")),
             })
         };
-        let plain_named: Vec<Named> = named.iter().filter(|n| n.key != "of" && n.key != "as").cloned().collect();
+        let plain_named: Vec<Named> = named
+            .iter()
+            .filter(|n| n.key != "of" && n.key != "as" && !(op_name == "outline" && n.key == "sides"))
+            .cloned()
+            .collect();
         let a = if op_name == "merge" {
             self.eval_args(&[], &plain_named, sc, 0)?
         } else {
@@ -188,9 +223,15 @@ impl Evaluator<'_> {
                     EffectOp::Inner { dx: dx as f32, dy: dy as f32, blur, color: c }
                 }
             }
-            "glow" => EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))? },
+            "glow" => {
+                let strength = a.num("strength").unwrap_or(1.0);
+                if strength < 0.0 {
+                    return Err(fail("E0320", format!("`strength:` must be 0 or more, got {}", num(strength))).fix("write a strength of 0 or more"));
+                }
+                EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))?, strength: strength as f32 }
+            }
             "rim" => {
-                let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
+                let dir = a.get("dir").map(|v| v.vec2_for("dir")).transpose()?.unwrap_or((1.0, 1.0));
                 let rim = color::from_oklch(color::Lch { l: 0.86, c: 0.05, h: 265.0 }, 1.0);
                 EffectOp::Rim { width: n0.unwrap_or(3.0) as f32, dir: Point::new(dir.0 as f32, dir.1 as f32), color: color(rim)? }
             }
@@ -199,7 +240,7 @@ impl Evaluator<'_> {
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))? },
+            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)? },
             "grain" => {
                 let explicit = a.num("seed").map(|s| s as u64);
                 EffectOp::Grain {

@@ -117,7 +117,7 @@ fn doc_fixtures_parse_and_round_trip() {
         ("mvp_eye.art", "\"palette/dusk\"", "\"fff\""),
         ("mvp_hero.art", "\"chars/hero.svg\"", "\"arm_r\""),
         ("mvp_water.art", "\"water\"", "\"ripple\""),
-        ("mvp_shader.art", "\"scales\"", "half4 main"),
+        ("mvp_brush.art", "\"scuff\"", "float4 shade"),
         ("mvp_light.art", "\"sun\"", "\"ambient\""),
         ("mvp_body.art", "\"body\"", "\"torso\""),
         ("mvp_tunic.art", "\"tunic\"", "\"torso\""),
@@ -195,6 +195,10 @@ fn directive_target_matrix() {
     assert_eq!(
         format(&file),
         "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
+    );
+    assert_eq!(
+        format(&must_parse("@target a.png 8x8 viewport\n")),
+        "@target a.png 8x8 viewport\n"
     );
     let clip = must_parse("@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n");
     assert_eq!(clip.directives[0].each[0].key, "c");
@@ -361,6 +365,8 @@ fn let_if_and_assert_proportion() {
             message: Some("msg".into()),
         }
     );
+    let raw = must_parse("assert 1 > 0 \"\"\"width\"\"\"\n");
+    assert!(matches!(node(&raw), SceneKind::Check { message: Some(m), .. } if m == "width"), "{:?}", node(&raw));
 }
 
 #[test]
@@ -611,7 +617,13 @@ fn each_expr_is_one_list_and_formats_tight() {
     let file = must_parse(src);
     match node(&file) {
         SceneKind::Draw(Draw { args, .. }) => match &args[0] {
-            Expr::Each { var, iter, body } => {
+            Expr::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
+                assert_eq!(index, &None);
                 assert_eq!(var, "k");
                 assert!(matches!(iter.as_ref(), Expr::Range(_, _)));
                 assert!(matches!(body.as_ref(), Expr::Tuple(_)));
@@ -623,6 +635,78 @@ fn each_expr_is_one_list_and_formats_tight() {
     let once = format_source(src).unwrap();
     assert_eq!(once, src);
     assert_eq!(format_source(&once).unwrap(), once);
+}
+
+#[test]
+fn each_takes_an_index_before_the_value() {
+    let file = must_parse("each i, x in list\n  circle 1\n");
+    match node(&file) {
+        SceneKind::Each { index, var, .. } => {
+            assert_eq!(index.as_deref(), Some("i"));
+            assert_eq!(var, "x");
+        }
+        other => panic!("{other:?}"),
+    }
+    let src = "let xs = [each i, x in 0..3 -> i,x]\n";
+    match node(&must_parse(src)) {
+        SceneKind::Let {
+            value: Expr::Each { index, var, .. },
+            ..
+        } => {
+            assert_eq!(index.as_deref(), Some("i"));
+            assert_eq!(var, "x");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        format_source("each i,x in list\n  circle 1\n").unwrap(),
+        "each i, x in list\n  circle 1\n"
+    );
+    assert_eq!(format_source(src).unwrap(), src);
+}
+
+#[test]
+fn each_index_errors_say_what_to_write() {
+    let same = parse("each i, i in list\n  circle 1\n").unwrap_err();
+    assert_eq!(
+        same[0].fix.as_deref(),
+        Some("give the index and the value different names")
+    );
+    assert!(parse("each i, in list\n  circle 1\n").is_err());
+    let reserved = parse("each fx, x in list\n  circle 1\n").unwrap_err();
+    assert_eq!(reserved[0].code, "E0105");
+}
+
+#[test]
+fn a_member_segment_in_braces_is_an_expression() {
+    let file = must_parse("let c = tones.{mod(row 3)}\n");
+    assert_eq!(
+        node(&file),
+        &SceneKind::Let {
+            name: "c".into(),
+            value: Expr::Index(
+                Box::new(ident("tones")),
+                Box::new(call("mod", vec![ident("row"), num(3.0)])),
+            ),
+        }
+    );
+    for src in [
+        "let c = tones.{i}\n",
+        "let c = tones.{i+1}\n",
+        "let c = pts.{k}.x\n",
+        "let c = @dot.{k}.cx\n",
+        "let c = grid.{r}.{c}\n",
+    ] {
+        assert_eq!(format_source(src).unwrap(), src);
+    }
+    assert_eq!(
+        format_source("let c = tones.{ i + 1 }\n").unwrap(),
+        "let c = tones.{i+1}\n"
+    );
+    let empty = parse("let c = tones.{}\n").unwrap_err();
+    assert_eq!(empty[0].code, "E0101");
+    let open = parse("let c = tones.{i\n").unwrap_err();
+    assert_eq!(open[0].fix.as_deref(), Some("close the index with `}`"));
 }
 
 #[test]
@@ -651,7 +735,7 @@ fn syntax_errors_carry_a_fix() {
     assert_eq!(open_err.code, "E0101");
     assert_eq!(open_err.fix.as_deref(), Some("close the string with `\"`"));
 
-    let raw = parse("shader s\n  sksl \"\"\"\nno end\n").unwrap_err();
+    let raw = parse("brush s\n  sksl \"\"\"\nno end\n").unwrap_err();
     let raw_err = raw
         .iter()
         .find(|e| e.message == "unterminated raw string")
@@ -813,7 +897,30 @@ fn fx_is_rejected_where_no_draw_owns_it() {
     let under_if = one_error("if a\n  fx blur 2\n");
     assert_eq!(under_if.message, "`fx` cannot go directly under `if`");
 
+    let if_in_each = one_error("circle 4\n  each i in 0..3\n    if a\n      fx blur 2\n");
+    assert_eq!(if_in_each.message, "`fx` cannot go directly under `if`");
+    assert_eq!(if_in_each.span, Span { line: 4, col: 7 });
+
+    let else_in_slot =
+        one_error("def d\n  slot s\n    if a\n      circle 2\n    else\n      fx blur 2\n");
+    assert_eq!(else_in_slot.message, "`fx` cannot go directly under `else`");
+
+    let in_repeat = one_error("repeat 3\n  if a\n    fx blur 2\n");
+    assert_eq!(in_repeat.message, "`fx` cannot go directly under `if`");
+
     must_parse("each i in 0..3\n  circle 2\n    fx blur 2\n");
+}
+
+#[test]
+fn fx_under_an_if_inside_a_draw_or_def_parses_and_formats_in_place() {
+    for src in [
+        "circle 20\n  fx outline 2\n  if t == a\n    fx adjust hue:120\n  else if t == b\n    if c\n      fx blur 2\n  else\n    fx glow 3\n",
+        "def badge\n  circle 4\n  if on\n    let w = 2\n    fx blur w\n",
+        "badge\n  if on\n    fx outline 2\n",
+    ] {
+        must_parse(src);
+        assert_eq!(format_source(src).unwrap(), src);
+    }
 }
 
 #[test]
@@ -932,7 +1039,7 @@ fn a_node_name_may_be_a_reserved_word() {
 
 #[test]
 fn a_positional_name_may_be_a_reserved_word() {
-    for word in ["mask", "light", "shader", "if", "true"] {
+    for word in ["mask", "light", "brush", "if", "true"] {
         must_parse(&format!(
             "layer {word}\n  circle 4\ngroup {word}\n  circle 4\n  anchor {word} 0,-20\n"
         ));
@@ -948,6 +1055,16 @@ fn a_def_parameter_cannot_be_a_reserved_word() {
     }
     must_parse("def cup color:#fff\n  circle 4 fill:color\n");
     must_parse("circle 4\n  fx blur 2 as:soft\n");
+}
+
+#[test]
+fn target_is_reserved() {
+    for src in ["let target = 1\n", "def cup target:1\n  circle 4\n"] {
+        let e = one_error(src);
+        assert_eq!(e.code, "E0105", "{src}");
+        assert_eq!(e.message, "`target` is reserved");
+    }
+    must_parse("@target a.png 8x8 as:hero\nif target == hero\n  circle 4\n");
 }
 
 #[test]
@@ -1199,4 +1316,33 @@ fn fmt_keeps_the_parens_the_parser_needs() {
         assert_eq!(format(&must_parse(src)), src);
         round_trip_source(src);
     }
+}
+
+#[test]
+fn a_brush_keeps_where_its_body_starts() {
+    let src = "brush dry strength:.5 dir:0\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return m.paint;\n    }\n  \"\"\"\n";
+    let file = must_parse(src);
+    let Some(DeclKind::Brush { name, params, sksl: Some(block) }) = file.decls().next().map(|d| &d.kind) else {
+        panic!("{file:?}");
+    };
+    assert_eq!(name, "dry");
+    assert_eq!(params.len(), 2);
+    assert_eq!(block.span, Span { line: 2, col: 3 });
+    assert_eq!(block.body, Span { line: 3, col: 5 });
+    assert_eq!(block.text, "float4 shade(Mark m) {\n  return m.paint;\n}");
+    round_trip_source(src);
+}
+
+#[test]
+fn brush_is_a_name_everywhere_but_at_a_line_start() {
+    let file = must_parse("def stone size:60 brush:none\n  rect size brush:brush(scale:.5)\nlet brush = 1\nuse x { brush }\nrect 4 brush:[a b]\n");
+    assert_eq!(file.decls().count(), 2);
+    assert_eq!(file.scenes().count(), 2);
+    let errs = errors("layer a\n  brush dry\n    sksl \"\"\"x\"\"\"\n");
+    assert!(errs.iter().any(|e| e.message.contains("declaration cannot go")), "{errs:?}");
+    let errs = errors("brush 4 strength:1\n  sksl \"\"\"x\"\"\"\n");
+    assert!(errs.iter().any(|e| e.message.contains("expected a name")), "{errs:?}");
+    let e = one_error("rect 4\ndef brush size:20\n  rect size\n");
+    assert_eq!((e.code.as_str(), e.span.line), ("E0105", 2), "{e:?}");
+    assert!(e.message.contains("cannot be named `brush`"), "{e:?}");
 }

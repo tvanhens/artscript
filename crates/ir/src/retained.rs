@@ -1,8 +1,8 @@
 use std::mem::size_of;
 
 use super::{
-    Clip, Effect, EffectInput, EffectOp, Field, Mask, MaskSource, Node, NodeKind, Paint, Path,
-    Scene, Shape, Stroke,
+    AreaMark, Clip, Effect, EffectInput, EffectOp, Field, Fill, Mask, MaskSource, Node, NodeKind,
+    Paint, Path, Scene, Shape, Stroke,
 };
 
 impl Scene {
@@ -31,13 +31,22 @@ fn node_bytes(node: &Node) -> u64 {
 
 fn shape_bytes(shape: &Shape) -> u64 {
     path_bytes(&shape.geometry)
-        + shape.fill.as_ref().map(paint_bytes).unwrap_or(0)
+        + shape.fill.as_ref().map(fill_bytes).unwrap_or(0)
         + shape.stroke.as_ref().map(stroke_bytes).unwrap_or(0)
         + vec_bytes(&shape.children, node_bytes)
 }
 
 fn clip_bytes(clip: &Clip) -> u64 {
     path_bytes(&clip.path)
+}
+
+fn fill_bytes(fill: &Fill) -> u64 {
+    paint_bytes(&fill.paint) + vec_bytes(&fill.marks, mark_bytes)
+}
+
+/// The program text is shared with eval's declaration through its `Arc`, so no scene owns it.
+fn mark_bytes(mark: &AreaMark) -> u64 {
+    vec_bytes(&mark.stage.uniforms, |(name, _)| str_bytes(name))
 }
 
 fn stroke_bytes(stroke: &Stroke) -> u64 {

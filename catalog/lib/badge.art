@@ -1,0 +1,11 @@
+palette ember
+  ramp blue #c0508a 5
+  ramp gold #4a3a8a 5
+
+def badge
+  rect 48x48 r:8 fill:p.blue.2 stroke:p.blue.0,3 name:plate
+  circle 12 fill:p.gold.2 stroke:p.gold.0,2 name:gem
+
+def twin
+  badge at:-14,0 scale:.5 name:left
+  badge at:14,0 scale:.5 palette:ember name:right

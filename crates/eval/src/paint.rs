@@ -64,11 +64,12 @@ pub fn resolve_gradient(g: &GradSpec, b: Rect) -> Paint {
         },
         GradKind::Radial { at: f, r } => {
             let (x, y) = at(*f);
-            let far = [(b.left, b.top), (b.right, b.top), (b.left, b.bottom), (b.right, b.bottom)]
+            let near = [x - b.left as f64, b.right as f64 - x, y - b.top as f64, b.bottom as f64 - y]
                 .iter()
-                .map(|(px, py)| (*px as f64 - x).hypot(*py as f64 - y))
-                .fold(0.0, f64::max);
-            Paint::Radial { center: p(x, y), radius: r.unwrap_or(far).max(1e-3) as f32, stops: stops(&g.stops) }
+                .map(|d| d.abs())
+                .filter(|d| *d > 1e-9)
+                .fold(f64::INFINITY, f64::min);
+            Paint::Radial { center: p(x, y), radius: r.unwrap_or(near).max(1e-3) as f32, stops: stops(&g.stops) }
         }
         GradKind::Conic { at: f, start } => {
             let (x, y) = at(*f);
@@ -127,11 +128,20 @@ mod tests {
     }
 
     #[test]
-    fn radial_defaults_to_the_farthest_corner() {
-        let g = GradSpec { kind: GradKind::Radial { at: (0.0, 0.0), r: None }, stops: vec![(Rgba::GRAY, None)] };
+    fn radial_defaults_to_the_nearest_edge() {
+        let g = GradSpec { kind: GradKind::Radial { at: (0.3, 0.5), r: None }, stops: vec![(Rgba::GRAY, None)] };
         let Paint::Radial { center, radius, .. } = resolve_gradient(&g, Rect::from_ltrb(0.0, 0.0, 30.0, 40.0)) else {
             panic!("radial")
         };
-        assert_eq!((center, radius), (Point::new(0.0, 0.0), 50.0));
+        assert_eq!((center, radius), (Point::new(9.0, 20.0), 9.0));
+    }
+
+    #[test]
+    fn radial_on_an_edge_skips_that_edge() {
+        let g = GradSpec { kind: GradKind::Radial { at: (0.5, 1.0), r: None }, stops: vec![(Rgba::GRAY, None)] };
+        let Paint::Radial { radius, .. } = resolve_gradient(&g, Rect::from_ltrb(0.0, 0.0, 30.0, 40.0)) else {
+            panic!("radial")
+        };
+        assert_eq!(radius, 15.0);
     }
 }

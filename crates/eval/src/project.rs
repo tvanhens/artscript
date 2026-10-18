@@ -10,6 +10,15 @@ use artscript_syntax::ast::Span;
 
 pub const MANIFEST: &str = "artscript.toml";
 
+/// The bundled standard library, by `use` path. `use std/brushes` reads this table and never a
+/// file, so a project cannot shadow it and `fmt` and the lints never see it.
+pub const STD: &[(&str, &str)] = &[("std/brushes", include_str!("../std/brushes.art"))];
+
+/// The project-relative name a bundled library is known by in diagnostics and dependencies.
+pub fn std_file(path: &str) -> String {
+    format!("{path}.art")
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LintLevel {
     Off,
@@ -46,6 +55,8 @@ pub const LINTS: &[(&str, LintLevel)] = &[
     ("off-canvas", LintLevel::Warn),
     ("unused", LintLevel::Warn),
     ("positional-seed", LintLevel::Warn),
+    ("hidden-child", LintLevel::Warn),
+    ("unknown-target", LintLevel::Warn),
 ];
 
 const PROJECT_KEYS: &[&str] = &["name", "out", "lib", "std"];
@@ -233,7 +244,26 @@ impl Project {
             manifest_src: manifest_src.to_string(),
             files,
         }
+        .without_std_shadow()?
         .with_palette()
+    }
+
+    /// A file that `use std/...` could reach, through a lib root or the project-relative
+    /// fallback, would shadow the bundled library, so it is refused.
+    fn without_std_shadow(self) -> Result<Project, Diagnostic> {
+        let shadow = self.files.keys().find(|f| {
+            f.starts_with("std/") || self.manifest.lib_path_of(f).is_some_and(|p| p.starts_with("std/"))
+        });
+        match shadow {
+            Some(f) => Err(Diagnostic::error(
+                "E0213",
+                Span::default(),
+                format!("`{f}` would shadow the bundled `std/` library"),
+            )
+            .in_file(f)
+            .with_fix("move it out of a folder named `std`; `artscript std <name>` prints a bundled file to fork")),
+            None => Ok(self),
+        }
     }
 
     fn with_palette(self) -> Result<Project, Diagnostic> {
@@ -248,12 +278,29 @@ impl Project {
         }
     }
 
-    /// Resolves `use face/parts` to a project-relative file under one of the lib roots.
+    /// Resolves `use face/parts` to a project-relative file under one of the lib roots. A `std/`
+    /// path resolves only against [`STD`].
     pub fn resolve_use(&self, path: &str) -> Option<String> {
+        if path.starts_with("std/") {
+            return STD.iter().any(|(p, _)| *p == path).then(|| std_file(path));
+        }
         self.manifest.lib.iter().find_map(|root| {
             let file = format!("{}/{path}.art", root.trim_end_matches('/'));
             self.files.contains_key(&file).then_some(file)
         })
+    }
+
+    /// The text of a project file or a bundled library. The one reader of `.art` source for
+    /// evaluation, dependencies and cache keys. `fmt` and `plan` keep iterating `files`.
+    pub fn source(&self, file: &str) -> Option<&str> {
+        if let Some(src) = self.files.get(file) {
+            return Some(src);
+        }
+        STD.iter().find(|(p, _)| std_file(p) == file).map(|(_, src)| *src)
+    }
+
+    pub fn is_bundled(&self, file: &str) -> bool {
+        STD.iter().any(|(p, _)| std_file(p) == file)
     }
 
     pub fn is_lib_file(&self, file: &str) -> bool {
@@ -261,7 +308,9 @@ impl Project {
     }
 
     pub fn library_names(&self) -> Vec<String> {
-        self.files.keys().filter_map(|f| self.manifest.lib_path_of(f)).collect()
+        let mut names: Vec<String> = self.files.keys().filter_map(|f| self.manifest.lib_path_of(f)).collect();
+        names.extend(STD.iter().map(|(p, _)| p.to_string()));
+        names
     }
 }
 
@@ -300,7 +349,7 @@ pub fn load(root: &Path) -> Result<Project, Diagnostic> {
             }
         }
     }
-    Project { root: root.to_path_buf(), manifest, manifest_src, files }.with_palette()
+    Project { root: root.to_path_buf(), manifest, manifest_src, files }.without_std_shadow()?.with_palette()
 }
 
 pub fn rel_path(root: &Path, path: &Path) -> String {

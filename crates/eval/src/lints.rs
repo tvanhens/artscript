@@ -1,14 +1,15 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
 use artscript_syntax::ast::{
-    Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind, Span,
-    SwatchKind,
+    BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
+    Span, SwatchKind,
 };
 use artscript_syntax::{Diagnostic, Severity};
 
 use crate::identity::PositionalUses;
 use crate::project::{LintLevel, Manifest};
+use crate::targets;
 
 fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnostic> {
     let severity = match level {
@@ -26,7 +27,7 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
 fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
-        Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) => {
+        Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
             walk_expr(a, f);
             walk_expr(b, f);
         }
@@ -82,7 +83,10 @@ fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
                 }
             }
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Play { .. }
+        | SceneKind::Fx(_) => {}
     }
 }
 
@@ -134,6 +138,7 @@ fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'
                 out.push((e, s.span));
             }
         }
+        SceneKind::Fx(fx) => fx_exprs(fx, out),
         SceneKind::Draw(d) => {
             d.args.iter().for_each(|a| out.push((a, s.span)));
             named(&d.named, out);
@@ -170,14 +175,14 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
                     }
                 }
             }
-            DeclKind::Style { named: ns, .. }
-            | DeclKind::Light { named: ns, .. }
-            | DeclKind::Brush { named: ns, .. } => named(ns, &mut out),
+            DeclKind::Style { named: ns, .. } | DeclKind::Light { named: ns, .. } => {
+                named(ns, &mut out)
+            }
             DeclKind::Finish { params, body, .. } => {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
             }
-            DeclKind::Shader { params, .. } | DeclKind::Rule { params, .. } => {
+            DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
             DeclKind::Def { params, body, .. } => {
@@ -229,6 +234,116 @@ pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic
     out
 }
 
+/// Names an entry file binds itself, whose value only evaluation knows.
+fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
+    let mut out: HashSet<String> = file
+        .directives
+        .iter()
+        .flat_map(|d| d.each.iter().map(|n| n.key.clone()))
+        .collect();
+    for d in file.decls() {
+        if let DeclKind::Def { params, .. }
+        | DeclKind::Rule { params, .. }
+        | DeclKind::Finish { params, .. }
+        | DeclKind::Brush { params, .. } = &d.kind
+        {
+            out.extend(params.iter().map(|p| p.key.clone()));
+        }
+    }
+    all_scenes(&file.items, &mut |s| {
+        if let SceneKind::Let { name, .. } | SceneKind::Each { var: name, .. } = &s.kind {
+            out.insert(name.clone());
+        }
+    });
+    for (e, _) in exprs {
+        walk_expr(e, &mut |x| {
+            if let Expr::Each { var, .. } = x {
+                out.insert(var.clone());
+            }
+        });
+    }
+    out
+}
+
+/// `target == x` or `target != x` where `x` is a word or string that no `@target` in the entry
+/// file labels. A name the file binds or imports (`bound`) is left alone.
+pub fn unknown_target(
+    file: &File,
+    path: &str,
+    manifest: &Manifest,
+    bound: impl Fn(&str) -> bool,
+) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("unknown-target");
+    let mut labels = BTreeSet::new();
+    let mut unlabeled = false;
+    for d in file.directives.iter().filter(|d| d.name == "target") {
+        match targets::label(d) {
+            Some(l) => {
+                labels.insert(l);
+            }
+            None => unlabeled = true,
+        }
+    }
+    let (note, fix) = match labels.first() {
+        None => (
+            "no `@target` here sets `as:`, so `target` is always `none`".to_string(),
+            "add `as:<label>` to a `@target`".to_string(),
+        ),
+        Some(first) => {
+            let names: Vec<&str> = labels.iter().map(String::as_str).collect();
+            let none = if unlabeled {
+                ", and a target without `as:` makes it `none`"
+            } else {
+                ""
+            };
+            (
+                format!("its targets are labeled {}{none}", names.join(", ")),
+                format!("compare `target` with an `as:` label, such as `target == {first}`"),
+            )
+        }
+    };
+    let exprs = file_exprs(file, false);
+    let local = local_names(file, &exprs);
+    let is_target = |e: &Expr| matches!(e, Expr::Ident(n) if n == "target");
+    let mut out = Vec::new();
+    for (e, span) in &exprs {
+        walk_expr(e, &mut |x| {
+            let Expr::Binary(BinOp::Eq | BinOp::Ne, a, b) = x else {
+                return;
+            };
+            let other = match (is_target(a), is_target(b)) {
+                (true, false) => &**b,
+                (false, true) => &**a,
+                _ => return,
+            };
+            let (shown, possible) = match other {
+                Expr::Str(s) => (format!("\"{s}\""), labels.contains(s)),
+                Expr::Ident(w) if w == "none" => (w.clone(), unlabeled),
+                Expr::Ident(w) if w == "t" || w == "clip" || local.contains(w) || bound(w) => {
+                    return;
+                }
+                Expr::Ident(w) => (w.clone(), labels.contains(w)),
+                _ => return,
+            };
+            if !possible
+                && let Some(d) = diag(
+                    level,
+                    "L0106",
+                    *span,
+                    format!("`target` is never `{shown}` in this file"),
+                )
+            {
+                out.push(
+                    d.in_file(path)
+                        .with_note(note.clone())
+                        .with_fix(fix.clone()),
+                );
+            }
+        });
+    }
+    out
+}
+
 fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     for (e, _) in exprs {
         walk_expr(e, &mut |x| match x {
@@ -238,17 +353,15 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
             Expr::Call { func, .. } => {
                 out.insert(func.clone());
             }
-            Expr::Member(_, seg) => {
-                if let Some(v) = seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                    out.insert(v.to_string());
-                }
-            }
             _ => {}
         });
     }
     for s in scenes {
         if let SceneKind::Play { name: Some(n), .. } = &s.kind {
             out.insert(n.clone());
+        }
+        if let SceneKind::Fx(fx) = &s.kind {
+            out.insert(fx.op.clone());
         }
         if let SceneKind::Draw(d) = &s.kind {
             out.insert(d.verb.clone());
@@ -272,7 +385,11 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     let mut scenes = Vec::new();
     all_scenes(&file.items, &mut |s| scenes.push(s));
     let mut used = HashSet::new();
-    idents(file_exprs(file, false), &scenes, &mut used);
+    let mut exprs = file_exprs(file, false);
+    for d in &file.directives {
+        named(&d.named, &mut exprs);
+    }
+    idents(exprs, &scenes, &mut used);
     for d in file.decls() {
         match &d.kind {
             DeclKind::Def { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
@@ -461,15 +578,7 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
     }
     let hits = walk.hits;
     for (path, origin, b, site) in hits {
-        let line = origin
-            .rsplit(':')
-            .next()
-            .and_then(|l| l.parse().ok())
-            .unwrap_or(1);
-        let src = origin
-            .rsplit_once(':')
-            .map(|(f, _)| f.to_string())
-            .unwrap_or(file.to_string());
+        let (src, line) = source_line(&origin, file);
         let msg = if b.intersects(canvas) {
             "is clipped by the canvas edge"
         } else {
@@ -497,6 +606,160 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
             }
             out.push(d);
         }
+    }
+    out
+}
+
+/// The file and line a node's `origin` names, or line 1 of `file` when it names none.
+fn source_line(origin: &str, file: &str) -> (String, u32) {
+    let line = origin
+        .rsplit(':')
+        .next()
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(1);
+    let src = origin
+        .rsplit_once(':')
+        .map(|(f, _)| f.to_string())
+        .unwrap_or(file.to_string());
+    (src, line)
+}
+
+/// Lines whose every node nested under one shape draws ([`Node::outer_bounds`]) wholly outside
+/// that shape or a clipping shape above it, so the line draws nothing there. A scatter whose
+/// copies only partly land outside the shape is not reported. A hidden node's children are not
+/// measured.
+pub fn hidden_child(
+    scene: &artscript_ir::Scene,
+    manifest: &Manifest,
+    file: &str,
+) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("hidden-child");
+    type Find<'n, 'f> = &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>;
+    struct Hit<'n> {
+        node: &'n Node,
+        by: &'n str,
+        bounds: Rect,
+        site: Option<&'n str>,
+    }
+    /// The nodes one line drew under one parent shape.
+    #[derive(Default)]
+    struct Line<'n> {
+        drawn: usize,
+        hidden: Vec<Hit<'n>>,
+    }
+    struct Walk<'n, 'f> {
+        entry: &'f str,
+        find: Find<'n, 'f>,
+        /// The clipping shapes above the current node, innermost last, in canvas coordinates.
+        clips: Vec<(Rect, &'n str)>,
+        lines: Vec<Line<'n>>,
+        by_key: HashMap<(&'n str, &'n str), usize>,
+    }
+    impl<'n> Walk<'n, '_> {
+        fn node(&mut self, n: &'n Node, parent: Matrix, mut site: Option<&'n str>) {
+            if n.origin
+                .rsplit_once(':')
+                .is_some_and(|(f, _)| f == self.entry)
+            {
+                site = Some(&n.origin);
+            }
+            if let Some(&(_, parent_shape)) = self.clips.last()
+                && let Some(b) = n.outer_bounds(&parent, self.find)
+            {
+                let bounds = parent.map_rect(b).0;
+                let next = self.lines.len();
+                let i = *self
+                    .by_key
+                    .entry((n.origin.as_str(), parent_shape))
+                    .or_insert(next);
+                if i == next {
+                    self.lines.push(Line::default());
+                }
+                let line = &mut self.lines[i];
+                line.drawn += 1;
+                let hider = self
+                    .clips
+                    .iter()
+                    .rev()
+                    .find(|(r, _)| !bounds.intersects(*r));
+                if let Some(&(_, by)) = hider {
+                    line.hidden.push(Hit {
+                        node: n,
+                        by,
+                        bounds,
+                        site,
+                    });
+                    return;
+                }
+            }
+            let world = parent * n.transform;
+            let clip = match &n.kind {
+                NodeKind::Shape(s) => {
+                    let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
+                    self.clips.push((r, n.path.as_str()));
+                    true
+                }
+                NodeKind::Group { .. } => false,
+            };
+            for c in n.children() {
+                self.node(c, world, site);
+            }
+            if clip {
+                self.clips.pop();
+            }
+        }
+    }
+    let mut paths = HashMap::new();
+    index(&scene.children, Matrix::new_identity(), &mut paths);
+    let find = |p: &str| paths.get(p).copied();
+    let mut walk = Walk {
+        entry: file,
+        find: &find,
+        clips: Vec::new(),
+        lines: Vec::new(),
+        by_key: HashMap::new(),
+    };
+    for c in &scene.children {
+        walk.node(c, Matrix::new_identity(), None);
+    }
+    let mut out = Vec::new();
+    for line in walk.lines {
+        if line.hidden.len() < line.drawn {
+            continue;
+        }
+        let hit = &line.hidden[0];
+        let (src, line_no) = source_line(&hit.node.origin, file);
+        let path = &hit.node.path;
+        let Some(d) = diag(
+            level,
+            "L0105",
+            Span {
+                line: line_no,
+                col: 1,
+            },
+            format!("`{path}` is entirely outside `{}`, which clips it", hit.by),
+        ) else {
+            continue;
+        };
+        let b = hit.bounds;
+        let mut d = d
+            .in_file(&src)
+            .at_node(path)
+            .with_note(format!(
+                "bounds {},{} {}x{}",
+                b.left.round(),
+                b.top.round(),
+                b.width().round(),
+                b.height().round()
+            ))
+            .with_fix("move it inside the shape it is nested under, or draw it beside that shape");
+        if line.drawn > 1 {
+            d = d.with_note(format!("so are the {} other copies", line.drawn - 1));
+        }
+        if let Some(site) = hit.site.filter(|_| src != file) {
+            d = d.with_note(format!("in {site}"));
+        }
+        out.push(d);
     }
     out
 }

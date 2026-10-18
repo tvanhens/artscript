@@ -2,6 +2,7 @@
 // `Diagnostic` is the error type every layer shares and lives in artscript-syntax.
 #![allow(clippy::result_large_err)]
 
+mod brush;
 mod builtins;
 mod checks;
 pub mod color;
@@ -21,7 +22,7 @@ mod seed;
 pub mod targets;
 mod value;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use artscript_ir::Scene;
 use artscript_syntax::Diagnostic;
@@ -29,7 +30,7 @@ use artscript_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use key::{frame_count, frame_delays};
-pub use project::{BackendChoice, LintLevel, Manifest, Project, find_root, load};
+pub use project::{BackendChoice, LintLevel, Manifest, Project, STD, find_root, load};
 pub use seed::fnv1a;
 pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
 
@@ -49,6 +50,16 @@ pub struct Evaluation {
     pub plays: Vec<PlayMark>,
     /// Node keys that drew a key-derived seed. `explain` prints `seed` on these.
     pub seeded: BTreeSet<String>,
+    pub rig: Rig,
+}
+
+/// What a scene exposes to the program that places its image, in canvas units.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Rig {
+    /// The `pivot:` point, `None` when the target has no `pivot:`.
+    pub pivot: Option<(f64, f64)>,
+    /// Every anchor the scene placed, keyed by the path an author writes after `@`.
+    pub anchors: BTreeMap<String, (f64, f64)>,
 }
 
 pub struct Frame {
@@ -71,6 +82,62 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     ev
 }
 
+/// One target's scene drawn at one scale, with the rig that scene placed.
+pub struct ScaleScene {
+    /// The scale the scene was evaluated at, as `TargetJob::sample_scale` names it.
+    pub scale: f32,
+    pub scene: Scene,
+    pub rig: Rig,
+}
+
+pub struct OutputScenes {
+    /// Every scale's diagnostics, a repeat of one scale-independent diagnostic kept once.
+    pub diagnostics: Vec<Diagnostic>,
+    /// One scene per distinct draw scale, in output order. A scale that could not be evaluated has none.
+    pub scenes: Vec<ScaleScene>,
+}
+
+impl OutputScenes {
+    pub fn at(&self, scale: f32) -> Option<&ScaleScene> {
+        self.scenes.iter().find(|s| s.scale == scale)
+    }
+}
+
+/// Evaluates a target once for each scale its outputs draw at, because a file reads `scale` and
+/// may draw differently at each.
+pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
+    let mut scales: Vec<f32> = Vec::new();
+    for out in &job.outputs {
+        let scale = job.sample_scale(out);
+        if !scales.contains(&scale) {
+            scales.push(scale);
+        }
+    }
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    let mut scenes = Vec::new();
+    for scale in scales {
+        let at = TargetJob {
+            bake_scale: scale,
+            ..job.clone()
+        };
+        let ev = evaluate(project, &at);
+        for d in ev.diagnostics {
+            if !diagnostics.contains(&d) {
+                diagnostics.push(d);
+            }
+        }
+        scenes.extend(ev.scene.map(|scene| ScaleScene {
+            scale,
+            scene,
+            rig: ev.rig,
+        }));
+    }
+    OutputScenes {
+        diagnostics,
+        scenes,
+    }
+}
+
 /// `evaluate` with each loop copy's diagnostic kept apart, so `sample` can fold them once across frames.
 fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = Evaluator::new(project, job);
@@ -83,12 +150,19 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
                 diagnostics: ev.diags,
                 plays: Vec::new(),
                 seeded: BTreeSet::new(),
+                rig: Rig::default(),
             };
         }
     };
     let loaded = ev.diags.len();
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
+    if let Some(e) = &job.palette {
+        match ev.target_palette(e, &sc) {
+            Ok(v) => sc.palette = Some(v),
+            Err(f) => ev.report(f, &job.source, job.span, ""),
+        }
+    }
     let scenes: Vec<_> = file.scenes().cloned().collect();
     ev.collect_entry(&scenes, &mut sc);
     let children = ev.eval_block_nodes(file.scenes(), &mut sc);
@@ -107,6 +181,17 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
             .background
             .or_else(|| project.manifest.bg.as_deref().and_then(Rgba::hex)),
     };
+    let pivot = job.pivot.as_ref().and_then(|e| match ev.pivot(e, &sc) {
+        Ok(p) => Some(p),
+        Err(f) => {
+            ev.report(f, &job.source, job.span, "");
+            None
+        }
+    });
+    let rig = Rig {
+        pivot,
+        anchors: scope::placed_anchors(&sc.names),
+    };
     let scene = Scene {
         width: job.size.0,
         height: job.size.1,
@@ -124,18 +209,32 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut files: Vec<&String> = ev.parsed.keys().collect();
     files.sort();
     for f in files {
+        if ev.modules.get(f).is_some_and(|m| m.bundled) {
+            continue;
+        }
         let parsed = &ev.parsed[f];
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
     }
-    let mut off_canvas = lints::off_canvas(&scene, &project.manifest, &job.source);
-    stamp_target(job, &mut off_canvas);
-    diagnostics.extend(off_canvas);
+    diagnostics.extend(lints::unknown_target(
+        &file,
+        &job.source,
+        &project.manifest,
+        |n| module.global(n).is_some() || module.lost(n),
+    ));
+    let mut placement = Vec::new();
+    if !job.viewport {
+        placement = lints::off_canvas(&scene, &project.manifest, &job.source);
+    }
+    placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
+    stamp_target(job, &mut placement);
+    diagnostics.extend(placement);
     Evaluation {
         scene: Some(scene),
         diagnostics,
         plays,
         seeded,
+        rig,
     }
 }
 
@@ -440,6 +539,7 @@ impl AggAcc {
                     .collect::<Vec<_>>(),
             );
             if let Some(agg) = self.groups.iter_mut().find(|g| g.key == key) {
+                agg.frames += 1;
                 let mag = note_magnitude(d);
                 if let Some(mag) = mag
                     && (!agg.has_mag || mag > agg.mag)
@@ -461,6 +561,7 @@ impl AggAcc {
                     worst: t,
                     mag: mag.unwrap_or(0.0),
                     has_mag: mag.is_some(),
+                    frames: 1,
                 });
             }
         }
@@ -477,6 +578,12 @@ impl AggAcc {
     fn finish(mut self) -> Vec<Diagnostic> {
         let frames = self.frames;
         for mut agg in self.groups {
+            if agg.diag.code == "L0105" {
+                if agg.frames == frames {
+                    self.out.push(agg.diag);
+                }
+                continue;
+            }
             if frames > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
                 agg.diag
                     .notes
@@ -498,10 +605,13 @@ struct Agg {
     worst: f64,
     mag: f64,
     has_mag: bool,
+    /// The frames that raised it. A child hidden only on some frames, such as an eye
+    /// highlight under a blink, is drawn on the others and L0105 drops it.
+    frames: usize,
 }
 
 fn folded_lint(code: &str) -> bool {
-    code == "L0102" || code == "L0104"
+    matches!(code, "L0102" | "L0104" | "L0105")
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.
@@ -572,7 +682,7 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
         if !seen.insert(f.clone()) {
             continue;
         }
-        let Some(src) = project.files.get(&f) else {
+        let Some(src) = project.source(&f) else {
             continue;
         };
         let Ok(file) = artscript_syntax::parse(src) else {

@@ -5,7 +5,9 @@
 //! so backends interpolate linearly between neighbouring stops and still match each other.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+pub use artscript_brush::UniformValue;
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
 mod retained;
@@ -32,6 +34,23 @@ impl Color {
     }
 }
 
+/// The sides of a node's local box an effect draws on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sides {
+    pub top: bool,
+    pub right: bool,
+    pub bottom: bool,
+    pub left: bool,
+}
+
+impl Sides {
+    pub const ALL: Sides = Sides { top: true, right: true, bottom: true, left: true };
+
+    pub fn is_all(self) -> bool {
+        self == Sides::ALL
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Profile {
     /// Pure SVG; any raster-only feature is an error.
@@ -40,6 +59,12 @@ pub enum Profile {
     Svg,
     /// Skia renders directly.
     Raster,
+}
+
+/// The pixel size of a `width` x `height` canvas drawn at `scale`: a PNG's size.
+pub fn pixel_size(width: f32, height: f32, scale: f32) -> (i32, i32) {
+    let side = |canvas: f32| (canvas * scale).ceil().max(1.0) as i32;
+    (side(width), side(height))
 }
 
 #[derive(Clone, Debug)]
@@ -78,7 +103,7 @@ pub enum NodeKind {
 #[derive(Clone, Debug)]
 pub struct Shape {
     pub geometry: Path,
-    pub fill: Option<Paint>,
+    pub fill: Option<Fill>,
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
@@ -86,6 +111,49 @@ pub struct Shape {
     /// "clip by nesting" rule). The shape and its children form one isolated group, so a
     /// child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
+}
+
+/// A fill and the brush marks that shade it. An empty `marks` is a plain fill. With marks, the
+/// stages run in order over the shape's signed distance field: stage 0 reads `paint` at each
+/// pixel as `m.paint`, each later stage reads the previous stage's color, and coverages multiply.
+#[derive(Clone, Debug)]
+pub struct Fill {
+    pub paint: Paint,
+    pub marks: Vec<AreaMark>,
+}
+
+impl Fill {
+    pub fn plain(paint: Paint) -> Fill {
+        Fill { paint, marks: Vec::new() }
+    }
+
+    /// Local units the marks may paint past the geometry.
+    pub fn reach(&self) -> f32 {
+        self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+    }
+}
+
+/// One brush stage over a fill. `m.uv`, `m.s`, `m.u` run along `dir_deg` across the geometry's
+/// bounds rotated by that angle; `m.edge` is the signed distance in local units, + inside.
+#[derive(Clone, Debug)]
+pub struct AreaMark {
+    pub stage: Stage,
+    pub dir_deg: f32,
+    /// `cos` and `sin` of `dir_deg`, computed on the CPU so both backends rotate alike.
+    pub cos_sin: [f32; 2],
+    /// Local units the stage may paint past the geometry. Grows bounds and bake tiles.
+    pub reach: f32,
+}
+
+/// One compiled-checkable brush program with its uniform values and seed.
+#[derive(Clone, Debug)]
+pub struct Stage {
+    /// The assembled program eval checked. Render compiles the same text.
+    pub program: Arc<artscript_brush::Program>,
+    /// Author uniforms in declaration order, by name.
+    pub uniforms: Vec<(String, UniformValue)>,
+    /// The site seed, reduced to 32 bits. Render derives the shader's seed uniforms from it.
+    pub seed: u32,
 }
 
 #[derive(Clone, Debug)]
@@ -158,8 +226,10 @@ pub enum MaskSource {
 /// Scalar field over the owning node's local coordinates, nominally 0..1.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Field {
-    /// `scale` is the feature size in canvas units.
-    Noise { kind: NoiseKind, scale: f32, seed: u32 },
+    /// `scale` is the feature size in canvas units. `wrap` is a period per axis in the same
+    /// units: the field repeats every `wrap[0]` along x and every `wrap[1]` along y, with the
+    /// feature size snapped so a whole number of cells fits each period.
+    Noise { kind: NoiseKind, scale: f32, seed: u32, wrap: Option<[f32; 2]> },
     /// Fractal sum of `octaves` copies of `base` at doubling frequency and halving amplitude,
     /// renormalised to 0..1. `ridged` folds each octave as `1 - |2v - 1|`.
     Fbm { base: Box<Field>, octaves: u32, ridged: bool },
@@ -249,22 +319,32 @@ pub enum EffectOp {
     /// Shadow cast inward from the edges, on top of the input and inside its alpha.
     /// Offset 0,6 darkens the top edge (CSS `inset` semantics).
     Inner { dx: f32, dy: f32, blur: f32, color: Color },
-    /// Soft halo of `color` behind the input, `radius` sigma.
-    Glow { radius: f32, color: Color },
+    /// Soft halo of `color` behind the input, `radius` sigma. `strength` multiplies the halo's
+    /// alpha, clamped to 1. The blur kernel's support bounds the halo, so a strength above 1
+    /// brightens it and reaches no further than a glow at full alpha.
+    Glow { radius: f32, color: Color, strength: f32 },
     /// Thin light band just inside the edge on the side facing `dir` (screen space, y down),
     /// brightest at the edge and fading inward over `width`.
     Rim { width: f32, dir: Point, color: Color },
     /// OKLCH shift of every pixel: hue degrees, chroma fraction (+.2 = 20% more), OKLab lightness.
     Adjust { hue: f32, sat: f32, light: f32 },
     /// Line of `width` around the node's shape geometry, drawn behind the content.
-    /// Earlier effects do not change the traced path.
-    Outline { width: f32, color: Color },
+    /// Earlier effects do not change the traced path. Ink past an edge of the traced
+    /// geometry's box is dropped on every side `sides` leaves out.
+    Outline { width: f32, color: Color, sides: Sides },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.
     Grain { strength: f32, scale: f32, seed: u32 },
     /// Composites `inputs` bottom to top, each with its own opacity.
     Merge { inputs: Vec<EffectInput>, alphas: Vec<f32> },
+}
+
+impl Shape {
+    /// Local units the fill's brush marks may paint past `geometry`. 0 without marks.
+    pub fn mark_reach(&self) -> f32 {
+        self.fill.as_ref().map_or(0.0, Fill::reach)
+    }
 }
 
 impl Node {
@@ -371,10 +451,18 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, .. } = effect.op
+            if let EffectOp::Outline { width, sides, .. } = effect.op
                 && width > 0.0
             {
-                let traced = self.local_ink().map(|r| r.with_outset((width, width)));
+                let traced = self.local_ink().map(|r| {
+                    let reach = |on: bool| if on { width } else { 0.0 };
+                    Rect::new(
+                        r.left - reach(sides.left),
+                        r.top - reach(sides.top),
+                        r.right + reach(sides.right),
+                        r.bottom + reach(sides.bottom),
+                    )
+                });
                 current = join(current, traced);
                 source = current;
                 named.clear();
@@ -383,9 +471,11 @@ impl Node {
             let input = env.resolve(&effect.input, current, source, &named);
             current = match &effect.op {
                 EffectOp::Blur { sigma } => grow(input, blur_reach(*sigma, 1.0)),
-                EffectOp::Glow { radius, color } => {
-                    join(input, grow(input, blur_reach(*radius, color.a)))
-                }
+                EffectOp::Glow {
+                    radius,
+                    color,
+                    strength,
+                } => join(input, grow(input, blur_reach(*radius, color.a * strength))),
                 EffectOp::Shadow {
                     dx,
                     dy,
@@ -445,11 +535,15 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Geometry plus half the stroke width.
+/// Geometry plus half the stroke width, plus what the fill's brush marks may paint past it.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
     if let Some(st) = &s.stroke {
         r.outset((st.width / 2.0, st.width / 2.0));
+    }
+    let reach = s.mark_reach();
+    if reach > 0.0 {
+        r.outset((reach, reach));
     }
     if r.is_empty() && s.geometry.is_empty() {
         None

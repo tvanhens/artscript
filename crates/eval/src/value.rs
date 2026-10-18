@@ -5,7 +5,9 @@ use std::rc::Rc;
 
 use artscript_ir::Field;
 
+use crate::brush::BrushVal;
 use crate::color::{Ramp, Rgba};
+use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
 use crate::range::Range;
 use crate::scope::{Component, Module, Palette, RefVal, RuleDef};
@@ -73,6 +75,8 @@ pub enum Value {
     Module(Rc<Module>),
     Ref(Rc<RefVal>),
     Rule(Rc<RuleDef>),
+    /// A `brush` declaration with its uniform values and placement bound.
+    Brush(Rc<BrushVal>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.
     Unseen,
@@ -96,6 +100,7 @@ pub enum Kind {
     Module,
     Ref,
     Rule,
+    Brush,
     Unseen,
 }
 
@@ -117,6 +122,7 @@ impl fmt::Display for Kind {
             Kind::Module => "a module",
             Kind::Ref => "a node reference",
             Kind::Rule => "a rule",
+            Kind::Brush => "a brush",
             Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
@@ -143,6 +149,7 @@ impl Value {
             Value::Module(_) => Kind::Module,
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
+            Value::Brush(_) => Kind::Brush,
             Value::Unseen => Kind::Unseen,
         }
     }
@@ -185,6 +192,36 @@ impl Value {
             Value::List(xs) if xs.len() == 2 => Some((xs[0].coord()?, xs[1].coord()?)),
             _ => None,
         }
+    }
+
+    /// The value of a vector key such as `at:`, `pivot:` or `step:`, or E0320 naming the key.
+    pub fn pair_for(&self, key: &str) -> R<(Coord, Coord)> {
+        self.pair().ok_or_else(|| self.not_a_vector(key))
+    }
+
+    /// Like [`Value::pair_for`], for a key whose coordinates are canvas units, never percents.
+    pub fn vec2_for(&self, key: &str) -> R<(f64, f64)> {
+        match self.pair() {
+            Some((Coord::Num(x), Coord::Num(y))) => Ok((x, y)),
+            Some(_) => Err(fail("E0320", format!("`{key}:` takes numbers, not percents"))
+                .fix(format!("write `{key}:4,2` in canvas units"))),
+            None => Err(self.not_a_vector(key)),
+        }
+    }
+
+    /// `a,b + v` is the tuple `a,(b + v)`: a comma binds looser than `+`. A pair holding a
+    /// vector is the trace of that mistake.
+    fn not_a_vector(&self, key: &str) -> Fail {
+        let swallowed = matches!(
+            self,
+            Value::Tuple(xs) if xs.len() == 2 && xs.iter().any(|x| matches!(x, Value::Vec2(..) | Value::Size(..)))
+        );
+        let fix = if swallowed {
+            "wrap the vector in parentheses, as in `(a,b) + v`, because `+` binds tighter than `,`".to_string()
+        } else {
+            format!("write `{key}:4,2`")
+        };
+        fail("E0320", format!("`{key}:` expects a vector like 4,2, got {}", self.kind())).fix(fix)
     }
 
     pub fn coord(&self) -> Option<Coord> {
@@ -261,6 +298,7 @@ impl Value {
             Value::Module(m) => m.path.clone(),
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
+            Value::Brush(b) => format!("brush {}", b.decl.name),
             Value::Unseen => "unseen".into(),
         }
     }
@@ -380,6 +418,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::None, Value::None) => true,
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
+        (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,
         (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {

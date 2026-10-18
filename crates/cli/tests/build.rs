@@ -904,6 +904,47 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
 }
 
 #[test]
+fn a_viewport_target_skips_the_off_canvas_lint() {
+    let dir = fixture("viewport", &[]);
+    let body = "rect 40x20 at:60,32 fill:p.rim\n";
+    fs::write(
+        dir.join("art/t.art"),
+        format!("@target a.png 64x64\n@target b.png 64x64 viewport\n{body}"),
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check", "--json"]);
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cut: Vec<&str> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "L0102")
+        .map(|d| d["target"].as_str().unwrap())
+        .collect();
+    assert_eq!(cut, ["a.png"], "{json}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_unknown_target_word_or_key_is_an_error() {
+    let dir = fixture("target-unknown", &[]);
+    for (line, what) in [
+        ("@target t.png 64x64 foo", "unknown target word `foo`"),
+        (
+            "@target t.png 64x64 viewport:yes",
+            "unknown target key `viewport`",
+        ),
+    ] {
+        fs::write(dir.join("art/t.art"), format!("{line}\nrect 4x4 at:8,8\n")).unwrap();
+        let out = artscript(&dir, &["check"]);
+        assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+        let err = text(&out);
+        assert!(err.contains("E0206") && err.contains(what), "{err}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_closed_output_pipe_keeps_the_exit_code() {
     let dir = fixture("closed-pipe", &[]);
     let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
@@ -935,4 +976,174 @@ fn init_names_the_project_after_its_folder() {
     assert_eq!(manifest.name, folder);
     let out = artscript(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}
+
+fn rig_project(tag: &str, art: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-{tag}-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"rig\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("art/main.art"), art).unwrap();
+    dir
+}
+
+fn entry(dir: &Path, path: &str) -> serde_json::Value {
+    manifest(dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|o| o["path"] == path)
+        .unwrap_or_else(|| panic!("no manifest entry for {path}"))
+        .clone()
+}
+
+#[test]
+fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
+    let dir = rig_project(
+        "rig",
+        "@target x.png 64x64 scale:1,2 pivot:@body.neck\n\
+         @target y.svg 64x64 pivot:50%,100%\n\n\
+         def doll\n  circle 8\n  anchor neck 0,-10\n  anchor _hidden 3,3\n\n\
+         doll at:30,40 name:body\n",
+    );
+    let first = artscript(&dir, &["build"]);
+    assert_eq!(first.status.code(), Some(0), "{}", text(&first));
+    let one = entry(&dir, "x.png");
+    assert_eq!(one["pivot"], serde_json::json!([30, 30]));
+    assert_eq!(one["anchors"], serde_json::json!({ "body.neck": [30, 30] }));
+    let two = entry(&dir, "x@2x.png");
+    assert_eq!(two["pivot"], serde_json::json!([60, 60]));
+    assert_eq!(two["anchors"], serde_json::json!({ "body.neck": [60, 60] }));
+    let svg = entry(&dir, "y.svg");
+    assert_eq!(svg["pivot"], serde_json::json!([32, 64]));
+    assert_eq!(svg["anchors"], one["anchors"]);
+
+    let bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
+    let second = artscript(&dir, &["build"]);
+    assert_eq!(second.status.code(), Some(0), "{}", text(&second));
+    assert_eq!(fs::read(dir.join("assets/art-manifest.json")).unwrap(), bytes);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_target_without_pivot_writes_null_and_a_gif_writes_neither_key() {
+    let dir = rig_project(
+        "rig-none",
+        "@target a.png 8x8\n@target b.gif 8x8 bg:#ffffff dur:1s\nrect 4x4\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let png = entry(&dir, "a.png");
+    assert_eq!(png["pivot"], serde_json::Value::Null);
+    assert_eq!(png["anchors"], serde_json::json!({}));
+    let gif = entry(&dir, "b.gif");
+    assert!(gif.get("pivot").is_none() && gif.get("anchors").is_none(), "{gif}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_pivot_that_is_not_a_point_is_e0206() {
+    let cases = [
+        (
+            "@target a.png 8x8 pivot:@body\ncircle 4 name:body\n",
+            "is a node, not a point",
+        ),
+        (
+            "@target a.png 8x8 pivot:red\ncircle 4\n",
+            "`pivot:` needs a point",
+        ),
+        (
+            "@target a.gif 8x8 bg:#ffffff dur:1s pivot:4,4\ncircle 4\n",
+            "`pivot:` needs a .png or .svg target",
+        ),
+    ];
+    for (i, (art, message)) in cases.into_iter().enumerate() {
+        let dir = rig_project(&format!("rig-bad{i}"), art);
+        for cmd in ["check", "build"] {
+            let out = artscript(&dir, &[cmd]);
+            let err = text(&out);
+            assert_eq!(out.status.code(), Some(1), "{cmd} {art}: {err}");
+            assert!(err.contains("E0206") && err.contains(message), "{cmd} {art}: {err}");
+        }
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+fn png_size(path: &Path) -> (u32, u32) {
+    let bytes = fs::read(path).unwrap();
+    let be = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+    (be(16), be(20))
+}
+
+#[test]
+fn size_placeholders_name_the_files_a_build_writes() {
+    let dir = rig_project(
+        "sized",
+        "@target icon_{w}.png 32x20 scale:.5,1,2\n@target vec_{w}x{h}_{scale}.svg 32x20 scale:2\nrect 4x4\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    for (name, size) in [("icon_16.png", (16, 10)), ("icon_32.png", (32, 20)), ("icon_64.png", (64, 40))] {
+        assert_eq!(png_size(&dir.join("assets").join(name)), size, "{name}");
+    }
+    assert!(dir.join("assets/vec_32x20_1.svg").exists());
+    let paths: Vec<String> = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["path"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(paths, ["icon_16.png", "icon_32.png", "icon_64.png", "vec_32x20_1.svg"]);
+    assert_eq!(entry(&dir, "icon_64.png")["scale"], 2.0);
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_diagnostic_that_only_one_scale_raises_is_reported() {
+    let dir = rig_project(
+        "scale-diag",
+        "@target x.png 8x8 scale:1,2\nrect 4x4\nexpect scale in 0..1.5 \"small scale only\"\nexpect 5 in 0..1 \"every scale\"\n",
+    );
+    for cmd in ["check", "build"] {
+        let out = artscript(&dir, &[cmd]);
+        let err = text(&out);
+        assert_eq!(err.matches("2 is outside 0..1.5").count(), 1, "{cmd}: {err}");
+        assert_eq!(err.matches("5 is outside 0..1\n").count(), 1, "{cmd}: {err}");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_compile_error_only_one_scale_raises_stops_the_build() {
+    let dir = rig_project(
+        "scale-error",
+        "@target x.png 8x8 scale:1,2\nrect 4x4\nif scale > 1\n  circle bogus\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    assert!(!dir.join("assets/x.png").exists() && !dir.join("assets/x@2x.png").exists());
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn each_outputs_anchors_come_from_its_own_scene() {
+    let dir = rig_project(
+        "scale-rig",
+        "@target x.png 64x64 scale:1,2 pivot:@body.hip\n\
+         def doll\n  circle 8\n  anchor hip 0,10*scale\n\n\
+         doll at:30,40 name:body\n",
+    );
+    let out = artscript(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    assert_eq!(entry(&dir, "x.png")["anchors"], serde_json::json!({ "body.hip": [30, 50] }));
+    assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
+    assert_eq!(entry(&dir, "x@2x.png")["pivot"], serde_json::json!([60, 120]));
+    let again = artscript(&dir, &["build"]);
+    assert_eq!(again.status.code(), Some(0), "{}", text(&again));
+    assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
+    let _ = fs::remove_dir_all(&dir);
 }

@@ -1,0 +1,72 @@
+# std/brushes: the house brushes. Every built-in is `.art` code. `artscript std brushes`
+# prints this file so you can copy it into lib/ and fork it.
+# A brush body defines `float4 shade(Mark m)` and returns straight rgb plus coverage.
+# Mark: p dev u s v d len width pressure angle tilt velocity edge uv seed paint px.
+# Helpers: hash12 hash22 vnoise simplex worley fbm rot seeded cover. See `artscript docs brushes`.
+
+# Area: dry brush. Coverage breaks into streaks along `dir`; `fade` wears it out toward the
+# far end of the stroke direction.
+brush dry strength:.5 scale:1 fade:0 dir:0
+  sksl """
+  // One pass of the brush: it starts loaded and runs dry along its length; the seam
+  // where a fresh pass starts is ragged because it moves with the bristle noise.
+  float pass_load(float row, Mark m, float2 o, float hair) {
+    float r1 = hash12(float2(row, 3.7) + o);
+    float r2 = hash12(float2(row, 9.1) + o);
+    float run = fract(m.s / (m.len * (.5 + .9 * r1)) + r2 + .08 * (hair - .5));
+    return 1 - strength * (.85 * smoothstep(.05, 1, run) + .3 * r2);
+  }
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    // The area is painted in parallel passes `band` wide, each with its own paint load.
+    float band = 16 * scale;
+    float hair = fbm(float2(m.uv.x / (45 * scale), m.uv.y / (1.5 * scale)) + o, 3);
+    float wave = vnoise(float2(m.uv.x / (90 * scale), 0) + o) - .5;
+    float yb = m.uv.y / band + wave;
+    float row = floor(yb);
+    // neighbouring passes overlap a little, so their loads cross-fade
+    float t = smoothstep(.7, 1, fract(yb));
+    float load = mix(pass_load(row, m, o, hair), pass_load(row + 1, m, o, hair), t);
+    load -= fade * smoothstep(.3, 1, m.u);
+    float keep = smoothstep(1 - load - .07, 1 - load + .07, hair);
+    float tint = hash12(float2(row, 3.7) + o);
+    float3 c = m.paint.rgb * (.92 + .12 * tint) * (.88 + .24 * hair);
+    return float4(c, cover(m.edge, m) * keep);
+  }
+  """
+
+# Area: chipped, gritty edge. `scale` is the chip size; inside stays solid.
+brush chip strength:.6 scale:1 grit:.5
+  sksl """
+  // Flakes: rotated, flattened squares scattered on a grid. A flake removes paint only
+  // within its own depth of the edge, so each chip has a flat floor like lifted paint.
+  float flakes(Mark m, float2 o, float depth) {
+    float C = 9 * scale;
+    float2 g = m.p / C + o;
+    float2 i = floor(g);
+    float hit = 0;
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        float2 c = i + float2(float(x), float(y));
+        float2 h = hash22(c);
+        if (hash12(c + 7.3) < strength) {
+          float2 r = rot(g - c - h, h.x * 360);
+          float size = .35 + .55 * h.y;
+          float dd = (max(abs(r.x), abs(r.y) * 1.7) - size) * C;
+          float deep = (.35 + .65 * hash12(c + 2.1)) * depth;
+          hit = max(hit, cover(-dd, m) * cover(deep - m.edge, m));
+        }
+      }
+    }
+    return hit;
+  }
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float depth = strength * 9 * scale;
+    float e = m.edge - depth * .25 * vnoise(m.p / (1.4 * scale) + o);
+    float near = 1 - smoothstep(0, depth * 1.5 + 2, m.edge);
+    float pit = smoothstep(.78, .82, vnoise(m.p / (1.1 * scale) + o * 3)) * near * grit;
+    float3 c = m.paint.rgb * (1 - .15 * near * strength);
+    return float4(c, cover(e, m) * (1 - flakes(m, o, depth)) * (1 - pit));
+  }
+  """

@@ -6,10 +6,17 @@ use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use artscript_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
-use crate::eval::{Evaluator, R, Scope, fail, unseen};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
+
+fn wrap_period(v: &Value) -> Option<[f32; 2]> {
+    match v.pair()? {
+        (Coord::Num(x), Coord::Num(y)) if x > 0.0 && y > 0.0 => Some([x as f32, y as f32]),
+        _ => None,
+    }
+}
 
 fn f32_field(v: &Value) -> Option<Field> {
     match v {
@@ -30,8 +37,16 @@ impl Evaluator<'_> {
         if func == "key" {
             return self.key_call(args, named, sc);
         }
-        match sc.module.global(func) {
+        let at = sc.env.iter().rposition(|(k, _)| k == func);
+        let bound = at
+            .map(|i| sc.env[i].1.clone())
+            .or_else(|| sc.module.global(func));
+        if let Some((_, default)) = at.and_then(|i| sc.brush_params.iter().find(|(j, _)| *j == i)) {
+            return self.call_brush_param(default, bound, args, named, sc);
+        }
+        match bound {
             Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
+            Some(Value::Brush(b)) => return self.call_brush(&b, args, named, sc),
             Some(Value::Unseen) => return Err(unseen(func)),
             _ => {}
         }
@@ -257,12 +272,12 @@ impl Evaluator<'_> {
                 gradient(kind, self.stops(stops)?)
             }
             "radial" => {
-                let at = get("at").and_then(|v| v.vec2()).unwrap_or((0.5, 0.5));
+                let at = get("at").map(|v| v.vec2_for("at")).transpose()?.unwrap_or((0.5, 0.5));
                 let r = get("r").and_then(|v| v.num());
                 gradient(GradKind::Radial { at, r }, self.stops(&a)?)
             }
             "conic" => {
-                let at = get("at").and_then(|v| v.vec2()).unwrap_or((0.5, 0.5));
+                let at = get("at").map(|v| v.vec2_for("at")).transpose()?.unwrap_or((0.5, 0.5));
                 let start = get("from").and_then(|v| v.num()).unwrap_or(0.0);
                 gradient(GradKind::Conic { at, start }, self.stops(&a)?)
             }
@@ -275,10 +290,18 @@ impl Evaluator<'_> {
                 };
                 let scale = a.first().and_then(Value::num).unwrap_or(32.0) as f32;
                 let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let wrap = match get("wrap") {
+                    None => None,
+                    Some(v) => Some(wrap_period(&v).ok_or_else(|| {
+                        fail("E0320", format!("`wrap:` on `{func}` is a positive number or a pair, got {}", v.show()))
+                            .fix(format!("write `{func}({scale} wrap:64)` or `wrap:64,32`"))
+                    })?),
+                };
                 let base = Field::Noise {
                     kind,
                     scale,
                     seed: self.next_seed(explicit) as u32,
+                    wrap,
                 };
                 match get("oct").and_then(|v| v.num()) {
                     Some(o) if o > 1.0 => Value::Field(Rc::new(Field::Fbm {
@@ -301,6 +324,26 @@ impl Evaluator<'_> {
                     ridged: func == "ridged",
                 }))
             }
+            "concat" => {
+                if a.len() < 2 {
+                    return Err(fail("E0320", "`concat` joins two or more lists")
+                        .fix("write `concat(a b)`"));
+                }
+                let mut joined = Vec::new();
+                for (i, v) in a.iter().enumerate() {
+                    match v {
+                        Value::List(_) | Value::Range(_) => joined.extend(v.items().unwrap_or_default()),
+                        other => {
+                            return Err(fail(
+                                "E0320",
+                                format!("`concat` argument {} must be a list, got {}", i + 1, other.kind()),
+                            )
+                            .fix("write `concat(a b)` with lists or ranges, and `[v]` for one item"));
+                        }
+                    }
+                }
+                Value::List(Rc::new(joined))
+            }
             "contrast" | "visible" | "occluded" | "value_range" => {
                 return Err(fail(
                     "E0392",
@@ -308,11 +351,13 @@ impl Evaluator<'_> {
                 )
                 .fix("use geometric checks such as inside, gap or level"));
             }
+            other if sc.module.lost(other) => return Err(Fail::reported()),
             other => {
                 return Err(fail("E0302", format!("unknown function `{other}`"))
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
+                    .note("lists: concat")
                     .fix("check the spelling"));
             }
         })

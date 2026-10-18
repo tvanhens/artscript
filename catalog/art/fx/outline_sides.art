@@ -1,0 +1,26 @@
+# A 224x192 canvas on paper. Every tile is a 48x48 square with fx outline 4 in ink on chosen sides only. The ring ends square at the tile's box, with no rounded cap, so abutting tiles show one clean outline with no seam or notch.
+# Top row, left to right:
+# 1-3. Three blue tiles in a strip, touching. One continuous ink line runs along the top and the bottom of the whole strip and closes the strip at its left and right ends. No ink between the tiles.
+# 4. A separate blue tile with a full ink ring on all four sides (no sides: given), rounded at the outer corners.
+# Bottom rows:
+# 5. An L of three gold tiles: one tile on the upper left and two side by side below it. The ink runs around the outside of the L only, with no ink between the tiles. The inner corner of the L is a sharp notch.
+# 6. A green tile at the right, rotated a quarter turn, with sides:top. Its single ink band sits on the right edge of the tile, because the top of a rotated node turns with it. No ink on the left, top, or bottom of the tile.
+@target fx/outline_sides.png 224x192
+
+rect 48x48 at:36,36 fill:p.blue
+  fx outline 4 color:p.ink sides:top,bottom,left
+rect 48x48 at:84,36 fill:p.blue
+  fx outline 4 color:p.ink sides:top,bottom
+rect 48x48 at:132,36 fill:p.blue
+  fx outline 4 color:p.ink sides:top,bottom,right
+rect 48x48 at:192,36 fill:p.blue
+  fx outline 4 color:p.ink
+
+rect 48x48 at:36,104 fill:p.gold
+  fx outline 4 color:p.ink sides:top,left,right
+rect 48x48 at:36,152 fill:p.gold
+  fx outline 4 color:p.ink sides:left,bottom
+rect 48x48 at:84,152 fill:p.gold
+  fx outline 4 color:p.ink sides:top,right,bottom
+rect 48x48 at:192,104 rot:90 fill:p.green
+  fx outline 4 color:p.ink sides:top

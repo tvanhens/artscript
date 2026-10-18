@@ -9,7 +9,7 @@ use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
-use crate::identity::{DeclId, Entry, Key, NameKind, Names};
+use crate::identity::{DeclId, Entry, Key, NameKind, Names, RegionKind};
 use crate::value::Value;
 
 pub struct Module {
@@ -26,6 +26,9 @@ pub struct Module {
     pub lost: RefCell<BTreeSet<String>>,
     /// A failed `use` without an item list could have bound any name.
     pub lost_all: Cell<bool>,
+    pub binds_p: Cell<bool>,
+    /// From the bundled standard library, not the author's files. Lints leave it alone.
+    pub bundled: bool,
 }
 
 impl Module {
@@ -40,6 +43,8 @@ impl Module {
             own: RefCell::new(Vec::new()),
             lost: RefCell::new(BTreeSet::new()),
             lost_all: Cell::new(false),
+            binds_p: Cell::new(false),
+            bundled: false,
         }
     }
 
@@ -47,8 +52,13 @@ impl Module {
         self.globals.borrow().get(name).cloned()
     }
 
-    pub fn define(&self, name: &str, v: Value) {
+    pub fn bind(&self, name: &str, v: Value) {
+        self.binds_p.set(self.binds_p.get() || name == "p");
         self.globals.borrow_mut().insert(name.to_string(), v);
+    }
+
+    pub fn define(&self, name: &str, v: Value) {
+        self.bind(name, v);
         let mut own = self.own.borrow_mut();
         if !own.iter().any(|n| n == name) {
             own.push(name.to_string());
@@ -317,6 +327,37 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
         source: Some(Rc::as_ptr(&entry.record) as usize),
         canvas: None,
         extent: Extent::Visual,
+    }
+}
+
+/// Every anchor the file placed, by the path an author writes after `@`, in canvas units. A `_`
+/// name inside a def or slot fill is private to it, so neither it nor anything under it appears.
+pub fn placed_anchors(top: &Rc<RefCell<Names>>) -> BTreeMap<String, (f64, f64)> {
+    let mut out = BTreeMap::new();
+    let entries = top.borrow().children_of(None, &[]);
+    for e in &entries {
+        let mut label = e.name.to_string();
+        for c in e.record.borrow().key.trailing_copies() {
+            label.push_str(&format!(".{c}"));
+        }
+        collect_anchors(&ref_from(e, &label), false, &mut out);
+    }
+    out
+}
+
+fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (f64, f64)>) {
+    if private_scope && r.record.name.starts_with('_') {
+        return;
+    }
+    if let Some(p) = r.record.anchor {
+        out.insert(r.label.clone(), (p.x as f64, p.y as f64));
+    }
+    let private_scope = match &r.record.inner {
+        Some(inner) => inner.borrow().region().kind != RegionKind::File,
+        None => private_scope,
+    };
+    for child in r.children() {
+        collect_anchors(&child, private_scope, out);
     }
 }
 

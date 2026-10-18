@@ -113,17 +113,14 @@ impl<'a> Printer<'a> {
                 self.emit(line, 0, &join_head("rule", name, &[], params));
                 self.scenes(body, 1);
             }
-            DeclKind::Shader { name, params, sksl } => {
-                self.emit(line, 0, &join_head("shader", name, &[], params));
-                if let Some(body) = sksl {
-                    self.raw_block(1, body);
-                }
-            }
             DeclKind::Light { name, named } => {
                 self.emit(line, 0, &join_head("light", name, &[], named));
             }
-            DeclKind::Brush { name, named } => {
-                self.emit(line, 0, &join_head("brush", name, &[], named));
+            DeclKind::Brush { name, params, sksl } => {
+                self.emit(line, 0, &join_head("brush", name, &[], params));
+                if let Some(block) = sksl {
+                    self.raw_block(1, &block.text);
+                }
             }
             DeclKind::Anim {
                 name,
@@ -196,8 +193,14 @@ impl<'a> Printer<'a> {
             } => {
                 self.stmt_if(line, cond, then, otherwise, indent, false);
             }
-            SceneKind::Each { var, iter, body } => {
-                self.emit(line, indent, &format!("each {var} in {}", fmt_expr(iter)));
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
+                let names = loop_names(index, var);
+                self.emit(line, indent, &format!("each {names} in {}", fmt_expr(iter)));
                 self.scenes(body, indent + 1);
             }
             SceneKind::Slot {
@@ -227,6 +230,7 @@ impl<'a> Printer<'a> {
                     self.draw_item(item, indent + 1);
                 }
             }
+            SceneKind::Fx(f) => self.fx(f, indent),
         }
     }
 
@@ -487,8 +491,15 @@ fn prec_of(e: &Expr) -> u8 {
         Expr::Range(_, _) => 7,
         Expr::Unary(UnOp::Not, _) => 4,
         Expr::Unary(UnOp::Neg, _) => 10,
-        Expr::Member(_, _) | Expr::Call { .. } => 11,
+        Expr::Member(_, _) | Expr::Index(_, _) | Expr::Call { .. } => 11,
         _ => 12,
+    }
+}
+
+fn loop_names(index: &Option<String>, var: &str) -> String {
+    match index {
+        Some(i) => format!("{i}, {var}"),
+        None => var.to_string(),
     }
 }
 
@@ -505,6 +516,10 @@ fn fmt_body(e: &Expr) -> String {
         Expr::Ref(segs) => format!("@{}", segs.join(".")),
         Expr::Member(base, seg) if matches!(**base, Expr::Num(_)) => format!("({}).{seg}", fmt_body(base)),
         Expr::Member(base, seg) => format!("{}.{}", fmt_at(base, 11, false), seg),
+        Expr::Index(base, key) if matches!(**base, Expr::Num(_)) => {
+            format!("({}).{{{}}}", fmt_body(base), fmt_expr(key))
+        }
+        Expr::Index(base, key) => format!("{}.{{{}}}", fmt_at(base, 11, false), fmt_expr(key)),
         Expr::Tuple(xs) => {
             // An `else` branch takes the rest of the tuple, so only the last element may be a bare `if`.
             let last = xs.len().saturating_sub(1);
@@ -518,8 +533,14 @@ fn fmt_body(e: &Expr) -> String {
             "[{}]",
             xs.iter().map(fmt_expr).collect::<Vec<_>>().join(" ")
         ),
-        Expr::Each { var, iter, body } => {
-            format!("[each {var} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
+        Expr::Each {
+            index,
+            var,
+            iter,
+            body,
+        } => {
+            let names = loop_names(index, var);
+            format!("[each {names} in {} -> {}]", fmt_expr(iter), fmt_expr(body))
         }
         Expr::Range(lo, hi) => format!("{}..{}", fmt_at(lo, 7, false), fmt_at(hi, 7, true)),
         Expr::Unary(UnOp::Neg, inner) => format!("-{}", fmt_at(inner, 10, true)),

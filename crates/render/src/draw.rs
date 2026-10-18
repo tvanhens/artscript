@@ -63,6 +63,8 @@ pub struct DrawCtx<'a> {
     pub index: SceneIndex<'a>,
     pub backend: Backend,
     visiting: RefCell<HashSet<String>>,
+    /// Signed distance fields built for brushed fills in this render.
+    pub(crate) sdf: RefCell<crate::sdf::SdfMemo>,
 }
 
 impl<'a> DrawCtx<'a> {
@@ -71,6 +73,7 @@ impl<'a> DrawCtx<'a> {
             index: SceneIndex::build(scene),
             backend,
             visiting: RefCell::new(HashSet::new()),
+            sdf: RefCell::new(crate::sdf::SdfMemo::default()),
         }
     }
 }
@@ -90,8 +93,7 @@ pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let w = (scene.width * scale).ceil().max(1.0) as i32;
-    let h = (scene.height * scale).ceil().max(1.0) as i32;
+    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
@@ -111,8 +113,7 @@ pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, 
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let w = (scene.width * scale).ceil().max(1.0) as i32;
-    let h = (scene.height * scale).ceil().max(1.0) as i32;
+    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
@@ -277,15 +278,9 @@ fn paint_layer_steps(
             effects::LayerStep::Filter(filter) => {
                 effects::apply_image_filter(ctx.backend, image, &local_to_px, filter)?
             }
-            effects::LayerStep::Outline { width, color, cover_halo_past } => effects::outline_geometry(
-                ctx.backend,
-                image,
-                &local_to_px,
-                node,
-                width,
-                color,
-                cover_halo_past,
-            )?,
+            effects::LayerStep::Outline(outline) => {
+                effects::outline_geometry(ctx.backend, image, &local_to_px, node, outline)?
+            }
         };
     }
     canvas.save();
@@ -319,7 +314,7 @@ fn reach_px(
     let ring = steps
         .iter()
         .map(|step| match step {
-            effects::LayerStep::Outline { width, .. } => *width,
+            effects::LayerStep::Outline(outline) => outline.width,
             effects::LayerStep::Filter(_) => 0.0,
         })
         .fold(0.0_f32, f32::max);
@@ -336,7 +331,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
     let own = match &node.kind {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
-            let pad = stroke + shape.blur * 3.0;
+            let pad = stroke + shape.blur * 3.0 + shape.mark_reach();
             Some(shape.geometry.bounds().with_outset((pad, pad)))
         }
         NodeKind::Group { .. } => None,
@@ -480,7 +475,7 @@ fn draw_kind(
             }
             Ok(())
         }
-        NodeKind::Shape(shape) => draw_shape(canvas, shape, ctx, world),
+        NodeKind::Shape(shape) => draw_shape(canvas, shape, ctx, world, &node.origin),
     }
 }
 
@@ -489,11 +484,16 @@ fn draw_shape(
     shape: &Shape,
     ctx: &DrawCtx<'_>,
     world: Matrix,
+    origin: &str,
 ) -> Result<(), RenderError> {
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
-            let paint = content_paint(fill, shape.blur, None)?;
-            canvas.draw_path(&shape.geometry, &paint);
+            if fill.marks.is_empty() {
+                let paint = content_paint(&fill.paint, shape.blur, None)?;
+                canvas.draw_path(&shape.geometry, &paint);
+            } else {
+                crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin)?;
+            }
         }
         if let Some(stroke) = &shape.stroke {
             let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
@@ -630,7 +630,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
         pad = pad.max(extra);
     }
     if let NodeKind::Shape(shape) = &node.kind {
-        pad = pad.max(shape.blur * 3.0);
+        pad = pad.max(shape.blur * 3.0).max(shape.mark_reach());
     }
     if let Some(clip) = &node.clip {
         pad = pad.max(clip.feather * 3.0);

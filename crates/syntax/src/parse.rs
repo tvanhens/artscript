@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::Diagnostic;
 use crate::ast::{
     BinOp, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody, DrawItem, Expr, File, Fx,
-    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SlotFill, Span, Swatch,
+    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SkslBlock, SlotFill, Span, Swatch,
     SwatchKind, UnOp,
 };
 use crate::lex::{self, Line, SizePart, Tok};
@@ -231,7 +231,7 @@ impl<'a> Parser<'a> {
                 }
             };
         }
-        match tok.kind {
+        match &tok.kind {
             Tok::Kw(
                 Word::Use
                 | Word::Palette
@@ -239,11 +239,10 @@ impl<'a> Parser<'a> {
                 | Word::Finish
                 | Word::Def
                 | Word::Rule
-                | Word::Shader
                 | Word::Light
-                | Word::Brush
                 | Word::Anim,
             ) => Head::Decl,
+            Tok::Ident(s) if words::is_decl_head(s) => Head::Decl,
             Tok::Kw(Word::Fx) => Head::Fx,
             Tok::Kw(Word::Mask) => Head::Mask,
             Tok::Dot => Head::Patch,
@@ -328,12 +327,17 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn draw_line(&mut self) -> Option<DrawItem> {
+    /// `fx_branches` is false for a body that runs once per copy, where an `fx` under an `if`
+    /// would have no single answer for the one node it applies to.
+    fn draw_line(&mut self, fx_branches: bool) -> Option<DrawItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DrawItem::Fx),
             Head::Mask => self.parse_mask(),
             Head::SlotFill(name) => self.parse_slot_fill(name).map(DrawItem::SlotFill),
             Head::Patch => self.parse_patch().map(DrawItem::Patch),
+            Head::Scene if fx_branches && self.at_kw(Word::If) => {
+                self.parse_if(true).map(DrawItem::Scene)
+            }
             head => self.scene_head(head, "under a draw").map(DrawItem::Scene),
         }
     }
@@ -341,6 +345,7 @@ impl<'a> Parser<'a> {
     fn def_line(&mut self) -> Option<DefItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DefItem::Fx),
+            Head::Scene if self.at_kw(Word::If) => self.parse_if(true).map(DefItem::Scene),
             Head::Mask => {
                 self.reject_line_and_block(
                     "a `def` body cannot hold a mask",
@@ -463,9 +468,8 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Finish)) => self.parse_finish(),
             Some(Tok::Kw(Word::Def)) => self.parse_def(),
             Some(Tok::Kw(Word::Rule)) => self.parse_rule(),
-            Some(Tok::Kw(Word::Shader)) => self.parse_shader(),
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
-            Some(Tok::Kw(Word::Brush)) => self.parse_brush(),
+            Some(Tok::Ident(s)) if s == "brush" => self.parse_brush(),
             Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
             _ => None,
         }?;
@@ -478,7 +482,7 @@ impl<'a> Parser<'a> {
             Tok::Kw(Word::Let) => self.parse_let(),
             Tok::Kw(Word::Assert) => self.parse_check(CheckKind::Assert),
             Tok::Kw(Word::Expect) => self.parse_check(CheckKind::Expect),
-            Tok::Kw(Word::If) => self.parse_if(),
+            Tok::Kw(Word::If) => self.parse_if(false),
             Tok::Kw(Word::Each) => self.parse_each(),
             Tok::Kw(Word::Slot) => self.parse_slot(),
             Tok::Kw(Word::Play) => self.parse_play(),
@@ -623,6 +627,13 @@ impl<'a> Parser<'a> {
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
+        if name == "brush" {
+            self.errors.push(
+                Diagnostic::error("E0105", span, "a def cannot be named `brush`")
+                    .with_note("a line that starts with `brush` declares a brush, so no instance of this def could be written")
+                    .with_fix("rename the def"),
+            );
+        }
         let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(
@@ -654,7 +665,26 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Rule { name, params, body })
     }
 
-    fn parse_shader(&mut self) -> Option<DeclKind> {
+    fn parse_light(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, named) = self.parse_items();
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "a light takes named arguments only",
+                "write `light name key:value`",
+            );
+        }
+        self.no_block(indent);
+        Some(DeclKind::Light { name, named })
+    }
+
+    /// `brush NAME k:v...` then one child line `sksl """..."""`. A missing block is left to
+    /// eval, which reports it beside the kind checks on the params.
+    fn parse_brush(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
@@ -663,12 +693,12 @@ impl<'a> Parser<'a> {
         if !args.is_empty() {
             self.fail(
                 span,
-                "shader parameters are named arguments",
-                "write `shader name key:value`",
+                "a brush takes named arguments only",
+                "write `brush name key:value`",
             );
         }
         self.reject_param_names(&params);
-        let mut sksl = None;
+        let mut sksl: Option<SkslBlock> = None;
         let mut child_indent: Option<usize> = None;
         loop {
             let next = self.li + 1;
@@ -689,16 +719,18 @@ impl<'a> Parser<'a> {
                 _ => {}
             }
             self.enter(next);
+            let kw = self.cur_span();
             if self.eat_ident("sksl") {
-                if let Some(Tok::Str(s)) = self.cur().map(|t| t.kind.clone()) {
+                if let Some(Tok::Raw(text, body, rest)) = self.cur().map(|t| t.kind.clone()) {
                     self.bump();
                     if sksl.is_some() {
-                        self.fail_here(
-                            "a shader has one `sksl` block",
+                        self.fail(
+                            kw,
+                            "a brush has one `sksl` block",
                             "keep a single `sksl \"\"\"...\"\"\"` line",
                         );
                     } else {
-                        sksl = Some(s);
+                        sksl = Some(SkslBlock { text, span: kw, body, rest });
                     }
                 } else {
                     self.fail_here(
@@ -708,47 +740,13 @@ impl<'a> Parser<'a> {
                 }
             } else {
                 self.fail_here(
-                    "expected `sksl` under the shader",
-                    "indent `sksl \"\"\"...\"\"\"` under the shader",
+                    "expected `sksl` under the brush",
+                    "indent `sksl \"\"\"...\"\"\"` under the brush",
                 );
             }
             self.expect_eol("remove the extra tokens after `sksl`");
         }
-        Some(DeclKind::Shader { name, params, sksl })
-    }
-
-    fn parse_light(&mut self) -> Option<DeclKind> {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let name = self.expect_name();
-        let (args, named) = self.parse_items();
-        if !args.is_empty() {
-            self.fail(
-                span,
-                "a light takes named arguments only",
-                "write `light name key:value`",
-            );
-        }
-        self.no_block(indent);
-        Some(DeclKind::Light { name, named })
-    }
-
-    fn parse_brush(&mut self) -> Option<DeclKind> {
-        let span = self.cur_span();
-        let indent = self.cur_indent();
-        self.bump();
-        let name = self.expect_name();
-        let (args, named) = self.parse_items();
-        if !args.is_empty() {
-            self.fail(
-                span,
-                "a brush takes named arguments only",
-                "write `brush name key:value`",
-            );
-        }
-        self.no_block(indent);
-        Some(DeclKind::Brush { name, named })
+        Some(DeclKind::Brush { name, params, sksl })
     }
 
     fn parse_anim(&mut self) -> Option<DeclKind> {
@@ -909,10 +907,10 @@ impl<'a> Parser<'a> {
         }
         let message = if self
             .cur()
-            .is_some_and(|t| matches!(t.kind, Tok::Str(_)) && t.ws_before)
+            .is_some_and(|t| matches!(t.kind, Tok::Str(_) | Tok::Raw(..)) && t.ws_before)
         {
             match self.bump().kind {
-                Tok::Str(s) => Some(s),
+                Tok::Str(s) | Tok::Raw(s, ..) => Some(s),
                 _ => None,
             }
         } else {
@@ -931,14 +929,25 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_if(&mut self) -> Option<Scene> {
+    fn parse_if(&mut self, fx: bool) -> Option<Scene> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        self.finish_if(span, indent)
+        self.finish_if(span, indent, fx)
     }
 
-    fn finish_if(&mut self, span: Span, indent: usize) -> Option<Scene> {
+    fn branch_line(&mut self, fx: bool, error_where: &str) -> Option<Scene> {
+        match self.head() {
+            Head::Fx if fx => self.parse_fx().map(|f| Scene {
+                span: f.span,
+                kind: SceneKind::Fx(f),
+            }),
+            Head::Scene if fx && self.at_kw(Word::If) => self.parse_if(true),
+            head => self.scene_head(head, error_where),
+        }
+    }
+
+    fn finish_if(&mut self, span: Span, indent: usize, fx: bool) -> Option<Scene> {
         let cond = if self.eol() {
             self.fail(span, "expected a condition after `if`", "write `if <expr>`");
             None
@@ -954,10 +963,12 @@ impl<'a> Parser<'a> {
         } else {
             self.expect_eol("the `if` condition must fit on one line");
         }
-        let then = self.block(indent, span.line, |p| p.scene_line("directly under `if`"));
+        let then = self.block(indent, span.line, |p| {
+            p.branch_line(fx, "directly under `if`")
+        });
         let otherwise = if self.next_is_kw(indent, Word::Else) {
             self.enter(self.li + 1);
-            self.parse_else(indent)
+            self.parse_else(indent, fx)
         } else {
             Vec::new()
         };
@@ -971,16 +982,18 @@ impl<'a> Parser<'a> {
         })
     }
 
-    fn parse_else(&mut self, indent: usize) -> Vec<Scene> {
+    fn parse_else(&mut self, indent: usize, fx: bool) -> Vec<Scene> {
         let else_line = self.cur_line_no();
         self.bump();
         if self.at_kw(Word::If) {
             let span = self.cur_span();
             self.bump();
-            self.finish_if(span, indent).into_iter().collect()
+            self.finish_if(span, indent, fx).into_iter().collect()
         } else {
             self.expect_eol("`else` takes a block, or write `else if`");
-            self.block(indent, else_line, |p| p.scene_line("directly under `else`"))
+            self.block(indent, else_line, |p| {
+                p.branch_line(fx, "directly under `else`")
+            })
         }
     }
 
@@ -988,7 +1001,7 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let var = self.expect_name();
+        let (index, var) = self.loop_names();
         if !self.eat_kw(Word::In) {
             self.fail(
                 span,
@@ -1010,6 +1023,7 @@ impl<'a> Parser<'a> {
         let body = self.block(indent, span.line, |p| p.scene_line("directly under `each`"));
         Some(Scene {
             kind: SceneKind::Each {
+                index,
                 var,
                 iter: iter?,
                 body,
@@ -1065,7 +1079,8 @@ impl<'a> Parser<'a> {
             );
         }
         let mut body = DrawBody::default();
-        for item in self.block(indent, span.line, Self::draw_line) {
+        let fx_branches = !matches!(verb.as_str(), "repeat" | "grid");
+        for item in self.block(indent, span.line, |p| p.draw_line(fx_branches)) {
             if let Err(SecondMask(span)) = body.push(item) {
                 self.errors.push(
                     Diagnostic::error("E0101", span, "a draw takes one mask")
@@ -1562,20 +1577,11 @@ impl<'a> Parser<'a> {
                 "*".into()
             } else if matches!(tok.kind, Tok::LBrace) {
                 self.bump();
-                let name = match self.cur().map(|t| t.kind.clone()) {
-                    Some(Tok::Ident(s)) => {
-                        self.bump();
-                        s
-                    }
-                    _ => {
-                        self.fail_here("expected a name inside `{}`", "write `.{name}`");
-                        String::new()
-                    }
-                };
+                let key = self.parse_prec(0);
                 if !self.eat(&Tok::RBrace) {
-                    self.fail_here("expected `}` after the name", "close the segment with `}`");
+                    self.fail_here("expected `}` after the index", "close the index with `}`");
                 }
-                format!("{{{name}}}")
+                return Expr::Index(Box::new(base), Box::new(key));
             } else {
                 self.fail_here(
                     "expected a member name after `.`",
@@ -1687,7 +1693,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Hex(h)
             }
-            Tok::Str(s) => {
+            Tok::Str(s) | Tok::Raw(s, ..) => {
                 self.bump();
                 Expr::Str(s)
             }
@@ -1774,7 +1780,7 @@ impl<'a> Parser<'a> {
     fn parse_each_expr(&mut self) -> Expr {
         let span = self.cur_span();
         self.bump();
-        let var = self.expect_name();
+        let (index, var) = self.loop_names();
         if !self.eat_kw(Word::In) {
             self.fail(
                 span,
@@ -1795,6 +1801,7 @@ impl<'a> Parser<'a> {
         if !self.eat(&Tok::Arrow) {
             self.fail_here("expected `->`", "write `[each name in <expr> -> <expr>]`");
             return Expr::Each {
+                index,
                 var,
                 iter: Box::new(iter),
                 body: Box::new(Expr::Ident(String::new())),
@@ -1813,10 +1820,29 @@ impl<'a> Parser<'a> {
             self.fail_here("unclosed `[`", "close the list with `]`");
         }
         Expr::Each {
+            index,
             var,
             iter: Box::new(iter),
             body: Box::new(body),
         }
+    }
+
+    /// `x` or `i, x` after `each`. The index comes first.
+    fn loop_names(&mut self) -> (Option<String>, String) {
+        let first = self.expect_name();
+        if !self.eat(&Tok::Comma) {
+            return (None, first);
+        }
+        let span = self.cur_span();
+        let var = self.expect_name();
+        if !var.is_empty() && var == first {
+            self.fail(
+                span,
+                format!("the loop index and the value are both named `{var}`"),
+                "give the index and the value different names",
+            );
+        }
+        (Some(first), var)
     }
 
     fn parse_group(&mut self) -> Expr {
@@ -2094,7 +2120,7 @@ fn is_key(kind: &Tok) -> bool {
 fn is_each_axis(key: &str) -> bool {
     !matches!(
         key,
-        "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile"
+        "bg" | "scale" | "as" | "fps" | "dur" | "t" | "clip" | "profile" | "pivot" | "palette"
     )
 }
 
