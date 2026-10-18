@@ -2884,10 +2884,12 @@ impl<'a> Evaluator<'a> {
         for (k, _, example) in CHANNEL_KEYS {
             let Some(v) = pick(k) else { continue };
             if stroke_marks.is_empty() {
+                let Some(span) = site(&[k]) else { continue };
                 let f = fail("E0362", format!("`{k}:` has no effect without a brushed stroke"))
                     .note(if width.is_none() { "this node has no stroke" } else { "this node's stroke has no brush" })
                     .fix(format!("brush the stroke, or remove `{k}:`"));
-                return Err(at_key(self, f, &[k]));
+                self.report(f, &file, span, &node);
+                return Err(Fail::reported());
             }
             let values = numbers(&v).filter(|xs| !xs.is_empty() && xs.iter().all(|x| x.is_finite()));
             let Some(values) = values else {

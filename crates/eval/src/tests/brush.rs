@@ -207,16 +207,20 @@ fn channels_sit_on_the_knots_or_spread_evenly_and_velocity_follows_knot_spacing(
 }
 
 #[test]
-fn a_channel_key_without_a_brushed_stroke_is_e0362_at_the_key() {
+fn a_channel_key_without_a_brushed_stroke_is_e0362_at_the_key_and_an_inherited_one_does_nothing() {
     let d = first("@target t.png 100x100\nrect 40x40 at:50,50 fill:#ff0000 pressure:[.2 1] name:a\n", &[], "E0362");
     assert!(d.message.contains("`pressure:` has no effect without a brushed stroke"), "{d}");
     assert_eq!(col(&d), (2, 34), "{d}");
     let d = first("@target t.png 100x100\ncurve 0,0 50,20 90,0 stroke:#000000,2 tilt:.5 name:a\n", &[], "E0362");
     assert!(d.message.contains("`tilt:`"), "{d}");
     assert!(d.notes.iter().any(|n| n.contains("no brush")), "{d}");
-    let d = first("@target t.png 100x100\nuse brushes { dry }\nlayer back angle:30\n  rect 40x40 at:50,50 fill:#ff0000 brush:dry name:a\n", &[LIB], "E0362");
-    assert_eq!(col(&d), (4, 3), "an inherited channel reports on the statement: {d}");
-    assert!(d.notes.iter().any(|n| n.contains("`angle:` is inherited")), "{d}");
+    ok("@target t.png 100x100\nuse brushes { dry }\nlayer back angle:30\n  rect 40x40 at:50,50 fill:#ff0000 brush:dry name:a\n", &[LIB]);
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry }\nlayer ink brush:dry pressure:[.3 1 .5]\n  curve 0,0 50,20 90,0 stroke:#000000,2 name:line\n  circle 20 at:50,50 fill:#ff0000 name:dot\nstyle inky stroke:#000000,4 pressure:.5\ncurve 0,90 50,80 90,90 style:inky name:plain\n",
+        &[LIB],
+    );
+    assert_eq!(ribbon(&s, "line").contours[0].knots[0].pressure, 0.3, "an inherited channel reaches a brushed stroke");
+    assert!(shape(&s, "plain").stroke.as_ref().unwrap().ribbon.is_none(), "and does nothing where there is none");
     let d = first("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 50,20 90,0 stroke:#000000,2 brush:dry pressure:#ff0000 name:a\n", &[LIB], "E0320");
     assert!(d.message.contains("`pressure:` takes a number or a list of numbers, got a color"), "{d}");
     assert_eq!(col(&d), (3, 49), "{d}");
