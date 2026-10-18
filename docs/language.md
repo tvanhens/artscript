@@ -1,8 +1,6 @@
 # artscript language card
 
-This card and the topic files in `docs/topics/` describe the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs. When you change a rule, update this card, the topic that holds the rule, and `docs/semantics.md` in the same change.
-
-`docs/semantics.md` records the details that the card and the topics leave out. When any of them disagree, choose the better behavior and make them all agree.
+This card and the topic files in `docs/topics/` are the author card for the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs.
 
 artscript is a declarative language for vector art. `artscript build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment. `artscript docs <topic> [topic...]` prints the full rules for each topic in the index that `artscript docs` prints after this card.
 

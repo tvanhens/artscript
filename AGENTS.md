@@ -1,22 +1,22 @@
 # artscript
 
-`docs/semantics.md`, `docs/language.md`, and the topic files in `docs/topics/` describe the draft the code implements today. The design is still open. A better design can replace any rule in any of these files, and it can break today's outputs.
+`docs/language.md` and the topic files in `docs/topics/` are the author card. They describe the draft the code implements today. The design is still open. A better design can replace any rule, and it can break today's outputs.
 
 ## Code Review Rules
 
 ### The design is still open
 
-Choose the better design. When that design breaks today's behavior, accept the break and update the docs in the same change.
+Choose the better design. When that design breaks today's behavior, accept the break.
 
-Flag a change that leaves the code and the docs describing different behavior. Choose the better behavior and make them agree in that change.
+Flag a sentence in the card or a topic that this change leaves false. Choose the better behavior and fix that sentence.
 
-A limitation in the draft is open. Accept a change that replaces it with a better behavior, and update the docs in that change. A finding about a limitation names the better behavior. Without that name, leave the limitation out of the review.
+A limitation in the draft is open. Accept a change that replaces it with a better behavior. A finding about a limitation names the better behavior. Without that name, leave the limitation out of the review.
 
-A limit that drops or corrupts output and reports no error is a finding even when the draft states it. Name the repair as reporting an error, or as doing the work. A stated prepass limit can be replaced. So can a cap, or a rule that there is one way to write something, when a better design needs a different rule.
+A limit that drops or corrupts output and reports no error is a finding even when the card states it. Name the repair as reporting an error, or as doing the work. A stated prepass limit can be replaced. So can a cap, or a rule that there is one way to write something, when a better design needs a different rule.
 
-Write a rule into the docs when you want that behavior. Accidental behavior stays out of the docs until you choose it.
+Write a rule into the card or a topic when you want that behavior. Accidental behavior stays out of the card until you choose it.
 
-When the docs disagree, choose the better behavior and make them agree. A row in `docs/decisions.tsv` records an earlier choice. Replace that choice when a better design needs it, and append a new row. Leave the old row as it is.
+A row in `docs/decisions.tsv` records an earlier choice. Replace that choice when a better design needs it, and append a new row. Leave the old row as it is.
 
 ### Inputs are the author's own files
 
