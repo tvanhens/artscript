@@ -197,6 +197,13 @@ impl Scope {
         }
     }
 
+    fn bind_loop(&mut self, index: Option<&str>, var: &str, i: usize, v: Value) {
+        if let Some(index) = index {
+            self.env.push((index.to_string(), Value::Num(i as f64)));
+        }
+        self.env.push((var.to_string(), v));
+    }
+
     fn iteration(&self, span: Span, i: u32) -> Scope {
         let mut inner = self.clone();
         inner.scope_copies.push(i);
@@ -1453,14 +1460,19 @@ impl<'a> Evaluator<'a> {
                 self.eval_block(if c.truthy() { then } else { otherwise }, &mut inner, out);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.eval_block(body, &mut inner, out);
                 }
                 Ok(())
@@ -1597,19 +1609,14 @@ impl<'a> Evaluator<'a> {
         let at = match a.get("at") {
             Some(Value::Ref(r)) => self.anchor_point(r, sc)?,
             Some(v) => {
-                let (x, y) = v.pair().ok_or_else(|| {
-                    fail(
-                        "E0320",
-                        format!("`at:` expects a vector like 4,2, got {}", v.kind()),
-                    )
-                })?;
+                let (x, y) = v.pair_for("at")?;
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
                 (x.pos(fx, fw), y.pos(fy, fh))
             }
             None => default_at,
         };
-        let pivot = match a.get("pivot").and_then(Value::pair) {
+        let pivot = match a.get("pivot").map(|v| v.pair_for("pivot")).transpose()? {
             Some((x, y)) => {
                 check_percent(x, frame, sc)?;
                 check_percent(y, frame, sc)?;
@@ -1624,9 +1631,7 @@ impl<'a> Evaluator<'a> {
         };
         let vector = |key: &str, default: (f64, f64)| match a.get(key) {
             None => Ok(default),
-            Some(v) => v.vec2().ok_or_else(|| {
-                fail("E0320", format!("`{key}:` expects a number or a vector like 2,1, got {}", v.kind()))
-            }),
+            Some(v) => v.vec2_for(key),
         };
         let scale = vector("scale", (1.0, 1.0))?;
         let skew = match a.get("skew") {
@@ -2479,7 +2484,7 @@ impl<'a> Evaluator<'a> {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
         let rot = a.num("rot").unwrap_or(0.0);
-        let step = a.get("step").and_then(Value::vec2).unwrap_or((0.0, 0.0));
+        let step = a.get("step").map(|v| v.vec2_for("step")).transpose()?.unwrap_or((0.0, 0.0));
         let mut out = Vec::new();
         for i in 0..(n.max(0.0) as usize).min(10_000) {
             let fi = i as f64;
@@ -2508,7 +2513,11 @@ impl<'a> Evaluator<'a> {
         })?;
         let (cols, rows) = (cols.max(1.0) as usize, rows.max(1.0) as usize);
         let gap = a.num("gap").unwrap_or(0.0);
-        let mut pitch = a.get("cell").and_then(Value::vec2).map(|(cw, ch)| (cw + gap, ch + gap));
+        let mut pitch = a
+            .get("cell")
+            .map(|v| v.vec2_for("cell"))
+            .transpose()?
+            .map(|(cw, ch)| (cw + gap, ch + gap));
         let cell_at = |(sx, sy): (f64, f64), row: usize, col: usize| {
             let (ox, oy) = ((cols - 1) as f64 * sx / 2.0, (rows - 1) as f64 * sy / 2.0);
             Matrix::translate(((col as f64 * sx - ox) as f32, (row as f64 * sy - oy) as f32))
@@ -2616,14 +2625,13 @@ impl<'a> Evaluator<'a> {
                 (p, None, true)
             }
             "curve" => {
-                let values: Vec<Value> = match a.pos.as_slice() {
-                    [Value::List(xs)] => xs.as_ref().clone(),
-                    _ if a.pos.iter().any(|v| matches!(v, Value::List(_))) => {
-                        return Err(fail("E0320", "`curve` takes points, or one list of points")
-                            .fix("write `curve pts` or `curve [each k in 0..n -> x,y]`"));
+                let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
+                for v in &a.pos {
+                    match v {
+                        Value::List(xs) => values.extend(xs.iter().cloned()),
+                        point => values.push(point.clone()),
                     }
-                    _ => a.pos.clone(),
-                };
+                }
                 let mut pts = Vec::with_capacity(values.len());
                 for v in &values {
                     let (x, y) = v
@@ -2769,7 +2777,7 @@ impl<'a> Evaluator<'a> {
         };
         let taper = match pick("taper") {
             Some(Value::Num(t)) => Some((t, t)),
-            Some(v) => v.vec2(),
+            Some(v) => Some(v.vec2_for("taper")?),
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
@@ -3620,7 +3628,12 @@ impl<'a> Evaluator<'a> {
                 self.collect_surface(branch, &mut inner, schedule);
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = self.quiet_expr(iter, sc).and_then(each_items);
                 if schedule && holds_play(body) {
@@ -3633,7 +3646,7 @@ impl<'a> Evaluator<'a> {
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.publish = false;
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     self.collect_surface(body, &mut inner, schedule);
                 }
                 Ok(())
@@ -3825,12 +3838,17 @@ impl<'a> Evaluator<'a> {
                 }
                 Ok(())
             }
-            SceneKind::Each { var, iter, body } => {
+            SceneKind::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 self.seed_stmt(sc, st.span);
                 let items = each_items(self.expr(iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     for child in body {
                         self.absorb_scene(child, &mut inner, owner, def_name, true, dest)?;
                     }
@@ -4346,16 +4364,33 @@ impl<'a> Evaluator<'a> {
                 let b = self.expr(base, sc)?;
                 self.member(&b, seg, sc)?
             }
+            Expr::Index(base, key) => match &**base {
+                Expr::Ref(segs) => {
+                    let mut segs = segs.clone();
+                    segs.push(self.index_segment(key, sc)?);
+                    self.reference(&segs, sc)?
+                }
+                _ => {
+                    let b = self.expr(base, sc)?;
+                    let seg = self.index_segment(key, sc)?;
+                    self.member(&b, &seg, sc)?
+                }
+            },
             Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
             Expr::List(xs) => Value::List(Rc::new(
                 xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?,
             )),
-            Expr::Each { var, iter, body } => {
+            Expr::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
                 let items = each_items(self.expr(iter, sc)?)?;
                 let mut out = Vec::with_capacity(items.len());
-                for v in items {
+                for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.clone();
-                    inner.env.push((var.clone(), v));
+                    inner.bind_loop(index.as_deref(), var, i, v);
                     out.push(self.expr(body, &inner)?);
                 }
                 Value::List(Rc::new(out))
@@ -4535,17 +4570,21 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn index_segment(&mut self, key: &Expr, sc: &Scope) -> R<String> {
+        let k = self.expr(key, sc)?;
+        k.word()
+            .map(str::to_string)
+            .or(k.num().map(num))
+            .ok_or_else(|| {
+                fail(
+                    "E0320",
+                    format!("an index is a name or a number, got {}", k.kind()),
+                )
+                .fix("write a number or a name inside `{}`, such as `list.{i}`")
+            })
+    }
+
     fn member(&mut self, base: &Value, seg: &str, sc: &Scope) -> R<Value> {
-        let seg: String = match seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-            Some(var) => match self.lookup_ident(var, sc) {
-                Some(Value::Unseen) => return Err(unseen(var)),
-                v => v
-                    .and_then(|v| v.word().map(str::to_string).or(v.num().map(num)))
-                    .unwrap_or(var.to_string()),
-            },
-            None => seg.to_string(),
-        };
-        let seg = seg.as_str();
         let missing = |what: &str, names: Vec<String>| {
             fail("E0350", format!("{what} has no member `{seg}`"))
                 .note(format!("members: {}", names.join(", ")))

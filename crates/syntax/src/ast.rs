@@ -192,6 +192,8 @@ pub enum SceneKind {
         otherwise: Vec<Scene>,
     },
     Each {
+        /// `i` in `each i, x in list`: the position in the iteration, from 0.
+        index: Option<String>,
         var: String,
         iter: Expr,
         body: Vec<Scene>,
@@ -389,12 +391,15 @@ pub enum Expr {
     Ref(Vec<String>),
     /// `p.sky.3`: the base and each member segment (numbers are kept as text).
     Member(Box<Expr>, String),
+    /// `list.{expr}`: the base and the key expression, which evaluates to a name or a number.
+    Index(Box<Expr>, Box<Expr>),
     /// Tight comma tuple without spaces: `14,0`, `p.ink,1.5`, `.4,1`.
     Tuple(Vec<Expr>),
     /// `[a b]`.
     List(Vec<Expr>),
     /// `[each k in 0..n -> expr]`. Evaluates to a list.
     Each {
+        index: Option<String>,
         var: String,
         iter: Box<Expr>,
         body: Box<Expr>,

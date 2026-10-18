@@ -631,12 +631,6 @@ fn each_expr_respects_e0306() {
         "{}",
         show(&huge.diagnostics)
     );
-    let mixed = run_with("@target t.png 10x10\ncurve [0,0 10,0] 20,0\n", &[]);
-    assert!(
-        mixed.diagnostics.iter().any(|d| d.code == "E0320"),
-        "{}",
-        show(&mixed.diagnostics)
-    );
 }
 
 #[test]
@@ -5629,7 +5623,7 @@ fn a_transform_that_is_not_finite_or_not_a_vector_is_e0320() {
         ("scale:1/0", "this node's transform is not finite"),
         ("at:1/0,0", "this node's transform is not finite"),
         ("skew:0,-90", "`skew:` must be between -90 and 90 degrees"),
-        ("scale:red", "`scale:` expects a number or a vector like 2,1, got a word"),
+        ("scale:red", "`scale:` expects a vector like 4,2, got a word"),
     ] {
         let ev = run_with(&format!("@target t.png 40x40\ncurve 0,0 10,10 stroke:#000,[2 4] {attr}\n"), &[]);
         assert_eq!(diag(&ev, "E0320").message, message, "{attr}");
@@ -5993,4 +5987,214 @@ fn a_patch_under_an_instance_palette_reads_that_palette() {
     );
     assert_eq!(fill_hex(node(&s, "s.a")), "#222222");
     assert_eq!(fill_hex(node(&s, "u.a")), "#111111");
+}
+
+#[test]
+fn each_binds_a_loop_index_before_the_value() {
+    let s = scene(
+        "@target t.png 80x80\nlet list = [5 6 7]\nlayer l\n  each i, x in list\n    circle 1 at:i*10,x\n",
+    );
+    assert_eq!(at(node(&s, "l.circle~1.0")), (0.0, 5.0));
+    assert_eq!(at(node(&s, "l.circle~1.1")), (10.0, 6.0));
+    assert_eq!(at(node(&s, "l.circle~1.2")), (20.0, 7.0));
+}
+
+#[test]
+fn the_loop_index_counts_positions_over_a_range() {
+    let s = scene("@target t.png 80x80\neach i, x in 4..7\n  circle 1 at:i,x\n");
+    assert_eq!(at(node(&s, "circle~1.0")), (0.0, 4.0));
+    assert_eq!(at(node(&s, "circle~1.2")), (2.0, 6.0));
+}
+
+#[test]
+fn each_expr_binds_a_loop_index() {
+    scene(
+        "@target t.png 80x80\nlet pts = [each i, x in [5 6 7] -> i,x]\nexpect pts == [0,5 1,6 2,7]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn a_loop_index_inside_a_def_body_and_nested_loops() {
+    let s = scene(
+        "@target t.png 80x80\ndef dots\n  each i, x in [1 2]\n    circle 1 at:i,x name:dot\ndots name:d\neach r, _a in [0 0]\n  each c, _b in [0 0 0]\n    rect 1 at:c,r name:cell\n",
+    );
+    assert_eq!(at(node(&s, "d.dot.1")), (1.0, 2.0));
+    assert_eq!(at(node(&s, "cell.1.2")), (2.0, 1.0));
+}
+
+#[test]
+fn adding_a_loop_index_keeps_the_seeds_inside_the_loop() {
+    let plain = scene("@target t.png 80x80\neach x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    let indexed = scene("@target t.png 80x80\neach i, x in 0..3\n  circle 1 at:rand(0 40),x\n");
+    for k in 0..3 {
+        let path = format!("circle~1.{k}");
+        assert_eq!(at(node(&plain, &path)), at(node(&indexed, &path)), "{path}");
+    }
+    assert_ne!(
+        at(node(&plain, "circle~1.0")).0,
+        at(node(&plain, "circle~1.1")).0
+    );
+}
+
+#[test]
+fn a_list_is_indexed_by_an_expression() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\nlet row = 4\nlet i = 1\ncircle 2 fill:tones.{mod(row 3)} name:a\ncircle 2 fill:tones.{i+1} name:b\ncircle 2 fill:tones.{i} name:c\ncircle 2 fill:tones.2 name:d\n",
+    );
+    assert_eq!(fill_hex(node(&s, "a")), "#222222");
+    assert_eq!(fill_hex(node(&s, "b")), "#333333");
+    assert_eq!(fill_hex(node(&s, "c")), "#222222");
+    assert_eq!(fill_hex(node(&s, "d")), "#333333");
+}
+
+#[test]
+fn an_index_inside_each_reads_the_loop_names() {
+    let s = scene(
+        "@target t.png 80x80\nlet tones = [#111111 #222222 #333333]\neach i, x in 0..4\n  circle 2 fill:tones.{mod(i 3)} name:dot\n",
+    );
+    let fills: Vec<String> = (0..4).map(|k| fill_hex(node(&s, &format!("dot.{k}")))).collect();
+    assert_eq!(fills, ["#111111", "#222222", "#333333", "#111111"]);
+}
+
+#[test]
+fn an_index_that_is_not_a_name_or_a_number_is_e0320() {
+    let ev = run_with(
+        "@target t.png 40x40\nlet tones = [1 2 3]\nlet v = 1,2\ncircle tones.{v}\n",
+        &[],
+    );
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "an index is a name or a number, got a vector like 4,2");
+    assert_eq!(
+        d.fix.as_deref(),
+        Some("write a number or a name inside `{}`, such as `list.{i}`")
+    );
+}
+
+#[test]
+fn an_unbound_name_in_an_index_is_the_member_name() {
+    let ev = run_with("@target t.png 40x40\nlet tones = [1 2 3]\ncircle tones.{nope}\n", &[]);
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.message, "a list has no member `nope`");
+}
+
+#[test]
+fn an_index_picks_one_copy_of_a_family() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 1\neach i in 0..3\n  circle 2 at:i*10+5,10 name:dot\ncircle 2 at:@dot.{k}.cx,30 name:a\ncircle 2 at:@dot.{k+1}.cx,40 name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (15.0, 30.0));
+    assert_eq!(at(node(&s, "b")), (25.0, 40.0));
+}
+
+#[test]
+fn a_vector_branch_of_an_if_evaluates_in_a_let() {
+    let s = scene(
+        "@target t.png 80x80\nlet k = 3\nlet p = if k < 19 then k*32,200 else 576,300\nlet q = if k > 19 then k*32,200 else 576,300\ncircle 2 at:p name:a\ncircle 2 at:q name:b\n",
+    );
+    assert_eq!(at(node(&s, "a")), (96.0, 200.0));
+    assert_eq!(at(node(&s, "b")), (576.0, 300.0));
+}
+
+#[test]
+fn a_comma_before_a_vector_sum_is_e0320_with_the_parenthesized_fix() {
+    let fix = "wrap the vector in parentheses, as in `(a,b) + v`, because `+` binds tighter than `,`";
+    for (line, key) in [
+        ("circle 2 at:(a),(b) + v", "at"),
+        ("circle 2 at:a,b + v", "at"),
+        ("circle 2 at:a + v,b", "at"),
+        ("rect 4x4 at:8,8 pivot:a,b + v", "pivot"),
+        ("repeat 3 step:a,b + v\n  circle 2", "step"),
+        ("grid 2x2 cell:a,b + v\n  circle 2", "cell"),
+        ("circle 4 fill:radial(#fff #000 at:a,b + v)", "at"),
+        ("circle 4 fill:conic(#fff #000 at:a,b + v)", "at"),
+        ("rect 4x4 scale:a,b + v", "scale"),
+        ("rect 4x4 skew:a,b + v", "skew"),
+        ("circle 4\n  fx rim 3 dir:a,b + v", "dir"),
+    ] {
+        let ev = run_with(
+            &format!("@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\n{line}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, format!("`{key}:` expects a vector like 4,2, got a list"), "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
+}
+
+#[test]
+fn a_parenthesized_vector_sum_is_a_vector_in_every_vector_key() {
+    let s = scene(
+        "@target t.png 40x40\nlet a = 3\nlet b = 4\nlet v = 10,10\ncircle 2 at:(a,b) + v name:c\nrepeat 2 step:(a,b) + v\n  circle 2 name:r\ngrid 2x2 cell:(a,b) + v\n  circle 2 name:g\nrect 4x4 at:5,5 pivot:(a,b) + v scale:(1,2) + v name:p\n",
+    );
+    assert_eq!(at(node(&s, "c")), (13.0, 14.0));
+    assert_eq!(at(node(&s, "r.1")), (33.0, 34.0));
+}
+
+#[test]
+fn a_vector_key_that_is_not_a_vector_names_the_key() {
+    for (line, message, fix) in [
+        ("rect 4x4 pivot:red", "`pivot:` expects a vector like 4,2, got a word", "write `pivot:4,2`"),
+        ("repeat 3 step:[1 2 3]\n  circle 2", "`step:` expects a vector like 4,2, got a list", "write `step:4,2`"),
+        ("grid 2x2 cell:red\n  circle 2", "`cell:` expects a vector like 4,2, got a word", "write `cell:4,2`"),
+        ("circle 4 fill:radial(#fff #000 at:red)", "`at:` expects a vector like 4,2, got a word", "write `at:4,2`"),
+        ("circle 4\n  fx rim 3 dir:red", "`dir:` expects a vector like 4,2, got a word", "write `dir:4,2`"),
+        ("repeat 3 step:10%,2\n  circle 2", "`step:` takes numbers, not percents", "write `step:4,2` in canvas units"),
+        ("curve 0,0 20,0 stroke:#000,[2 4] taper:red", "`taper:` expects a vector like 4,2, got a word", "write `taper:4,2`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 40x40\n{line}\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{line}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{line}");
+    }
+}
+
+#[test]
+fn concat_joins_lists_and_ranges_in_order() {
+    scene(
+        "@target t.png 10x10\nexpect concat([1 2] [3]) == [1 2 3]\nexpect concat(0..2 [5] 7..9) == [0 1 5 7 8]\nexpect concat([0,0 1,1] [2,2]) == [0,0 1,1 2,2]\nexpect concat([] [1]) == [1]\ncircle 1\n",
+    );
+}
+
+#[test]
+fn concat_reports_what_is_not_a_list() {
+    for (call, message, fix) in [
+        (
+            "concat([1] 2)",
+            "`concat` argument 2 must be a list, got a number",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        (
+            "concat([1] 3,4)",
+            "`concat` argument 2 must be a list, got a vector like 4,2",
+            "write `concat(a b)` with lists or ranges, and `[v]` for one item",
+        ),
+        ("concat([1])", "`concat` joins two or more lists", "write `concat(a b)`"),
+        ("concat()", "`concat` joins two or more lists", "write `concat(a b)`"),
+    ] {
+        let ev = run_with(&format!("@target t.png 10x10\nlet xs = {call}\ncircle 1\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{call}");
+        assert_eq!(d.fix.as_deref(), Some(fix), "{call}");
+    }
+}
+
+#[test]
+fn a_curve_takes_points_and_lists_of_points_in_order() {
+    let geometry = |src: &str| {
+        let s = scene(&format!("@target t.png 80x80\nlet pts = [10,10 50,10]\n{src} name:c\n"));
+        shape(&s, "c").geometry.to_svg()
+    };
+    let literal = geometry("curve 10,10 50,10 50,50 0,50");
+    assert_eq!(geometry("curve pts 50,50 0,50"), literal);
+    assert_eq!(geometry("curve 10,10 [50,10 50,50] 0,50"), literal);
+    assert_eq!(geometry("curve concat(pts [50,50 0,50])"), literal);
+    assert_eq!(geometry("curve pts [50,50] [0,50]"), literal);
+    assert_eq!(geometry("curve [10,10 50,10 50,50 0,50]"), literal);
+}
+
+#[test]
+fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
+    let ev = run_with("@target t.png 80x80\nlet pts = [10,10 50,10]\ncurve pts red\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
 }

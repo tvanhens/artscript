@@ -1009,7 +1009,7 @@ impl<'a> Parser<'a> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
-        let var = self.expect_name();
+        let (index, var) = self.loop_names();
         if !self.eat_kw(Word::In) {
             self.fail(
                 span,
@@ -1031,6 +1031,7 @@ impl<'a> Parser<'a> {
         let body = self.block(indent, span.line, |p| p.scene_line("directly under `each`"));
         Some(Scene {
             kind: SceneKind::Each {
+                index,
                 var,
                 iter: iter?,
                 body,
@@ -1584,20 +1585,11 @@ impl<'a> Parser<'a> {
                 "*".into()
             } else if matches!(tok.kind, Tok::LBrace) {
                 self.bump();
-                let name = match self.cur().map(|t| t.kind.clone()) {
-                    Some(Tok::Ident(s)) => {
-                        self.bump();
-                        s
-                    }
-                    _ => {
-                        self.fail_here("expected a name inside `{}`", "write `.{name}`");
-                        String::new()
-                    }
-                };
+                let key = self.parse_prec(0);
                 if !self.eat(&Tok::RBrace) {
-                    self.fail_here("expected `}` after the name", "close the segment with `}`");
+                    self.fail_here("expected `}` after the index", "close the index with `}`");
                 }
-                format!("{{{name}}}")
+                return Expr::Index(Box::new(base), Box::new(key));
             } else {
                 self.fail_here(
                     "expected a member name after `.`",
@@ -1796,7 +1788,7 @@ impl<'a> Parser<'a> {
     fn parse_each_expr(&mut self) -> Expr {
         let span = self.cur_span();
         self.bump();
-        let var = self.expect_name();
+        let (index, var) = self.loop_names();
         if !self.eat_kw(Word::In) {
             self.fail(
                 span,
@@ -1817,6 +1809,7 @@ impl<'a> Parser<'a> {
         if !self.eat(&Tok::Arrow) {
             self.fail_here("expected `->`", "write `[each name in <expr> -> <expr>]`");
             return Expr::Each {
+                index,
                 var,
                 iter: Box::new(iter),
                 body: Box::new(Expr::Ident(String::new())),
@@ -1835,10 +1828,29 @@ impl<'a> Parser<'a> {
             self.fail_here("unclosed `[`", "close the list with `]`");
         }
         Expr::Each {
+            index,
             var,
             iter: Box::new(iter),
             body: Box::new(body),
         }
+    }
+
+    /// `x` or `i, x` after `each`. The index comes first.
+    fn loop_names(&mut self) -> (Option<String>, String) {
+        let first = self.expect_name();
+        if !self.eat(&Tok::Comma) {
+            return (None, first);
+        }
+        let span = self.cur_span();
+        let var = self.expect_name();
+        if !var.is_empty() && var == first {
+            self.fail(
+                span,
+                format!("the loop index and the value are both named `{var}`"),
+                "give the index and the value different names",
+            );
+        }
+        (Some(first), var)
     }
 
     fn parse_group(&mut self) -> Expr {

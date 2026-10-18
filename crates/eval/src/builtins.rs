@@ -264,12 +264,12 @@ impl Evaluator<'_> {
                 gradient(kind, self.stops(stops)?)
             }
             "radial" => {
-                let at = get("at").and_then(|v| v.vec2()).unwrap_or((0.5, 0.5));
+                let at = get("at").map(|v| v.vec2_for("at")).transpose()?.unwrap_or((0.5, 0.5));
                 let r = get("r").and_then(|v| v.num());
                 gradient(GradKind::Radial { at, r }, self.stops(&a)?)
             }
             "conic" => {
-                let at = get("at").and_then(|v| v.vec2()).unwrap_or((0.5, 0.5));
+                let at = get("at").map(|v| v.vec2_for("at")).transpose()?.unwrap_or((0.5, 0.5));
                 let start = get("from").and_then(|v| v.num()).unwrap_or(0.0);
                 gradient(GradKind::Conic { at, start }, self.stops(&a)?)
             }
@@ -316,6 +316,26 @@ impl Evaluator<'_> {
                     ridged: func == "ridged",
                 }))
             }
+            "concat" => {
+                if a.len() < 2 {
+                    return Err(fail("E0320", "`concat` joins two or more lists")
+                        .fix("write `concat(a b)`"));
+                }
+                let mut joined = Vec::new();
+                for (i, v) in a.iter().enumerate() {
+                    match v {
+                        Value::List(_) | Value::Range(_) => joined.extend(v.items().unwrap_or_default()),
+                        other => {
+                            return Err(fail(
+                                "E0320",
+                                format!("`concat` argument {} must be a list, got {}", i + 1, other.kind()),
+                            )
+                            .fix("write `concat(a b)` with lists or ranges, and `[v]` for one item"));
+                        }
+                    }
+                }
+                Value::List(Rc::new(joined))
+            }
             "contrast" | "visible" | "occluded" | "value_range" => {
                 return Err(fail(
                     "E0392",
@@ -328,6 +348,7 @@ impl Evaluator<'_> {
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
+                    .note("lists: concat")
                     .fix("check the spelling"));
             }
         })

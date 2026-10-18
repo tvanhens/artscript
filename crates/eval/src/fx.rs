@@ -231,7 +231,7 @@ impl Evaluator<'_> {
                 EffectOp::Glow { radius: n0.unwrap_or(8.0) as f32, color: color(color::step(f, 2.0, DEFAULT_HUE_STEP))?, strength: strength as f32 }
             }
             "rim" => {
-                let dir = a.get("dir").and_then(Value::vec2).unwrap_or((1.0, 1.0));
+                let dir = a.get("dir").map(|v| v.vec2_for("dir")).transpose()?.unwrap_or((1.0, 1.0));
                 let rim = color::from_oklch(color::Lch { l: 0.86, c: 0.05, h: 265.0 }, 1.0);
                 EffectOp::Rim { width: n0.unwrap_or(3.0) as f32, dir: Point::new(dir.0 as f32, dir.1 as f32), color: color(rim)? }
             }

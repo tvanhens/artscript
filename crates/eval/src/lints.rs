@@ -27,7 +27,7 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
 fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
-        Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) => {
+        Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
             walk_expr(a, f);
             walk_expr(b, f);
         }
@@ -352,11 +352,6 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
             }
             Expr::Call { func, .. } => {
                 out.insert(func.clone());
-            }
-            Expr::Member(_, seg) => {
-                if let Some(v) = seg.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
-                    out.insert(v.to_string());
-                }
             }
             _ => {}
         });

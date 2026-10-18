@@ -615,7 +615,13 @@ fn each_expr_is_one_list_and_formats_tight() {
     let file = must_parse(src);
     match node(&file) {
         SceneKind::Draw(Draw { args, .. }) => match &args[0] {
-            Expr::Each { var, iter, body } => {
+            Expr::Each {
+                index,
+                var,
+                iter,
+                body,
+            } => {
+                assert_eq!(index, &None);
                 assert_eq!(var, "k");
                 assert!(matches!(iter.as_ref(), Expr::Range(_, _)));
                 assert!(matches!(body.as_ref(), Expr::Tuple(_)));
@@ -627,6 +633,78 @@ fn each_expr_is_one_list_and_formats_tight() {
     let once = format_source(src).unwrap();
     assert_eq!(once, src);
     assert_eq!(format_source(&once).unwrap(), once);
+}
+
+#[test]
+fn each_takes_an_index_before_the_value() {
+    let file = must_parse("each i, x in list\n  circle 1\n");
+    match node(&file) {
+        SceneKind::Each { index, var, .. } => {
+            assert_eq!(index.as_deref(), Some("i"));
+            assert_eq!(var, "x");
+        }
+        other => panic!("{other:?}"),
+    }
+    let src = "let xs = [each i, x in 0..3 -> i,x]\n";
+    match node(&must_parse(src)) {
+        SceneKind::Let {
+            value: Expr::Each { index, var, .. },
+            ..
+        } => {
+            assert_eq!(index.as_deref(), Some("i"));
+            assert_eq!(var, "x");
+        }
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(
+        format_source("each i,x in list\n  circle 1\n").unwrap(),
+        "each i, x in list\n  circle 1\n"
+    );
+    assert_eq!(format_source(src).unwrap(), src);
+}
+
+#[test]
+fn each_index_errors_say_what_to_write() {
+    let same = parse("each i, i in list\n  circle 1\n").unwrap_err();
+    assert_eq!(
+        same[0].fix.as_deref(),
+        Some("give the index and the value different names")
+    );
+    assert!(parse("each i, in list\n  circle 1\n").is_err());
+    let reserved = parse("each fx, x in list\n  circle 1\n").unwrap_err();
+    assert_eq!(reserved[0].code, "E0105");
+}
+
+#[test]
+fn a_member_segment_in_braces_is_an_expression() {
+    let file = must_parse("let c = tones.{mod(row 3)}\n");
+    assert_eq!(
+        node(&file),
+        &SceneKind::Let {
+            name: "c".into(),
+            value: Expr::Index(
+                Box::new(ident("tones")),
+                Box::new(call("mod", vec![ident("row"), num(3.0)])),
+            ),
+        }
+    );
+    for src in [
+        "let c = tones.{i}\n",
+        "let c = tones.{i+1}\n",
+        "let c = pts.{k}.x\n",
+        "let c = @dot.{k}.cx\n",
+        "let c = grid.{r}.{c}\n",
+    ] {
+        assert_eq!(format_source(src).unwrap(), src);
+    }
+    assert_eq!(
+        format_source("let c = tones.{ i + 1 }\n").unwrap(),
+        "let c = tones.{i+1}\n"
+    );
+    let empty = parse("let c = tones.{}\n").unwrap_err();
+    assert_eq!(empty[0].code, "E0101");
+    let open = parse("let c = tones.{i\n").unwrap_err();
+    assert_eq!(open[0].fix.as_deref(), Some("close the index with `}`"));
 }
 
 #[test]
