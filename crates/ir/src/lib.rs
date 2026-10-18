@@ -290,6 +290,21 @@ impl Node {
         self.cut_to_kept(local)
     }
 
+    /// [`Node::local_bounds`] with each stroke measured by the outline it fills, so miter joins
+    /// and square caps count.
+    fn local_ink(&self) -> Option<Rect> {
+        let local = match &self.kind {
+            NodeKind::Shape(s) => shape_ink(s),
+            NodeKind::Group { children, .. } => join_all(
+                children
+                    .iter()
+                    .map(|c| Some(c.transform.map_rect(c.local_ink()?).0))
+                    .collect::<Vec<_>>(),
+            ),
+        }?;
+        self.cut_to_kept(local)
+    }
+
     fn cut_to_kept(&self, mut local: Rect) -> Option<Rect> {
         for kept in self.kept_bounds() {
             if !local.intersect(kept) {
@@ -338,7 +353,7 @@ impl Node {
         visiting: &mut Vec<String>,
     ) -> Option<Rect> {
         let content = match &self.kind {
-            NodeKind::Shape(s) => grow(shape_bounds(s), blur_reach(s.blur, 1.0)),
+            NodeKind::Shape(s) => grow(shape_ink(s), blur_reach(s.blur, 1.0)),
             NodeKind::Group { children, .. } => join_all(
                 children
                     .iter()
@@ -358,7 +373,7 @@ impl Node {
             if let EffectOp::Outline { width, .. } = effect.op
                 && width > 0.0
             {
-                let traced = self.local_bounds().map(|r| r.with_outset((width, width)));
+                let traced = self.local_ink().map(|r| r.with_outset((width, width)));
                 current = join(current, traced);
                 source = current;
                 named.clear();
@@ -440,6 +455,37 @@ fn shape_bounds(s: &Shape) -> Option<Rect> {
     } else {
         Some(r)
     }
+}
+
+/// Geometry joined with the outline its stroke fills, at Skia's default miter limit as render
+/// draws it. A dash only removes ink, so it is ignored.
+fn shape_ink(s: &Shape) -> Option<Rect> {
+    let plain = shape_bounds(s)?;
+    let Some(st) = s.stroke.as_ref().filter(|st| st.width > 0.0) else {
+        return Some(plain);
+    };
+    let mut paint = skia_safe::Paint::default();
+    paint.set_style(skia_safe::paint::Style::Stroke);
+    paint.set_stroke_width(st.width);
+    paint.set_stroke_cap(match st.cap {
+        Cap::Round => skia_safe::paint::Cap::Round,
+        Cap::Butt => skia_safe::paint::Cap::Butt,
+        Cap::Square => skia_safe::paint::Cap::Square,
+    });
+    paint.set_stroke_join(match st.join {
+        Join::Round => skia_safe::paint::Join::Round,
+        Join::Miter => skia_safe::paint::Join::Miter,
+        Join::Bevel => skia_safe::paint::Join::Bevel,
+    });
+    let mut filled = skia_safe::PathBuilder::new();
+    skia_safe::path_utils::fill_path_with_paint(
+        &s.geometry,
+        &paint,
+        &mut filled,
+        None::<&Rect>,
+        None::<Matrix>,
+    );
+    join(Some(plain), Some(filled.snapshot().compute_tight_bounds()).filter(|r| !r.is_empty()))
 }
 
 struct InputEnv<'a, 'f, 'n> {

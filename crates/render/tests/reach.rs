@@ -1,6 +1,10 @@
 mod common;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Mask, MaskSource, Matrix, Node, NodeKind, Path, Rect};
+use artscript_ir::{
+    Cap, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
+    Rect, Stroke,
+};
+use skia_safe::PathBuilder;
 use artscript_render::{Backend, render_rgba};
 use common::{color, effect, scene, solid};
 
@@ -203,4 +207,43 @@ fn an_input_node_keeps_its_whole_glow() {
         render_rgba(&scene(400.0, 400.0, vec![masked, reader]), 1.0, Backend::Cpu).unwrap();
     let alpha = px[((200 * w + 280) * 4 + 3) as usize];
     assert!(alpha > 0, "the glow of @b is cut 70 units past its edge");
+}
+
+fn stroked(geometry: Path, cap: Cap, join: Join) -> Node {
+    let mut n = solid("s", geometry, color(0, 0, 255, 255));
+    if let NodeKind::Shape(s) = &mut n.kind {
+        s.fill = None;
+        s.stroke = Some(Stroke {
+            paint: Paint::Solid(color(0, 0, 0, 255)),
+            width: 10.0,
+            cap,
+            join,
+            dash: vec![],
+        });
+    }
+    n
+}
+
+#[test]
+fn the_outer_extent_holds_miter_joins_and_square_caps() {
+    let mut spike = PathBuilder::new();
+    spike.move_to((100.0, 140.0));
+    spike.line_to((120.0, 60.0));
+    spike.line_to((140.0, 140.0));
+    spike.close();
+    let mut diagonal = PathBuilder::new();
+    diagonal.move_to((90.0, 90.0));
+    diagonal.line_to((150.0, 150.0));
+    for (name, node) in [
+        ("miter", stroked(spike.snapshot(), Cap::Butt, Join::Miter)),
+        ("square cap", stroked(diagonal.snapshot(), Cap::Square, Join::Miter)),
+    ] {
+        covers(name, &node);
+        let mut outlined = node;
+        outlined.effects.push(effect(EffectOp::Outline {
+            width: 4.0,
+            color: color(255, 0, 0, 255),
+        }));
+        covers(&format!("{name} outline"), &outlined);
+    }
 }
