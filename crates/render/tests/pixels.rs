@@ -188,6 +188,94 @@ fn outline_around_translucent_children_keeps_its_alpha() {
     }
 }
 
+fn haloed(halo: Option<EffectOp>, outline: bool) -> artscript_ir::Scene {
+    let mut node = solid("disc", circle_at(32.0, 32.0, 18.0), color(79, 127, 224, 255));
+    node.effects.extend(halo.map(effect));
+    if outline {
+        node.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(12, 0, 72, 255) }));
+    }
+    scene(64.0, 64.0, vec![node])
+}
+
+fn glow() -> EffectOp {
+    EffectOp::Glow { radius: 10.0, color: color(232, 179, 58, 255) }
+}
+
+fn blur() -> EffectOp {
+    EffectOp::Blur { sigma: 4.0 }
+}
+
+fn drop_shadow() -> EffectOp {
+    EffectOp::Shadow { dx: 0.0, dy: 6.0, blur: 8.0, color: color(160, 30, 30, 128) }
+}
+
+fn outline_ring_stays_on_top_of(halo: EffectOp) {
+    for scale in [1, 2] {
+        let render = |s| render_png(&s, scale as f32, Backend::Cpu).unwrap();
+        let at = |png: &[u8], x: i32| pixel(png, x * scale, 32 * scale);
+        let plain = render(haloed(None, true));
+        let ringed = render(haloed(Some(halo.clone()), true));
+        let bare = render(haloed(Some(halo.clone()), false));
+        let (got, want) = (at(&ringed, 12), at(&plain, 12));
+        assert!(got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1), "ring at {scale}x is {got:?}, want {want:?}");
+        assert_eq!(at(&ringed, 32), at(&bare, 32), "interior at {scale}x");
+        let past = at(&bare, 6);
+        assert!(past[3] > 0, "the halo reaches past the ring at {scale}x");
+        assert_eq!(at(&ringed, 6), past, "past the ring at {scale}x");
+    }
+}
+
+#[test]
+fn outline_ring_stays_on_top_of_an_earlier_glow() {
+    outline_ring_stays_on_top_of(glow());
+}
+
+#[test]
+fn outline_ring_stays_on_top_of_an_earlier_blur() {
+    outline_ring_stays_on_top_of(blur());
+}
+
+#[test]
+fn outline_ring_stays_on_top_of_an_earlier_shadow() {
+    outline_ring_stays_on_top_of(drop_shadow());
+}
+
+#[test]
+fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
+    let rings = |halo: bool| {
+        let mut s = haloed(halo.then(glow), true);
+        s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255) }));
+        render_png(&s, 1.0, Backend::Cpu).unwrap()
+    };
+    let (plain, ringed) = (rings(false), rings(true));
+    let bare = render_png(&haloed(Some(glow()), false), 1.0, Backend::Cpu).unwrap();
+    for x in [12, 8] {
+        let (got, want) = (pixel(&ringed, x, 32), pixel(&plain, x, 32));
+        assert!(got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1), "at {x},32 got {got:?}, want {want:?}");
+    }
+    assert_eq!(pixel(&ringed, 3, 32), pixel(&bare, 3, 32), "past the outer ring");
+}
+
+#[test]
+fn svg_outline_ring_is_drawn_again_over_an_earlier_blur_or_shadow() {
+    for halo in [blur(), drop_shadow()] {
+        let svg = render_svg(&haloed(Some(halo), true), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let body = svg.lines().find(|l| l.contains("fill=\"#4f7fe0\"")).expect(&svg);
+        let d = body.split("d=\"").nth(1).and_then(|s| s.split('"').next()).expect(&svg);
+        let content_at = svg.find(body).unwrap();
+        let ring_at = svg.rfind("stroke-linejoin=\"round\"").expect(&svg);
+        assert!(ring_at > content_at, "{svg}");
+        let filter_end = svg[content_at..].find("</g>").unwrap() + content_at;
+        assert!(ring_at > filter_end, "{svg}");
+        let open = "<g mask=\"url(#";
+        let over = svg[..ring_at].rfind(open).expect(&svg);
+        assert!(over > filter_end, "{svg}");
+        let mid = svg[over + open.len()..].split(')').next().unwrap();
+        let mask = svg.split(&format!("<mask id=\"{mid}\"")).nth(1).and_then(|s| s.split("</mask>").next()).expect(&svg);
+        assert!(mask.contains(&format!("d=\"{d}\" fill=\"#000000\"")), "{svg}");
+    }
+}
+
 #[test]
 fn svg_outline_on_a_translucent_fill_is_not_faded() {
     let svg = render_svg(&glass(true), Profile::Svg, 1.0, Backend::Cpu).unwrap();
