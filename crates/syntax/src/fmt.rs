@@ -113,17 +113,14 @@ impl<'a> Printer<'a> {
                 self.emit(line, 0, &join_head("rule", name, &[], params));
                 self.scenes(body, 1);
             }
-            DeclKind::Shader { name, params, sksl } => {
-                self.emit(line, 0, &join_head("shader", name, &[], params));
-                if let Some(body) = sksl {
-                    self.raw_block(1, body);
-                }
-            }
             DeclKind::Light { name, named } => {
                 self.emit(line, 0, &join_head("light", name, &[], named));
             }
-            DeclKind::Brush { name, named } => {
-                self.emit(line, 0, &join_head("brush", name, &[], named));
+            DeclKind::Brush { name, params, sksl } => {
+                self.emit(line, 0, &join_head("brush", name, &[], params));
+                if let Some(block) = sksl {
+                    self.raw_block(1, &block.text);
+                }
             }
             DeclKind::Anim {
                 name,

@@ -2,6 +2,7 @@
 // `Diagnostic` is the error type every layer shares and lives in artscript-syntax.
 #![allow(clippy::result_large_err)]
 
+mod brush;
 mod builtins;
 mod checks;
 pub mod color;
@@ -29,7 +30,7 @@ use artscript_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use key::{frame_count, frame_delays};
-pub use project::{BackendChoice, LintLevel, Manifest, Project, find_root, load};
+pub use project::{BackendChoice, LintLevel, Manifest, Project, STD, find_root, load};
 pub use seed::fnv1a;
 pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
 
@@ -208,6 +209,9 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut files: Vec<&String> = ev.parsed.keys().collect();
     files.sort();
     for f in files {
+        if ev.modules.get(f).is_some_and(|m| m.bundled) {
+            continue;
+        }
         let parsed = &ev.parsed[f];
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
@@ -678,7 +682,7 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
         if !seen.insert(f.clone()) {
             continue;
         }
-        let Some(src) = project.files.get(&f) else {
+        let Some(src) = project.source(&f) else {
             continue;
         };
         let Ok(file) = artscript_syntax::parse(src) else {

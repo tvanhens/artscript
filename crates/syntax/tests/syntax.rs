@@ -117,7 +117,7 @@ fn doc_fixtures_parse_and_round_trip() {
         ("mvp_eye.art", "\"palette/dusk\"", "\"fff\""),
         ("mvp_hero.art", "\"chars/hero.svg\"", "\"arm_r\""),
         ("mvp_water.art", "\"water\"", "\"ripple\""),
-        ("mvp_shader.art", "\"scales\"", "half4 main"),
+        ("mvp_brush.art", "\"scuff\"", "float4 shade"),
         ("mvp_light.art", "\"sun\"", "\"ambient\""),
         ("mvp_body.art", "\"body\"", "\"torso\""),
         ("mvp_tunic.art", "\"tunic\"", "\"torso\""),
@@ -365,6 +365,8 @@ fn let_if_and_assert_proportion() {
             message: Some("msg".into()),
         }
     );
+    let raw = must_parse("assert 1 > 0 \"\"\"width\"\"\"\n");
+    assert!(matches!(node(&raw), SceneKind::Check { message: Some(m), .. } if m == "width"), "{:?}", node(&raw));
 }
 
 #[test]
@@ -733,7 +735,7 @@ fn syntax_errors_carry_a_fix() {
     assert_eq!(open_err.code, "E0101");
     assert_eq!(open_err.fix.as_deref(), Some("close the string with `\"`"));
 
-    let raw = parse("shader s\n  sksl \"\"\"\nno end\n").unwrap_err();
+    let raw = parse("brush s\n  sksl \"\"\"\nno end\n").unwrap_err();
     let raw_err = raw
         .iter()
         .find(|e| e.message == "unterminated raw string")
@@ -1037,7 +1039,7 @@ fn a_node_name_may_be_a_reserved_word() {
 
 #[test]
 fn a_positional_name_may_be_a_reserved_word() {
-    for word in ["mask", "light", "shader", "if", "true"] {
+    for word in ["mask", "light", "brush", "if", "true"] {
         must_parse(&format!(
             "layer {word}\n  circle 4\ngroup {word}\n  circle 4\n  anchor {word} 0,-20\n"
         ));
@@ -1314,4 +1316,33 @@ fn fmt_keeps_the_parens_the_parser_needs() {
         assert_eq!(format(&must_parse(src)), src);
         round_trip_source(src);
     }
+}
+
+#[test]
+fn a_brush_keeps_where_its_body_starts() {
+    let src = "brush dry strength:.5 dir:0\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return m.paint;\n    }\n  \"\"\"\n";
+    let file = must_parse(src);
+    let Some(DeclKind::Brush { name, params, sksl: Some(block) }) = file.decls().next().map(|d| &d.kind) else {
+        panic!("{file:?}");
+    };
+    assert_eq!(name, "dry");
+    assert_eq!(params.len(), 2);
+    assert_eq!(block.span, Span { line: 2, col: 3 });
+    assert_eq!(block.body, Span { line: 3, col: 5 });
+    assert_eq!(block.text, "float4 shade(Mark m) {\n  return m.paint;\n}");
+    round_trip_source(src);
+}
+
+#[test]
+fn brush_is_a_name_everywhere_but_at_a_line_start() {
+    let file = must_parse("def stone size:60 brush:none\n  rect size brush:brush(scale:.5)\nlet brush = 1\nuse x { brush }\nrect 4 brush:[a b]\n");
+    assert_eq!(file.decls().count(), 2);
+    assert_eq!(file.scenes().count(), 2);
+    let errs = errors("layer a\n  brush dry\n    sksl \"\"\"x\"\"\"\n");
+    assert!(errs.iter().any(|e| e.message.contains("declaration cannot go")), "{errs:?}");
+    let errs = errors("brush 4 strength:1\n  sksl \"\"\"x\"\"\"\n");
+    assert!(errs.iter().any(|e| e.message.contains("expected a name")), "{errs:?}");
+    let e = one_error("rect 4\ndef brush size:20\n  rect size\n");
+    assert_eq!((e.code.as_str(), e.span.line), ("E0105", 2), "{e:?}");
+    assert!(e.message.contains("cannot be named `brush`"), "{e:?}");
 }

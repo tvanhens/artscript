@@ -65,7 +65,7 @@ fn at(n: &Node) -> (f32, f32) {
 
 fn fill_hex(n: &Node) -> String {
     match &n.kind {
-        NodeKind::Shape(s) => match &s.fill {
+        NodeKind::Shape(s) => match s.fill.as_ref().map(|f| &f.paint) {
             Some(Paint::Solid(c)) => c.hex(),
             other => panic!("{} has fill {other:?}", n.path),
         },
@@ -695,7 +695,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(band) = &node(&s, "band").kind else {
         panic!("band")
     };
-    let Some(Paint::Linear { from, to, stops }) = &band.fill else {
+    let Some(Paint::Linear { from, to, stops }) = band.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", band.fill)
     };
     assert_eq!((from.x, from.y, to.x, to.y), (10.0, 5.0, 70.0, -15.0));
@@ -706,7 +706,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(down) = &node(&s, "down").kind else {
         panic!("down")
     };
-    let Some(Paint::Linear { from, to, .. }) = &down.fill else {
+    let Some(Paint::Linear { from, to, .. }) = down.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", down.fill)
     };
     assert!(
@@ -720,7 +720,7 @@ fn grad_points_are_local_endpoints_and_direction_still_spans_bounds() {
     let NodeKind::Shape(angle) = &node(&s, "angle").kind else {
         panic!("angle")
     };
-    let Some(Paint::Linear { from, .. }) = &angle.fill else {
+    let Some(Paint::Linear { from, .. }) = angle.fill.as_ref().map(|f| &f.paint) else {
         panic!("{:?}", angle.fill)
     };
     assert_ne!((from.x, from.y), (17.0, 17.0));
@@ -1538,7 +1538,7 @@ fn a_private_name_is_not_an_export() {
     );
     let s = public.scene.unwrap();
     assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
-    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+    let Some(Paint::Solid(color)) = shape(&s, "cap").fill.as_ref().map(|f| &f.paint) else {
         panic!("fill")
     };
     assert_eq!(color.hex(), "#112233");
@@ -1557,7 +1557,7 @@ fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
     assert_eq!(fx_ops(node(&s, "cap")), ["Rim"]);
-    let Some(Paint::Solid(color)) = &shape(&s, "cap").fill else {
+    let Some(Paint::Solid(color)) = shape(&s, "cap").fill.as_ref().map(|f| &f.paint) else {
         panic!("fill")
     };
     assert_eq!(color.hex(), "#112233");
@@ -5797,7 +5797,7 @@ fn outline_sides_rejects_what_is_not_a_side_word() {
 }
 
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
-    match &shape(s, path).fill {
+    match shape(s, path).fill.as_ref().map(|f| &f.paint) {
         Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
         other => panic!("{path} has fill {other:?}"),
     }
@@ -6198,3 +6198,5 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
     let d = diag(&ev, "E0320");
     assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
 }
+
+mod brush;

@@ -6,7 +6,7 @@ use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use artscript_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
-use crate::eval::{Evaluator, R, Scope, fail, unseen};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
@@ -37,8 +37,16 @@ impl Evaluator<'_> {
         if func == "key" {
             return self.key_call(args, named, sc);
         }
-        match sc.module.global(func) {
+        let at = sc.env.iter().rposition(|(k, _)| k == func);
+        let bound = at
+            .map(|i| sc.env[i].1.clone())
+            .or_else(|| sc.module.global(func));
+        if let Some((_, default)) = at.and_then(|i| sc.brush_params.iter().find(|(j, _)| *j == i)) {
+            return self.call_brush_param(default, bound, args, named, sc);
+        }
+        match bound {
             Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
+            Some(Value::Brush(b)) => return self.call_brush(&b, args, named, sc),
             Some(Value::Unseen) => return Err(unseen(func)),
             _ => {}
         }
@@ -343,6 +351,7 @@ impl Evaluator<'_> {
                 )
                 .fix("use geometric checks such as inside, gap or level"));
             }
+            other if sc.module.lost(other) => return Err(Fail::reported()),
             other => {
                 return Err(fail("E0302", format!("unknown function `{other}`"))
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")

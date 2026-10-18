@@ -1,0 +1,11 @@
+# lib/brushes/scuff.art
+brush scuff strength:.5 scale:1 tint:p.ink reach:3
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.uv / (18 * scale) + seeded(m), 3);
+    return float4(mix(m.paint.rgb, tint.rgb, strength * n * .4), cover(m.edge + (n - .5) * reach, m));
+  }
+  """
+let worn = scuff(strength:.8 dir:30)
+blob 40 fill:p.green.3 brush:worn            # a configured brush
+rect 40x20 fill:p.green.2 brush:[scuff worn] # a stack

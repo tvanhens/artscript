@@ -48,6 +48,7 @@ commands:
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
   docs [TOPIC...]                          print the core language card and topic index, or the card and the named topics
+  std [NAME]                               list the bundled libraries, or print one (`artscript std brushes > lib/brushes.art` forks it)
 
 exit codes: 0 ok, 1 compile error, 2 assert or lint error, 3 warnings only";
 
@@ -79,6 +80,11 @@ fn main() -> ExitCode {
             Some(flag) => usage_error(&format!("unknown flag `{flag}`")),
             None => docs(&args[1..]),
         },
+        Some("std") => match args[1..].iter().find(|a| a.starts_with('-')) {
+            Some(flag) => usage_error(&format!("unknown flag `{flag}`")),
+            None if args.len() > 2 => usage_error("`std` takes at most one name"),
+            None => std_cmd(args.get(1).map(String::as_str)),
+        },
         Some("--version" | "-V") => {
             outln!("artscript {}", artscript_eval::VERSION);
             0
@@ -102,6 +108,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("shapes", include_str!("../../../docs/topics/shapes.md")),
     ("structure", include_str!("../../../docs/topics/structure.md")),
     ("fields", include_str!("../../../docs/topics/fields.md")),
+    ("brushes", include_str!("../../../docs/topics/brushes.md")),
     ("components", include_str!("../../../docs/topics/components.md")),
     ("anim", include_str!("../../../docs/topics/anim.md")),
     ("checks", include_str!("../../../docs/topics/checks.md")),
@@ -128,6 +135,29 @@ fn docs(names: &[String]) -> u8 {
     }
     out!("{CARD}\n{}", bodies.join("\n"));
     0
+}
+
+/// `artscript std` lists the bundled libraries by their `use` path; `artscript std <name>` prints
+/// that file so an author can fork it.
+fn std_cmd(name: Option<&str>) -> u8 {
+    let Some(name) = name else {
+        for (path, _) in artscript_eval::STD {
+            outln!("{path}");
+        }
+        return 0;
+    };
+    let wanted = name.strip_prefix("std/").unwrap_or(name);
+    match artscript_eval::STD.iter().find(|(p, _)| p.strip_prefix("std/") == Some(wanted)) {
+        Some((_, src)) => {
+            out!("{src}");
+            0
+        }
+        None => {
+            let names: Vec<&str> = artscript_eval::STD.iter().map(|(p, _)| *p).collect();
+            errln!("error: no bundled library `{name}`\n\nbundled: {}", names.join(", "));
+            1
+        }
+    }
 }
 
 fn topic_index() -> String {

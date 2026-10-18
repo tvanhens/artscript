@@ -1,0 +1,33 @@
+# The two std brushes on filled squares, 256x256, four rows of four 48px squares on paper.
+# Row 1 (y 32), dry on blue, strength .3 .6 .9 then fade:1 at strength .6: the blue breaks into
+# horizontal streaks that grow from a few thin gaps (cell 1) to mostly paper with blue shreds
+# (cell 3); cell 4 is solid on its left and wears out to paper toward its right edge.
+# Row 2 (y 96), dry on blue at strength .6, scale .5 1 2 then dir:60: the streaks are fine (cell 1),
+# the same as row 1 cell 2 (cell 2), and coarse, about twice as tall (cell 3); cell 4's streaks run
+# diagonally, 60 degrees clockwise from horizontal (down and to the right).
+# Row 3 (y 160), chip on gold, strength .3 .6 .9 then grit:1 at strength .6: the square's interior
+# stays solid gold while its edge is bitten by flakes, a few shallow nicks (cell 1) to deep ragged
+# bites (cell 3); cell 4 also has small paper pits scattered near the edge.
+# Row 4 (y 224), chip on gold at strength .6, scale .5 1 2 then dry on blue dir:90: the flakes are
+# small and dense (cell 1), the same as row 3 cell 2 (cell 2), and large (cell 3); cell 4's dry
+# streaks run vertically.
+# Every cell's edge is antialiased; nothing is drawn outside its 48px square.
+# The .svg target uses profile:svg: brushed nodes are baked into raster tiles, so each cell looks
+# like the PNG's.
+@target brush/area.png 256x256
+@target brush/area.svg 256x256 profile:svg
+
+use std/brushes { dry chip }
+
+each i, s in [.3 .6 .9]
+  rect 48 at:32+i*64,32 fill:p.blue.2 brush:dry(strength:s) name:dry_strength
+rect 48 at:224,32 fill:p.blue.2 brush:dry(strength:.6 fade:1) name:dry_fade
+each i, k in [.5 1 2]
+  rect 48 at:32+i*64,96 fill:p.blue.2 brush:dry(strength:.6 scale:k) name:dry_scale
+rect 48 at:224,96 fill:p.blue.2 brush:dry(strength:.6 dir:60) name:dry_dir60
+each i, s in [.3 .6 .9]
+  rect 48 at:32+i*64,160 fill:p.gold.2 brush:chip(strength:s) name:chip_strength
+rect 48 at:224,160 fill:p.gold.2 brush:chip(strength:.6 grit:1) name:chip_grit
+each i, k in [.5 1 2]
+  rect 48 at:32+i*64,224 fill:p.gold.2 brush:chip(strength:.6 scale:k) name:chip_scale
+rect 48 at:224,224 fill:p.blue.2 brush:dry(strength:.6 dir:90) name:dry_dir90

@@ -57,7 +57,10 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
     }
     if let NodeKind::Shape(s) = &n.kind {
         if let Some(f) = &s.fill {
-            let _ = write!(out, "  fill:{}", paint(f));
+            let _ = write!(out, "  fill:{}", paint(&f.paint));
+            if !f.marks.is_empty() {
+                let _ = write!(out, "  brush:{}", f.marks.len());
+            }
         }
         if let Some(st) = &s.stroke {
             let _ = write!(out, "  stroke:{},{}", paint(&st.paint), num(st.width as f64));

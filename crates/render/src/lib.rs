@@ -6,7 +6,9 @@ mod features;
 mod field;
 mod gif;
 mod gpu;
+mod mark;
 mod paint;
+mod sdf;
 mod svg;
 mod text;
 
@@ -28,6 +30,8 @@ pub enum RenderError {
     /// Under `Profile::Vector`, every node that uses a raster-only feature.
     NotVector(Vec<Unsupported>),
     Skia(String),
+    /// A failure inside one node, reported at that node's `file:line` instead of the target.
+    AtNode { origin: String, message: String },
     TransparentGif,
     /// `width × height × frames × 4` exceeds [`RASTER_BUDGET`].
     GifTooLarge,

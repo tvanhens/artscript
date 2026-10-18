@@ -9,6 +9,7 @@
 | vector / size | `14,0` (no spaces around the comma), `256x256`. A vector is a size, so `rect w,h` sizes from variables. `rect w x h` is E0321 |
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base). A hex color of 3, 4, 6 or 8 digits ends at the first character that cannot continue a name, so `#ff0000+v` is an expression; any other `#` starts a comment |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
+| brush | `dry`, `dry(strength:.9 dir:45)`, `[chip dry]`; a `brush` declaration, a call on one with overrides, or a stack. See `brushes` |
 | reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas`. After an instance, a name finds the part under any group in it, so write `@hero.eye_l`, not `@hero.face.eye_l` for a `group face`. A hop through a group, a layer, or a shape to a part that is not an anchor is E0350, and the fix names the part's key |
 
 A list is indexed with `.0` or with `.{expr}`, where the braces hold any expression that gives a number or a name: `tones.{mod(row 3)}`, `pts.{i+1}`. A name in the braces is read as its value, and a name that is not bound is read as itself, so `p.{skin}` is `p.skin`. A value that is neither a number nor a name is E0320. On a reference, `@dot.{k}` picks one copy of a family the way `@dot.1` does.

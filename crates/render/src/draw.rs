@@ -63,6 +63,8 @@ pub struct DrawCtx<'a> {
     pub index: SceneIndex<'a>,
     pub backend: Backend,
     visiting: RefCell<HashSet<String>>,
+    /// Signed distance fields built for brushed fills in this render.
+    pub(crate) sdf: RefCell<crate::sdf::SdfMemo>,
 }
 
 impl<'a> DrawCtx<'a> {
@@ -71,6 +73,7 @@ impl<'a> DrawCtx<'a> {
             index: SceneIndex::build(scene),
             backend,
             visiting: RefCell::new(HashSet::new()),
+            sdf: RefCell::new(crate::sdf::SdfMemo::default()),
         }
     }
 }
@@ -328,7 +331,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
     let own = match &node.kind {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
-            let pad = stroke + shape.blur * 3.0;
+            let pad = stroke + shape.blur * 3.0 + shape.mark_reach();
             Some(shape.geometry.bounds().with_outset((pad, pad)))
         }
         NodeKind::Group { .. } => None,
@@ -472,7 +475,7 @@ fn draw_kind(
             }
             Ok(())
         }
-        NodeKind::Shape(shape) => draw_shape(canvas, shape, ctx, world),
+        NodeKind::Shape(shape) => draw_shape(canvas, shape, ctx, world, &node.origin),
     }
 }
 
@@ -481,11 +484,16 @@ fn draw_shape(
     shape: &Shape,
     ctx: &DrawCtx<'_>,
     world: Matrix,
+    origin: &str,
 ) -> Result<(), RenderError> {
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
-            let paint = content_paint(fill, shape.blur, None)?;
-            canvas.draw_path(&shape.geometry, &paint);
+            if fill.marks.is_empty() {
+                let paint = content_paint(&fill.paint, shape.blur, None)?;
+                canvas.draw_path(&shape.geometry, &paint);
+            } else {
+                crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin)?;
+            }
         }
         if let Some(stroke) = &shape.stroke {
             let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
@@ -622,7 +630,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
         pad = pad.max(extra);
     }
     if let NodeKind::Shape(shape) = &node.kind {
-        pad = pad.max(shape.blur * 3.0);
+        pad = pad.max(shape.blur * 3.0).max(shape.mark_reach());
     }
     if let Some(clip) = &node.clip {
         pad = pad.max(clip.feather * 3.0);
