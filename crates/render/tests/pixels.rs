@@ -512,6 +512,45 @@ fn outline_shows_nothing_through_a_field_mask() {
     assert_eq!(pixel(&outlined, 8, 40), [0, 0, 0, 255]);
 }
 
+fn outline_hugs_what_a_thresholded_field_keeps(invert: bool) {
+    let blobs = |outline: bool| {
+        let field = Field::Noise { kind: NoiseKind::Simplex, scale: 8.0, seed: 1 };
+        let mut s = masked_bar(artscript_ir::MaskSource::Field { field, threshold: Some(0.5) }, outline);
+        s.children[0].mask.as_mut().unwrap().invert = invert;
+        s
+    };
+    let outlined = render_png(&blobs(true), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&blobs(false), 1.0, Backend::Cpu).unwrap();
+    let px = |png: &[u8]| (0..80).flat_map(|y| (0..80).map(move |x| (x, y))).map(|(x, y)| ((x, y), pixel(png, x, y))).collect::<Vec<_>>();
+    let (outlined, bare) = (px(&outlined), px(&bare));
+    let kept: Vec<(i32, i32)> = bare.iter().filter(|(_, p)| p[3] > 0).map(|(at, _)| *at).collect();
+    assert!(!kept.is_empty() && kept.len() < 60 * 20, "the field keeps some of the bar, {} px", kept.len());
+    let (mut near, mut far) = (0, 0);
+    for (((x, y), got), (_, under)) in outlined.iter().zip(&bare) {
+        let gap = kept.iter().map(|(kx, ky)| (((kx - x).pow(2) + (ky - y).pow(2)) as f32).sqrt()).fold(f32::MAX, f32::min);
+        if gap == 0.0 {
+            assert_eq!(got, under, "kept pixel {x},{y} shows the bar");
+        } else if gap <= 2.0 {
+            near += 1;
+            assert_eq!(*got, [0, 0, 0, 255], "pixel {x},{y} is {gap} px from a kept pixel and is ink");
+        } else if gap > 4.5 {
+            far += 1;
+            assert_eq!(*got, [0, 0, 0, 0], "pixel {x},{y} is {gap} px from every kept pixel and is clear");
+        }
+    }
+    assert!(near > 0 && far > 0, "near {near} far {far}");
+}
+
+#[test]
+fn outline_hugs_what_a_thresholded_field_mask_keeps() {
+    outline_hugs_what_a_thresholded_field_keeps(false);
+}
+
+#[test]
+fn outline_hugs_what_an_inverted_thresholded_field_mask_keeps() {
+    outline_hugs_what_a_thresholded_field_keeps(true);
+}
+
 #[test]
 fn outline_shows_nothing_through_a_feathered_mask_edge() {
     let window = || solid("window", Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None), red());
