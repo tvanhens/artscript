@@ -681,7 +681,10 @@ impl Declarer<'_> {
                 self.sub(s.span, label, &stmts);
             }
             SceneKind::Draw(d) => self.draw(s.span, d),
-            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+            SceneKind::Let { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Play { .. }
+            | SceneKind::Fx(_) => {}
         }
     }
 
@@ -935,7 +938,10 @@ fn count<'s>(
                     }
                 }
             }
-            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+            SceneKind::Let { .. }
+            | SceneKind::Check { .. }
+            | SceneKind::Play { .. }
+            | SceneKind::Fx(_) => {}
         }
     }
 }

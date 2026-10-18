@@ -82,7 +82,10 @@ fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
                 }
             }
         }
-        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
+        SceneKind::Let { .. }
+        | SceneKind::Check { .. }
+        | SceneKind::Play { .. }
+        | SceneKind::Fx(_) => {}
     }
 }
 
@@ -134,6 +137,7 @@ fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'
                 out.push((e, s.span));
             }
         }
+        SceneKind::Fx(fx) => fx_exprs(fx, out),
         SceneKind::Draw(d) => {
             d.args.iter().for_each(|a| out.push((a, s.span)));
             named(&d.named, out);
@@ -249,6 +253,9 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     for s in scenes {
         if let SceneKind::Play { name: Some(n), .. } = &s.kind {
             out.insert(n.clone());
+        }
+        if let SceneKind::Fx(fx) = &s.kind {
+            out.insert(fx.op.clone());
         }
         if let SceneKind::Draw(d) = &s.kind {
             out.insert(d.verb.clone());
