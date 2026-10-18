@@ -202,7 +202,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
 }
 
 pub fn raw_color(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
-    let level = manifest.lint_level("raw-color", LintLevel::Warn);
+    let level = manifest.lint_level("raw-color");
     let mut out = Vec::new();
     for (e, span) in file_exprs(file, true) {
         walk_expr(e, &mut |x| {
@@ -268,7 +268,7 @@ fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
 
 /// A library's public top-level `let` is an export, like a def, and is never reported.
 pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Vec<Diagnostic> {
-    let level = manifest.lint_level("unused", LintLevel::Warn);
+    let level = manifest.lint_level("unused");
     let mut scenes = Vec::new();
     all_scenes(&file.items, &mut |s| scenes.push(s));
     let mut used = HashSet::new();
@@ -373,7 +373,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
 /// its groups. A group or layer with effects is measured as well when none of its shapes left
 /// the canvas, so one cut is reported once.
 pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
-    let level = manifest.lint_level("off-canvas", LintLevel::Warn);
+    let level = manifest.lint_level("off-canvas");
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();
     type Hit<'n> = (String, String, Rect, Option<&'n str>);
@@ -518,7 +518,7 @@ fn index<'n>(nodes: &'n [Node], parent: Matrix, out: &mut HashMap<&'n str, (&'n 
 
 /// One warning per unnamed statement whose key fed a draw-site seed.
 pub fn positional_seed(uses: &PositionalUses, manifest: &Manifest) -> Vec<Diagnostic> {
-    let level = manifest.lint_level("positional-seed", LintLevel::Warn);
+    let level = manifest.lint_level("positional-seed");
     let mut out = Vec::new();
     for (site, pos) in uses.sites() {
         let Some(d) = diag(

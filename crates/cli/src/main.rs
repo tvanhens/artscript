@@ -104,6 +104,7 @@ const TOPICS: &[(&str, &str)] = &[
     ("anim", include_str!("../../../docs/topics/anim.md")),
     ("checks", include_str!("../../../docs/topics/checks.md")),
     ("cli", include_str!("../../../docs/topics/cli.md")),
+    ("manifest", include_str!("../../../docs/topics/manifest.md")),
     ("craft", include_str!("../../../docs/topics/craft.md")),
 ];
 

@@ -5,4 +5,4 @@
 - `use face/eye` imports a library from the manifest's lib roots. `use palette/dusk as p` aliases it. `use face/parts { eye blush }` imports names. Names starting with `_` stay private.
 - The `unused` lint reports an imported name the importing file never reads. `palette elite from house` reads `house`. A library's top-level `let` is an export, like a `def`, so the lint does not report it. A private `_` let is not an export, and the lint reports it when nothing reads it.
 - A `use` that fails (the library does not parse, is missing, or lacks a listed name) is reported once, at its cause. Its names stay quiet where they are used, and after a bare `use x` so does any unknown verb, style, effect, or anim. A broken manifest palette does the same for `p`.
-- The manifest's default palette is always available as `p`.
+- The manifest's default palette is available as `p` in every file. See `manifest`.
