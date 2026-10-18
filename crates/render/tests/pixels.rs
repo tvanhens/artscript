@@ -245,6 +245,25 @@ fn svg_node_mask_region_covers_a_shape_placed_away_from_the_origin() {
 }
 
 #[test]
+fn svg_node_mask_with_feather_or_invert_is_well_formed() {
+    for (feather, invert) in [(5.0, false), (0.0, true), (5.0, true)] {
+        let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
+        bar.mask = Some(Box::new(artscript_ir::Mask {
+            source: artscript_ir::MaskSource::Nodes(vec![solid("window", circle_at(0.0, 0.0, 20.0), red())]),
+            luminance: false,
+            feather,
+            invert,
+        }));
+        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
+        let group = doc.descendants().find(|n| n.has_tag_name("mask")).and_then(|m| m.children().find(|n| n.has_tag_name("g"))).expect(&svg);
+        let filter = group.attribute("filter").expect(&svg);
+        let id = filter.trim_start_matches("url(#").trim_end_matches(')');
+        assert!(doc.descendants().any(|n| n.has_tag_name("filter") && n.attribute("id") == Some(id)), "{svg}");
+    }
+}
+
+#[test]
 fn svg_outside_clip_region_covers_a_shape_placed_away_from_the_origin() {
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
     bar.transform = skia_safe::Matrix::translate((48.0, 48.0));
