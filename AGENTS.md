@@ -16,7 +16,7 @@ A limit that drops or corrupts output and reports no error is a finding even whe
 
 Write a rule into the card or a topic when you want that behavior. Accidental behavior stays out of the card until you choose it.
 
-A row in `docs/decisions.tsv` records an earlier choice. Replace that choice when a better design needs it, and append a new row. Leave the old row as it is.
+A PR description records why its design choice was made. Replace an earlier choice when a better design needs it, and name the choice it replaces in the PR description. A show-me-your-work decision log stays local and out of git.
 
 ### Inputs are the author's own files
 
