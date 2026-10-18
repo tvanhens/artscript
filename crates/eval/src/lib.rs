@@ -126,10 +126,40 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     diagnostics.extend(off_canvas);
     Evaluation {
         scene: Some(scene),
-        diagnostics,
+        diagnostics: fold_copies(diagnostics),
         plays,
         seeded,
     }
+}
+
+/// Diagnostics that differ only in their node, such as one failure in every copy of a loop, kept
+/// as the first copy with the note `also in <node>, ...`.
+fn fold_copies(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    let mut out: Vec<Diagnostic> = Vec::new();
+    let mut also: Vec<Vec<String>> = Vec::new();
+    for d in diags {
+        let first = out.iter().position(|o| {
+            (o.severity, &o.code, &o.file, o.span, &o.message, &o.notes, &o.fix)
+                == (d.severity, &d.code, &d.file, d.span, &d.message, &d.notes, &d.fix)
+        });
+        match first {
+            Some(i) => {
+                if !d.node.is_empty() && d.node != out[i].node && !also[i].contains(&d.node) {
+                    also[i].push(d.node);
+                }
+            }
+            None => {
+                out.push(d);
+                also.push(Vec::new());
+            }
+        }
+    }
+    for (d, nodes) in out.iter_mut().zip(also) {
+        if !nodes.is_empty() {
+            d.notes.push(format!("also in {}", nodes.join(", ")));
+        }
+    }
+    out
 }
 
 /// Frames `i` at `t = i/fps` for `t` in `[0, dur)`. Checks run on every frame and a failure is reported once.
