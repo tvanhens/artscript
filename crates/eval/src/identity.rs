@@ -1665,6 +1665,15 @@ fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]
         }
         return format!("write {addr}");
     }
+    match skip_hop(consumed, rest) {
+        Some(addr) => format!("write .{addr}"),
+        None => "write a name, as in `.eye`".into(),
+    }
+}
+
+/// The address with one group hop dropped: `consumed` are the copy indices after the group's
+/// name, and they move after the next name in `rest`. `None` when `rest` names nothing.
+pub fn skip_hop(consumed: &[Hop], rest: &[Hop]) -> Option<String> {
     let mut indices: Vec<String> = consumed.iter().map(|h| h.to_string()).collect();
     let mut name = None;
     let mut after = Vec::new();
@@ -1675,13 +1684,10 @@ fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]
             other => after.push(other.to_string()),
         }
     }
-    let Some(name) = name else {
-        return "write a name, as in `.eye`".into();
-    };
-    let mut parts = vec![name];
+    let mut parts = vec![name?];
     parts.extend(indices);
     parts.extend(after);
-    format!("write .{}", parts.join("."))
+    Some(parts.join("."))
 }
 
 /// A patch whose name was drawn, but whose index matches none of those copies.

@@ -4352,6 +4352,7 @@ impl<'a> Evaluator<'a> {
         sc: &Scope,
         mut index_depth: usize,
     ) -> R<Value> {
+        let mut named_at = 0;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i + 1 == segs.len();
@@ -4393,17 +4394,38 @@ impl<'a> Evaluator<'a> {
                 return Ok(Value::Num(v));
             }
             let one = self.one_ref(&cur, &label, sc)?;
-            let kids = one.children();
-            let matched: Vec<RefVal> = kids
-                .iter()
-                .filter(|c| c.record.name == seg)
-                .cloned()
-                .collect();
+            let (matched, names): (Vec<RefVal>, Vec<String>) = match &one.record.inner {
+                Some(inner) => {
+                    let region = inner.borrow().region();
+                    let parts = one.parts(seg);
+                    if parts.is_empty()
+                        && let Some(&id) = region.lookup(seg).first()
+                    {
+                        let site = &region.decl(id).site;
+                        return Err(fail(
+                            "E0350",
+                            format!(
+                                "`@{label}.{seg}` is declared at {}:{} and not drawn",
+                                site.file, site.span.line
+                            ),
+                        )
+                        .fix("draw it, or remove the reference"));
+                    }
+                    (parts, region.names().iter().map(|n| n.to_string()).collect())
+                }
+                None => {
+                    if one.holds(seg) {
+                        return Err(group_hop(segs, named_at, i));
+                    }
+                    let kids = one.children();
+                    let names = kids.iter().map(|c| c.record.name.clone()).collect();
+                    (kids.into_iter().filter(|c| c.record.name == seg).collect(), names)
+                }
+            };
             if matched.is_empty() {
                 if last && MEASURES.contains(&seg) {
                     return self.measure(&one, seg, sc);
                 }
-                let names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
                 return Err(fail("E0350", format!("@{label} has no part `{seg}`"))
                     .note(format!(
                         "parts: {}",
@@ -4416,6 +4438,7 @@ impl<'a> Evaluator<'a> {
                     .fix("use one of the listed parts"));
             }
             cur = matched;
+            named_at = i;
             label = format!("{label}.{seg}");
             index_depth = if one.record.inner.is_some() {
                 0
@@ -4578,6 +4601,31 @@ fn component_names(module: &Module) -> BTreeSet<String> {
         .filter(|(_, v)| matches!(v, Value::Component(_)))
         .map(|(name, _)| name.clone())
         .collect()
+}
+
+/// `segs[at]` names a group, layer, or shape, and `segs[i]` a part under it. The fix drops the
+/// hop the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
+fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
+    let written = segs.join(".");
+    let fail = fail(
+        "E0350",
+        format!(
+            "`@{written}` hops through `{}`, which is not an instance or a slot",
+            segs[at]
+        ),
+    );
+    let Some(addr) = identity::hops_from(&segs[at + 1..])
+        .and_then(|hops| identity::skip_hop(&hops[..i - at - 1], &hops[i - at - 1..]))
+    else {
+        return fail.fix("name the part directly");
+    };
+    let scope: Vec<&str> = segs[..at].iter().map(String::as_str).collect();
+    let fix = if scope.is_empty() {
+        format!("write @{addr}")
+    } else {
+        format!("write @{}.{addr}", scope.join("."))
+    };
+    fail.fix(fix)
 }
 
 fn missing_part(label: &str, names: &[String]) -> Fail {

@@ -3204,12 +3204,12 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
 #[test]
 fn a_copy_hop_stays_on_that_copy() {
     let s = scene(
-        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    each j in 0..2\n      circle 4 at:(i * 20 + j * 5),0 name:gem\nassert @row.1.gem.0.cx ~= 20\n",
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    each j in 0..2\n      circle 4 at:(i * 20 + j * 5),0 name:gem\nassert @gem.1.0.cx ~= 20\n",
     );
     assert!(paths(&s).contains(&"gem.1.0".to_string()));
 
     let marked = scene(
-        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 4 at:i * 10,0 name:mark\nassert @row.1.mark.cx ~= 10\n",
+        "@target t.png 80x40\neach i in 0..2\n  group name:row\n    circle 4 at:i * 10,0 name:mark\nassert @mark.1.cx ~= 10\n",
     );
     assert!(paths(&marked).iter().any(|p| p == "mark.1"));
 
@@ -3219,13 +3219,74 @@ fn a_copy_hop_stays_on_that_copy() {
     assert!(paths(&sized).contains(&"a.0".to_string()));
 
     let missed = run_with(
-        "@target t.png 40x40\neach i in 0..2\n  group name:row\n    if i == 0\n      circle 4 name:mark\ncopy @row.1.mark\n",
+        "@target t.png 40x40\neach i in 0..2\n  group name:row\n    if i == 0\n      circle 4 name:mark\ncopy @mark.1\n",
         &[],
     );
     let d = diag(&missed, "E0350");
     assert_eq!(d.file, "art/t.art");
     assert_eq!(d.span.line, 6);
     assert!(d.fix.is_some(), "{d}");
+}
+
+#[test]
+fn a_reference_into_an_instance_skips_its_groups() {
+    let s = scene_with(
+        "@target t.png 64x64\nuse g { thing }\nthing at:20,20 name:t\nexpect @t.box.w == 10\n",
+        &[(
+            "lib/g.art",
+            "def thing\n  group at:0,0 name:grp\n    rect 10x10 fill:#ff0000 name:box\n",
+        )],
+    );
+    assert!(paths(&s).contains(&"t.box".to_string()), "{:?}", paths(&s));
+}
+
+#[test]
+fn a_reference_through_a_group_names_the_key() {
+    let cases = [
+        (
+            "@target t.png 80x40\neach i in 0..2\n  group name:row\n    each j in 0..2\n      circle 4 at:(i * 20 + j * 5),0 name:gem\nassert @row.1.gem.0.cx ~= 20\n",
+            "row.1.gem.0.cx",
+            "write @gem.1.0.cx",
+        ),
+        (
+            "@target t.png 40x40\ngroup name:grp\n  group\n    rect 10x10 name:box\nlet w = @grp.box.w\n",
+            "grp.box.w",
+            "write @box.w",
+        ),
+    ];
+    for (src, written, fix) in cases {
+        let ev = run_with(src, &[]);
+        let d = diag(&ev, "E0350");
+        assert_eq!(d.file, "art/t.art");
+        assert!(
+            d.message.contains(&format!("`@{written}` hops through")),
+            "{d}"
+        );
+        assert_eq!(d.fix.as_deref(), Some(fix), "{d}");
+    }
+
+    let lib = (
+        "lib/g.art",
+        "def thing\n  group name:grp\n    rect 10x10 fill:#ff0000 name:box\n",
+    );
+    let ev = run_with(
+        "@target t.png 64x64\nuse g { thing }\nthing at:20,20 name:t\nexpect @t.grp.box.w == 10\n",
+        &[lib],
+    );
+    let d = diag(&ev, "E0350");
+    assert_eq!((d.file.as_str(), d.span.line), ("art/t.art", 4));
+    assert_eq!(d.fix.as_deref(), Some("write @t.box.w"), "{d}");
+
+    let missing = run_with(
+        "@target t.png 64x64\nuse g { thing }\nthing at:20,20 name:t\nexpect @t.lid.w == 10\n",
+        &[lib],
+    );
+    let d = diag(&missing, "E0350");
+    assert!(d.notes.iter().any(|n| n == "parts: grp, box"), "{d}");
+
+    scene(
+        "@target t.png 40x40\ngroup name:body\n  rect 10x10\n  anchor neck 5,7\nassert @body.neck.x ~= 5\n",
+    );
 }
 
 #[test]
@@ -4179,8 +4240,8 @@ fn a_reference_inside_an_offset_group_reads_in_the_group_s_frame() {
     scene(
         "@target t.png 64x64\n\
          group at:32,50 name:g\n  rect 4x4 at:-10,0 fill:#000000 name:a\n  circle 2 at:@a.x,@a.cy fill:#000000 name:b\n\
-         assert @g.b.cx == @g.a.x\n\
-         assert @g.b.cy == @g.a.cy\n",
+         assert @b.cx == @a.x\n\
+         assert @b.cy == @a.cy\n",
     );
 }
 
@@ -4189,9 +4250,9 @@ fn canvas_inside_a_transformed_group_reads_in_the_group_s_frame() {
     scene(
         "@target t.png 64x64\n\
          group at:10,6 scale:.5 name:g\n  circle canvas.w/4 at:canvas.cx,canvas.cy fill:#000000 name:c\n\
-         assert @g.c.cx == canvas.cx\n\
-         assert @g.c.cy == canvas.cy\n\
-         assert @g.c.w == canvas.w/2\n",
+         assert @c.cx == canvas.cx\n\
+         assert @c.cy == canvas.cy\n\
+         assert @c.w == canvas.w/2\n",
     );
 }
 
