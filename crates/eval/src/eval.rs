@@ -2710,7 +2710,6 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
     /// `brush_site` is the span of this line's own `brush:` key. A brush error is reported there;
     /// an inherited brush's error lands on the statement with a note.
     #[allow(clippy::too_many_arguments)]

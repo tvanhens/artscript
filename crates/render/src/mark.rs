@@ -4,7 +4,7 @@
 //! program here was checked by eval, so a compile or binding failure is an internal error and
 //! names the node it came from.
 
-use artscript_brush::{Seeds, UniformValue};
+use artscript_brush::Seeds;
 use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path};
 use skia_safe::{Canvas, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, TileMode, runtime_effect::ChildPtr, shaders};
 
@@ -66,7 +66,7 @@ pub(crate) fn draw_area(
         u.set(origin, "u_frame", &frame(bounds, mark))?;
         u.set(origin, "u_dir", &[mark.dir_deg, mark.cos_sin[0], mark.cos_sin[1]])?;
         for (name, value) in &mark.stage.uniforms {
-            u.set(origin, name, floats(value))?;
+            u.set(origin, name, value.floats())?;
         }
         let children: Vec<ChildPtr> = effect
             .children()
@@ -123,10 +123,6 @@ fn mat9(m: &Matrix) -> [f32; 9] {
         m.skew_x(), m.scale_y(), m.persp_y(),
         m.translate_x(), m.translate_y(), m[8],
     ]
-}
-
-fn floats(v: &UniformValue) -> &[f32] {
-    v.floats()
 }
 
 /// The uniform block of one effect, written by name. A name the program does not declare, or a

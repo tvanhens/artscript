@@ -12,7 +12,7 @@ use artscript_brush::{
 use artscript_ir::{AreaMark, Stage};
 use artscript_syntax::ast::{Expr, Named, SkslBlock, Span};
 
-use crate::eval::{Evaluator, Fail, R, Scope, fail, osa_distance};
+use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
 use crate::identity::{self, Key};
 use crate::scope::Module;
 use crate::value::{Kind, Value};
@@ -25,7 +25,6 @@ pub struct BrushDecl {
     pub program: Arc<Program>,
 }
 
-/// The paint slot a brush is narrowed to with `on:`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Slot {
     Fill,
@@ -41,7 +40,6 @@ impl Slot {
     }
 }
 
-/// Placement settings. Every field has a default, so a brush with none set is usable.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Placement {
     pub dir_deg: f64,
@@ -190,11 +188,7 @@ fn kind_word(kind: UniformKind) -> &'static str {
 }
 
 impl Evaluator<'_> {
-    /// `DeclKind::Brush`. Defaults are evaluated in module scope and seeded like a library
-    /// `let`. Head keys split into placement and uniforms, the body is assembled and checked,
-    /// and every failure is reported at its own span: a param at its key, a body error at its
-    /// line and column in the `sksl` block, a frame error at the `sksl` keyword. A brush that
-    /// fails is marked lost so its use sites stay quiet.
+    /// A brush that fails is marked lost so its use sites stay quiet.
     pub(crate) fn declare_brush(
         &mut self,
         module: &Rc<Module>,
@@ -331,8 +325,8 @@ impl Evaluator<'_> {
         named: &[Named],
         sc: &Scope,
     ) -> R<Value> {
-        let (pos, nm) = self.brush_args(args, named, sc)?;
-        Ok(Value::Brush(Rc::new(b.with(&pos, &nm)?)))
+        let a = self.brush_args(args, named, sc)?;
+        Ok(Value::Brush(Rc::new(b.with(&a.pos, &a.named)?)))
     }
 
     /// `brush(k:v ...)` on a def parameter whose default is a brush. The arguments are checked
@@ -346,24 +340,23 @@ impl Evaluator<'_> {
         named: &[Named],
         sc: &Scope,
     ) -> R<Value> {
-        let (pos, nm) = self.brush_args(args, named, sc)?;
-        default.with(&pos, &nm)?;
+        let a = self.brush_args(args, named, sc)?;
+        default.with(&a.pos, &a.named)?;
         Ok(match bound {
-            Some(Value::Brush(b)) => Value::Brush(Rc::new(b.with(&pos, &nm)?)),
+            Some(Value::Brush(b)) => Value::Brush(Rc::new(b.with(&a.pos, &a.named)?)),
             _ => Value::None,
         })
     }
 
-    fn brush_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<(Vec<Value>, Vec<(String, Value)>)> {
-        let mut pos = Vec::with_capacity(args.len());
+    fn brush_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Args> {
+        let mut a = Args { pos: Vec::with_capacity(args.len()), named: Vec::with_capacity(named.len()) };
         for e in args {
-            pos.push(self.expr(e, sc)?);
+            a.pos.push(self.expr(e, sc)?);
         }
-        let mut nm = Vec::with_capacity(named.len());
         for n in named {
-            nm.push((n.key.clone(), self.expr(&n.value, sc)?));
+            a.named.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
-        Ok((pos, nm))
+        Ok(a)
     }
 
     /// The `brush:` value as an ordered stack. A bare word that is not a brush names the nearest

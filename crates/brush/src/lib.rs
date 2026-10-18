@@ -172,13 +172,11 @@ pub const RESERVED_PREFIX: &str = "u_";
 /// Placement keys a brush declaration or call may set. Every other head key is a uniform.
 pub const PLACEMENT_KEYS: &[&str] = &["dir", "reach", "on"];
 
-/// Which frame wraps the body. PR 1 shades fills only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MainKind {
     Area,
 }
 
-/// SkSL types an author param may declare.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum UniformKind {
     Float,
