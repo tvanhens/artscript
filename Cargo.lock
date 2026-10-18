@@ -70,6 +70,7 @@ dependencies = [
 name = "artscript-ir"
 version = "0.1.0"
 dependencies = [
+ "artscript-brush",
  "skia-safe",
 ]
 

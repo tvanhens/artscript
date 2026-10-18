@@ -328,7 +328,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
     let own = match &node.kind {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
-            let pad = stroke + shape.blur * 3.0;
+            let pad = stroke + shape.blur * 3.0 + shape.mark_reach();
             Some(shape.geometry.bounds().with_outset((pad, pad)))
         }
         NodeKind::Group { .. } => None,
@@ -484,7 +484,7 @@ fn draw_shape(
 ) -> Result<(), RenderError> {
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
-            let paint = content_paint(fill, shape.blur, None)?;
+            let paint = content_paint(&fill.paint, shape.blur, None)?;
             canvas.draw_path(&shape.geometry, &paint);
         }
         if let Some(stroke) = &shape.stroke {
@@ -622,7 +622,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
         pad = pad.max(extra);
     }
     if let NodeKind::Shape(shape) = &node.kind {
-        pad = pad.max(shape.blur * 3.0);
+        pad = pad.max(shape.blur * 3.0).max(shape.mark_reach());
     }
     if let Some(clip) = &node.clip {
         pad = pad.max(clip.feather * 3.0);

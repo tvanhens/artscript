@@ -740,7 +740,7 @@ fn gather(
     match &node.kind {
         NodeKind::Shape(shape) => {
             push_shape(shape, &mut local)?;
-            let fill_holds_children = shape.fill.as_ref().and_then(coverage).is_some();
+            let fill_holds_children = shape.fill.as_ref().and_then(|f| coverage(&f.paint)).is_some();
             let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
             for child in children {
                 let mut nested = Vec::new();
@@ -914,7 +914,7 @@ fn field_kept(
 
 /// Fill path, plus the stroke's own filled outline.
 fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
-    if let Some(coverage) = shape.fill.as_ref().and_then(coverage)
+    if let Some(coverage) = shape.fill.as_ref().and_then(|f| coverage(&f.paint))
         && !shape.geometry.is_empty()
     {
         out.push(Region {

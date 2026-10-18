@@ -394,7 +394,7 @@ impl Writer {
         self.body.push_str(&path_data(&shape.geometry));
         self.body.push('"');
         self.body.push_str(fill_rule(&shape.geometry));
-        self.paint_attrs(shape.fill.as_ref(), shape.stroke.as_ref(), id);
+        self.paint_attrs(shape.fill.as_ref().map(|f| &f.paint), shape.stroke.as_ref(), id);
         if shape.blur > 0.0 {
             let fid = format!("{id}-blur");
             self.defs.push_str("    <filter id=\"");

@@ -163,7 +163,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
             geometry,
-            fill: Some(fill),
+            fill: Some(artscript_ir::Fill::plain(fill)),
             stroke: None,
             blur: 0.0,
             children: vec![],

@@ -5,7 +5,9 @@
 //! so backends interpolate linearly between neighbouring stops and still match each other.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+pub use artscript_brush::UniformValue;
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
 mod retained;
@@ -101,7 +103,7 @@ pub enum NodeKind {
 #[derive(Clone, Debug)]
 pub struct Shape {
     pub geometry: Path,
-    pub fill: Option<Paint>,
+    pub fill: Option<Fill>,
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
@@ -109,6 +111,51 @@ pub struct Shape {
     /// "clip by nesting" rule). The shape and its children form one isolated group, so a
     /// child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
+}
+
+/// A fill and the brush marks that shade it. An empty `marks` is a plain fill. With marks, the
+/// stages run in order over the shape's signed distance field: stage 0 reads `paint` at each
+/// pixel as `m.paint`, each later stage reads the previous stage's color, and coverages multiply.
+#[derive(Clone, Debug)]
+pub struct Fill {
+    pub paint: Paint,
+    pub marks: Vec<AreaMark>,
+}
+
+impl Fill {
+    pub fn plain(paint: Paint) -> Fill {
+        Fill { paint, marks: Vec::new() }
+    }
+
+    /// Local units the marks may paint past the geometry.
+    pub fn reach(&self) -> f32 {
+        self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+    }
+}
+
+/// One brush stage over a fill. `m.uv`, `m.s`, `m.u` run along `dir_deg` across the geometry's
+/// bounds rotated by that angle; `m.edge` is the signed distance in local units, + inside.
+#[derive(Clone, Debug)]
+pub struct AreaMark {
+    pub stage: Stage,
+    pub dir_deg: f32,
+    /// `cos` and `sin` of `dir_deg`, computed on the CPU so both backends rotate alike.
+    pub cos_sin: [f32; 2],
+    /// Local units the stage may paint past the geometry. Grows bounds and bake tiles.
+    pub reach: f32,
+}
+
+/// One compiled-checkable brush program with its uniform values and seed.
+#[derive(Clone, Debug)]
+pub struct Stage {
+    /// The assembled program eval checked. Render compiles the same text.
+    pub program: Arc<artscript_brush::Program>,
+    /// Author uniforms in declaration order, by name.
+    pub uniforms: Vec<(String, UniformValue)>,
+    /// The site seed, reduced to 32 bits. Render derives the shader's seed uniforms from it.
+    pub seed: u32,
+    /// `file:line` of the brush declaration, for internal errors.
+    pub origin: String,
 }
 
 #[derive(Clone, Debug)]
@@ -293,6 +340,13 @@ pub enum EffectOp {
     Grain { strength: f32, scale: f32, seed: u32 },
     /// Composites `inputs` bottom to top, each with its own opacity.
     Merge { inputs: Vec<EffectInput>, alphas: Vec<f32> },
+}
+
+impl Shape {
+    /// Local units the fill's brush marks may paint past `geometry`. 0 without marks.
+    pub fn mark_reach(&self) -> f32 {
+        self.fill.as_ref().map_or(0.0, Fill::reach)
+    }
 }
 
 impl Node {
@@ -483,11 +537,15 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Geometry plus half the stroke width.
+/// Geometry plus half the stroke width, plus what the fill's brush marks may paint past it.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
     if let Some(st) = &s.stroke {
         r.outset((st.width / 2.0, st.width / 2.0));
+    }
+    let reach = s.mark_reach();
+    if reach > 0.0 {
+        r.outset((reach, reach));
     }
     if r.is_empty() && s.geometry.is_empty() {
         None

@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use artscript_ir::{
-    Blend, Cap, Clip, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path, Point, Rect,
-    Shape, Stroke,
+    Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
+    Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::ast::{
     self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
@@ -835,6 +835,7 @@ fn first_fill(n: &Node) -> Option<Rgba> {
         NodeKind::Shape(s) => s
             .fill
             .as_ref()
+            .map(|f| &f.paint)
             .or(s.stroke.as_ref().map(|st| &st.paint))
             .map(key_color),
         NodeKind::Group { children, .. } => children.iter().find_map(first_fill),
@@ -2265,7 +2266,7 @@ impl<'a> Evaluator<'a> {
                     let geometry = r.silhouette().make_transform(&inverse(&world));
                     let shape = Shape {
                         geometry,
-                        fill: Some(Paint::Solid(
+                        fill: Some(IrFill::plain(Paint::Solid(
                             Rgba {
                                 r: 1.0,
                                 g: 1.0,
@@ -2273,7 +2274,7 @@ impl<'a> Evaluator<'a> {
                                 a: 1.0,
                             }
                             .to_ir(),
-                        )),
+                        ))),
                         stroke: None,
                         blur: 0.0,
                         children: vec![],
@@ -2783,7 +2784,7 @@ impl<'a> Evaluator<'a> {
         let Some(width) = width else {
             return Ok(Shape {
                 geometry,
-                fill,
+                fill: fill.map(IrFill::plain),
                 stroke: None,
                 blur,
                 children: vec![],
@@ -2812,7 +2813,7 @@ impl<'a> Evaluator<'a> {
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             return Ok(Shape {
                 geometry: outline,
-                fill: Some(paint),
+                fill: Some(IrFill::plain(paint)),
                 stroke: None,
                 blur,
                 children: vec![],
@@ -2842,7 +2843,7 @@ impl<'a> Evaluator<'a> {
         };
         Ok(Shape {
             geometry,
-            fill,
+            fill: fill.map(IrFill::plain),
             stroke: Some(Stroke {
                 paint,
                 width: w as f32,

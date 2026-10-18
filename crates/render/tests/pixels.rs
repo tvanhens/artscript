@@ -568,25 +568,25 @@ fn png_bytes_are_deterministic() {
 fn svg_emits_gradient_and_bakes_field_fill() {
     let mut disc = solid("disc", circle_at(20.0, 20.0, 12.0), red());
     if let artscript_ir::NodeKind::Shape(shape) = &mut disc.kind {
-        shape.fill = Some(Paint::Linear {
+        shape.fill = Some(artscript_ir::Fill::plain(Paint::Linear {
             from: Point::new(8.0, 8.0),
             to: Point::new(32.0, 32.0),
             stops: vec![
                 artscript_ir::Stop { pos: 0.0, color: red() },
                 artscript_ir::Stop { pos: 1.0, color: color(0, 0, 255, 255) },
             ],
-        });
+        }));
     }
     let rock = {
         let mut node = solid("rock", circle_at(70.0, 20.0, 10.0), red());
         if let artscript_ir::NodeKind::Shape(shape) = &mut node.kind {
-            shape.fill = Some(Paint::Field {
+            shape.fill = Some(artscript_ir::Fill::plain(Paint::Field {
                 field: Field::Noise { kind: NoiseKind::Value, scale: 6.0, seed: 4, wrap: None },
                 stops: vec![
                     artscript_ir::Stop { pos: 0.0, color: color(90, 80, 70, 255) },
                     artscript_ir::Stop { pos: 1.0, color: color(210, 190, 160, 255) },
                 ],
-            });
+            }));
         }
         node
     };
@@ -786,13 +786,13 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
 fn noise_ramp(kind: NoiseKind) -> Vec<u8> {
     let mut node = solid("noise", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 192.0, 192.0), None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
-        shape.fill = Some(Paint::Field {
+        shape.fill = Some(artscript_ir::Fill::plain(Paint::Field {
             field: Field::Noise { kind, scale: 16.0, seed: 1, wrap: None },
             stops: vec![
                 artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
                 artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
             ],
-        });
+        }));
     }
     render_png(&scene(192.0, 192.0, vec![node]), 1.0, Backend::Cpu).unwrap()
 }
@@ -900,13 +900,13 @@ fn svg_bakes_a_one_sided_outline_like_the_png() {
 fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, w, h), None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
-        shape.fill = Some(Paint::Field {
+        shape.fill = Some(artscript_ir::Fill::plain(Paint::Field {
             field,
             stops: vec![
                 artscript_ir::Stop { pos: 0.0, color: color(0, 0, 0, 255) },
                 artscript_ir::Stop { pos: 1.0, color: color(255, 255, 255, 255) },
             ],
-        });
+        }));
     }
     let png = render_png(&scene(w, h, vec![node]), 1.0, Backend::Cpu).unwrap();
     rgba(&png).iter().map(|p| p[0] as f64).collect()
