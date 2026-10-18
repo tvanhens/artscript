@@ -3,6 +3,8 @@
 # of the artscript crates. `fuzz/coverage.sh show <file-substring>` prints that file's uncovered lines.
 set -euo pipefail
 cd "$(dirname "$0")"
+export ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=1"
+export LSAN_OPTIONS="${LSAN_OPTIONS:+$LSAN_OPTIONS:}suppressions=$PWD/lsan.supp"
 targets=(parse format manifest eval render fmt_eval gen)
 triple=$(rustc +nightly -vV | sed -n 's/^host: //p')
 bin=$(dirname "$(rustc +nightly --print target-libdir)")/bin

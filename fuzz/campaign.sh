@@ -3,6 +3,8 @@
 # coverage. Usage: fuzz/campaign.sh [SECS] [TARGET...]
 set -uo pipefail
 cd "$(dirname "$0")"
+export ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=1"
+export LSAN_OPTIONS="${LSAN_OPTIONS:+$LSAN_OPTIONS:}suppressions=$PWD/lsan.supp"
 secs=${1:-300}
 shift || true
 targets=("$@")
