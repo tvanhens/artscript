@@ -642,7 +642,7 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     .unwrap();
     for (file, out) in [("tiles/x/a", "a"), ("tiles/x/b", "b"), ("props/x/c", "c")] {
         fs::create_dir_all(dir.join("art").join(file).parent().unwrap()).unwrap();
-        fs::write(dir.join(format!("art/{file}.art")), format!("@target {out}.png 8x8\nrect 0 0 4 4\n")).unwrap();
+        fs::write(dir.join(format!("art/{file}.art")), format!("@target {out}.png 8x8\nrect 4x4\n")).unwrap();
     }
     let built = |args: &[&str]| -> (Option<i32>, String, Vec<String>) {
         let _ = fs::remove_dir_all(dir.join("assets"));
