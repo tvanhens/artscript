@@ -28,11 +28,12 @@ macro_rules! errln {
 
 mod build;
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use artscript_eval::{Format, Project, find_root, load, plan, project::rel_path};
+use artscript_eval::{Format, Plan, Project, TargetJob, find_root, load, plan, project::rel_path};
 use artscript_syntax::ast::Span;
 use artscript_syntax::{Diagnostic, Severity};
 
@@ -41,7 +42,8 @@ const USAGE: &str = "usage: artscript <command>
 commands:
   build [--only GLOB]... [--allow-warnings] [--backend auto|gpu|cpu]
                                            render every @target, write art-manifest.json
-  check [--json]                           evaluate stills and sample GIFs, without rendering
+  check [--json] [--only GLOB]... [FILE...]
+                                           evaluate stills and sample GIFs, without rendering. FILE and --only limit the check to those entry files and the libraries they import
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
@@ -57,8 +59,8 @@ fn main() -> ExitCode {
             Ok(opts) => with_project(&cwd, |p| build::build(p, &opts)),
             Err(msg) => usage_error(&msg),
         },
-        Some("check") => match flag_set(&args[1..], &["--json"]) {
-            Ok(json) => with_project(&cwd, |p| check(p, json)),
+        Some("check") => match parse_check(&args[1..]) {
+            Ok((json, only, files)) => with_project(&cwd, |p| check(p, &cwd, json, &only, &files)),
             Err(msg) => usage_error(&msg),
         },
         Some("fmt") => match parse_fmt(&args[1..]) {
@@ -170,9 +172,9 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
             "--allow-warnings" => opts.allow_warnings = true,
             "--only" => {
                 let glob = it.next().ok_or("`--only` needs a glob")?;
-                opts.only.push(parse_glob(glob)?);
+                opts.only.push(Selector::Glob(parse_glob(glob)?));
             }
-            s if s.starts_with("--only=") => opts.only.push(parse_glob(&s["--only=".len()..])?),
+            s if s.starts_with("--only=") => opts.only.push(Selector::Glob(parse_glob(&s["--only=".len()..])?)),
             "--backend" => {
                 let value = it.next().ok_or("`--backend` needs auto, gpu or cpu")?;
                 opts.backend = Some(value.parse()?);
@@ -184,6 +186,24 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
         }
     }
     Ok(opts)
+}
+
+fn parse_check(args: &[String]) -> Result<(bool, Vec<Selector>, Vec<String>), String> {
+    let (mut json, mut only, mut files) = (false, Vec::new(), Vec::new());
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--json" => json = true,
+            "--only" => {
+                let glob = it.next().ok_or("`--only` needs a glob")?;
+                only.push(Selector::Glob(parse_glob(glob)?));
+            }
+            s if s.starts_with("--only=") => only.push(Selector::Glob(parse_glob(&s["--only=".len()..])?)),
+            s if s.starts_with('-') => return Err(format!("unknown flag `{s}`")),
+            s => files.push(s.to_string()),
+        }
+    }
+    Ok((json, only, files))
 }
 
 fn parse_explain(args: &[String]) -> Result<&str, String> {
@@ -267,10 +287,77 @@ pub(crate) fn exit_code(diags: &[Diagnostic], allow_warnings: bool) -> u8 {
     }
 }
 
-fn check(project: &Project, json: bool) -> u8 {
+/// A `check` or `build --only` target selector. A `File` is an exact project path, so a
+/// path with `{`, `*` or `?` in it never reads as a glob.
+#[derive(Clone)]
+pub(crate) enum Selector {
+    File(String),
+    Glob(String),
+}
+
+impl Selector {
+    fn hits(&self, path: &str) -> bool {
+        match self {
+            Selector::File(f) => f == path,
+            Selector::Glob(g) => glob_match(g, path),
+        }
+    }
+
+    pub(crate) fn matches(&self, job: &TargetJob) -> bool {
+        self.hits(&job.source) || job.outputs.iter().any(|o| self.hits(&o.path))
+    }
+
+    fn unmatched(&self) -> Diagnostic {
+        match self {
+            Selector::File(f) => Diagnostic::error("E0200", Span::default(), format!("`{f}` has no @target"))
+                .with_fix("pass an entry file, one with an `@target` line, such as `art/x.art`"),
+            Selector::Glob(g) => Diagnostic::error("E0200", Span::default(), format!("`--only '{g}'` matches no target"))
+                .with_fix("match an entry file such as `art/x.art` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories"),
+        }
+    }
+}
+
+/// An E0200 for each selector that hits no job and no file with a plan error.
+pub(crate) fn unmatched(plan: &Plan, selectors: &[Selector]) -> Vec<Diagnostic> {
+    selectors
+        .iter()
+        .filter(|s| !plan.jobs.iter().any(|j| s.matches(j)))
+        .filter(|s| !plan.diagnostics.iter().any(|d| d.severity == Severity::Error && s.hits(&d.file)))
+        .map(Selector::unmatched)
+        .collect()
+}
+
+fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[String]) -> u8 {
+    let mut selectors = only.to_vec();
+    for arg in files {
+        match resolve_art(project, cwd, arg) {
+            Ok(rel) => selectors.push(Selector::File(rel)),
+            Err(msg) => return usage_error(&msg),
+        }
+    }
     let plan = plan(project);
-    let mut diags = plan.diagnostics;
-    for job in &plan.jobs {
+    let unmatched = unmatched(&plan, &selectors);
+    if !unmatched.is_empty() {
+        let mut diags = plan.diagnostics;
+        diags.extend(unmatched);
+        return report(diags, false, json);
+    }
+    let all = selectors.is_empty();
+    let mut entries: BTreeSet<&str> = BTreeSet::new();
+    for job in plan.jobs.iter().filter(|j| all || selectors.iter().any(|s| s.matches(j))) {
+        entries.insert(&job.source);
+    }
+    for d in plan.diagnostics.iter().filter(|d| d.severity == Severity::Error && selectors.iter().any(|s| s.hits(&d.file))) {
+        entries.insert(&d.file);
+    }
+    let scope: BTreeSet<String> = entries.iter().flat_map(|f| artscript_eval::dependencies(project, f)).collect();
+    let mut diags: Vec<Diagnostic> = plan
+        .diagnostics
+        .iter()
+        .filter(|d| all || scope.contains(&d.file))
+        .cloned()
+        .collect();
+    for job in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
             artscript_eval::sample(project, job).diagnostics
         } else {

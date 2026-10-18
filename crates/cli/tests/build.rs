@@ -719,6 +719,101 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
 }
 
 #[test]
+fn check_limits_itself_to_the_selected_entries_and_their_libraries() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-checksel-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art/sub")).unwrap();
+    fs::create_dir_all(dir.join("lib/kit")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"sel\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(
+        dir.join("art/a.art"),
+        "@target a.png 8x8\nuse kit/cell { cell }\n\ncell at:4,4\n",
+    )
+    .unwrap();
+    fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect (\n").unwrap();
+    fs::write(
+        dir.join("art/c.art"),
+        "@target c.png 8x8\nrect 4x4\nassert false\n",
+    )
+    .unwrap();
+    let check = |args: &[&str]| {
+        let out = artscript(&dir, &[&["check"], args].concat());
+        (out.status.code(), text(&out))
+    };
+
+    let (code, err) = check(&[]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("art/b.art"), "{err}");
+
+    for args in [
+        &["art/a.art"][..],
+        &["--only", "art/a*"],
+        &["--only=art/a.art"],
+        &["--only", "a.png"],
+    ] {
+        let (code, err) = check(args);
+        assert_eq!(code, Some(0), "{args:?}: {err}");
+        assert!(
+            !err.contains("art/b.art") && !err.contains("art/c.art"),
+            "{args:?}: {err}"
+        );
+    }
+    let out = artscript(&dir.join("art/sub"), &["check", "../a.art"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+
+    let (code, err) = check(&["art/b.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("art/b.art") && !err.contains("matches no target"),
+        "{err}"
+    );
+    let (code, err) = check(&["art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+    let (code, err) = check(&["art/a.art", "art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+
+    let (code, err) = check(&["--only", "art/zzz/*"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("`--only 'art/zzz/*'` matches no target"),
+        "{err}"
+    );
+    let (code, err) = check(&["art/a.art", "--only", "art/zzz/*"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("matches no target"), "{err}");
+
+    let (code, err) = check(&["nope.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(
+        err.contains("cannot read `nope.art`") && err.contains("usage:"),
+        "{err}"
+    );
+    let (code, err) = check(&["--bogus"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("unknown flag `--bogus`"), "{err}");
+
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect (\n").unwrap();
+    let (code, err) = check(&["art/a.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("lib/kit/cell.art"), "{err}");
+    let (code, err) = check(&["art/c.art"]);
+    assert_eq!(code, Some(2), "{err}");
+    assert!(!err.contains("lib/kit/cell.art"), "{err}");
+
+    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(dir.join("art/n.art"), "rect 4x4\n").unwrap();
+    let (code, err) = check(&["art/n.art"]);
+    assert_eq!(code, Some(1), "{err}");
+    assert!(err.contains("`art/n.art` has no @target"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_library_diagnostic_names_each_target_that_reached_it() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-libsite-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
