@@ -4281,6 +4281,15 @@ fn an_inside_or_outside_block_blends_with_what_is_below_it() {
 }
 
 #[test]
+fn an_svg_inside_block_clips_its_blended_child_not_the_block() {
+    let s = scene("@target t.svg 40x20 bg:#010001\nrect 40x20 at:20,10 fill:none name:frame\ninside @frame name:view\n  group\n    rect 40x20 at:20,10 fill:#80c0ff blend:multiply name:shade\n");
+    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let tag = |part: &str| svg.lines().find(|l| l.contains(part)).unwrap_or_else(|| panic!("no {part} in {svg}"));
+    assert!(!tag("id=\"view\"").contains("clip-path"), "a clip-path on the block isolates it: {svg}");
+    assert!(tag("mix-blend-mode:multiply").contains("clip-path"), "the blended child lost the clip: {svg}");
+}
+
+#[test]
 fn abs_of_a_number_is_a_number_and_abs_of_a_vector_is_elementwise() {
     let s = scene(
         "@target t.png 64x64\nlet a = abs(-3)\nrect 10x10 at:a,10 fill:#3366cc name:r\nrect 4x4 at:abs(-4,-6) fill:#3366cc name:v\ncircle abs(-2) at:20,20 fill:#3366cc name:c\nexpect abs(-3) + 1 == 4\n",
