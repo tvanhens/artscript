@@ -817,7 +817,30 @@ fn fx_is_rejected_where_no_draw_owns_it() {
     let under_if = one_error("if a\n  fx blur 2\n");
     assert_eq!(under_if.message, "`fx` cannot go directly under `if`");
 
+    let if_in_each = one_error("circle 4\n  each i in 0..3\n    if a\n      fx blur 2\n");
+    assert_eq!(if_in_each.message, "`fx` cannot go directly under `if`");
+    assert_eq!(if_in_each.span, Span { line: 4, col: 7 });
+
+    let else_in_slot =
+        one_error("def d\n  slot s\n    if a\n      circle 2\n    else\n      fx blur 2\n");
+    assert_eq!(else_in_slot.message, "`fx` cannot go directly under `else`");
+
+    let in_repeat = one_error("repeat 3\n  if a\n    fx blur 2\n");
+    assert_eq!(in_repeat.message, "`fx` cannot go directly under `if`");
+
     must_parse("each i in 0..3\n  circle 2\n    fx blur 2\n");
+}
+
+#[test]
+fn fx_under_an_if_inside_a_draw_or_def_parses_and_formats_in_place() {
+    for src in [
+        "circle 20\n  fx outline 2\n  if t == a\n    fx adjust hue:120\n  else if t == b\n    if c\n      fx blur 2\n  else\n    fx glow 3\n",
+        "def badge\n  circle 4\n  if on\n    let w = 2\n    fx blur w\n",
+        "badge\n  if on\n    fx outline 2\n",
+    ] {
+        must_parse(src);
+        assert_eq!(format_source(src).unwrap(), src);
+    }
 }
 
 #[test]
