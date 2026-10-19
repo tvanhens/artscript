@@ -530,6 +530,45 @@ fn grain_changes_only_opaque_pixels() {
     assert_eq!(pixel(&b, 40, 40)[3], 255);
 }
 
+fn shading_effects() -> [(&'static str, EffectOp); 3] {
+    [
+        ("grain", EffectOp::Grain { strength: 0.03, scale: 1.5, seed: 4 }),
+        ("rim", EffectOp::Rim { width: 3.0, dir: Point::new(1.0, 1.0), color: color(255, 255, 255, 255) }),
+        ("inner", EffectOp::Inner { dx: 0.0, dy: 4.0, blur: 2.0, color: color(0, 0, 0, 160) }),
+    ]
+}
+
+/// The alpha of the row through a scaled disc's center, from its left edge inward.
+fn left_edge_alpha(ops: Vec<EffectOp>, node_scale: f32, render_scale: f32) -> Vec<u8> {
+    let mut disc = solid("disc", circle_at(0.0, 0.0, 10.0), color(140, 140, 140, 255));
+    disc.transform = Matrix::translate((48.0, 48.0)) * Matrix::scale((node_scale, node_scale));
+    disc.effects.extend(ops.into_iter().map(effect));
+    let png = render_png(&scene(96.0, 96.0, vec![disc]), render_scale, Backend::Cpu).unwrap();
+    let px = node_scale * render_scale;
+    let (cx, edge) = (48.0 * render_scale, 48.0 * render_scale - 10.0 * px);
+    let left = (edge - 8.0) as i32;
+    (left..left + 14).map(|x| pixel(&png, x, cx as i32)[3]).collect()
+}
+
+#[test]
+fn shading_effects_keep_a_scaled_edge_crisp() {
+    let outline = EffectOp::Outline { width: 1.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] };
+    let mut blurred = Vec::new();
+    for (node_scale, render_scale) in [(3.0, 1.0), (1.0, 3.0)] {
+        // After an outline the effect runs on the rasterized layer instead of in a save layer.
+        for (after, lead) in [("", vec![]), ("outline, ", vec![outline.clone()])] {
+            let plain = left_edge_alpha(lead.clone(), node_scale, render_scale);
+            for (name, op) in shading_effects() {
+                let shaded = left_edge_alpha([lead.clone(), vec![op]].concat(), node_scale, render_scale);
+                if shaded.iter().zip(&plain).any(|(s, p)| s.abs_diff(*p) > 2) {
+                    blurred.push(format!("{after}{name} at node {node_scale}x, render {render_scale}x: {shaded:?}, plain {plain:?}"));
+                }
+            }
+        }
+    }
+    assert!(blurred.is_empty(), "edge alpha differs from the plain disc:\n{}", blurred.join("\n"));
+}
+
 #[test]
 fn adjust_keeps_soft_edges_dark() {
     let mut leaf = solid("layer.leaf", circle_at(40.0, 40.0, 24.0), color(30, 70, 40, 255));
