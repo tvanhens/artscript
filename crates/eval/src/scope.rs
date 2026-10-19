@@ -26,6 +26,8 @@ pub struct Module {
     pub lost: RefCell<BTreeSet<String>>,
     /// A failed `use` without an item list could have bound any name.
     pub lost_all: Cell<bool>,
+    /// Top-level lets of an entry file that another file loaded with `use`. That import does not run them.
+    pub skipped: RefCell<BTreeSet<String>>,
     pub binds_p: Cell<bool>,
     /// From the bundled standard library, not the author's files. Lints leave it alone.
     pub bundled: bool,
@@ -43,6 +45,7 @@ impl Module {
             own: RefCell::new(Vec::new()),
             lost: RefCell::new(BTreeSet::new()),
             lost_all: Cell::new(false),
+            skipped: RefCell::new(BTreeSet::new()),
             binds_p: Cell::new(false),
             bundled: false,
         }

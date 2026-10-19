@@ -1075,6 +1075,13 @@ impl<'a> Evaluator<'a> {
                 module.define(name, v);
                 return Ok(());
             }
+            Item::Scene(Scene {
+                kind: SceneKind::Let { name, .. },
+                ..
+            }) if entry && module.path != self.job.source => {
+                module.skipped.borrow_mut().insert(name.clone());
+                return Ok(());
+            }
             Item::Scene(_) if entry => return Ok(()),
             Item::Scene(_) => {
                 return Err(fail(
@@ -1214,14 +1221,7 @@ impl<'a> Evaluator<'a> {
             }
         };
         let parsed = self.parse(&target)?;
-        if is_entry(&parsed) {
-            return Err(fail(
-                "E0201",
-                format!("`{target}` is an entry file and cannot be imported"),
-            )
-            .fix("move the shared code into a library under a lib root and `use` that instead"));
-        }
-        let m = self.load_module(&target, false)?;
+        let m = self.load_module(&target, is_entry(&parsed))?;
         if let Some(a) = alias {
             module.bind(a, Value::Module(m));
             return Ok(());
@@ -4608,6 +4608,16 @@ impl<'a> Evaluator<'a> {
                 Some(Value::Unseen) => return Err(unseen(name)),
                 Some(v) => v,
                 None if sc.module.lost.borrow().contains(name) => return Err(Fail::reported()),
+                None if sc.module.skipped.borrow().contains(name) => {
+                    return Err(fail(
+                        "E0201",
+                        format!(
+                            "`{name}` is a top-level `let` of the entry file `{}`, and `use` does not run it",
+                            sc.module.path
+                        ),
+                    )
+                    .fix("move the `let` into the def, or into a library that both files `use`"));
+                }
                 None => Value::Ident(name.clone()),
             },
             Expr::Ref(segs) => self.reference(segs, sc)?,
