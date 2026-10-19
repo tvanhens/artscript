@@ -178,6 +178,10 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
             DeclKind::Style { named: ns, .. } | DeclKind::Light { named: ns, .. } => {
                 named(ns, &mut out)
             }
+            DeclKind::Alias { args, named: ns, .. } => {
+                args.iter().for_each(|e| out.push((e, d.span)));
+                named(ns, &mut out);
+            }
             DeclKind::Finish { params, body, .. } => {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
@@ -416,6 +420,9 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                 from: Some(parent), ..
             } => {
                 used.insert(parent.clone());
+            }
+            DeclKind::Alias { target, .. } => {
+                used.insert(target.clone());
             }
             _ => {}
         }

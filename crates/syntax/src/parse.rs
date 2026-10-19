@@ -636,6 +636,27 @@ impl<'a> Parser<'a> {
                     .with_fix("rename the def"),
             );
         }
+        if self.eat(&Tok::Eq) {
+            let target = self.expect_name();
+            let (args, named) = self.parse_items();
+            if let Some(n) = named.iter().find(|n| n.key == "name") {
+                self.errors.push(
+                    Diagnostic::error("E0101", n.span, "a def alias cannot fix `name:`")
+                        .with_fix("write `name:` on the instance"),
+                );
+            }
+            self.reject_block(
+                indent,
+                "a def alias has no body",
+                &format!("dedent the block, or write `def {name}` with parameters and this body"),
+            );
+            return Some(DeclKind::Alias {
+                name,
+                target,
+                args,
+                named,
+            });
+        }
         let (args, params) = self.parse_items();
         if !args.is_empty() {
             self.fail(

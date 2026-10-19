@@ -1148,6 +1148,7 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Component(Rc::new(comp)));
                 Ok(())
             }
+            DeclKind::Alias { .. } => Ok(()),
             DeclKind::Rule { name, params, body } => {
                 let rule = RuleDef {
                     name: name.clone(),
