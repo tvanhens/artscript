@@ -2948,20 +2948,18 @@ impl<'a> Evaluator<'a> {
             });
         }
         if tapered {
-            let knots = match knots {
-                [k] if k.len() == widths.len() => k.as_slice(),
-                _ => &[],
-            };
-            // 0.75 output pixels. The local step divides by the accumulated transform
-            // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
-            let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
-            let outline = geom::brush(
+            let ribbon = brush::ribbon(
                 &geometry,
                 knots,
                 &widths,
                 taper.unwrap_or((0.0, 0.0)),
-                0.75 / px,
+                &Channels::default(),
+                Vec::new(),
             );
+            // 0.75 output pixels. The local step divides by the accumulated transform
+            // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
+            let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+            let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
             let ob = geom::bounds(&outline);
             let paint = to_paint(&paint_v, ob)
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;

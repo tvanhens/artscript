@@ -139,61 +139,11 @@ pub fn sample(path: &Path, step: f64) -> Vec<Contour> {
     out
 }
 
-fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
-    if x <= xs[0] {
-        return ys[0];
-    }
-    for i in 1..xs.len() {
-        if x <= xs[i] {
-            let span = xs[i] - xs[i - 1];
-            let f = if span > 0.0 { (x - xs[i - 1]) / span } else { 1.0 };
-            return ys[i - 1] + (ys[i] - ys[i - 1]) * f;
-        }
-    }
-    ys[ys.len() - 1]
-}
-
-/// Filled outline of a variable-width stroke along `path`'s first contour, with round caps.
-/// `widths` has one width per control point in `knots` (chord fractions follow the knots);
-/// with no knots the widths are spread evenly along the length.
-/// `step` is the sample spacing in the path's own units. Callers pass the spacing that
-/// lands on 0.75 output pixels after the node's transform and the target scale.
-pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), step: f64) -> Path {
-    let Some(c) = sample(path, step.max(1e-6)).into_iter().next() else {
-        return Path::new();
-    };
-    let mut s = vec![0.0];
-    for i in 1..c.pos.len() {
-        let d = norm(sub(c.pos[i], c.pos[i - 1]));
-        s.push(s[i - 1] + d);
-    }
-    let length = *s.last().unwrap();
-    let chord: Vec<f64> = if knots.len() == widths.len() && knots.len() >= 2 {
-        let mut ch = vec![0.0];
-        for i in 1..knots.len() {
-            let d = norm(sub(knots[i], knots[i - 1]));
-            ch.push(ch[i - 1] + d);
-        }
-        let total = ch.last().copied().unwrap_or(1.0).max(1e-9);
-        ch.iter().map(|v| v / total).collect()
-    } else if widths.len() >= 2 {
-        (0..widths.len()).map(|i| i as f64 / (widths.len() - 1) as f64).collect()
-    } else {
-        vec![0.0, 1.0]
-    };
-    let ws: Vec<f64> = if widths.len() >= 2 { widths.to_vec() } else { vec![widths[0]; 2] };
-    let w: Vec<f64> = s
-        .iter()
-        .map(|&si| interp(si / length, &chord, &ws) * taper_ramp(si / length, taper))
-        .collect();
-    let r: Vec<f64> = w.iter().map(|w| w / 2.0).collect();
-    polygon(&capped_ring(&c.pos, &c.tan, &r))
-}
-
-/// Filled outline of a brushed stroke: every contour of `path` offset on both sides by the
+/// Filled outline of a tapered or width-list stroke, brushed or not: every contour of `path` offset on both sides by the
 /// ribbon's tapered half width at each point, with round caps on an open contour and an outer
-/// and an inner edge on a closed one. The ribbon's ink fills this outline. `step` is as in
-/// [`brush`].
+/// and an inner edge on a closed one. The ribbon's ink fills this outline. `step` is the
+/// sample spacing in the path's own units. Callers pass the spacing that lands on 0.75 output
+/// pixels after the node's transform and the target scale.
 pub fn ribbon_ink(path: &Path, ribbon: &Ribbon, step: f64) -> Path {
     let taper = (f64::from(ribbon.taper[0]), f64::from(ribbon.taper[1]));
     let mut b = PathBuilder::new();
@@ -413,7 +363,9 @@ mod tests {
     #[test]
     fn tapered_stroke_is_full_width_in_the_middle() {
         let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false);
-        let outline = brush(&line, &[(0.0, 0.0), (100.0, 0.0)], &[8.0, 8.0], (0.3, 0.3), 0.75);
+        let knots = [vec![(0.0, 0.0), (100.0, 0.0)]];
+        let ribbon = crate::brush::ribbon(&line, &knots, &[8.0, 8.0], (0.3, 0.3), &Default::default(), Vec::new());
+        let outline = ribbon_ink(&line, &ribbon, 0.75);
         let probe = |y: f32| outline.contains(Point::new(50.0, y));
         assert!(probe(3.9) && probe(-3.9));
         assert!(!probe(4.2) && !probe(-4.2));

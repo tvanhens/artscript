@@ -779,6 +779,16 @@ fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
 }
 
 #[test]
+fn a_width_list_stroke_inks_every_contour_of_a_path() {
+    let s = scene(
+        "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
+    );
+    let ink = &shape(&s, "a").geometry;
+    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
+}
+
+#[test]
 fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
     let unit = png(
         "@target t.png 200x120\ngroup scale:50 at:100,60\n  curve -1,0 0,-.5 1,0 stroke:#000,[.05 .1 .05] taper:.3\n",
