@@ -114,3 +114,38 @@ fn std_lists_the_bundled_libraries_and_prints_one_to_fork() {
     assert_eq!(missing.status.code(), Some(1));
     assert!(String::from_utf8(missing.stderr).unwrap().contains("bundled: std/brushes, std/stamps"));
 }
+
+#[test]
+fn the_brushes_topic_declaration_example_checks() {
+    let body = topic("brushes");
+    let start = body
+        .find("\nbrush scuff ")
+        .expect("brushes.md declares `scuff`")
+        + 1;
+    let example = &body[start..start + body[start..].find("```").unwrap()];
+    let dir = std::env::temp_dir().join(format!("artscript-docs-scuff-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"scuff\"\nout = \"assets\"\nlib = []\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/scuff.art"),
+        format!("@target scuff.png 64x64\n\npalette p\n  color ink #2a1a2e\n  color sky #7fb8e6\n\n{example}\ncircle 20 fill:p.sky brush:scuff name:c\n"),
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_artscript"))
+        .arg("check")
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    let _ = fs::remove_dir_all(&dir);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

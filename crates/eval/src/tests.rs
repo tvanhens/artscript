@@ -3260,6 +3260,31 @@ fn an_explicit_seed_draws_the_same_noise_in_any_node_and_file() {
 }
 
 #[test]
+fn a_field_mask_seeds_from_the_node_it_masks() {
+    use artscript_ir::{Field, MaskSource};
+    let masked = |children: &str| {
+        let src = format!("@target t.png 100x100\ncircle 40 name:l\n{children}  mask simplex(14) > .42\n");
+        let ev = eval_lint(&src, "");
+        assert!(ev.diagnostics.iter().all(|d| d.code != "L0104"), "{}", show(&ev.diagnostics));
+        match &node(ev.scene.as_ref().unwrap(), "l").mask.as_ref().unwrap().source {
+            MaskSource::Field { field: Field::Noise { seed, .. }, .. } => *seed,
+            other => panic!("{other:?}"),
+        }
+    };
+    let bare = masked("");
+    assert_eq!(bare, masked("  circle 10\n"));
+    assert_eq!(bare, masked("  circle 10\n  circle 5\n"));
+}
+
+#[test]
+fn a_field_mask_under_an_unnamed_node_warns_l0104_at_that_node() {
+    let ev = eval_lint("@target t.png 100x100\ncircle 40 name:l\ncircle 40\n  circle 10\n  mask simplex(14) > .42\n", "");
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0104").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 3);
+}
+
+#[test]
 fn an_unnamed_node_with_an_explicit_seed_does_not_warn_l0104() {
     let ev = eval_lint("@target t.png 40x40\ncircle 4 at:rand(0 10 seed:3),0\n", "");
     assert!(
@@ -4025,6 +4050,136 @@ fn at_takes_an_anchor_through_an_instance() {
         "circle 2 at:@hero.neck name:a\n",
     ));
     near(at(node(&s, "a")), (40.0, 44.0));
+}
+
+#[test]
+fn a_reference_to_a_later_sibling_resolves_and_paints_at_its_own_line() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "circle 2 at:@body.neck name:a\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor neck 5,7\n",
+    ));
+    near(at(node(&s, "a")), (35.0, 27.0));
+    let order = paths(&s);
+    assert!(order[0] == "a" && order[1] == "body", "{order:?}");
+
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "def rig\n",
+        "  circle 2 at:@body.neck name:dot\n",
+        "  group name:body at:30,20\n",
+        "    rect 10x10\n",
+        "    anchor neck 5,7\n",
+        "rig name:r\n",
+    ));
+    near(at(node(&s, "r.dot")), (35.0, 27.0));
+}
+
+#[test]
+fn a_chain_of_later_sibling_references_resolves() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "circle 2 at:@arm.hand name:palm\n",
+        "group name:arm at:@body.shoulder\n",
+        "  rect 4x4\n",
+        "  anchor hand 3,0\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor shoulder -5,0\n",
+    ));
+    near(at(node(&s, "arm")), (25.0, 20.0));
+    near(at(node(&s, "palm")), (28.0, 20.0));
+    let order = paths(&s);
+    let pos = |p: &str| order.iter().position(|x| x == p).unwrap();
+    assert!(pos("palm") < pos("arm") && pos("arm") < pos("body"), "{order:?}");
+}
+
+#[test]
+fn a_statement_that_waits_for_a_later_sibling_sees_only_the_lets_above_it() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "let r = 2\n",
+        "circle r at:@body.neck name:a\n",
+        "let r = 6\n",
+        "circle r at:10,10 name:b\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor neck r,0\n",
+    ));
+    assert_box(&s, "a", 4.0, 4.0);
+    assert_box(&s, "b", 12.0, 12.0);
+    near(at(node(&s, "a")), (36.0, 20.0));
+}
+
+#[test]
+fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group name:b at:@a.top\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    let d = errors[0];
+    assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
+    assert!(d.message.contains("before `b` is drawn"), "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
+}
+
+#[test]
+fn a_statement_that_waits_on_a_cycle_does_not_take_the_cycle_error() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "circle 2 at:@a.tip name:c\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group name:b at:@a.top\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!((errors[0].code.as_str(), errors[0].span.line), ("E0350", 3), "{}", errors[0]);
+}
+
+#[test]
+fn a_reference_to_a_name_in_an_untaken_arm_is_still_not_drawn() {
+    let ev = run_with(
+        "@target t.png 40x40\ncopy @mark\nif 1 == 2\n  circle 4 name:mark\n",
+        &[],
+    );
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.span.line, 2, "{d}");
+    assert!(d.message.contains("and not drawn"), "{d}");
+}
+
+#[test]
+fn a_file_play_guard_may_read_a_later_sibling() {
+    let s = scene(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\nif @marker\n  play bob\ncircle 4 name:marker\n",
+    );
+    near(at(node(&s, "marker")), (30.0, 20.0));
 }
 
 #[test]
@@ -6900,6 +7055,128 @@ fn an_alias_fixed_argument_follows_the_instance_palette_like_a_default() {
     assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
 }
 
+const HALF_LIB: &str = "fn half(x) = x/2\nfn quarter(x) = half(half(x))\n";
+
+#[test]
+fn a_fn_computes_a_value_from_its_arguments_and_other_fns() {
+    let s = scene(
+        "@target t.png 100x100\nfn half(x) = x/2\nfn quarter(x) = half(half(x))\ncircle 4 at:half(40),quarter(80) name:c\ndef dot k:1\n  circle 2 at:half(k),0 name:in\ndot k:12 name:d\n",
+    );
+    near(at(node(&s, "c")), (20.0, 20.0));
+    near(at(node(&s, "d.in")), (6.0, 0.0));
+}
+
+#[test]
+fn a_fn_reads_its_files_top_level_lets_and_palettes() {
+    let s = scene(
+        "@target t.png 100x100\nlet base = 10\npalette q\n  color ink #112233\n  color hot #ff0000\nfn tone(k) = if k > base then q.hot else q.ink\nrect 4x4 fill:tone(5) name:cold\nrect 4x4 fill:tone(50) name:warm\n",
+    );
+    assert_eq!(fill_hex(node(&s, "cold")), "#112233");
+    assert_eq!(fill_hex(node(&s, "warm")), "#ff0000");
+}
+
+#[test]
+fn p_in_a_fn_body_is_the_palette_of_the_call_site() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { eye }\nfn tint() = p.sky\ndef dot\n  circle 5 fill:tint() name:i\ndot name:plain\ndot palette:elite name:swapped\n",
+    );
+    assert_eq!(fill_hex(node(&s, "plain.i")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
+}
+
+#[test]
+fn use_imports_a_fn_by_item_list_and_through_an_alias() {
+    let libs = [("lib/m.art", HALF_LIB)];
+    let ev = run_with("@target t.png 100x100\nuse m { quarter }\ncircle 4 at:quarter(80),0 name:c\n", &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (20.0, 0.0));
+
+    let ev = run_with("@target t.png 100x100\nuse m as lib\nlet q = lib.quarter\ncircle 4 at:q(80),0 name:c\n", &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (20.0, 0.0));
+}
+
+#[test]
+fn a_fn_call_with_the_wrong_arguments_is_e0320() {
+    let ev = run_with("@target t.png 100x100\nfn half(x) = x/2\ncircle 4 at:half(1 2),0\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`half` takes 1 argument, got 2");
+    assert_eq!(d.fix.as_deref(), Some("write `half(x)`"));
+    assert_eq!(d.span.line, 3);
+
+    let ev = run_with("@target t.png 100x100\nfn half(x) = x/2\ncircle 4 at:half(x:2),0\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`half` takes positional arguments only, got `x:`");
+    assert_eq!(d.fix.as_deref(), Some("write `half(x)`"));
+}
+
+#[test]
+fn a_fn_body_cannot_read_a_ref_or_draw_a_random_value() {
+    let ev = run_with(
+        "@target t.png 100x100\ncircle 4 name:a\nfn w(k) = @a.w * k\nfn jit(k) = k + rand(0 1)\nfn one(xs) = pick(xs)\ncircle jit(4)\n",
+        &[],
+    );
+    assert_eq!(ev.diagnostics.len(), 3, "{}", show(&ev.diagnostics));
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0324").collect();
+    ds.sort_by_key(|d| d.span.line);
+    assert_eq!(ds.len(), 3, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "fn `w` reads `@a.w`");
+    assert_eq!(ds[0].span.line, 3);
+    assert_eq!(ds[1].message, "fn `jit` calls `rand`");
+    assert_eq!(ds[1].fix.as_deref(), Some("pass the random value in as an argument"));
+    assert_eq!(ds[1].span.line, 4);
+    assert_eq!(ds[2].message, "fn `one` calls `pick`");
+    assert_eq!(ds[2].fix.as_deref(), Some("pass the random value in as an argument"));
+}
+
+#[test]
+fn a_fn_reached_through_a_parameter_or_a_let_cannot_call_itself() {
+    for src in [
+        "@target t.png 100x100\nfn f(g) = g(g)\ncircle f(f)\n",
+        "@target t.png 100x100\nfn f(x) = g(x)\nlet g = f\ncircle f(1)\n",
+    ] {
+        let ev = run_with(src, &[]);
+        assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+        let d = diag(&ev, "E0325");
+        assert_eq!(d.message, "fn `f` calls itself");
+    }
+}
+
+#[test]
+fn a_fn_cannot_call_itself_directly_or_through_another_fn() {
+    let ev = run_with(
+        "@target t.png 100x100\nfn down(n) = if n > 0 then down(n - 1) else 0\nfn ping(n) = pong(n)\nfn pong(n) = ping(n)\nfn fine(n) = n\ncircle down(3) at:ping(1),fine(2) name:c\n",
+        &[],
+    );
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0325").collect();
+    ds.sort_by_key(|d| d.span.line);
+    assert_eq!(ds.len(), 3, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "fn `down` calls itself");
+    assert_eq!(ds[0].notes, ["through down -> down"]);
+    assert_eq!(ds[0].span.line, 2);
+    assert_eq!(ds[1].message, "fn `ping` calls itself");
+    assert_eq!(ds[1].notes, ["through ping -> pong -> ping"]);
+    assert_eq!(ds[2].message, "fn `pong` calls itself");
+    assert_eq!(ds[2].span.line, 4);
+    assert!(!ev.diagnostics.iter().any(|d| d.code == "E0301"), "{}", show(&ev.diagnostics));
+
+    let ev = run_with("@target t.png 100x100\nfn down(down) = down - 1\ncircle 4 at:down(5),0 name:c\n", &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (4.0, 0.0));
+}
+
+#[test]
+fn a_random_value_passed_to_a_fn_is_seeded_at_the_draw_site() {
+    let src = "@target t.png 100x100\nfn bump(x r) = x + r\nrepeat 3\n  circle 2 at:bump(10 rand(0 1)),i*10 name:c\n";
+    let first = scene(src);
+    let second = scene(src);
+    let xs: Vec<f32> = (0..3).map(|i| at(node(&first, &format!("c.{i}"))).0).collect();
+    let again: Vec<f32> = (0..3).map(|i| at(node(&second, &format!("c.{i}"))).0).collect();
+    assert_eq!(xs, again);
+    assert!(xs.iter().all(|x| (10.0..11.0).contains(x)), "{xs:?}");
+    assert!(xs[0] != xs[1] || xs[1] != xs[2], "{xs:?}");
+}
+
 const TILE: &str = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2 name:filled\n  if kind == floor_top\n    circle 3 name:floor\n";
 
 fn errors(ev: &Evaluation) -> Vec<&Diagnostic> {
@@ -7194,4 +7471,40 @@ fn a_group_under_a_shape_stays_out_of_a_reference_path() {
     let d = diag(&ev, "E0350");
     assert!(d.message.contains("hops through `face`, which is a group"), "{d}");
     assert_eq!(d.fix.as_deref(), Some("write @h.head.eye_l.cx"));
+}
+
+#[test]
+fn fill_stroke_and_blur_on_an_instance_point_at_palette_and_fx_blur() {
+    let lib = [("lib/arm.art", ARM_LIB)];
+    for (line, key) in [
+        ("hero_arm fill:#ff0000", "fill"),
+        ("hero_arm stroke:#000000,2", "stroke"),
+        ("arm_l fill:#ff0000", "fill"),
+        ("def red = hero_arm fill:#ff0000", "fill"),
+    ] {
+        let ev = run_with(&format!("@target t.png 100x100\nuse arm\n{line}\n"), &lib);
+        let d = diag(&ev, "E0321");
+        assert!(d.message.ends_with(&format!("has no parameter `{key}`")), "{line}: {d}");
+        assert_eq!(
+            d.fix.as_deref(),
+            Some("recolor the instance with `palette:`, or give `hero_arm` a color parameter"),
+            "{line}"
+        );
+    }
+
+    for line in ["hero_arm blur:2", "arm_l blur:2", "def soft = hero_arm blur:2"] {
+        let ev = run_with(&format!("@target t.png 100x100\nuse arm\n{line}\n"), &lib);
+        let d = diag(&ev, "E0321");
+        assert_eq!(
+            d.fix.as_deref(),
+            Some("blur the instance with an `fx blur N` line under it"),
+            "{line}"
+        );
+    }
+
+    let ev = run_with(
+        "@target t.png 100x100\ndef dot fill:#ff0000 blur:0\n  circle 4 fill:fill blur:blur\ndot fill:#00ff00 blur:1\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }

@@ -110,7 +110,7 @@ fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(
     }
 }
 
-type Exprs<'a> = Vec<(&'a Expr, Span)>;
+pub(crate) type Exprs<'a> = Vec<(&'a Expr, Span)>;
 
 fn named<'a>(ns: &'a [Named], out: &mut Exprs<'a>) {
     ns.iter().for_each(|n| out.push((&n.value, n.span)));
@@ -121,7 +121,7 @@ fn fx_exprs<'a>(fx: &'a Fx, out: &mut Exprs<'a>) {
     named(&fx.named, out);
 }
 
-fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
+pub(crate) fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
     match &s.kind {
         SceneKind::Let { value, .. } => out.push((value, s.span)),
         SceneKind::Check {
@@ -189,6 +189,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
             DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
+            DeclKind::Fn { body, .. } => out.push((body, d.span)),
             DeclKind::Def { params, body, .. } | DeclKind::Stamp { params, body, .. } => {
                 named(params, &mut out);
                 body.iter()
@@ -253,6 +254,9 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         | DeclKind::Brush { params, .. } = &d.kind
         {
             out.extend(params.iter().map(|p| p.key.clone()));
+        }
+        if let DeclKind::Fn { params, .. } = &d.kind {
+            out.extend(params.iter().cloned());
         }
     }
     all_scenes(&file.items, &mut |s| {
@@ -553,6 +557,17 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                             "use it in the body or remove it",
                         );
                     }
+                }
+            }
+            DeclKind::Fn { name, params, body } => {
+                let mut inner = HashSet::new();
+                idents(vec![(body, d.span)], &[], &mut inner);
+                for p in params.iter().filter(|p| !inner.contains(*p)) {
+                    push(
+                        d.span,
+                        format!("parameter `{p}` of `{name}` is never used"),
+                        "use it in the body or remove it",
+                    );
                 }
             }
             _ => {}

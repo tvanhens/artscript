@@ -50,6 +50,7 @@ impl Evaluator<'_> {
         }
         match bound {
             Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
+            Some(Value::Fn(f)) => return self.call_fn(&f, args, named, sc),
             Some(Value::Brush(b)) => return self.call_brush(&b, args, named, sc),
             Some(Value::Stamp(s)) => return self.call_stamp(&s, args, named, sc),
             Some(Value::Unseen) => return Err(unseen(func)),

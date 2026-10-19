@@ -11,7 +11,7 @@ use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
 use crate::range::Range;
-use crate::scope::{AliasDef, Component, Module, Palette, RefVal, RuleDef};
+use crate::scope::{AliasDef, Component, FnDef, Module, Palette, RefVal, RuleDef};
 
 /// One coordinate: canvas units or a percent of the current frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,6 +78,7 @@ pub enum Value {
     Module(Rc<Module>),
     Ref(Rc<RefVal>),
     Rule(Rc<RuleDef>),
+    Fn(Rc<FnDef>),
     /// A `brush` declaration with its uniform values and placement bound.
     Brush(Rc<BrushVal>),
     /// A `stamp` declaration with its parameter values, placement and set name bound.
@@ -105,6 +106,7 @@ pub enum Kind {
     Module,
     Ref,
     Rule,
+    Fn,
     Brush,
     Stamp,
     Unseen,
@@ -128,6 +130,7 @@ impl fmt::Display for Kind {
             Kind::Module => "a module",
             Kind::Ref => "a node reference",
             Kind::Rule => "a rule",
+            Kind::Fn => "a function",
             Kind::Brush => "a brush",
             Kind::Stamp => "a stamp",
             Kind::Unseen => "a value from the drawn scene",
@@ -156,6 +159,7 @@ impl Value {
             Value::Module(_) => Kind::Module,
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
+            Value::Fn(_) => Kind::Fn,
             Value::Brush(_) => Kind::Brush,
             Value::Stamp(_) => Kind::Stamp,
             Value::Unseen => Kind::Unseen,
@@ -314,6 +318,7 @@ impl Value {
             Value::Module(m) => m.path.clone(),
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
+            Value::Fn(f) => f.name.clone(),
             Value::Brush(b) => format!("brush {}", b.decl.name),
             Value::Stamp(s) => format!("stamp {}", s.decl.name),
             Value::Unseen => "unseen".into(),
@@ -436,6 +441,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
         (Value::Alias(x), Value::Alias(y)) => Rc::ptr_eq(x, y),
+        (Value::Fn(x), Value::Fn(y)) => Rc::ptr_eq(x, y),
         (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Stamp(x), Value::Stamp(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,

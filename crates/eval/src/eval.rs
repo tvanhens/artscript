@@ -26,11 +26,12 @@ use crate::identity::{
 };
 use crate::key::Ease;
 use crate::motion::{absolute_channel, offset_channel};
+use crate::order;
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AliasDef, AnimDef, Component, Extent, Fixed, Module, Palette, Record, RefVal, RowRecord, RuleDef,
+    AliasDef, AnimDef, Component, Extent, Fixed, FnDef, Module, Palette, Record, RefVal, RowRecord, RuleDef,
     StyleDef, ref_from,
 };
 use crate::seed::Rng;
@@ -80,6 +81,25 @@ const MEASURES: &[&str] = &[
 const NODE_KEYS: &[&str] = &[
     "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
 ];
+
+/// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
+/// shapes, so `fill:` and `blur:` have no single shape to land on; the fix names what recolors or
+/// blurs the whole instance.
+fn no_parameter(target: &str, def: &str, key: &str, params: &[impl AsRef<str>]) -> Fail {
+    let params: Vec<&str> = params.iter().map(AsRef::as_ref).collect();
+    let mut f = fail("E0321", format!("`{target}` has no parameter `{key}`"));
+    if !params.is_empty() {
+        f = f.note(format!("parameters: {}", params.join(", ")));
+    }
+    match key {
+        "fill" | "stroke" => f.fix(format!(
+            "recolor the instance with `palette:`, or give `{def}` a color parameter"
+        )),
+        "blur" => f.fix("blur the instance with an `fx blur N` line under it"),
+        _ => f.fix("use one of the listed parameters"),
+    }
+}
+
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 const PAINT_KEYS: &[&str] = &[
@@ -404,6 +424,7 @@ pub(crate) struct Evaluator<'a> {
     seed_count: u64,
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
+    pub(crate) active_fns: Vec<Rc<FnDef>>,
     patch_order: u32,
     unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
@@ -420,6 +441,12 @@ pub(crate) struct Evaluator<'a> {
     /// The stamp declarations whose blocks are being placed, outermost first. A set whose
     /// declaration is already here would place itself forever.
     pub(crate) stamping: Vec<*const crate::stamp::StampDecl>,
+    /// Names the running statement reads that wait on it: the reads form a cycle, so it runs
+    /// as written and the read reports the cycle.
+    blocked: Vec<Site>,
+    /// Names of the statements that failed while blocked. A read of one stays quiet, because
+    /// the cycle was reported at that statement.
+    broken: BTreeSet<Site>,
 }
 
 struct StyleHit {
@@ -984,6 +1011,7 @@ impl<'a> Evaluator<'a> {
             seed_count: 0,
             style_hits: Vec::new(),
             accept_family: false,
+            active_fns: Vec::new(),
             patch_order: 0,
             unstable_calls: BTreeSet::new(),
             time: job.frame_t,
@@ -994,6 +1022,8 @@ impl<'a> Evaluator<'a> {
             silence: false,
             placed: RefCell::new(HashMap::new()),
             stamping: Vec::new(),
+            blocked: Vec::new(),
+            broken: BTreeSet::new(),
         }
     }
 
@@ -1144,6 +1174,7 @@ impl<'a> Evaluator<'a> {
             }
         }
         self.declare_aliases(&module, &parsed);
+        self.check_fn_cycles(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
         let aliases: BTreeMap<String, String> = module
@@ -1191,7 +1222,7 @@ impl<'a> Evaluator<'a> {
                     "E0204",
                     "a library may only hold declarations at its top level",
                 )
-                .note("allowed: use, palette, style, finish, def, rule, let, anim")
+                .note("allowed: use, palette, style, finish, def, rule, fn, let, anim")
                 .fix("wrap the drawing in a `def` and place it from an entry file"));
             }
         };
@@ -1284,6 +1315,11 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
+            DeclKind::Fn { name, params, body } => self
+                .declare_fn(module, name, params, body, decl.span)
+                .inspect_err(|_| {
+                    module.lost.borrow_mut().insert(name.clone());
+                }),
             DeclKind::Anim {
                 name,
                 dur,
@@ -1561,13 +1597,52 @@ impl<'a> Evaluator<'a> {
         sc: &mut Scope,
         out: &mut Siblings,
     ) {
-        for st in stmts {
-            let entry = sc.file() == self.job.source;
+        let stmts: Vec<&Scene> = stmts.into_iter().collect();
+        let mut slots: Vec<Siblings> = stmts.iter().map(|_| Siblings::default()).collect();
+        self.run_block(&stmts, sc, |ev, st, sc, i| ev.eval_stmt(st, sc, &mut slots[i]));
+        out.items.extend(slots.into_iter().flat_map(|s| s.items));
+    }
+
+    /// Runs a block's statements in the order `order::plan` gives. Each one sees the `let`s
+    /// written above it, however early or late it runs.
+    fn run_block(
+        &mut self,
+        stmts: &[&Scene],
+        sc: &mut Scope,
+        mut run: impl FnMut(&mut Self, &Scene, &mut Scope, usize) -> R<()>,
+    ) {
+        let region = sc.names.borrow().region();
+        let entry = sc.file() == self.job.source;
+        let base = sc.env.len();
+        let mut bound: Vec<Vec<(String, Value)>> = vec![Vec::new(); stmts.len()];
+        let mut in_order = true;
+        let mut prev = None;
+        for step in order::plan(stmts, &region) {
+            let i = step.stmt;
+            in_order &= prev.is_none_or(|p| p < i);
+            prev = Some(i);
+            if !in_order {
+                sc.env.truncate(base);
+                sc.env.extend(bound[..i].iter().flatten().cloned());
+            }
+            let mark = sc.env.len();
+            let st = stmts[i];
             if entry {
                 sc.site = Some(st.span.line);
             }
             let before = self.diags.len();
-            if let Err(f) = self.eval_stmt(st, sc, out) {
+            let outer = self.blocked.len();
+            let forced = !step.blocked.is_empty();
+            self.blocked.extend(step.blocked);
+            let result = run(self, st, sc, i);
+            self.blocked.truncate(outer);
+            if let Err(f) = result {
+                if forced {
+                    let sites = order::declared_in(st, &region)
+                        .into_iter()
+                        .map(|d| region.decl(d).site.clone());
+                    self.broken.extend(sites);
+                }
                 let node = sc.node_name();
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, &node);
@@ -1575,6 +1650,11 @@ impl<'a> Evaluator<'a> {
             if entry {
                 self.mark_site(before, st.span.line);
             }
+            bound[i] = sc.env[mark..].to_vec();
+        }
+        if !in_order {
+            sc.env.truncate(base);
+            sc.env.extend(bound.into_iter().flatten());
         }
     }
 
@@ -2560,11 +2640,7 @@ impl<'a> Evaluator<'a> {
                 && n.key != "palette"
                 && !NODE_KEYS.contains(&n.key.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{target}` has no parameter `{}`", n.key))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(target, &comp.name, &n.key, &open));
             }
             own.push(Fixed {
                 key: n.key.clone(),
@@ -2612,11 +2688,7 @@ impl<'a> Evaluator<'a> {
                 && k != "palette"
                 && !NODE_KEYS.contains(&k.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", alias.name))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&alias.name, &alias.comp.name, k, &open));
             }
         }
         let pos = std::mem::take(&mut a.pos);
@@ -2676,6 +2748,7 @@ impl<'a> Evaluator<'a> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
         if let Some(mask) = mask {
             let origin = node.origin.clone();
+            self.begin_seed(sc.file(), key.mask());
             node.mask = self
                 .lower_mask(mask, feather, sc, frame, world, &key.mask(), &origin)?
                 .map(Box::new);
@@ -3606,11 +3679,7 @@ impl<'a> Evaluator<'a> {
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", comp.name))
-                        .note(format!("parameters: {}", param_names.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&comp.name, &comp.name, k, &param_names));
             }
         }
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
@@ -4223,13 +4292,8 @@ impl<'a> Evaluator<'a> {
     }
 
     fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, schedule: bool) {
-        for st in scenes {
-            if let Err(f) = self.collect_one(st, sc, schedule) {
-                let file = sc.file().to_string();
-                let node = sc.node_name();
-                self.report(f, &file, st.span, &node);
-            }
-        }
+        let stmts: Vec<&Scene> = scenes.iter().collect();
+        self.run_block(&stmts, sc, |ev, st, sc, _| ev.collect_one(st, sc, schedule));
     }
 
     fn collect_one(&mut self, st: &Scene, sc: &mut Scope, schedule: bool) -> R<()> {
@@ -5497,6 +5561,20 @@ impl<'a> Evaluator<'a> {
             Resolved::Many(es, depth) => {
                 Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
             }
+            Resolved::Undrawn(site) if self.broken.contains(&site) => Err(Fail::reported()),
+            Resolved::Undrawn(site) if self.blocked.contains(&site) => Err(fail(
+                "E0350",
+                format!(
+                    "`@{label}` is read before `{label}` is drawn, and `{label}` reads back to this line"
+                ),
+            )
+            .note(format!(
+                "`{label}` is drawn at {}:{}",
+                site.file, site.span.line
+            ))
+            .fix(format!(
+                "draw `{label}` with no reference back to this node, and paint this node behind it with `z:behind`"
+            ))),
             Resolved::Undrawn(site) => Err(fail(
                 "E0350",
                 format!(
