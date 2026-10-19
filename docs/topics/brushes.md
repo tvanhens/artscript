@@ -34,7 +34,7 @@ brush scuff strength:.5 scale:1 tint:p.ink reach:3
 
 ## The Mark
 
-One struct serves both slots. On a fill the frame is the geometry's bounds rotated into `dir`; on a stroke it is the ribbon, and `s` and `d` are measured to the nearest point of the stroke's spine.
+One struct serves both slots. On a fill the frame is the geometry's bounds rotated into `dir`; on a stroke it is the ribbon, and `s` and `d` are measured to the point of the stroke's spine whose ink covers the pixel deepest, which is the nearest point wherever the spine does not pass near itself.
 
 | field | on a fill | on a stroke |
 |---|---|---|
@@ -42,7 +42,7 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `dev` | the pixel in device pixels | the same |
 | `edge` | signed distance to the geometry's edge in local units, positive inside | the half width at `s` minus the distance to the spine, positive inside; past an open end it rounds the cap |
 | `uv` | `p` relative to the geometry's center, rotated so x runs along `dir` | `(s, d)` |
-| `s`, `u` | distance along `dir` from the near edge of the rotated bounds, in units and as 0..1 | arc length along the spine to the nearest point, in units and as 0..1 of `len`; past an open end it keeps running below 0 or above `len` |
+| `s`, `u` | distance along `dir` from the near edge of the rotated bounds, in units and as 0..1 | arc length along the spine to that point, in units and as 0..1 of `len`; past an open end it keeps running below 0 or above `len` |
 | `d`, `v` | offset across `dir` from the center, in units and as -1..1 | offset across the spine, positive on the right of travel, in units and as -1..1 of the half width |
 | `len`, `width` | the size of the bounds along and across `dir` | the contour's arc length, and twice the half width at `s` |
 | `pressure`, `angle`, `tilt`, `velocity` | 1, `dir`, 0 and 1 | the node's channels at `s` |
@@ -69,7 +69,7 @@ Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(
 
 ## Strokes
 
-A brushed stroke is a ribbon. The shape's geometry is the spine, and every device pixel within the half width plus `reach:` of it takes the nearest point of the spine: `m.s` is the arc length there, `m.d` the signed offset, `m.edge` the half width minus the distance. Where the spine crosses or doubles back on itself the nearest segment wins, so the ribbon reads as one stroke and not as layers. A ribbon has round caps and round joins, and the brush shapes its ends. `cap:` or `join:` on the node's own line, where that node's stroke is brushed, is E0362. An inherited `cap:` or `join:` does nothing there, and a stroke without a brush keeps both.
+A brushed stroke is a ribbon. The shape's geometry is the spine, and every device pixel within the half width plus `reach:` of it takes one point of the spine: `m.s` is the arc length there, `m.d` the signed offset, `m.edge` the half width minus the distance. Where the spine crosses or doubles back on itself, the segment whose ink covers the pixel deepest wins: the one with the largest half width minus distance, the nearer one on a tie, then the earlier one. So the ribbon reads as one stroke and not as layers, and a thin tail that passes near a wide stem never carves it. At constant width this is the nearest segment. A ribbon has round caps and round joins, and the brush shapes its ends. `cap:` or `join:` on the node's own line, where that node's stroke is brushed, is E0362. An inherited `cap:` or `join:` does nothing there, and a stroke without a brush keeps both.
 
 - Width: `stroke:p.ink,6` is a 6-unit ribbon. `stroke:p.ink,[2 8 3]` and `taper:.3` set the half width along the spine exactly as they shape an unbrushed tapered stroke, but the stroke stays a ribbon: the brush sees the true `s` and `d`, and the geometry is not flattened to an outline.
 - Contours: a path with several contours gives one ribbon per contour, each with its own `len`, drawn in path order. Each contour is its own pen stroke, so `taper:` thins the start and end of every contour over its own length. A closed contour wraps: `s` runs from 0 at the contour's start around to `len`, there is no cap, and the seam sits at the start, so a brush that rags its ends, such as `bristle`, rags the seam.

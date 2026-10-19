@@ -191,3 +191,20 @@ fn gpu_output_is_within_a_few_levels_of_cpu_and_repeatable() {
     assert!(inked > 400, "the ribbon drew: {inked} px");
     assert!(worst <= 16, "worst channel difference {worst}");
 }
+
+#[test]
+fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
+    let mut b = skia_safe::PathBuilder::new();
+    b.move_to((10.0, 30.0));
+    b.line_to((190.0, 30.0));
+    b.line_to((190.0, 36.0));
+    b.line_to((10.0, 36.0));
+    let knots = vec![knot(0.0, 12.0, 1.0, 0.0, 0.0), knot(180.0, 12.0, 1.0, 0.0, 0.0), knot(186.0, 1.0, 1.0, 0.0, 0.0), knot(366.0, 1.0, 1.0, 0.0, 0.0)];
+    let node = ribbon(b.detach(), 366.0, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let png = render_png(&scene(200.0, 60.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    for y in 19..42 {
+        assert_eq!(pixel(&png, 100, y), INK, "y {y}: inside the wide leg's half width of 12, whichever leg is nearer");
+    }
+    assert_eq!(pixel(&png, 100, 17)[3], 0, "12.5 px above the wide leg");
+    assert_eq!(pixel(&png, 100, 43)[3], 0, "12.5 px below the wide leg");
+}

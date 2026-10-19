@@ -1,9 +1,9 @@
 //! The `(s, d)` field of one ribbon contour over a device-pixel grid, as two F16 images a brush
 //! shader samples. The spine is flattened in local space to a device tolerance, each segment is
-//! binned by the cells within the ribbon's reach, and every device pixel takes the nearest
-//! segment: its arc length, its signed offset, the half width there and the channels there. CPU
-//! only, so both backends read the same texels. Cost follows the pixels within reach, not the
-//! pixels times the segments.
+//! binned by the cells within the ribbon's reach, and every device pixel takes the segment that
+//! covers it deepest: its arc length, its signed offset, the half width there and the channels
+//! there. CPU only, so both backends read the same texels. Cost follows the pixels within reach,
+//! not the pixels times the segments.
 
 use std::collections::HashMap;
 
@@ -117,7 +117,10 @@ pub(crate) struct Spine {
     /// Local units per device pixel.
     px: f32,
     segs: Vec<Seg>,
-    closed: bool,
+    contour: RibbonContour,
+    taper: (f64, f64),
+    /// The half width everywhere when it does not change along the contour.
+    constant: Option<f32>,
     /// Local units past the spine a pixel may lie and still take a segment.
     radius: f32,
     cell: f32,
@@ -178,7 +181,9 @@ impl Spine {
             dtl,
             px,
             segs,
-            closed: spec.contour.closed,
+            contour: spec.contour.clone(),
+            taper: (f64::from(spec.taper[0]), f64::from(spec.taper[1])),
+            constant: constant_half_width(spec),
             radius,
             cell,
             grid_origin,
@@ -215,17 +220,30 @@ impl Spine {
         IRect::intersect(&live, &r).filter(|r| !r.is_empty())
     }
 
-    /// The nearest point of the spine to local `q`: arc length (unclamped past an open end),
-    /// signed offset (positive on the right of travel on a y-down canvas), and the distance that
-    /// chose the segment. `None` past the reach.
+    /// The tapered half width at arc length `s`, clamped to the contour.
+    fn half_width(&self, s: f32) -> f32 {
+        if let Some(hw) = self.constant {
+            return hw;
+        }
+        let on = s.clamp(0.0, self.contour.len);
+        self.contour.at(on).half_width * taper_ramp(f64::from(on / self.contour.len.max(1e-9)), self.taper) as f32
+    }
+
+    /// The point of the spine whose ink covers local `q` deepest: arc length (unclamped past an
+    /// open end) and signed offset (positive on the right of travel on a y-down canvas). Each
+    /// segment within the reach offers its nearest point, and the one with the largest half
+    /// width there minus the distance wins, so a thin part of the spine never carves a wide part
+    /// it passes near. Ties go to the nearer point, then the earlier segment; at constant width
+    /// that is the nearest segment. `None` past the reach.
     fn nearest(&self, q: Point) -> Option<(f32, f32)> {
         let cx = ((q.x - self.grid_origin.x) / self.cell).floor() as i32;
         let cy = ((q.y - self.grid_origin.y) / self.cell).floor() as i32;
         if cx < 0 || cy < 0 || cx >= self.grid_w || cy >= self.grid_h {
             return None;
         }
-        let mut best: Option<(f32, f32, f32)> = None;
+        let mut best: Option<(f32, f32, f32, f32)> = None;
         let last = self.segs.len() - 1;
+        let closed = self.contour.closed;
         for &i in &self.bins[(cy * self.grid_w + cx) as usize] {
             let seg = &self.segs[i as usize];
             let r = q - seg.p0;
@@ -234,20 +252,31 @@ impl Spine {
             let t = along.clamp(0.0, seg.len);
             let over = along - t;
             let dist = (over * over + across * across).sqrt();
-            if best.is_some_and(|(d, _, _)| dist >= d) {
+            if dist > self.radius {
                 continue;
             }
             let i = i as usize;
-            let free = !self.closed && ((i == 0 && along < 0.0) || (i == last && along > seg.len));
+            let free = !closed && ((i == 0 && along < 0.0) || (i == last && along > seg.len));
             let (s, d) = if free {
                 (seg.s0 + along / seg.len * (seg.s1 - seg.s0), across)
             } else {
                 (seg.s0 + t / seg.len * (seg.s1 - seg.s0), dist.copysign(across))
             };
-            best = Some((dist, s, d));
+            let depth = self.half_width(s) - dist;
+            if best.is_some_and(|(b_depth, b_dist, _, _)| depth < b_depth || (depth == b_depth && dist >= b_dist)) {
+                continue;
+            }
+            best = Some((depth, dist, s, d));
         }
-        best.filter(|(dist, _, _)| *dist <= self.radius).map(|(_, s, d)| (s, d))
+        best.map(|(_, _, s, d)| (s, d))
     }
+}
+
+/// The ribbon's half width when neither the knots nor a taper change it.
+fn constant_half_width(spec: &Spec<'_>) -> Option<f32> {
+    let first = spec.contour.knots.first()?.half_width;
+    let flat = spec.taper == [0.0, 0.0] && spec.contour.knots.iter().all(|k| k.half_width == first);
+    flat.then_some(first)
 }
 
 /// The polyline through `pts` with every vertex that lies within `tol` of the chord between its

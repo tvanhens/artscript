@@ -189,7 +189,8 @@ impl Ribbon {
 }
 
 /// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the
-/// nearest point of the spine, `m.edge` is the half width there minus the distance to it.
+/// point of the spine whose ink covers the pixel deepest, `m.edge` is the half width there
+/// minus the distance to it.
 #[derive(Clone, Debug)]
 pub struct RibbonMark {
     pub stage: Stage,
