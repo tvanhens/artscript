@@ -70,7 +70,7 @@ fn a_stamp_draws_its_block_once_per_site_under_the_host_and_replaces_the_default
     let first = &line.stamps[0];
     assert_eq!(first.path, "line.dots.0");
     assert!(matches!(first.kind, NodeKind::Group { isolate: false, .. }), "a stamp with no blend inside is a plain group");
-    assert_eq!(first.origin, "lib/garden.art:9");
+    assert_eq!(first.origin, "lib/garden.art:9:1");
     assert_eq!(first.descendants().map(|n| n.path.as_str()).collect::<Vec<_>>(), ["line.dots.0.circle~1"]);
     assert!(paths(&s).contains(&"line.dots.19.circle~1".to_string()));
     let inked = shape(&s, "inked");

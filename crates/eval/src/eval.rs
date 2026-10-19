@@ -1997,7 +1997,7 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         };
         self.expand_style(&mut a, sc, &path)?;
-        let origin = format!("{}:{}", sc.file(), st.span.line);
+        let origin = format!("{}:{}:{}", sc.file(), st.span.line, st.span.col);
         if let Some(comp) = comp {
             return self.instance(
                 &comp,
@@ -3006,12 +3006,12 @@ impl<'a> Evaluator<'a> {
         }
         let paint = stroke_paint.expect("a stroke has a paint");
         if let Some(spine) = spine.filter(|_| !stroke_marks.is_empty()) {
-            let mut ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
-            if tapered {
+            let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
+            let ink = tapered.then(|| {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
                 let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
-                ribbon.ink = Some(geom::ribbon_ink(&geometry, &ribbon, 0.75 / px));
-            }
+                geom::ribbon_ink(&geometry, &ribbon, 0.75 / px)
+            });
             return Ok((
                 Shape {
                     geometry,
@@ -3022,6 +3022,7 @@ impl<'a> Evaluator<'a> {
                         cap: Cap::Round,
                         join: Join::Round,
                         dash: Vec::new(),
+                        ink,
                         ribbon: Some(ribbon),
                     }),
                     blur,
@@ -3038,14 +3039,23 @@ impl<'a> Evaluator<'a> {
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
             let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
+            // The gradient spans the ink, not the spine.
             let ob = geom::bounds(&outline);
             let paint = to_paint(&paint_v, ob)
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             return Ok((
                 Shape {
-                    geometry: outline,
-                    fill: Some(IrFill::plain(paint)),
-                    stroke: None,
+                    geometry,
+                    fill,
+                    stroke: Some(Stroke {
+                        paint,
+                        width: widths.iter().copied().fold(0.0, f64::max) as f32,
+                        cap: Cap::Round,
+                        join: Join::Round,
+                        dash: Vec::new(),
+                        ink: Some(outline),
+                        ribbon: None,
+                    }),
                     blur,
                     stamps,
                     children: vec![],
@@ -3083,6 +3093,7 @@ impl<'a> Evaluator<'a> {
                     cap,
                     join,
                     dash,
+                    ink: None,
                     ribbon: None,
                 }),
                 blur,
@@ -3791,7 +3802,7 @@ impl<'a> Evaluator<'a> {
         self.report_unlanded(&inner);
         let mut node = new_node(
             path,
-            format!("{}:{}", sc.file(), st.span.line),
+            format!("{}:{}:{}", sc.file(), st.span.line, st.span.col),
             m,
             NodeKind::Group {
                 isolate: false,

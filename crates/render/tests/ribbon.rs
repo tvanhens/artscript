@@ -36,11 +36,11 @@ fn ribbon(path: Path, len: f32, closed: bool, knots: Vec<Knot>, paint: Paint, st
             cap: Cap::Round,
             join: Join::Round,
             dash: vec![],
+            ink: None,
             ribbon: Some(Ribbon {
                 marks: stages.into_iter().map(|stage| RibbonMark { stage, reach }).collect(),
                 contours: vec![RibbonContour { len, closed, knots }],
                 taper: [0.0, 0.0],
-                ink: None,
             }),
         });
     }

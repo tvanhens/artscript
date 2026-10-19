@@ -367,6 +367,14 @@ pub fn check(program: &Program) -> Result<(), Vec<SkslError>> {
     }
 }
 
+/// SkSL's message when `uniform <kind> <name>;` does not compile on its own, as when `name` is a
+/// keyword, a type or a builtin. The compiler is the authority, so no word list can drift from it.
+pub fn rejects_param_name(name: &str, kind: UniformKind) -> Option<String> {
+    let probe = Program::assemble(MainKind::Area, &[(name.to_string(), kind)], "float4 shade(Mark m) { return m.paint; }");
+    let errs = check(&probe).err()?;
+    errs.into_iter().find(|e| e.origin == Origin::Param(0)).map(|e| e.message)
+}
+
 /// Skia prints each error as `error: <line>: <message>`, then the source line, then a line of
 /// spaces and carets under the span. It ends with `N errors`. A message with no line, such as
 /// `missing 'main' function`, stands alone.

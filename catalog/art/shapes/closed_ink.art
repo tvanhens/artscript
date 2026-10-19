@@ -1,4 +1,4 @@
-# Tapered ink on closed curves, 192x96. Every stroke is dark ink on a closed curve, and no stroke has a round cap.
+# Tapered ink on closed curves, 192x96. Every stroke is dark ink on an unfilled closed curve, and no stroke has a round cap.
 # Left: a square through its 4 corners, tension:0, starting at the top left, with stroke:p.ink,[2 14 2 14]. The top
 # left and bottom right corners are thin (2px). The top right and bottom left corners are thick (14px). Each side
 # swells or thins steadily between its corners, the closing left side included. The top left corner has no blob.
@@ -8,6 +8,6 @@
 # thinnest, the bottom right is medium, and the bottom left is thickest. The closing side runs from 14px back to 2px.
 @target shapes/closed_ink.png 192x96
 
-curve -20,-20 20,-20 20,20 -20,20 closed tension:0 stroke:p.ink,[2 14 2 14] at:32,48
-curve -22,0 0,-22 22,0 0,22 closed stroke:p.ink,6 taper:.3 at:96,48
-curve 0,-22 22,18 -22,18 closed tension:0 stroke:p.ink,[2 8 14] at:160,48
+curve -20,-20 20,-20 20,20 -20,20 closed tension:0 fill:none stroke:p.ink,[2 14 2 14] at:32,48
+curve -22,0 0,-22 22,0 0,22 closed fill:none stroke:p.ink,6 taper:.3 at:96,48
+curve 0,-22 22,18 -22,18 closed tension:0 fill:none stroke:p.ink,[2 8 14] at:160,48

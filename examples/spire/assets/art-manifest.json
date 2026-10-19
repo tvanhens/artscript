@@ -1,0 +1,31 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "b4b139d347febe2d",
+      "line": 1,
+      "matrix": {},
+      "path": "monster/bogmaw.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/bogmaw.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "3cf72ff3b9dd70b3",
+      "line": 2,
+      "matrix": {},
+      "path": "monster/bogmaw_card.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/bogmaw.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

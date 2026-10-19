@@ -469,22 +469,14 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
         "bottom {}",
         b.bottom
     );
-    let ink = shape(&s, "ink").geometry.to_svg();
-    let lit = shape(&s, "lit").geometry.to_svg();
+    let outline = |name| shape(&s, name).stroke.as_ref().and_then(|st| st.ink.clone()).expect("tapered ink");
     assert_eq!(
-        ink, lit,
+        outline("ink").to_svg(),
+        outline("lit").to_svg(),
         "a width list built with each differs from the same literal list"
     );
-    assert!(
-        shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 3.5))
-    );
-    assert!(
-        !shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 4.6))
-    );
+    assert!(outline("ink").contains(artscript_ir::Point::new(50.0, 3.5)));
+    assert!(!outline("ink").contains(artscript_ir::Point::new(50.0, 4.6)));
 }
 
 #[test]
@@ -772,7 +764,7 @@ fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
     let s = scene(
         "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
     );
-    let ink = &shape(&s, "a").geometry;
+    let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
     let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
     assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
     assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
@@ -785,7 +777,7 @@ fn a_width_list_stroke_inks_every_contour_of_a_path() {
     let s = scene(
         "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
     );
-    let ink = &shape(&s, "a").geometry;
+    let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
     let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
     assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
 }
@@ -2030,6 +2022,14 @@ fn hidden_children(src: &str) -> Vec<Diagnostic> {
 }
 
 #[test]
+fn a_child_inside_a_tapered_stroke_is_not_hidden() {
+    let hidden = hidden_children(
+        "@target t.png 128x64\ncurve -40,0 40,0 fill:none stroke:#000,[2 20 2] at:64,32 name:line\n  circle 3 at:0,6 name:dot\n",
+    );
+    assert!(hidden.is_empty(), "{}", show(&hidden));
+}
+
+#[test]
 fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
     let hidden = hidden_children(
         "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
@@ -2058,10 +2058,29 @@ fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
         all[0]
             .notes
             .iter()
-            .any(|n| n == "so are the 3 other copies"),
+            .any(|n| n == "also in dot.1, dot.2, dot.3"),
         "{:?}",
         all[0].notes
     );
+}
+
+#[test]
+fn a_child_hidden_in_every_copy_of_its_parent_is_reported_once_at_its_column() {
+    let hidden = hidden_children(
+        "@target t.png 200x200\ncircle 80 at:100,100 name:host\n  each k, c in [0 100]\n    ellipse 20,20 at:c-40,0 name:inner\n      circle 4 at:150,0\n",
+    );
+    assert_eq!(hidden.len(), 1, "{}", show(&hidden));
+    assert_eq!((hidden[0].span.line, hidden[0].span.col), (5, 7));
+    assert_eq!(hidden[0].node, "inner.0.circle~1");
+    assert!(
+        hidden[0].notes.iter().any(|n| n == "also in inner.1.circle~1"),
+        "{:?}",
+        hidden[0].notes
+    );
+    let partly = hidden_children(
+        "@target t.png 200x200\ncircle 80 at:100,100 name:host\n  each c in [0 60]\n    ellipse 20,20 at:c-40,0 name:inner\n      circle 4 at:c,0\n",
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
 }
 
 #[test]

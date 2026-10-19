@@ -589,6 +589,29 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
 }
 
 #[test]
+fn a_tapered_stroke_draws_over_the_fill() {
+    let dir = fixture("taper-fill", &[]);
+    fs::write(
+        dir.join("art/t.art"),
+        "@target t.png 96x96\nblob 30 at:48,48 fill:#d8a840 stroke:#202030,[2 8 2] name:a\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["build", "--backend", "cpu", "--allow-warnings"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let mut decoder = png::Decoder::new(std::io::Cursor::new(fs::read(dir.join("assets/t.png")).unwrap()));
+    decoder.set_transformations(png::Transformations::normalize_to_color8() | png::Transformations::ALPHA);
+    let mut reader = decoder.read_info().unwrap();
+    let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+    let info = reader.next_frame(&mut buf).unwrap();
+    let at = |x: usize, y: usize| {
+        let i = (y * info.width as usize + x) * 4;
+        [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
+    };
+    assert_eq!(at(48, 48), [0xd8, 0xa8, 0x40, 0xff], "the fill shows inside a width-list stroke");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_bad_target_profile_is_e0206_on_every_format() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-profile-{}", std::process::id()));
     let cases = [
