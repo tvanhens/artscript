@@ -1,0 +1,25 @@
+# fx outline on a brushed fill follows the coverage its brush leaves, 192x72, three 48px squares
+# on paper at y 36, each with an outline in its fill's line color: dark brown on gold, dark blue
+# on blue.
+# Cell 1 (x 32), gold square with chip and outline 3: the edge is bitten by flakes, and the
+# ring follows every bite inward, so paper shows inside each bite with the ring around it. No bite
+# shows solid ring color across it and the ring never runs straight along the square's geometry.
+# Cell 2 (x 96), blue square with dry and outline 2: horizontal streaks break the blue, and the
+# ring runs into each streak from both sides. Every streak is narrower than the ring, so each
+# one fills with dark blue and no paper shows inside the square. The square's own edge stays
+# straight with a few small notches where a streak reaches it.
+# Cell 3 (x 160), gold square with no brush and outline 3: a plain square ring with round corners
+# around solid gold, as before.
+# The .svg target uses profile:svg: an outline that traces a brushed fill bakes with its node into
+# a raster tile, so cells 1 and 2 look like the PNG's, and cell 3 stays a path and an outline path.
+@target brush/outline.png 192x72
+@target brush/outline.svg 192x72 profile:svg
+
+use std/brushes { dry chip }
+
+rect 48 at:32,36 fill:p.gold.2 brush:chip(strength:.9 scale:2) name:chipped
+  fx outline 3
+rect 48 at:96,36 fill:p.blue.2 brush:dry(strength:.6) name:streaked
+  fx outline 2
+rect 48 at:160,36 fill:p.gold.2 name:plain
+  fx outline 3

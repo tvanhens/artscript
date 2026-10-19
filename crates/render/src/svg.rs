@@ -234,7 +234,8 @@ impl Writer {
                     })
                     .fold(0.0, f32::max);
                 let behind = if halo { Side::Inside { reach: inked } } else { Side::Whole };
-                let regions = crate::effects::silhouette(node, &Matrix::scale((bake_scale, bake_scale)))?;
+                let ctx = crate::draw::DrawCtx::new(scene, self.backend);
+                let regions = crate::effects::silhouette(node, &Matrix::scale((bake_scale, bake_scale)), &ctx)?;
                 self.outline_paths(&regions, *width, *color, &oid, behind, depth + 1);
                 self.emit_outlined(scene, node, id, bake_scale, depth, head)?;
                 if halo {
