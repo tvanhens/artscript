@@ -151,12 +151,9 @@ layer head rot:8 pivot:480,640
     each k in 0..7
       let tx = 160+k*42+rand(-8 8)
       let ty = 667-25*((tx-300)/175)*((tx-300)/175)
+      ellipse 11,4 at:tx,ty-3 fill:p.maw.0 a:.35 blur:3 name:tooth_contact
       fang 20+rand(0 16) 8+rand(0 3) lean:rand(-6 4) at:tx,ty rot:rand(-14 14) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:lower_tooth
         fx outline 1.2 color:p.flesh.0
-      ellipse 9,3 at:tx,ty-4 fill:p.flesh.2 brush:sculpt(hi:p.flesh.4 scale:.2 glossk:.6) name:gum_bulge
-      curve tx-7,ty-6 tx,ty-8 tx+7,ty-6 stroke:p.maw.0,1.2 a:.45 name:root_crease
-    curve 120,640 300,665 465,640 stroke:p.flesh.2,8 a:.9 blur:2 name:gum_over
-    curve 128,636 300,661 457,636 stroke:p.flesh.4,1.5 a:.5 blur:.8 name:gum_over_lit
     each k in 0..9
       fang 18+rand(0 20) 6+rand(0 4) lean:rand(-4 6) at:130+k*38+rand(-6 6),596-abs(k-4)*.8 rot:180+rand(-12 12) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:upper_tooth
     ellipse 180,36 at:300,560 fill:p.ink a:.6 blur:20
