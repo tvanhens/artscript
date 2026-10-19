@@ -6,7 +6,7 @@ mod common;
 use std::sync::Arc;
 
 use artscript_brush::{MainKind, Program, UniformKind, UniformValue};
-use artscript_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, Sides, Stage, Stop};
+use artscript_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
 use artscript_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
 use common::{color, effect, pixel, red, scene, solid, stamp, with_stamps};
 
@@ -293,7 +293,7 @@ fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
 }
 
 fn outlined(mut node: artscript_ir::Node, width: f32) -> artscript_ir::Node {
-    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None, brush: vec![] }));
     node
 }
 
@@ -339,4 +339,53 @@ fn fx_outline_over_a_brushed_fill_is_raster_only() {
     let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 2, "{svg}");
     assert!(!svg.contains("-outline"), "the ring is in the tile, not a path: {svg}");
+}
+
+fn ring_stage(body: &str, seed: u32) -> Stage {
+    let program = Program::assemble(MainKind::Ribbon, &[], body);
+    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    Stage { program: Arc::new(program), uniforms: vec![], seed }
+}
+
+fn ring_outlined(mut node: artscript_ir::Node, width: f32, body: &str, reach: f32) -> artscript_ir::Node {
+    let brush = vec![RibbonMark { stage: ring_stage(body, 5), reach }];
+    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None, brush }));
+    node
+}
+
+const INNER_HALF: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m) * step(0, m.d)); }\n";
+const OUTER_HALF: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m) * step(0, -m.d)); }\n";
+
+/// A 60-unit square with a 20-unit hole, so the ring runs around the outside and inside the hole.
+fn holed() -> Path {
+    let mut path = skia_safe::PathBuilder::new();
+    path.add_rect(skia_safe::Rect::from_ltrb(10.0, 10.0, 70.0, 70.0), None, None);
+    path.add_rect(skia_safe::Rect::from_ltrb(30.0, 30.0, 50.0, 50.0), None, None);
+    path.set_fill_type(skia_safe::PathFillType::EvenOdd);
+    path.snapshot()
+}
+
+#[test]
+fn a_brushed_outline_runs_with_the_traced_area_on_its_right_around_the_outside_and_each_hole() {
+    let inner = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, INNER_HALF, 0.0)]), 1.0, Backend::Cpu).unwrap();
+    let outer = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, OUTER_HALF, 0.0)]), 1.0, Backend::Cpu).unwrap();
+    for (x, where_) in [(8, "outside the square"), (32, "inside the hole")] {
+        assert_eq!(pixel(&inner, x, 40)[3], 0, "the inner half (m.d > 0) lies under the fill, so nothing shows {where_}");
+        assert_eq!(pixel(&outer, x, 40), [0, 0, 0, 255], "the outer half (m.d < 0) shows {where_}");
+    }
+    assert_eq!(pixel(&outer, 20, 40), [255, 0, 0, 255], "the fill stays the fill");
+    assert_eq!(pixel(&outer, 40, 40)[3], 0, "the middle of the hole is open");
+}
+
+#[test]
+fn a_brushed_outline_renders_the_same_bytes_twice_and_is_raster_only() {
+    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 3 * hash12(floor(m.uv / 4)), m)); }\n";
+    let s = scene(80.0, 80.0, vec![ring_outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0, body, 3.0)]);
+    let png = render_png(&s, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(png, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
+    assert_eq!(census, ["a brush outline"]);
+    assert!(matches!(render_svg(&s, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(artscript_render::RenderError::NotVector(_))));
+    let svg = render_svg(&s, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 1, "{svg}");
 }

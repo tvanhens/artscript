@@ -6,7 +6,7 @@
 //! it came from.
 
 use artscript_brush::Seeds;
-use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage, Stroke};
+use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
 use skia_safe::{Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders};
 
 use crate::RenderError;
@@ -103,13 +103,13 @@ fn area_shader(
     Ok(Some((dev, shader)))
 }
 
-/// Each contour of the geometry is its own ribbon, built and drawn in strips of [`STRIP_ROWS`]
-/// device rows narrowed to the cells its spine reaches, so a long diagonal stroke costs its own
-/// pixels and not its bounding box.
+/// Each contour of the geometry is its own ribbon over `paint`, built and drawn in strips of
+/// [`STRIP_ROWS`] device rows narrowed to the cells its spine reaches, so a long diagonal stroke
+/// costs its own pixels and not its bounding box.
 pub(crate) fn draw_ribbon(
     canvas: &Canvas,
     geometry: &Path,
-    stroke: &Stroke,
+    paint: &IrPaint,
     ribbon: &Ribbon,
     ctx: &DrawCtx<'_>,
     origin: &str,
@@ -139,7 +139,7 @@ pub(crate) fn draw_ribbon(
             let (field_shader, chan_shader, norm_shader) = (texels(&field.field)?, texels(&field.chan)?, texels(&field.norm)?);
             let shader = frame.chain(
                 &stages,
-                &stroke.paint,
+                paint,
                 Ink::Paint,
                 origin,
                 &|u, _| {
@@ -273,8 +273,8 @@ fn nearest() -> SamplingOptions {
     SamplingOptions::new(FilterMode::Nearest, MipmapMode::None)
 }
 
-/// Local units per device pixel, the geometric mean over both axes.
-fn device_scale(m: &Matrix) -> f32 {
+/// Device pixels per local unit, the geometric mean over both axes.
+pub(crate) fn device_scale(m: &Matrix) -> f32 {
     let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
     let sy = (m.scale_y() * m.scale_y() + m.skew_x() * m.skew_x()).sqrt();
     (sx * sy).sqrt().max(1e-4)

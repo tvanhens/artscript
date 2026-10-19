@@ -9,17 +9,17 @@
 use std::collections::HashMap;
 
 use artscript_ir::{
-    Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Mask, MaskSource, Node, NodeKind,
-    Paint as IrPaint, Path, Shape, Sides, Stroke,
+    Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Knot, Mask, MaskSource, Node, NodeKind,
+    Paint as IrPaint, Path, Ribbon, RibbonContour, RibbonMark, Shape, Sides, Stroke, ribbon_reach,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
 use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
-    BlendMode, Canvas, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix,
-    Paint, PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect,
-    SamplingOptions, TileMode, color_filters, image_filters, path_utils, surfaces,
+    BlendMode, Canvas, Color4f, ColorMatrix, ContourMeasureIter, Data, IRect, Image, ImageFilter,
+    ImageInfo, Matrix, Paint, PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut,
+    RuntimeEffect, SamplingOptions, TileMode, color_filters, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
@@ -527,7 +527,15 @@ pub struct OutlineStep<'a> {
     pub color: Color,
     pub sides: Sides,
     pub mask: Option<&'a Mask>,
+    pub brush: &'a [RibbonMark],
     pub cover_halo_past: Option<f32>,
+}
+
+impl OutlineStep<'_> {
+    /// Local units the ring may paint past the traced areas on the sides it draws on.
+    pub fn reach(&self) -> f32 {
+        self.width + ribbon_reach(self.brush)
+    }
 }
 
 fn paints_past_its_input(effect: &Effect) -> bool {
@@ -560,7 +568,7 @@ pub fn layer_steps<'a>(
     let mut halo = false;
     let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
-        let EffectOp::Outline { width, color, sides, mask } = &effect.op else {
+        let EffectOp::Outline { width, color, sides, mask, brush } = &effect.op else {
             continue;
         };
         let (width, color, sides, mask) = (*width, *color, *sides, mask.as_deref());
@@ -574,8 +582,9 @@ pub fn layer_steps<'a>(
             steps.push(LayerStep::Filter(filter));
             halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline(OutlineStep { width, color, sides, mask, cover_halo_past: halo.then_some(inked) }));
-        inked = inked.max(width);
+        let step = OutlineStep { width, color, sides, mask, brush, cover_halo_past: halo.then_some(inked) };
+        inked = inked.max(step.reach());
+        steps.push(LayerStep::Outline(step));
         start = i + 1;
     }
     if start < effects.len()
@@ -606,7 +615,7 @@ pub fn outline_geometry(
     node: &Node,
     step: OutlineStep<'_>,
 ) -> Result<Image, RenderError> {
-    let OutlineStep { width, color, sides, mask, cover_halo_past } = step;
+    let OutlineStep { width, color, sides, mask, brush, cover_halo_past } = step;
     if width <= 0.0 {
         return Ok(src);
     }
@@ -614,7 +623,7 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let ring = Ring { regions: &regions, local_to_px, width, color, sides, mask, ctx, world };
+    let ring = Ring { regions: &regions, local_to_px, width, color, sides, mask, brush, ctx, world, origin: &node.origin };
     let mut under = ring.composite(&src, BlendMode::DstOver)?;
     if let Some(inked) = cover_halo_past {
         let over = ring.composite(&src, BlendMode::SrcOver)?.image_snapshot();
@@ -658,8 +667,10 @@ struct Ring<'a> {
     sides: Sides,
     /// Keeps the ring's ink where it keeps it. The content under the ring is not masked.
     mask: Option<&'a Mask>,
+    brush: &'a [RibbonMark],
     ctx: &'a DrawCtx<'a>,
     world: Matrix,
+    origin: &'a str,
 }
 
 impl Ring<'_> {
@@ -699,11 +710,15 @@ impl Ring<'_> {
         if !self.sides.is_all() {
             canvas.clip_rect(self.kept_area(), None, true);
         }
-        for region in self.regions {
-            ink.set_style(Style::Fill);
-            canvas.draw_path(&region.path, &ink);
-            ink.set_style(Style::Stroke);
-            canvas.draw_path(&region.path, &ink);
+        if self.brush.is_empty() {
+            for region in self.regions {
+                ink.set_style(Style::Fill);
+                canvas.draw_path(&region.path, &ink);
+                ink.set_style(Style::Stroke);
+                canvas.draw_path(&region.path, &ink);
+            }
+        } else {
+            self.brushed(canvas, &ink)?;
         }
         canvas.restore();
         ink.set_style(Style::Fill);
@@ -717,6 +732,61 @@ impl Ring<'_> {
         canvas.restore();
         Ok(surface)
     }
+}
+
+impl Ring<'_> {
+    /// The traced area filled solid, then each of its contours as a closed ribbon of half width
+    /// `width` under the brush stages, so the stages see the ring as one stroke: `m.d > 0` is
+    /// the half over the area and `m.d < 0` the half that shows. A single region keeps its path
+    /// as traced, so `m.s` starts where the shape's contour position does.
+    fn brushed(&self, canvas: &Canvas, ink: &Paint) -> Result<(), RenderError> {
+        let area = match self.regions {
+            [one] => one.path.clone(),
+            many => ink_area(many, 0.0)?,
+        };
+        let mut fill = ink.clone();
+        fill.set_style(Style::Fill);
+        canvas.draw_path(&area, &fill);
+        let px = 1.0 / mark::device_scale(&canvas.local_to_device_as_3x3());
+        let (spine, contours) = ring_contours(&area, self.width, px);
+        let ribbon = Ribbon { marks: self.brush.to_vec(), contours, taper: [0.0, 0.0] };
+        let paint = IrPaint::Solid(Color { a: 1.0, ..self.color });
+        mark::draw_ribbon(canvas, &spine, &paint, &ribbon, self.ctx, self.origin)
+    }
+}
+
+/// Every contour of `area` as a closed polyline that keeps its first point and runs with the
+/// area on its right of travel, with the ribbon contour of constant half width `width` along
+/// it. `px` is local units per device pixel, the flattening step.
+fn ring_contours(area: &Path, width: f32, px: f32) -> (Path, Vec<RibbonContour>) {
+    const VOTES: usize = 8;
+    let mut spine = PathBuilder::new();
+    let mut contours = Vec::new();
+    for measure in ContourMeasureIter::new(area, false, Some(10.0 / px)) {
+        let len = measure.length();
+        if len <= 0.0 {
+            continue;
+        }
+        let inside = (0..VOTES)
+            .filter(|k| {
+                let s = len * (*k as f32 + 0.5) / VOTES as f32;
+                measure.pos_tan(s).is_some_and(|(p, t)| area.contains(p + Point::new(-t.y, t.x) * (0.5 * px)))
+            })
+            .count();
+        let n = ((len / (0.5 * px)).ceil() as usize).max(2);
+        let mut pts: Vec<Point> = (0..n).filter_map(|i| measure.pos_tan(len * i as f32 / n as f32)).map(|(p, _)| p).collect();
+        if inside * 2 < VOTES {
+            pts[1..].reverse();
+        }
+        spine.move_to(pts[0]);
+        for p in &pts[1..] {
+            spine.line_to(*p);
+        }
+        spine.close();
+        let knot = |s: f32| Knot { s, half_width: width, pressure: 1.0, angle: 0.0, tilt: 0.0, velocity: 1.0 };
+        contours.push(RibbonContour { len, closed: true, knots: vec![knot(0.0), knot(len)] });
+    }
+    (spine.snapshot(), contours)
 }
 
 /// `local_to_px` maps the node's own space to the pixels a field mask or a brush coverage is

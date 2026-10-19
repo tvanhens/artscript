@@ -7,6 +7,7 @@ use std::rc::Rc;
 use artscript_ir::{Effect, EffectInput, EffectOp, Matrix, Point, Rect, Sides};
 use artscript_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
+use crate::brush::Slot;
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, unknown_key};
 use crate::identity::{self, Key};
@@ -21,7 +22,7 @@ const EFFECTS: &[(&str, &[&str])] = &[
     ("glow", &["strength", "color", "a"]),
     ("rim", &["dir", "color", "a"]),
     ("adjust", &["hue", "sat", "light"]),
-    ("outline", &["sides", "color", "a", "feather"]),
+    ("outline", &["sides", "color", "a", "feather", "brush"]),
     ("grain", &["scale", "seed"]),
     ("merge", &["a"]),
 ];
@@ -118,24 +119,34 @@ pub(crate) struct FxSite<'s> {
     pub world: Matrix,
 }
 
+/// Where one `fx` line's seeds come from: the node's key, the line's own key under it, and the
+/// node's `seed:`.
+struct FxKey<'k> {
+    key: &'k Key,
+    line: Key,
+    seed: Option<u64>,
+}
+
 impl Evaluator<'_> {
     /// Every effect of the node at `path`, in source order. A finish line puts its lines in its
-    /// place. `fill` is the node's first fill, the source of default colors. A failing line is
+    /// place. `fill` is the node's first fill, the source of default colors. `seed` is the node's
+    /// `seed:`, which pins an outline's brush stages as it pins the node's own. A failing line is
     /// reported at the span of the line written under the node and skipped.
-    pub(crate) fn lower_fx(&mut self, sites: &[FxSite<'_>], key: &Key, fill: Rgba) -> Vec<Effect> {
+    pub(crate) fn lower_fx(&mut self, sites: &[FxSite<'_>], key: &Key, fill: Rgba, seed: Option<u64>) -> Vec<Effect> {
         let path = key.to_string();
         let mut out = Vec::new();
         for site in sites {
             let file = site.scope.file().to_string();
             let op = site.line.op.as_str();
             let finish = if is_effect_name(op) { None } else { site.scope.module.finishes.borrow().get(op).cloned() };
+            let at = FxKey { key, line: key.fx(site.ordinal), seed };
             match finish {
-                Some(def) => self.expand(&def, site, &file, fill, key, &mut out),
+                Some(def) => self.expand(&def, site, &file, fill, &at, &mut out),
                 None => {
                     for f in unknown_keys(site.line, &["of", "as"]) {
                         self.report(f, &file, site.line.span, &path);
                     }
-                    let mut effect = match self.builtin(site.line, site.scope, &file, fill, key) {
+                    let mut effect = match self.builtin(site.line, site.scope, &file, fill, &at) {
                         Ok(e) => e,
                         Err(e) => {
                             self.report(e, &file, site.line.span, &path);
@@ -166,15 +177,17 @@ impl Evaluator<'_> {
     }
 
     /// The finish's lines, in order, evaluated in its module with its params bound. The params'
-    /// values evaluate where the `fx` line is written, and grain seeds from that file.
-    fn expand(&mut self, def: &FinishDef, site: &FxSite<'_>, file: &str, fill: Rgba, key: &Key, out: &mut Vec<Effect>) {
-        let path = key.to_string();
+    /// values evaluate where the `fx` line is written, and grain seeds from that file. Each line
+    /// seeds its brushes from its own number under the `fx` line's key.
+    fn expand(&mut self, def: &FinishDef, site: &FxSite<'_>, file: &str, fill: Rgba, at: &FxKey<'_>, out: &mut Vec<Effect>) {
+        let path = at.key.to_string();
         let fsc = match self.bind_finish(def, site) {
             Ok(s) => s,
             Err(e) => return self.report(e, file, site.line.span, &path),
         };
-        for line in &def.lines {
-            match self.builtin(line, &fsc, file, fill, key) {
+        for (i, line) in def.lines.iter().enumerate() {
+            let at = FxKey { key: at.key, line: at.line.fx(i as u32 + 1), seed: at.seed };
+            match self.builtin(line, &fsc, file, fill, &at) {
                 Ok(e) => out.push(e),
                 Err(e) => {
                     let e = e.note(format!("in finish `{}` ({}:{})", def.name, def.module, line.span.line));
@@ -237,10 +250,11 @@ impl Evaluator<'_> {
         Ok(())
     }
 
-    /// One built-in effect. Arguments evaluate in `sc`. Grain seeds from `seed_file`, the file the
-    /// `fx` line is written in.
-    fn builtin(&mut self, line: &FxLine, sc: &Scope, seed_file: &str, f: Rgba, key: &Key) -> R<Effect> {
+    /// One built-in effect. Arguments evaluate in `sc`. Grain and an outline's brushes seed from
+    /// `seed_file`, the file the `fx` line is written in.
+    fn builtin(&mut self, line: &FxLine, sc: &Scope, seed_file: &str, f: Rgba, at: &FxKey<'_>) -> R<Effect> {
         let FxLine { op: op_name, args, named, .. } = line;
+        let key = at.key;
         let op_name = op_name.as_str();
         let input_of = |e: &Expr, ev: &mut Self| -> R<EffectInput> {
             Ok(match e {
@@ -307,7 +321,25 @@ impl Evaluator<'_> {
                     return Err(fail("E0320", "`feather:` on `fx outline` softens the edge of its mask, and this line has none")
                         .fix("indent a `mask` line under the `fx outline` line, or remove `feather:`"));
                 }
-                EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)?, mask: None }
+                let brush = match a.get("brush") {
+                    None => Vec::new(),
+                    Some(bv) => {
+                        let stack = self.brush_stack(bv, sc)?;
+                        if let Some((i, b)) = stack.iter().enumerate().find(|(_, b)| b.place.on == Some(Slot::Fill)) {
+                            let what = if stack.len() == 1 {
+                                "`brush:` on `fx outline` is narrowed to `on:fill`, and a ring is a stroke".to_string()
+                            } else {
+                                format!("stage {} of `brush:` (`{}`) is narrowed to `on:fill`, and a ring is a stroke", i + 1, b.decl.name)
+                            };
+                            let f = fail("E0362", what).fix("remove `on:fill` from the brush, or the brush from the outline");
+                            let span = named.iter().find(|n| n.key == "brush").map_or(line.span, |n| n.span);
+                            self.report(f, sc.file(), span, &key.to_string());
+                            return Err(Fail::reported());
+                        }
+                        self.ribbon_marks(&stack, &at.line, at.seed, seed_file)
+                    }
+                };
+                EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)?, mask: None, brush }
             }
             "grain" => {
                 let explicit = a.seed()?;

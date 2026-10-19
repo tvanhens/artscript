@@ -2460,7 +2460,7 @@ impl<'a> Evaluator<'a> {
             .iter()
             .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world })
             .collect();
-        node.effects = self.lower_fx(&sites, &key, fill_key);
+        node.effects = self.lower_fx(&sites, &key, fill_key, a.seed()?);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
@@ -3854,7 +3854,7 @@ impl<'a> Evaluator<'a> {
             .chain(call_lines.iter().map(|l| (l, def_ordinals.len() as u32 + call_ordinals[&l.0.span])))
             .map(|((line, scope), ordinal)| FxSite { line, scope, ordinal, frame: call_sc.frame, world })
             .collect();
-        node.effects = self.lower_fx(&sites, &key, f);
+        node.effects = self.lower_fx(&sites, &key, f, node_args.seed()?);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
         let z = self.finish_node(&mut node, &node_args)?;
         rec.borrow_mut().node = Some(node.clone());
