@@ -416,11 +416,14 @@ fn a_reserved_name_lands_on_its_own_line_and_column_and_the_compile_errors_still
 }
 
 #[test]
-fn a_param_default_that_breaks_the_uniform_line_lands_on_the_param() {
-    let lib = ("lib/b.art", "brush b strength:.5 float:1\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n");
+fn every_param_named_for_an_sksl_word_is_e0363_at_its_key() {
+    let lib = ("lib/b.art", "brush b strength:.5 flat:1 half:2 sin:3 ok:4\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n");
     let ds = errors("@target t.png 100x100\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
-    let d = ds.iter().find(|d| d.code == "E0360").unwrap_or_else(|| panic!("{}", show(&ds)));
-    assert_eq!((d.span.line, d.span.col), (1, 21), "{d}");
+    let got: Vec<(u32, u32, bool)> =
+        ds.iter().map(|d| (d.span.line, d.span.col, d.code == "E0363" && d.message.contains("SkSL reserves"))).collect();
+    assert_eq!(got, [(1, 21, true), (1, 28, true), (1, 35, true)], "{}", show(&ds));
+    assert!(ds[0].message.contains("`flat`"), "{}", ds[0]);
+    assert_eq!(ds[0].fix.as_deref(), Some("rename the parameter"), "{}", ds[0]);
 }
 
 #[test]
