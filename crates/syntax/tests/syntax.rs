@@ -1448,6 +1448,50 @@ fn a_def_alias_fixes_arguments_on_a_target_and_round_trips() {
 }
 
 #[test]
+fn a_fn_takes_positional_names_and_one_expression_and_round_trips() {
+    let src = "fn solid(c r) = map.{r}.{c} == 1 and c >= 0\n";
+    let file = must_parse(src);
+    let DeclKind::Fn { name, params, body } = decl(&file) else {
+        panic!("{file:?}");
+    };
+    assert_eq!(name, "solid");
+    assert_eq!(params, &["c", "r"]);
+    assert!(matches!(body, Expr::Binary(BinOp::And, ..)), "{body:?}");
+    assert_eq!(format_source(src).unwrap(), src);
+    round_trip_source(src);
+    round_trip_source("fn  solid ( c   r )  =  if c then 1 else 2\n");
+    assert_eq!(format_source("fn k() = 3\n").unwrap(), "fn k() = 3\n");
+    let constant = must_parse("fn k() = 3\n");
+    let DeclKind::Fn { params, .. } = decl(&constant) else {
+        panic!("{constant:?}");
+    };
+    assert!(params.is_empty());
+}
+
+#[test]
+fn a_fn_reports_a_missing_head_part_or_a_block() {
+    let e = one_error("fn solid c r = 1\n");
+    assert_eq!(e.message, "expected `(` after the name");
+    assert_eq!(e.fix.as_deref(), Some("write `fn solid(a b) = <expr>`"));
+    let e = one_error("fn solid(c r\n");
+    assert_eq!(e.message, "expected `)` after the parameters");
+    let e = one_error("fn solid(c r) 1\n");
+    assert_eq!(e.message, "expected `=` after the parameters");
+    let e = one_error("fn solid(c c) = c\n");
+    assert_eq!(e.message, "duplicate parameter `c`");
+    let errs = errors("fn solid(c r) = c\n  circle 4\n");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert_eq!(errs[0].span.line, 2);
+    assert_eq!(errs[0].message, "a fn has no body block");
+    assert_eq!(
+        errs[0].fix.as_deref(),
+        Some("dedent the block, or fold it into the expression after `=` in `fn solid`")
+    );
+    let errs = errors("fn = 1\n");
+    assert!(errs[0].message.contains("expected a name"), "{errs:?}");
+}
+
+#[test]
 fn a_def_alias_takes_no_block_and_fixes_no_name() {
     let errs = errors("def arm_l = hero_arm tone:-1\n  circle 4\n");
     assert_eq!(errs.len(), 1, "{errs:?}");

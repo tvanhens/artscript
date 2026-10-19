@@ -172,6 +172,14 @@ pub struct RuleDef {
     pub span: Span,
 }
 
+pub struct FnDef {
+    pub name: String,
+    pub params: Vec<String>,
+    pub body: Expr,
+    pub module: String,
+    pub span: Span,
+}
+
 /// A node (or anchor) as created so far, with the transform from its parent to the canvas.
 #[derive(Clone)]
 pub struct Record {

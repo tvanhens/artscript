@@ -7030,6 +7030,128 @@ fn an_alias_fixed_argument_follows_the_instance_palette_like_a_default() {
     assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
 }
 
+const HALF_LIB: &str = "fn half(x) = x/2\nfn quarter(x) = half(half(x))\n";
+
+#[test]
+fn a_fn_computes_a_value_from_its_arguments_and_other_fns() {
+    let s = scene(
+        "@target t.png 100x100\nfn half(x) = x/2\nfn quarter(x) = half(half(x))\ncircle 4 at:half(40),quarter(80) name:c\ndef dot k:1\n  circle 2 at:half(k),0 name:in\ndot k:12 name:d\n",
+    );
+    near(at(node(&s, "c")), (20.0, 20.0));
+    near(at(node(&s, "d.in")), (6.0, 0.0));
+}
+
+#[test]
+fn a_fn_reads_its_files_top_level_lets_and_palettes() {
+    let s = scene(
+        "@target t.png 100x100\nlet base = 10\npalette q\n  color ink #112233\n  color hot #ff0000\nfn tone(k) = if k > base then q.hot else q.ink\nrect 4x4 fill:tone(5) name:cold\nrect 4x4 fill:tone(50) name:warm\n",
+    );
+    assert_eq!(fill_hex(node(&s, "cold")), "#112233");
+    assert_eq!(fill_hex(node(&s, "warm")), "#ff0000");
+}
+
+#[test]
+fn p_in_a_fn_body_is_the_palette_of_the_call_site() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { eye }\nfn tint() = p.sky\ndef dot\n  circle 5 fill:tint() name:i\ndot name:plain\ndot palette:elite name:swapped\n",
+    );
+    assert_eq!(fill_hex(node(&s, "plain.i")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
+}
+
+#[test]
+fn use_imports_a_fn_by_item_list_and_through_an_alias() {
+    let libs = [("lib/m.art", HALF_LIB)];
+    let ev = run_with("@target t.png 100x100\nuse m { quarter }\ncircle 4 at:quarter(80),0 name:c\n", &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (20.0, 0.0));
+
+    let ev = run_with("@target t.png 100x100\nuse m as lib\nlet q = lib.quarter\ncircle 4 at:q(80),0 name:c\n", &libs);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (20.0, 0.0));
+}
+
+#[test]
+fn a_fn_call_with_the_wrong_arguments_is_e0320() {
+    let ev = run_with("@target t.png 100x100\nfn half(x) = x/2\ncircle 4 at:half(1 2),0\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`half` takes 1 argument, got 2");
+    assert_eq!(d.fix.as_deref(), Some("write `half(x)`"));
+    assert_eq!(d.span.line, 3);
+
+    let ev = run_with("@target t.png 100x100\nfn half(x) = x/2\ncircle 4 at:half(x:2),0\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`half` takes positional arguments only, got `x:`");
+    assert_eq!(d.fix.as_deref(), Some("write `half(x)`"));
+}
+
+#[test]
+fn a_fn_body_cannot_read_a_ref_or_draw_a_random_value() {
+    let ev = run_with(
+        "@target t.png 100x100\ncircle 4 name:a\nfn w(k) = @a.w * k\nfn jit(k) = k + rand(0 1)\nfn one(xs) = pick(xs)\ncircle jit(4)\n",
+        &[],
+    );
+    assert_eq!(ev.diagnostics.len(), 3, "{}", show(&ev.diagnostics));
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0324").collect();
+    ds.sort_by_key(|d| d.span.line);
+    assert_eq!(ds.len(), 3, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "fn `w` reads `@a.w`");
+    assert_eq!(ds[0].span.line, 3);
+    assert_eq!(ds[1].message, "fn `jit` calls `rand`");
+    assert_eq!(ds[1].fix.as_deref(), Some("pass the random value in as an argument"));
+    assert_eq!(ds[1].span.line, 4);
+    assert_eq!(ds[2].message, "fn `one` calls `pick`");
+    assert_eq!(ds[2].fix.as_deref(), Some("pass the random value in as an argument"));
+}
+
+#[test]
+fn a_fn_reached_through_a_parameter_or_a_let_cannot_call_itself() {
+    for src in [
+        "@target t.png 100x100\nfn f(g) = g(g)\ncircle f(f)\n",
+        "@target t.png 100x100\nfn f(x) = g(x)\nlet g = f\ncircle f(1)\n",
+    ] {
+        let ev = run_with(src, &[]);
+        assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+        let d = diag(&ev, "E0325");
+        assert_eq!(d.message, "fn `f` calls itself");
+    }
+}
+
+#[test]
+fn a_fn_cannot_call_itself_directly_or_through_another_fn() {
+    let ev = run_with(
+        "@target t.png 100x100\nfn down(n) = if n > 0 then down(n - 1) else 0\nfn ping(n) = pong(n)\nfn pong(n) = ping(n)\nfn fine(n) = n\ncircle down(3) at:ping(1),fine(2) name:c\n",
+        &[],
+    );
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0325").collect();
+    ds.sort_by_key(|d| d.span.line);
+    assert_eq!(ds.len(), 3, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "fn `down` calls itself");
+    assert_eq!(ds[0].notes, ["through down -> down"]);
+    assert_eq!(ds[0].span.line, 2);
+    assert_eq!(ds[1].message, "fn `ping` calls itself");
+    assert_eq!(ds[1].notes, ["through ping -> pong -> ping"]);
+    assert_eq!(ds[2].message, "fn `pong` calls itself");
+    assert_eq!(ds[2].span.line, 4);
+    assert!(!ev.diagnostics.iter().any(|d| d.code == "E0301"), "{}", show(&ev.diagnostics));
+
+    let ev = run_with("@target t.png 100x100\nfn down(down) = down - 1\ncircle 4 at:down(5),0 name:c\n", &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    near(at(node(ev.scene.as_ref().unwrap(), "c")), (4.0, 0.0));
+}
+
+#[test]
+fn a_random_value_passed_to_a_fn_is_seeded_at_the_draw_site() {
+    let src = "@target t.png 100x100\nfn bump(x r) = x + r\nrepeat 3\n  circle 2 at:bump(10 rand(0 1)),i*10 name:c\n";
+    let first = scene(src);
+    let second = scene(src);
+    let xs: Vec<f32> = (0..3).map(|i| at(node(&first, &format!("c.{i}"))).0).collect();
+    let again: Vec<f32> = (0..3).map(|i| at(node(&second, &format!("c.{i}"))).0).collect();
+    assert_eq!(xs, again);
+    assert!(xs.iter().all(|x| (10.0..11.0).contains(x)), "{xs:?}");
+    assert!(xs[0] != xs[1] || xs[1] != xs[2], "{xs:?}");
+}
+
 const TILE: &str = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2 name:filled\n  if kind == floor_top\n    circle 3 name:floor\n";
 
 fn errors(ev: &Evaluation) -> Vec<&Diagnostic> {

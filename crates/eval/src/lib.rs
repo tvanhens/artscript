@@ -8,6 +8,7 @@ mod checks;
 pub mod color;
 mod eval;
 mod explain;
+mod func;
 mod fx;
 mod geom;
 mod identity;
