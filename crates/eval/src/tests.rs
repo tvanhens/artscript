@@ -6414,6 +6414,168 @@ fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
     }
 }
 
+fn contour_len(s: &Scene, path: &str) -> f64 {
+    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry, false, None)
+        .map(|m| f64::from(m.length()))
+        .sum()
+}
+
+fn contour_count(s: &Scene, path: &str) -> usize {
+    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry, false, None).count()
+}
+
+fn ends(s: &Scene, path: &str) -> ((f32, f32), (f32, f32)) {
+    let pts = shape(s, path).geometry.points().to_vec();
+    let (a, z) = (pts[0], pts[pts.len() - 1]);
+    ((a.x, a.y), (z.x, z.y))
+}
+
+#[test]
+fn edge_of_a_circle_runs_clockwise_from_three_oclock() {
+    let s = scene("@target t.png 100x100\ncircle 20 at:50,50 name:c\nedge @c to:.25 name:e\n");
+    let (start, end) = ends(&s, "e");
+    near(start, (70.0, 50.0));
+    near(end, (50.0, 70.0));
+    assert!(shape(&s, "e").fill.is_none() && shape(&s, "e").stroke.is_some());
+}
+
+#[test]
+fn edge_of_a_rect_starts_at_the_top_left_and_runs_along_the_top() {
+    let s = scene("@target t.png 100x100\nrect 40x20 at:50,50 name:r\nedge @r to:.25 name:e\n");
+    let (start, end) = ends(&s, "e");
+    near(start, (30.0, 40.0));
+    near(end, (60.0, 40.0));
+}
+
+#[test]
+fn edge_of_a_rounded_rect_starts_at_the_middle_of_the_top_left_arc() {
+    let s = scene(
+        "@target t.png 100x100\nrect 40x20 r:6 at:50,50 name:r\nedge @r to:.1 name:e\ncopy @r name:c\nedge @c to:.1 name:ec\nedge @r name:all\n",
+    );
+    assert_eq!(contour_count(&s, "all"), 1);
+    assert!((contour_len(&s, "all") - contour_len(&s, "r")).abs() < 1e-3);
+    let mid = 36.0 - 6.0 * std::f64::consts::FRAC_1_SQRT_2;
+    let (start, _) = ends(&s, "e");
+    assert!(
+        (f64::from(start.0) - mid).abs() < 0.05 && (f64::from(start.1) - (mid + 10.0)).abs() < 0.05,
+        "{start:?}"
+    );
+    let (copied, _) = ends(&s, "ec");
+    near(copied, (f64::from(start.0), f64::from(start.1)));
+}
+
+#[test]
+fn edge_of_a_poly_starts_at_the_top_vertex_even_when_rounded() {
+    let s = scene(
+        "@target t.png 100x100\npoly 5 r:20 at:50,50 name:p\nedge @p to:.2 name:e\npoly 5 r:20 round:6 at:50,50 name:q\nedge @q to:.2 name:f\n",
+    );
+    near(ends(&s, "e").0, (50.0, 30.0));
+    let (start, _) = ends(&s, "f");
+    assert!((start.0 - 50.0).abs() < 0.05 && start.1 > 31.0 && start.1 < 36.0, "{start:?}");
+}
+
+#[test]
+fn edge_follows_the_referenced_nodes_transform() {
+    let s = scene(
+        "@target t.png 100x100\ngroup g at:10,10\n  circle 20 at:40,40 rot:90 name:c\n  edge @c to:.25 name:e\n",
+    );
+    let (start, end) = ends(&s, "e");
+    near(start, (40.0, 60.0));
+    near(end, (20.0, 40.0));
+}
+
+#[test]
+fn edge_wraps_through_the_start_and_from_equal_to_is_empty() {
+    let s = scene(
+        "@target t.png 100x100\ncircle 20 at:50,50 name:c\nedge @c from:.9 to:.1 name:wrap\nedge @c name:all\nedge @c from:.4 to:.4 name:none\nedge @c from:.2 to:.6 name:mid\n",
+    );
+    let whole = contour_len(&s, "c");
+    let len = |p: &str| contour_len(&s, p) / whole;
+    assert!((len("wrap") - 0.2).abs() < 1e-3, "{}", len("wrap"));
+    assert!((len("all") - 1.0).abs() < 1e-3);
+    assert!((len("mid") - 0.4).abs() < 1e-3);
+    assert_eq!(contour_count(&s, "wrap"), 1);
+    assert_eq!(contour_count(&s, "none"), 0);
+    let angle = 0.9 * std::f64::consts::TAU;
+    let start = ends(&s, "wrap").0;
+    let want = (50.0 + 20.0 * angle.cos(), 50.0 + 20.0 * angle.sin());
+    assert!(
+        (f64::from(start.0) - want.0).hypot(f64::from(start.1) - want.1) < 0.1,
+        "{start:?} != {want:?}"
+    );
+}
+
+#[test]
+fn edge_of_a_path_spans_its_contours_in_order() {
+    let s = scene(
+        "@target t.png 100x100\npath \"M0 0 L10 0 M20 0 L30 0\" name:p\nedge @p from:.25 to:.75 name:e\n",
+    );
+    assert_eq!(contour_count(&s, "e"), 2);
+    assert!((contour_len(&s, "e") - 10.0).abs() < 1e-3);
+    let pts = shape(&s, "e").geometry.points().to_vec();
+    assert_eq!((pts[0].x, pts[pts.len() - 1].x), (5.0, 25.0));
+}
+
+#[test]
+fn edge_of_a_jittered_shape_lies_on_the_jittered_contour() {
+    let s = scene("@target t.png 100x100\ncircle 20 at:50,50 jitter:3,30 seed:1 name:c\nedge @c name:e\n");
+    let world = node(&s, "c").transform;
+    let drawn = crate::geom::sample(&shape(&s, "c").geometry.make_transform(&world), 0.25);
+    let max_off = |path: &artscript_ir::Path| {
+        crate::geom::sample(path, 1.0)
+            .iter()
+            .flat_map(|c| c.pos.iter())
+            .map(|p| {
+                drawn
+                    .iter()
+                    .flat_map(|c| c.pos.iter())
+                    .map(|q| (p.0 - q.0).hypot(p.1 - q.1))
+                    .fold(f64::MAX, f64::min)
+            })
+            .fold(0.0, f64::max)
+    };
+    assert!(max_off(&shape(&s, "e").geometry) < 0.3);
+    let circle = crate::geom::ellipse(20.0, 20.0).make_transform(&world);
+    assert!(max_off(&circle) > 0.5, "the jitter moved the contour");
+}
+
+#[test]
+fn edge_takes_stroke_keys_like_an_open_curve() {
+    let s = scene(
+        "@target t.png 100x100\ncircle 20 at:50,50 name:c\nedge @c to:.5 stroke:#000000,[1 6 1] taper:.2 name:e\nedge @c to:.5 name:plain\n",
+    );
+    assert!(shape(&s, "e").stroke.as_ref().unwrap().ink.is_some());
+    let plain = shape(&s, "plain");
+    assert_eq!(plain.stroke.as_ref().unwrap().width, 2.0);
+    assert!(plain.fill.is_none());
+}
+
+#[test]
+fn edge_errors_name_what_it_needs() {
+    let cases = [
+        ("edge", "`edge` needs a node reference"),
+        ("edge 4", "`edge` needs a node reference"),
+        ("edge @g", "`edge` reads one shape's contour"),
+        ("edge @c from:-.1", "`from:` is a fraction from 0 to 1, got -0.1"),
+        ("edge @c to:1.5", "`to:` is a fraction from 0 to 1, got 1.5"),
+        ("edge @c to:\"a\"", "`to:` is a fraction from 0 to 1, got a string"),
+    ];
+    for (line, message) in cases {
+        let ev = run_with(
+            &format!("@target t.png 40x40\ncircle 4 name:c\ngroup g\n  circle 4\n{line}\n"),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{line}");
+        assert_eq!(ev.diagnostics.len(), 1, "{line}: {}", show(&ev.diagnostics));
+    }
+    let ev = run_with("@target t.png 40x40\ncircle 4 name:c\nedge @c to:2\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!((d.span.line, d.span.col), (3, 9), "{d}");
+    let ev = run_with("@target t.png 40x40\nedge @nope\n", &[]);
+    assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+}
+
 const ARM_LIB: &str = "\
 def hero_arm len:20 tone:#3366cc
   rect len,6 fill:tone name:bone
@@ -6578,3 +6740,20 @@ fn an_alias_fixed_argument_follows_the_instance_palette_like_a_default() {
 
 mod brush;
 mod stamp;
+
+#[test]
+fn edge_to_the_end_of_an_open_curve_is_one_piece() {
+    for k in 0..20 {
+        let mut src = format!("@target t.png 100x100\ncurve 0,0 30,40 70,10 {},90 name:c\n", 60 + k);
+        for i in 1..100 {
+            src.push_str(&format!("edge @c from:.{i:02} name:e{i}\n"));
+        }
+        let s = scene(&src);
+        for i in 1..100 {
+            let moves = skia_safe::path::Iter::new(&shape(&s, &format!("e{i}")).geometry, false)
+                .filter(|(verb, _)| *verb == skia_safe::path::Verb::Move)
+                .count();
+            assert_eq!(moves, 1, "curve {k}, from:.{i:02}");
+        }
+    }
+}

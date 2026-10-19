@@ -169,7 +169,7 @@ assert inside(@body canvas margin:24)
 
 | | |
 |---|---|
-| **Shapes** | `rect`, `circle`, `ellipse`, `poly`, `star`, `curve`, `blob`, SVG `path`, booleans (`subtract`, `union`, `intersect`, `xor`), `mirror`, `repeat`, `grid` |
+| **Shapes** | `rect`, `circle`, `ellipse`, `poly`, `star`, `curve`, `blob`, SVG `path`, `edge` (a stretch of another shape's contour), booleans (`subtract`, `union`, `intersect`, `xor`), `mirror`, `repeat`, `grid` |
 | **Ink** | Tapered strokes with one width per point, hand-drawn `jitter`, round caps and joins |
 | **Brushes and stamps** | SkSL brushes that shade a fill or stroke, and stamps that repeat a block of drawing along a path |
 | **Color** | Hue-shifted ramps, OKLCH gradients (linear, radial, conic), `shade`, `mix`, `fade` |
