@@ -1,5 +1,6 @@
 //! SVG writer. Vector nodes stay elements. A node in the raster-only census is replaced by one
-//! PNG tile of that whole subtree.
+//! PNG tile of that whole subtree, except a stamped shape whose own paint alone is raster-only:
+//! its fill and stroke become a tile, and its stamps and children stay elements over it.
 
 use artscript_ir::{
     Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
@@ -8,10 +9,10 @@ use artscript_ir::{
 use skia_safe::path::{Iter as PathIter, Verb};
 use skia_safe::{PathFillType, PathOp, Rect};
 
-use crate::draw::{bake_node, visual_pad};
+use crate::draw::{Baked, bake_node, bake_paint, visual_pad};
 use crate::effects::{Coverage, Region};
 use crate::gpu::Backend;
-use crate::features::{self, bakes};
+use crate::features::{self, bakes, bakes_paint};
 use crate::paint::css_blend;
 use crate::text::{base64, fmt_num, xml_id};
 use crate::RenderError;
@@ -97,18 +98,7 @@ impl Writer {
             let masks: Vec<_> = self.pushed_mask(&id, outer).into_iter().collect();
             self.mask_ref(&id, &masks);
             self.body.push_str(">\n");
-            self.body.push_str(&pad);
-            self.body.push_str("  <image x=\"");
-            self.body.push_str(&fmt_num(baked.x));
-            self.body.push_str("\" y=\"");
-            self.body.push_str(&fmt_num(baked.y));
-            self.body.push_str("\" width=\"");
-            self.body.push_str(&fmt_num(baked.w));
-            self.body.push_str("\" height=\"");
-            self.body.push_str(&fmt_num(baked.h));
-            self.body.push_str("\" href=\"data:image/png;base64,");
-            self.body.push_str(&base64(&baked.png));
-            self.body.push_str("\"/>\n");
+            self.image(&format!("{pad}  "), &baked);
             self.body.push_str(&pad);
             self.body.push_str("</g>\n");
             return Ok(());
@@ -191,7 +181,7 @@ impl Writer {
                     }
                 }
             }
-            NodeKind::Shape(shape) => self.shape(scene, shape, id, bake_scale, depth + 1)?,
+            NodeKind::Shape(shape) => self.shape(scene, node, shape, id, bake_scale, depth + 1)?,
         }
         Ok(())
     }
@@ -387,9 +377,50 @@ impl Writer {
         self.defs.push_str("    </mask>\n");
     }
 
-    fn shape(&mut self, scene: &Scene, shape: &Shape, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
+    fn shape(&mut self, scene: &Scene, node: &Node, shape: &Shape, id: &str, bake_scale: f32, depth: usize) -> Result<(), RenderError> {
         let pad = "  ".repeat(depth);
-        self.body.push_str(&pad);
+        if bakes_paint(node) {
+            let baked = bake_paint(scene, node, bake_scale, self.backend)?;
+            self.image(&pad, &baked);
+        } else {
+            self.path(shape, id, &pad);
+        }
+        for stamp in &shape.stamps {
+            self.node(scene, stamp, bake_scale, depth, &Pushed::default())?;
+        }
+        if !shape.children.is_empty() {
+            let cid = format!("{id}-nest");
+            self.clip_path_def(&cid, &shape.geometry);
+            self.body.push_str(&pad);
+            self.body.push_str("<g clip-path=\"url(#");
+            self.body.push_str(&cid);
+            self.body.push_str(")\">\n");
+            for child in &shape.children {
+                self.node(scene, child, bake_scale, depth + 1, &Pushed::default())?;
+            }
+            self.body.push_str(&pad);
+            self.body.push_str("</g>\n");
+        }
+        Ok(())
+    }
+
+    fn image(&mut self, pad: &str, baked: &Baked) {
+        self.body.push_str(pad);
+        self.body.push_str("<image x=\"");
+        self.body.push_str(&fmt_num(baked.x));
+        self.body.push_str("\" y=\"");
+        self.body.push_str(&fmt_num(baked.y));
+        self.body.push_str("\" width=\"");
+        self.body.push_str(&fmt_num(baked.w));
+        self.body.push_str("\" height=\"");
+        self.body.push_str(&fmt_num(baked.h));
+        self.body.push_str("\" href=\"data:image/png;base64,");
+        self.body.push_str(&base64(&baked.png));
+        self.body.push_str("\"/>\n");
+    }
+
+    fn path(&mut self, shape: &Shape, id: &str, pad: &str) {
+        self.body.push_str(pad);
         self.body.push_str("<path d=\"");
         self.body.push_str(&path_data(&shape.geometry));
         self.body.push('"');
@@ -408,23 +439,6 @@ impl Writer {
             self.body.push_str(")\"");
         }
         self.body.push_str("/>\n");
-        for stamp in &shape.stamps {
-            self.node(scene, stamp, bake_scale, depth, &Pushed::default())?;
-        }
-        if !shape.children.is_empty() {
-            let cid = format!("{id}-nest");
-            self.clip_path_def(&cid, &shape.geometry);
-            self.body.push_str(&pad);
-            self.body.push_str("<g clip-path=\"url(#");
-            self.body.push_str(&cid);
-            self.body.push_str(")\">\n");
-            for child in &shape.children {
-                self.node(scene, child, bake_scale, depth + 1, &Pushed::default())?;
-            }
-            self.body.push_str(&pad);
-            self.body.push_str("</g>\n");
-        }
-        Ok(())
     }
 
     fn paint_attrs(&mut self, fill: Option<&Paint>, stroke: Option<&Stroke>, id: &str) {

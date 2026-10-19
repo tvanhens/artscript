@@ -172,3 +172,18 @@ fn only_a_brushed_stamp_bakes_in_svg() {
     assert!(svg.contains("<g id=\"line.dots.0.c\""), "the plain stamp stays a path: {svg}");
     assert!(svg.contains("<g id=\"line.dots.1.c\">"), "the brushed stamp's shape is the baked node: {svg}");
 }
+
+#[test]
+fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_over_it() {
+    let dry = stage("float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }", &[], &[], 3);
+    let mut host = brushed("line", Path::rect(skia_safe::Rect::from_xywh(0.0, 38.0, 80.0, 4.0), None), Paint::Solid(color(0, 0, 0, 255)), vec![mark(dry, 0.0)]);
+    let plain = solid("line.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
+    with_stamps(&mut host, vec![stamp("line.dots.0", artscript_ir::Matrix::translate((20.0, 40.0)), vec![plain])], vec![]);
+    let scene = scene(80.0, 80.0, vec![host]);
+    let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
+    assert_eq!(census, ["line brush fill"], "profile:vector still reports the host");
+    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 1, "{svg}");
+    let (host_at, image_at, stamp_at) = (svg.find("<g id=\"line\"").unwrap(), svg.find("<image").unwrap(), svg.find("<g id=\"line.dots.0.c\"").unwrap());
+    assert!(host_at < image_at && image_at < stamp_at, "the tile sits in the host and the stamp draws over it: {svg}");
+}

@@ -175,6 +175,37 @@ pub fn bake_node(
         return Err(RenderError::Skia("bake scale must be positive".into()));
     }
     let ctx = DrawCtx::new(scene, backend);
+    let mut drawn = node.clone();
+    drawn.blend = Blend::Normal;
+    let parent = ctx.index.parent_world(&node.path);
+    bake(&ctx, &drawn, parent, bake_scale)
+}
+
+/// Renders a shape's own fill and stroke on transparent, in the shape's local coordinates, with
+/// none of its stamps, children, effects, mask, or opacity: the SVG writer draws those as elements.
+pub fn bake_paint(scene: &Scene, node: &Node, bake_scale: f32, backend: Backend) -> Result<Baked, RenderError> {
+    if !(bake_scale.is_finite() && bake_scale > 0.0) {
+        return Err(RenderError::Skia("bake scale must be positive".into()));
+    }
+    let ctx = DrawCtx::new(scene, backend);
+    let mut drawn = node.clone();
+    drawn.transform = Matrix::new_identity();
+    drawn.opacity = 1.0;
+    drawn.blend = Blend::Normal;
+    drawn.clip = None;
+    drawn.mask = None;
+    drawn.effects.clear();
+    if let NodeKind::Shape(shape) = &mut drawn.kind {
+        shape.stamps.clear();
+        shape.children.clear();
+    }
+    let parent = ctx.index.parent_world(&node.path) * node.transform;
+    // The same pixel density as a tile of the whole node, which is drawn in the parent's units.
+    bake(&ctx, &drawn, parent, bake_scale * transform_scale(&node.transform))
+}
+
+/// `node` drawn on transparent in its parent's coordinates, where `parent` is the canvas from them.
+fn bake(ctx: &DrawCtx<'_>, node: &Node, parent: Matrix, bake_scale: f32) -> Result<Baked, RenderError> {
     let mut bounds = node
         .bounds()
         .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
@@ -188,16 +219,13 @@ pub fn bake_node(
     }
     let pw = (bounds.width() * bake_scale).ceil().max(1.0) as i32;
     let ph = (bounds.height() * bake_scale).ceil().max(1.0) as i32;
-    let mut surface = gpu::surface(backend, (pw, ph))
+    let mut surface = gpu::surface(ctx.backend, (pw, ph))
         .ok_or_else(|| RenderError::Skia("bake surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((bake_scale, bake_scale));
     canvas.translate((-bounds.left, -bounds.top));
-    let mut drawn = node.clone();
-    drawn.blend = Blend::Normal;
-    let parent = ctx.index.parent_world(&node.path);
-    draw_node(canvas, &drawn, &ctx, parent)?;
-    let image = gpu::finish(backend, &mut surface)?;
+    draw_node(canvas, node, ctx, parent)?;
+    let image = gpu::finish(ctx.backend, &mut surface)?;
     Ok(Baked {
         png: png_bytes(&image)?,
         x: bounds.left,
