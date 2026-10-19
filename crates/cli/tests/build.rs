@@ -1170,3 +1170,28 @@ fn each_outputs_anchors_come_from_its_own_scene() {
     assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
     let _ = fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn build_only_keeps_outputs_of_unselected_targets_in_a_rebuilt_file() {
+    let dir = fixture("only-sibling", &[]);
+    let art = dir.join("art/x.art");
+    let src = "@target a.png 32x32 as:a\n@target b.png 32x32 as:b\n\npalette k\n  color red #ff0000\n\ncircle 10 at:16,16 fill:k.red\n";
+    fs::write(&art, src).unwrap();
+    let full = artscript(&dir, &["build"]);
+    assert_eq!(full.status.code(), Some(0), "{}", text(&full));
+    let b = dir.join("assets/b.png");
+    let b_bytes = fs::read(&b).unwrap();
+
+    fs::write(&art, src.replace("circle 10", "circle 12")).unwrap();
+    let only = artscript(&dir, &["build", "--only", "a.png"]);
+    assert_eq!(only.status.code(), Some(0), "{}", text(&only));
+    assert!(!text(&only).contains("removed stale"), "{}", text(&only));
+    assert_eq!(fs::read(&b).unwrap(), b_bytes, "b.png changed");
+    let paths: Vec<String> = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| o["path"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(paths, ["a.png", "b.png"]);
+}

@@ -518,10 +518,16 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
     let mut new: BTreeMap<String, Json> = BTreeMap::new();
     if !opts.only.is_empty() {
         let rebuilt: BTreeSet<&str> = jobs.iter().map(|j| j.source.as_str()).collect();
+        let planned: BTreeSet<&str> = plan
+            .jobs
+            .iter()
+            .flat_map(|j| j.outputs.iter().map(|o| o.path.as_str()))
+            .collect();
         for (path, entry) in &old {
-            if !entry["source"]
-                .as_str()
-                .is_some_and(|s| rebuilt.contains(s))
+            if planned.contains(path.as_str())
+                || !entry["source"]
+                    .as_str()
+                    .is_some_and(|s| rebuilt.contains(s))
             {
                 new.insert(path.clone(), entry.clone());
             }
