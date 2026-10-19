@@ -2180,7 +2180,7 @@ impl<'a> Evaluator<'a> {
                 "edge" => (self.edge(&a, named, st.span, sc)?, Vec::new(), false, None),
                 _ => self.primitive(verb, &a, frame, sc, flag("closed"))?,
             };
-            if let Some(near) = anchor {
+            if let Some(near) = anchor.filter(|_| decl.is_some()) {
                 seam = geom::seam_near(&geometry, near);
             }
             let mut geometry = geometry;
