@@ -310,6 +310,16 @@ fn fx_outline_follows_the_coverage_a_brushed_fill_leaves() {
 }
 
 #[test]
+fn fx_outline_follows_a_brushed_fill_past_its_geometry_by_its_reach() {
+    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 6, m)); }\n";
+    let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), 8.0)]), 2.0);
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 15, 40), [255, 0, 0, 255], "ink 5 px past the geometry is the fill");
+    assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 255], "the ring sits past the reach, not at the geometry");
+    assert_eq!(pixel(&png, 11, 40)[3], 0);
+}
+
+#[test]
 fn fx_outline_on_an_unbrushed_fill_traces_its_geometry() {
     let png = render_png(&scene(80.0, 80.0, vec![outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0)]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255]);

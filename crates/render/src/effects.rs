@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use artscript_ir::{
-    Clip, Color, Effect, EffectInput, EffectOp, Field, Mask, MaskSource, Node, NodeKind,
+    Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Mask, MaskSource, Node, NodeKind,
     Paint as IrPaint, Path, Shape, Sides, Stroke,
 };
 use skia_safe::canvas::SaveLayerRec;
@@ -17,15 +17,16 @@ use skia_safe::paint::{Cap, Join, Style};
 use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
-    BlendMode, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix, Paint,
-    PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect, SamplingOptions,
-    TileMode, color_filters, image_filters, path_utils, surfaces,
+    BlendMode, Canvas, Color4f, ColorMatrix, Data, IRect, Image, ImageFilter, ImageInfo, Matrix,
+    Paint, PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut, RuntimeEffect,
+    SamplingOptions, TileMode, color_filters, image_filters, path_utils, surfaces,
 };
 
 use crate::RenderError;
 use crate::draw::{DrawCtx, draw_node};
 use crate::field::{FieldUse, field_shader};
 use crate::gpu::{self, Backend};
+use crate::mark::{self, Ink};
 use crate::paint::{color4, content_paint};
 
 pub struct FxEnv<'a> {
@@ -595,7 +596,7 @@ pub(crate) enum Coverage {
 }
 
 pub fn outline_geometry(
-    backend: Backend,
+    ctx: &DrawCtx<'_>,
     src: Image,
     local_to_px: &Matrix,
     node: &Node,
@@ -605,14 +606,14 @@ pub fn outline_geometry(
     if width <= 0.0 {
         return Ok(src);
     }
-    let regions = silhouette(node, local_to_px)?;
+    let regions = silhouette(node, local_to_px, ctx)?;
     if regions.is_empty() {
         return Ok(src);
     }
     let ring = Ring { regions: &regions, local_to_px, width, color, sides };
-    let mut under = ring.composite(backend, &src, BlendMode::DstOver)?;
+    let mut under = ring.composite(ctx.backend, &src, BlendMode::DstOver)?;
     if let Some(inked) = cover_halo_past {
-        let over = ring.composite(backend, &src, BlendMode::SrcOver)?.image_snapshot();
+        let over = ring.composite(ctx.backend, &src, BlendMode::SrcOver)?.image_snapshot();
         let outside = ink_area(&regions, inked)?
             .with_transform(local_to_px)
             .with_toggle_inverse_fill_type();
@@ -707,10 +708,11 @@ impl Ring<'_> {
     }
 }
 
-/// `local_to_px` maps the node's own space to the pixels a field mask is sampled on.
-pub(crate) fn silhouette(node: &Node, local_to_px: &Matrix) -> Result<Vec<Region>, RenderError> {
+/// `local_to_px` maps the node's own space to the pixels a field mask or a brush coverage is
+/// sampled on.
+pub(crate) fn silhouette(node: &Node, local_to_px: &Matrix, ctx: &DrawCtx<'_>) -> Result<Vec<Region>, RenderError> {
     let mut regions = Vec::new();
-    gather(node, local_to_px, true, &mut regions)?;
+    gather(node, local_to_px, true, ctx, &mut regions)?;
     Ok(regions)
 }
 
@@ -721,6 +723,7 @@ fn gather(
     node: &Node,
     to_px: &Matrix,
     root: bool,
+    ctx: &DrawCtx<'_>,
     out: &mut Vec<Region>,
 ) -> Result<(), RenderError> {
     let opacity = if root {
@@ -739,15 +742,14 @@ fn gather(
     let mut local = Vec::new();
     match &node.kind {
         NodeKind::Shape(shape) => {
-            push_shape(shape, &mut local)?;
+            push_shape(shape, &node.origin, &local_to_px, ctx, &mut local)?;
             for stamp in &shape.stamps {
-                gather(stamp, &local_to_px, false, &mut local)?;
+                gather(stamp, &local_to_px, false, ctx, &mut local)?;
             }
-            let fill_holds_children = shape.fill.as_ref().and_then(|f| coverage(&f.paint)).is_some();
-            let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
+            let children = if fill_shows(shape) { &[][..] } else { &shape.children[..] };
             for child in children {
                 let mut nested = Vec::new();
-                gather(child, &local_to_px, false, &mut nested)?;
+                gather(child, &local_to_px, false, ctx, &mut nested)?;
                 local.extend(nested.into_iter().filter_map(|region| {
                     skia_safe::op(&region.path, &shape.clip(), PathOp::Intersect)
                         .filter(|p| !p.is_empty())
@@ -757,7 +759,7 @@ fn gather(
         }
         NodeKind::Group { children, .. } => {
             for child in children {
-                gather(child, &local_to_px, false, &mut local)?;
+                gather(child, &local_to_px, false, ctx, &mut local)?;
             }
         }
     }
@@ -777,7 +779,7 @@ fn gather(
             .collect();
     }
     if let Some(mask) = &node.mask {
-        local = mask_regions(local, mask, &local_to_px)?;
+        local = mask_regions(local, mask, &local_to_px, ctx)?;
     }
     for region in local {
         out.push(Region {
@@ -799,12 +801,13 @@ fn mask_regions(
     regions: Vec<Region>,
     mask: &Mask,
     local_to_px: &Matrix,
+    ctx: &DrawCtx<'_>,
 ) -> Result<Vec<Region>, RenderError> {
     let kept = match &mask.source {
         MaskSource::Nodes(nodes) if !mask.invert => {
             let mut kept = Vec::new();
             for node in nodes {
-                gather(node, local_to_px, false, &mut kept)?;
+                gather(node, local_to_px, false, ctx, &mut kept)?;
             }
             kept
         }
@@ -852,13 +855,47 @@ fn field_kept(
     regions: &[Region],
     local_to_px: &Matrix,
 ) -> Result<Option<Path>, RenderError> {
-    let Some(px_to_local) = local_to_px.invert() else {
-        return Ok(None);
-    };
     let Some(bounds) = regions.iter().map(|r| *r.path.bounds()).reduce(|mut a, b| {
         a.join(b);
         a
     }) else {
+        return Ok(None);
+    };
+    kept_pixels(bounds, local_to_px, invert, |canvas| {
+        let mut paint = Paint::default();
+        paint.set_shader(field_shader(
+            field,
+            FieldUse::Coverage { threshold: Some(threshold), as_luma: false },
+        )?);
+        canvas.draw_paint(&paint);
+        Ok(())
+    })
+}
+
+/// The pixels a brushed fill covers by more than one half, sampled at the same pixel centers the
+/// fill draws on, as a path in local space. `None` when the brush leaves nothing.
+fn brush_kept(
+    geometry: &Path,
+    fill: &Fill,
+    origin: &str,
+    local_to_px: &Matrix,
+    ctx: &DrawCtx<'_>,
+) -> Result<Option<Path>, RenderError> {
+    let reach = fill.reach();
+    let bounds = geometry.compute_tight_bounds().with_outset((reach, reach));
+    kept_pixels(bounds, local_to_px, false, |canvas| {
+        mark::draw_area(canvas, geometry, fill, ctx, origin, Ink::Coverage)
+    })
+}
+
+/// The pixels of `bounds` where `draw` leaves alpha above one half, as a path in local space.
+fn kept_pixels(
+    bounds: Rect,
+    local_to_px: &Matrix,
+    invert: bool,
+    draw: impl FnOnce(&Canvas) -> Result<(), RenderError>,
+) -> Result<Option<Path>, RenderError> {
+    let Some(px_to_local) = local_to_px.invert() else {
         return Ok(None);
     };
     let area: IRect = local_to_px.map_rect(bounds).0.round_out();
@@ -867,20 +904,15 @@ fn field_kept(
     }
     let info = ImageInfo::new_a8(area.size());
     let mut surface = surfaces::raster(&info, None, None)
-        .ok_or_else(|| RenderError::Skia("field mask surface".into()))?;
+        .ok_or_else(|| RenderError::Skia("coverage surface".into()))?;
     let canvas = surface.canvas();
     canvas.translate((-area.left as f32, -area.top as f32));
     canvas.concat(local_to_px);
-    let mut paint = Paint::default();
-    paint.set_shader(field_shader(
-        field,
-        FieldUse::Coverage { threshold: Some(threshold), as_luma: false },
-    )?);
-    canvas.draw_paint(&paint);
+    draw(canvas)?;
     let row = area.width() as usize;
     let mut alpha = vec![0u8; row * area.height() as usize];
     if !surface.read_pixels(&info, &mut alpha, row, (0, 0)) {
-        return Err(RenderError::Skia("field mask pixels".into()));
+        return Err(RenderError::Skia("coverage pixels".into()));
     }
     let mut kept: Vec<skia_safe::Region> = alpha
         .chunks(row)
@@ -915,15 +947,24 @@ fn field_kept(
         .map(|path| path.with_transform(&px_to_local)))
 }
 
-/// Fill path, plus the stroke's own filled outline.
-fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
+/// Fill path, or the coverage a brushed fill leaves, plus the stroke's own filled outline.
+fn push_shape(
+    shape: &Shape,
+    origin: &str,
+    local_to_px: &Matrix,
+    ctx: &DrawCtx<'_>,
+    out: &mut Vec<Region>,
+) -> Result<(), RenderError> {
     if let Some(coverage) = shape.fill.as_ref().and_then(|f| coverage(&f.paint))
         && !shape.geometry.is_empty()
     {
-        out.push(Region {
-            path: shape.geometry.clone(),
-            coverage,
-        });
+        let path = match shape.coverage_clip() {
+            Some(fill) => brush_kept(&shape.geometry, fill, origin, local_to_px, ctx)?,
+            None => Some(shape.geometry.clone()),
+        };
+        if let Some(path) = path {
+            out.push(Region { path, coverage });
+        }
     }
     if let Some(stroke) = &shape.stroke
         && let Some(coverage) = coverage(&stroke.paint)
@@ -953,6 +994,12 @@ fn clip_region(path: &Path, clip: &Clip) -> Option<Path> {
         PathOp::Intersect
     };
     skia_safe::op(path, &clip.path, op).filter(|p| !p.is_empty())
+}
+
+/// Whether the fill paints anywhere, so the shape's children clip to it instead of adding
+/// their own areas.
+pub(crate) fn fill_shows(shape: &Shape) -> bool {
+    shape.fill.as_ref().and_then(|f| coverage(&f.paint)).is_some()
 }
 
 fn coverage(paint: &IrPaint) -> Option<Coverage> {

@@ -17,7 +17,7 @@ use crate::ribbon::{STRIP_ROWS, Spec, Spine};
 /// What a chain's alpha means. `Coverage` is the product of the stage coverages alone, as if the
 /// base paint were opaque.
 #[derive(Clone, Copy)]
-enum Ink {
+pub(crate) enum Ink {
     Paint,
     Coverage,
 }
@@ -28,9 +28,10 @@ pub(crate) fn draw_area(
     fill: &Fill,
     ctx: &DrawCtx<'_>,
     origin: &str,
+    ink: Ink,
 ) -> Result<(), RenderError> {
     let Some(frame) = Frame::of(canvas) else { return Ok(()) };
-    if let Some((dev, shader)) = area_shader(&frame, geometry, fill, ctx, origin, Ink::Paint)? {
+    if let Some((dev, shader)) = area_shader(&frame, geometry, fill, ctx, origin, ink)? {
         frame.draw(canvas, dev, shader);
     }
     Ok(())
