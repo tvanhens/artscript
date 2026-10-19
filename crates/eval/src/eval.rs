@@ -2713,6 +2713,7 @@ impl<'a> Evaluator<'a> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
         if let Some(mask) = mask {
             let origin = node.origin.clone();
+            self.begin_seed(sc.file(), key.mask());
             node.mask = self
                 .lower_mask(mask, feather, sc, frame, world, &key.mask(), &origin)?
                 .map(Box::new);
