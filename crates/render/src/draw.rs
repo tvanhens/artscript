@@ -518,7 +518,7 @@ fn draw_shape(
     // geometry, not the painted alpha, so a fill:none or translucent shape still shows them.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
-    canvas.clip_path(&shape.geometry, ClipOp::Intersect, true);
+    canvas.clip_path(&shape.clip(), ClipOp::Intersect, true);
     for child in &shape.children {
         draw_node(canvas, child, ctx, world)?;
     }

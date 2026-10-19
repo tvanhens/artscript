@@ -2919,7 +2919,7 @@ impl<'a> Evaluator<'a> {
         if !stroke_marks.is_empty() {
             let paint = to_paint(&paint_v, bounds)
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
-            let ribbon = brush::ribbon(
+            let mut ribbon = brush::ribbon(
                 &geometry,
                 knots,
                 &widths,
@@ -2927,6 +2927,11 @@ impl<'a> Evaluator<'a> {
                 &channels,
                 stroke_marks,
             );
+            if tapered {
+                // The same 0.75 output pixel step as the unbrushed tapered outline below.
+                let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+                ribbon.ink = Some(geom::ribbon_ink(&geometry, &ribbon, 0.75 / px));
+            }
             return Ok(Shape {
                 geometry,
                 fill,

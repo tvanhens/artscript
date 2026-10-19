@@ -724,7 +724,7 @@ pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), 
             RibbonContour { len: sp.len as f32, closed: sp.closed, knots }
         })
         .collect();
-    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32] }
+    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32], ink: None }
 }
 
 /// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime

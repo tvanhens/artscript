@@ -746,7 +746,7 @@ fn gather(
                 let mut nested = Vec::new();
                 gather(child, &local_to_px, false, &mut nested)?;
                 local.extend(nested.into_iter().filter_map(|region| {
-                    skia_safe::op(&region.path, &shape.geometry, PathOp::Intersect)
+                    skia_safe::op(&region.path, &shape.clip(), PathOp::Intersect)
                         .filter(|p| !p.is_empty())
                         .map(|path| Region { path, coverage: region.coverage })
                 }));
@@ -925,7 +925,10 @@ fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
     if let Some(stroke) = &shape.stroke
         && let Some(coverage) = coverage(&stroke.paint)
     {
-        let filled = stroke_fill(&shape.geometry, stroke)?;
+        let filled = match stroke.ribbon.as_ref().and_then(|r| r.ink.as_ref()) {
+            Some(ink) => ink.clone(),
+            None => stroke_fill(&shape.geometry, stroke)?,
+        };
         if !filled.is_empty() {
             out.push(Region { path: filled, coverage });
         }

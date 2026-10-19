@@ -582,3 +582,47 @@ fn each_contour_of_a_brushed_path_tapers_over_its_own_length() {
         assert_eq!(start, end, "contour at y {y} tapers the same at each end");
     }
 }
+
+/// Pixels in rows `ys` of column `x` that are mostly red.
+fn reds(at: &impl Fn(i32, i32) -> [u8; 4], x: i32, ys: std::ops::Range<i32>) -> i32 {
+    ys.filter(|&y| {
+        let p = at(x, y);
+        p[0] > 200 && p[1] < 100
+    })
+    .count() as i32
+}
+
+#[test]
+fn a_brushed_tapered_strokes_outline_children_and_inside_follow_its_ink() {
+    let twins = |body: &str| {
+        let src = format!(
+            "@target t.png 200x200 bg:#ffffff\n{SOLID}curve 20,50 100,30 180,50 stroke:#000000,[2 20 2] taper:.4 name:plain\n{body}curve 20,140 100,120 180,140 stroke:#000000,[2 20 2] taper:.4 brush:solid name:brushed\n{body}",
+        );
+        pixels(&src)
+    };
+    let outlined = twins("  fx outline 3 color:#ff0000\n");
+    let child = twins("  rect 200x200 at:100,100 fill:#ff0000\n");
+    let inside = {
+        let src = format!(
+            "@target t.png 200x200 bg:#ffffff\n{SOLID}curve 20,50 100,30 180,50 stroke:#000000,[2 20 2] taper:.4 name:plain\ninside @plain\n  rect 200x200 at:100,100 fill:#ff0000\ncurve 20,140 100,120 180,140 stroke:#000000,[2 20 2] taper:.4 brush:solid name:brushed\ninside @brushed\n  rect 200x200 at:100,100 fill:#ff0000\n",
+        );
+        pixels(&src)
+    };
+    for x in [25, 60, 100, 140, 165] {
+        let plain = |at: &dyn Fn(i32, i32) -> [u8; 4]| reds(&at, x, 0..100);
+        let brushed = |at: &dyn Fn(i32, i32) -> [u8; 4]| reds(&at, x, 90..200);
+        for (what, at) in [("fx outline", &outlined as &dyn Fn(i32, i32) -> [u8; 4]), ("a child", &child), ("inside", &inside)] {
+            let (p, b) = (plain(at), brushed(at));
+            assert!(p > 0 && (p - b).abs() <= 2, "x {x}: {what} covers {b} rows of the brushed stroke and {p} of its unbrushed twin");
+        }
+    }
+}
+
+#[test]
+fn a_closed_brushed_tapered_strokes_ink_is_a_ring() {
+    let at = pixels(&format!(
+        "@target t.png 200x200 bg:#ffffff\n{SOLID}curve 40,40 160,40 160,160 40,160 closed tension:0 stroke:#000000,[4 8 4 8] fill:none brush:solid name:ring\n  rect 200x200 at:100,100 fill:#ff0000\n"
+    ));
+    assert_eq!(reds(&at, 100, 30..50), 6, "the top edge, 6 units wide midway between knots of width 4 and 8");
+    assert_eq!(reds(&at, 100, 50..150), 0, "the ring's middle is not ink");
+}

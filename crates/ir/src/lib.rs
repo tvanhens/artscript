@@ -107,7 +107,7 @@ pub struct Shape {
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
-    /// Drawn after the shape, clipped to `geometry` whatever the shape's fill or alpha (the
+    /// Drawn after the shape, clipped to [`Shape::clip`] whatever the shape's fill or alpha (the
     /// "clip by nesting" rule). The shape and its children form one isolated group, so a
     /// child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
@@ -180,6 +180,11 @@ pub struct Ribbon {
     /// The fraction of each contour's `len` over which its start and its end thin, through
     /// [`taper_ramp`]. Each contour is its own pen stroke.
     pub taper: [f32; 2],
+    /// The filled outline of a tapered or width-list ribbon, the ink an unbrushed stroke of the
+    /// same widths would fill. Outline effects, children and `inside` read it. `None` at
+    /// constant width, where those readers use the geometry and its stroke at `width`, as they
+    /// do for an unbrushed stroke.
+    pub ink: Option<Path>,
 }
 
 impl Ribbon {
@@ -434,6 +439,20 @@ pub enum EffectOp {
 }
 
 impl Shape {
+    /// What the shape's children, `inside` and `copy` clip to: the geometry, as for any shape,
+    /// except that a brushed tapered stroke contributes its ink outline in place of the spine,
+    /// joined with the geometry when the shape also has a fill.
+    pub fn clip(&self) -> std::borrow::Cow<'_, Path> {
+        let ink = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).and_then(|r| r.ink.as_ref());
+        match ink {
+            None => std::borrow::Cow::Borrowed(&self.geometry),
+            Some(ink) if self.fill.is_none() => std::borrow::Cow::Borrowed(ink),
+            Some(ink) => std::borrow::Cow::Owned(
+                skia_safe::op(&self.geometry, ink, skia_safe::PathOp::Union).unwrap_or_else(|| ink.clone()),
+            ),
+        }
+    }
+
     /// Local units the brush marks may paint past the fill's geometry or the ribbon's edge. 0
     /// without marks.
     pub fn mark_reach(&self) -> f32 {
