@@ -43,6 +43,7 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
+ "skia-safe",
  "toml 0.8.23",
 ]
 

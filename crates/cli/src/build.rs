@@ -451,7 +451,7 @@ fn read_manifest(path: &Path) -> BTreeMap<String, Json> {
 }
 
 /// `Auto` falls back to the CPU. `None` is a forced `gpu` with no GPU, never a silent fallback.
-fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
+pub(crate) fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
     match (choice, gpu) {
         (BackendChoice::Cpu, _) | (BackendChoice::Auto, false) => Some(Backend::Cpu),
         (BackendChoice::Gpu | BackendChoice::Auto, true) => Some(Backend::Gpu),

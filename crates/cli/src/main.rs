@@ -1,4 +1,4 @@
-//! `artscript` command line: build, check, fmt, explain, init, docs.
+//! `artscript` command line: build, check, fmt, explain, compare, init, docs.
 //!
 //! `docs` prints the core language card and an index of topics. `docs <topic>...` prints the card and those topic files.
 
@@ -27,6 +27,7 @@ macro_rules! errln {
 }
 
 mod build;
+mod compare;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -46,6 +47,8 @@ commands:
                                            evaluate stills and sample GIFs, without rendering. FILE and --only limit the check to those entry files and the libraries they import
   fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
+  compare <file> --ref IMAGE [--target PATH] [--out SHEET] [--top N] [--json]
+                                           measure a file's png render against a reference image: ΔE, worst named nodes and cells, and a side-by-side sheet
   init                                     create a starter project in the current directory
   docs [TOPIC...]                          print the core language card and topic index, or the card and the named topics
   std [NAME]                               list the bundled libraries, or print one (`artscript std brushes > lib/brushes.art` forks it)
@@ -70,6 +73,10 @@ fn main() -> ExitCode {
         },
         Some("explain") => match parse_explain(&args[1..]) {
             Ok(file) => with_project(&cwd, |p| explain(p, &cwd.join(file))),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("compare") => match compare::parse(&args[1..]) {
+            Ok(opts) => with_project(&cwd, |p| compare::compare(p, &cwd, &opts)),
             Err(msg) => usage_error(&msg),
         },
         Some("init") => match flag_set(&args[1..], &[]) {
@@ -176,7 +183,7 @@ fn topic_index() -> String {
     out
 }
 
-fn usage_error(msg: &str) -> u8 {
+pub(crate) fn usage_error(msg: &str) -> u8 {
     errln!("error: {msg}\n\n{USAGE}");
     1
 }
