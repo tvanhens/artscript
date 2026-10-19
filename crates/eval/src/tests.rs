@@ -2022,6 +2022,14 @@ fn hidden_children(src: &str) -> Vec<Diagnostic> {
 }
 
 #[test]
+fn a_child_inside_a_tapered_stroke_is_not_hidden() {
+    let hidden = hidden_children(
+        "@target t.png 128x64\ncurve -40,0 40,0 fill:none stroke:#000,[2 20 2] at:64,32 name:line\n  circle 3 at:0,6 name:dot\n",
+    );
+    assert!(hidden.is_empty(), "{}", show(&hidden));
+}
+
+#[test]
 fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
     let hidden = hidden_children(
         "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
