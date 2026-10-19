@@ -3227,6 +3227,31 @@ fn two_instances_with_the_same_seed_draw_the_same_pixels() {
 }
 
 #[test]
+fn a_seeded_copy_draws_the_same_pixels_off_the_8px_grid() {
+    for dx in [98, 100, 101] {
+        let s = lib_scene(
+            &format!(
+                "@target t.png 300x96 bg:#ffffff\nuse d {{ blot }}\n\
+                 blot at:48,48 seed:7 name:a\nblot at:{},48 seed:7 name:b\n",
+                48 + dx
+            ),
+            BLOT_LIB,
+        );
+        assert!(crop(&s, 48, 48) == crop(&s, 48 + dx, 48), "seed:7 drew different pixels {dx}px over");
+    }
+}
+
+#[test]
+fn a_seeded_noise_fill_draws_the_same_pixels_off_the_8px_grid() {
+    let s = scene(
+        "@target t.png 200x64 bg:#ffffff\n\
+         rect 40x40 at:32,32 fill:fbm(simplex(6 seed:3)) -> [#000 #fff] name:a\n\
+         rect 40x40 at:132,32 fill:fbm(simplex(6 seed:3)) -> [#000 #fff] name:b\n",
+    );
+    assert!(crop(&s, 32, 32) == crop(&s, 132, 32), "the noise fill drew different pixels 100px over");
+}
+
+#[test]
 fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
     let wrap = "use d { blot }\ndef wrap\n  blot seed:7 name:w\n    fx grain .3\n";
     let libs = [("lib/d.art", BLOT_LIB), ("lib/e.art", wrap)];
