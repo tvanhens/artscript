@@ -1,0 +1,14 @@
+palette bog
+  ramp shell #4f7d6b 7 hue:6
+  ramp belly #c49a7c 5
+  ramp flesh #8a4a52 5
+  ramp maw #3a1424 5
+  ramp bone #e3d5b0 5
+  ramp moss #7f9a3c 5
+  ramp glow #ffb43a 5
+  color ink #1b1420
+  color shine #fff4d6
+  color rim #9fd6e0
+  color backdrop #26232c
+  ramp rust #b8643a 5
+  ramp leg #5d6b45 7 hue:8
