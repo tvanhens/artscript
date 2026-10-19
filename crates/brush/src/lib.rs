@@ -31,6 +31,11 @@ uniform float u_px;
 uniform float2 u_sdfo;
 uniform float4 u_frame;
 uniform float3 u_dir;
+uniform shader u_field;
+uniform shader u_chan;
+uniform float2 u_fieldo;
+uniform float2 u_rib;
+uniform float u_s0;
 
 struct Mark {
     float2 p; float2 dev; float u; float s; float v; float d; float len; float width;
@@ -119,23 +124,13 @@ float2 seeded(Mark m) { return u_seedo; }
 float cover(float d, Mark m) { return saturate(d / m.px + 0.5); }
 "#;
 
-/// The frame around an area body. The signed distance comes from a device-aligned field, one
-/// texel per device pixel, so `u_sdf.eval(c - u_sdfo)` is an exact texel read on both backends.
-/// `u_base` set reads the base paint (or the previous stage) from `u_prev`, snapped to 8-bit
-/// levels first so a half-float child read gives the same levels as a float one. The output is
-/// premultiplied, dithered on the last stage only, and snapped to 8-bit levels.
-const AREA_MAIN: &str = r#"
-half4 main(float2 c) {
-    float2 p = (u_dtl * float3(c, 1)).xy;
-    float e = u_sdf.eval(c - u_sdfo).r;
-    Mark m;
-    m.dev = c; m.p = p;
-    float2 q0 = p - u_frame.xy;
-    float2 r = float2(u_dir.y * q0.x + u_dir.z * q0.y, -u_dir.z * q0.x + u_dir.y * q0.y);
-    m.uv = r; m.s = r.x + u_frame.z * .5; m.d = r.y;
-    m.len = u_frame.z; m.width = u_frame.w; m.u = m.s / m.len; m.v = r.y / (m.width * .5);
-    m.pressure = 1; m.angle = u_dir.x; m.tilt = 0; m.velocity = 1;
-    m.edge = e * u_px; m.seed = u_seed; m.px = u_px;
+/// The tail every main ends in, after the author's body so it can call `shade`. `u_base` set
+/// reads the base paint (or the previous stage) from `u_prev`, snapped to 8-bit levels first so a
+/// half-float child read gives the same levels as a float one. The output is premultiplied,
+/// dithered on the last stage only, and snapped to 8-bit levels.
+const FINISH: &str = r#"
+half4 u_finish(Mark m, float2 c) {
+    m.seed = u_seed; m.px = u_px;
     m.paint = u_paint;
     if (u_base > 0.5) {
         float4 pv = floor(float4(u_prev.eval(c)) * 255 + 0.5);
@@ -154,6 +149,53 @@ half4 main(float2 c) {
     return half4(lv);
 }
 "#;
+
+/// The frame around an area body. The signed distance comes from a device-aligned field, one
+/// texel per device pixel, so `u_sdf.eval(c - u_sdfo)` is an exact texel read on both backends.
+const AREA_MAIN: &str = r#"
+half4 main(float2 c) {
+    float2 p = (u_dtl * float3(c, 1)).xy;
+    float e = u_sdf.eval(c - u_sdfo).r;
+    Mark m;
+    m.dev = c; m.p = p;
+    float2 q0 = p - u_frame.xy;
+    float2 r = float2(u_dir.y * q0.x + u_dir.z * q0.y, -u_dir.z * q0.x + u_dir.y * q0.y);
+    m.uv = r; m.s = r.x + u_frame.z * .5; m.d = r.y;
+    m.len = u_frame.z; m.width = u_frame.w; m.u = m.s / m.len; m.v = r.y / (m.width * .5);
+    m.pressure = 1; m.angle = u_dir.x; m.tilt = 0; m.velocity = 1;
+    m.edge = e * u_px;
+    return u_finish(m, c);
+}
+"#;
+
+/// The frame around a ribbon body. `u_field` is a device-aligned field, one texel per device
+/// pixel: arc length `s` to the spine in two half-float channels (whole chunks of [`S_CHUNK`]
+/// device pixels past `u_s0` chunks, then the rest), the signed offset `d` across it, and the
+/// half width there, all in device pixels. A negative rest marks a pixel past the ribbon's reach.
+/// `u_chan` holds pressure, angle, tilt and velocity at the same texel. `u_rib` is the contour's
+/// length in local units and 1 when it is closed. Past the end of an open contour `s` keeps
+/// running, so `edge` rounds the cap.
+const RIBBON_MAIN: &str = r#"
+half4 main(float2 c) {
+    float4 g = u_field.eval(c - u_fieldo);
+    if (g.g < 0) { return half4(0); }
+    float4 ch = u_chan.eval(c - u_fieldo);
+    Mark m;
+    m.dev = c; m.p = (u_dtl * float3(c, 1)).xy;
+    m.s = ((g.r + u_s0) * 32 + g.g) * u_px; m.d = g.b * u_px;
+    float hw = max(g.a * u_px, 1e-6);
+    m.len = u_rib.x; m.u = m.s / m.len; m.width = 2 * hw; m.v = m.d / hw;
+    m.pressure = ch.x; m.angle = ch.y; m.tilt = ch.z; m.velocity = ch.w;
+    float over = u_rib.y > 0.5 ? 0 : (m.s < 0 ? m.s : max(m.s - m.len, 0));
+    m.edge = hw - length(float2(over, m.d));
+    m.uv = float2(m.s, m.d);
+    return u_finish(m, c);
+}
+"#;
+
+/// Device pixels per whole-chunk step of the ribbon field's `s` channel. The rest channel then
+/// stays below this, where a half float resolves 1/64 of a pixel.
+pub const S_CHUNK: f32 = 32.0;
 
 /// Fields of `struct Mark`, in declaration order. A docs test asserts `docs/topics/brushes.md`
 /// names every one.
@@ -175,6 +217,7 @@ pub const PLACEMENT_KEYS: &[&str] = &["dir", "reach", "on"];
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum MainKind {
     Area,
+    Ribbon,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -220,8 +263,8 @@ impl UniformValue {
     }
 }
 
-/// Assembled source: prelude, one `uniform` line per param, the author's body, the main.
-/// Equality and hashing are by text, which is also the compile memo key.
+/// Assembled source: prelude, one `uniform` line per param, the author's body, the shared finish,
+/// the kind's main. Equality and hashing are by text, which is also the compile memo key.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Program {
     source: Arc<str>,
@@ -247,7 +290,6 @@ pub enum Origin {
 impl Program {
     /// Deterministic: the same inputs give the same text. Params are emitted in the given order.
     pub fn assemble(kind: MainKind, params: &[(String, UniformKind)], body: &str) -> Program {
-        let MainKind::Area = kind;
         let mut src = String::from(PRELUDE);
         let params_at = lines_before_next(&src);
         for (name, kind) in params {
@@ -259,7 +301,11 @@ impl Program {
             src.push('\n');
         }
         let body_lines = body.split('\n').count() as u32;
-        src.push_str(AREA_MAIN);
+        src.push_str(FINISH);
+        src.push_str(match kind {
+            MainKind::Area => AREA_MAIN,
+            MainKind::Ribbon => RIBBON_MAIN,
+        });
         Program {
             source: src.into(),
             params_at,
@@ -478,10 +524,12 @@ mod tests {
     }
 
     #[test]
-    fn a_sound_body_compiles() {
-        let p = Program::assemble(MainKind::Area, &params(), OK_BODY);
-        assert_eq!(check(&p), Ok(()));
-        assert!(effect(&p).is_ok());
+    fn a_sound_body_compiles_under_both_mains() {
+        for kind in [MainKind::Area, MainKind::Ribbon] {
+            let p = Program::assemble(kind, &params(), OK_BODY);
+            assert_eq!(check(&p), Ok(()), "{kind:?}");
+            assert!(effect(&p).is_ok());
+        }
     }
 
     #[test]

@@ -14,10 +14,10 @@ artscript is a declarative language for procedural art. You write `.art` files. 
    - `targets` @target keys, entry files and libraries, use, the manifest palette p
    - `values` the values table, expressions, operators, functions
    - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients
-   - `shapes` the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush)
+   - `shapes` the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush, pressure, angle, tilt)
    - `structure` layer and group, clipping by nesting, inside/outside, mask, fx, finish
    - `fields` noise fields, fbm, ridged, field fills and masks, seeds
-   - `brushes` brush declarations, SkSL bodies, the Mark, brush: on fills, stacks, seeds, std/brushes
+   - `brushes` brush declarations, SkSL bodies, the Mark, brush: on fills and strokes, channels, stacks, seeds, std/brushes
    - `components` def, size box, slots, patches, let/if/each, style
    - `anim` t, key, anim, play, node keys, explain
    - `checks` assert, expect, measurements, check functions, rule

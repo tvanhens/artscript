@@ -364,7 +364,7 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
 pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
     let world = *parent_world * node.transform;
     match &node.kind {
-        NodeKind::Shape(s) => s.geometry.make_transform(&world),
+        NodeKind::Shape(s) => s.clip().make_transform(&world),
         NodeKind::Group { children, .. } => {
             let parts: Vec<Path> = children
                 .iter()

@@ -92,7 +92,7 @@ fn signed_distance(path: &Path, ltd: &Matrix, rect: IRect) -> Result<Image, Rend
 }
 
 /// IEEE half, round to nearest even, saturating at the largest finite half.
-fn f16_bits(x: f32) -> u16 {
+pub(crate) fn f16_bits(x: f32) -> u16 {
     let b = x.to_bits();
     let sign = ((b >> 16) & 0x8000) as u16;
     let exp = ((b >> 23) & 0xff) as i32 - 127 + 15;
@@ -109,6 +109,18 @@ fn f16_bits(x: f32) -> u16 {
     }
     let r = ((exp as u32) << 10) + ((man + 0x1000) >> 13);
     sign | r.min(0x7bff) as u16
+}
+
+#[cfg(test)]
+pub(crate) fn half_to_f32(h: u16) -> f32 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exp = ((h >> 10) & 0x1f) as i32;
+    let man = (h & 0x3ff) as f32;
+    if exp == 0 {
+        sign * man * 2f32.powi(-24)
+    } else {
+        sign * (1.0 + man / 1024.0) * 2f32.powi(exp - 15)
+    }
 }
 
 /// Felzenszwalb-Huttenlocher squared Euclidean distance transform, columns then rows.
@@ -174,17 +186,6 @@ mod tests {
         }
         assert_eq!(f16_bits(1e9), 0x7bff);
         assert_eq!(f16_bits(-1e9), 0xfbff);
-    }
-
-    fn half_to_f32(h: u16) -> f32 {
-        let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
-        let exp = ((h >> 10) & 0x1f) as i32;
-        let man = (h & 0x3ff) as f32;
-        if exp == 0 {
-            sign * man * 2f32.powi(-24)
-        } else {
-            sign * (1.0 + man / 1024.0) * 2f32.powi(exp - 15)
-        }
     }
 
     #[test]

@@ -398,6 +398,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
     match &mut node.kind {
         NodeKind::Shape(shape) => {
             shape.stroke = Some(artscript_ir::Stroke {
+                ribbon: None,
                 paint: Paint::Solid(red()),
                 width: 8.0,
                 cap: artscript_ir::Cap::Butt,

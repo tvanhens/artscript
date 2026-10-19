@@ -52,6 +52,9 @@ fn features_of(node: &Node, out: &mut Vec<Unsupported>) {
             paint_feature(node, &fill.paint, true, out);
         }
         if let Some(stroke) = &shape.stroke {
+            if stroke.ribbon.is_some() {
+                push(out, node, "brush stroke");
+            }
             paint_feature(node, &stroke.paint, false, out);
         }
     }

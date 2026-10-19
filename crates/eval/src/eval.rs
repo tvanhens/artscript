@@ -15,7 +15,7 @@ use artscript_syntax::ast::{
 };
 use artscript_syntax::{Diagnostic, format_expr};
 
-use crate::brush::{BrushVal, Slot};
+use crate::brush::{self, BrushVal, CHANNEL_KEYS, Channels, Slot};
 use crate::checks::{CheckState, Pending as CheckPending};
 use crate::color::{self, DEFAULT_HUE_STEP, Ramp, Rgba};
 use crate::fx::FxSite;
@@ -81,10 +81,12 @@ const NODE_KEYS: &[&str] = &[
 ];
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
-const PAINT_KEYS: &[&str] = &["fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush"];
+const PAINT_KEYS: &[&str] = &[
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt",
+];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "a", "blend",
 ];
 
 struct Builtin {
@@ -2123,7 +2125,7 @@ impl<'a> Evaluator<'a> {
                         .iter()
                         .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
                         .collect();
-                    (geom::boolean(op, &sils), None, true)
+                    (geom::boolean(op, &sils), Vec::new(), true)
                 }
                 "copy" => {
                     let r = match a.pos.first() {
@@ -2136,7 +2138,7 @@ impl<'a> Evaluator<'a> {
                     self.outside_copy(&r, sc)?;
                     (
                         r.silhouette().make_transform(&inverse(&sc.world)),
-                        None,
+                        Vec::new(),
                         true,
                     )
                 }
@@ -2175,17 +2177,16 @@ impl<'a> Evaluator<'a> {
             } else {
                 stroke_expr(named, expanded_style.as_deref(), sc)
             };
-            let brush_site = named.iter().find(|n| n.key == "brush").map(|n| n.span);
             let shape = self.paint_shape(
                 &a,
                 geometry,
-                knots.as_deref(),
+                &knots,
                 closed,
                 sc,
                 &world,
                 stroke_src.as_ref(),
                 &key,
-                brush_site,
+                named,
             )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(id) = decl {
@@ -2587,7 +2588,7 @@ impl<'a> Evaluator<'a> {
         frame: Rect,
         sc: &Scope,
         closed_flag: bool,
-    ) -> R<(Path, Option<Vec<P>>, bool)> {
+    ) -> R<(Path, Vec<Vec<P>>, bool)> {
         let (fx, fy, fw, fh) = (
             frame.left as f64,
             frame.top as f64,
@@ -2611,7 +2612,7 @@ impl<'a> Evaluator<'a> {
                     Some(Some(r)) if r.len() == 4 => [r[0], r[1], r[2], r[3]],
                     Some(_) => return Err(need("one corner radius or four", "rect 40x20 r:4,4,0,0")),
                 };
-                (geom::rect(w.len(fw), h.len(fh), radii), None, true)
+                (geom::rect(w.len(fw), h.len(fh), radii), Vec::new(), true)
             }
             "circle" => {
                 let r = first
@@ -2619,7 +2620,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a radius", "circle 12"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
-                (geom::ellipse(r, r), None, true)
+                (geom::ellipse(r, r), Vec::new(), true)
             }
             "ellipse" => {
                 let (rx, ry) = first
@@ -2627,7 +2628,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("two radii", "ellipse 20,12"))?;
                 check_percent(rx, frame, sc)?;
                 check_percent(ry, frame, sc)?;
-                (geom::ellipse(rx.len(fw), ry.len(fh)), None, true)
+                (geom::ellipse(rx.len(fw), ry.len(fh)), Vec::new(), true)
             }
             "poly" | "star" => {
                 let n = first
@@ -2640,7 +2641,7 @@ impl<'a> Evaluator<'a> {
                 if let Some(round) = a.num("round").filter(|v| *v > 0.0) {
                     p = geom::round_corners(&p, round);
                 }
-                (p, None, true)
+                (p, Vec::new(), true)
             }
             "curve" => {
                 let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
@@ -2674,7 +2675,7 @@ impl<'a> Evaluator<'a> {
                 } else {
                     geom::spline(&pts, tension, closed)
                 };
-                (path, Some(pts), closed)
+                (path, vec![pts], closed)
             }
             "path" => {
                 let d = first.and_then(|v| match v {
@@ -2687,7 +2688,8 @@ impl<'a> Evaluator<'a> {
                 })?;
                 let closed =
                     skia_safe::ContourMeasureIter::new(&p, false, None).all(|c| c.is_closed());
-                (p, None, closed)
+                let knots = geom::vertices(&p);
+                (p, knots, closed)
             }
             "blob" => {
                 let r = first
@@ -2702,7 +2704,7 @@ impl<'a> Evaluator<'a> {
                 let points = a.num("points").unwrap_or(7.0) as usize;
                 (
                     geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng),
-                    None,
+                    Vec::new(),
                     true,
                 )
             }
@@ -2710,20 +2712,20 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    /// `brush_site` is the span of this line's own `brush:` key. A brush error is reported there;
-    /// an inherited brush's error lands on the statement with a note.
+    /// `named` is this line's own keys. An error about a brush or channel key on the line is
+    /// reported at that key; an inherited key's error lands on the statement with a note.
     #[allow(clippy::too_many_arguments)]
     fn paint_shape(
         &mut self,
         a: &Args,
         geometry: Path,
-        knots: Option<&[P]>,
+        knots: &[Vec<P>],
         closed: bool,
         sc: &Scope,
         world: &Matrix,
         stroke_src: Option<&Expr>,
         key: &Key,
-        brush_site: Option<Span>,
+        named: &[Named],
     ) -> R<Shape> {
         let style: &[(String, Value)] = &sc.style;
         let pick = |k: &str| {
@@ -2804,56 +2806,101 @@ impl<'a> Evaluator<'a> {
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
-        let marks = match pick("brush") {
-            None => Vec::new(),
+        let (file, node) = (sc.file().to_string(), sc.node_name());
+        let site = |keys: &[&str]| keys.iter().find_map(|k| named.iter().find(|n| n.key == *k).map(|n| n.span));
+        let at_key = |this: &mut Self, f: Fail, keys: &[&str]| -> Fail {
+            match site(keys) {
+                Some(span) => {
+                    this.report(f, &file, span, &node);
+                    Fail::reported()
+                }
+                None => f.note(format!("`{}:` is inherited from an enclosing line or style", keys[0])),
+            }
+        };
+        let (fill_marks, stroke_marks) = match pick("brush") {
+            None => (Vec::new(), Vec::new()),
             Some(bv) => {
-                let (file, node) = (sc.file().to_string(), sc.node_name());
-                let at_brush = |this: &mut Self, f: Fail| -> Fail {
-                    match brush_site {
-                        Some(span) => {
-                            this.report(f, &file, span, &node);
-                            Fail::reported()
-                        }
-                        None => f.note("the brush is inherited from an enclosing line or style"),
-                    }
-                };
                 let stack = match self.brush_stack(&bv, sc) {
                     Ok(stack) => stack,
-                    Err(f) => return Err(at_brush(self, f)),
+                    Err(f) => return Err(at_key(self, f, &["brush"])),
                 };
-                let reaches = |slot: Slot| stack.iter().any(|b| b.place.on.is_none_or(|on| on == slot));
-                if width.is_some() && reaches(Slot::Stroke) {
-                    let f = fail("E0362", "brushed strokes are not implemented yet")
-                        .note("a brush applies to every paint slot the node has; this node has a stroke")
-                        .fix("add `on:fill` to the brush, or draw the outline as its own node");
-                    return Err(at_brush(self, f));
-                }
-                let lands = |b: &BrushVal| fill.is_some() && b.place.on.is_none_or(|on| on == Slot::Fill);
-                if brush_site.is_some() && stack.iter().any(|b| !lands(b)) {
-                    for (i, b) in stack.iter().enumerate().filter(|(_, b)| !lands(b)) {
+                let lands = |b: &BrushVal, slot: Slot| {
+                    let has = match slot {
+                        Slot::Fill => fill.is_some(),
+                        Slot::Stroke => width.is_some(),
+                    };
+                    has && b.place.on.is_none_or(|on| on == slot)
+                };
+                let lands_any = |b: &BrushVal| lands(b, Slot::Fill) || lands(b, Slot::Stroke);
+                if site(&["brush"]).is_some() && stack.iter().any(|b| !lands_any(b)) {
+                    for (i, b) in stack.iter().enumerate().filter(|(_, b)| !lands_any(b)) {
                         let what = if stack.len() == 1 {
                             "`brush:` on a node with no paint to brush".to_string()
                         } else {
                             format!("stage {} of `brush:` (`{}`) has no paint to brush on this node", i + 1, b.decl.name)
                         };
                         let f = fail("E0362", what)
-                            .note(if fill.is_none() { "this node has no fill" } else { "the brush is narrowed to a slot this node does not have" })
-                            .fix("give the node a fill, or remove the brush");
-                        at_brush(self, f);
+                            .note(if fill.is_none() && width.is_none() {
+                                "this node has no fill and no stroke"
+                            } else {
+                                "the brush is narrowed to a slot this node does not have"
+                            })
+                            .fix("give the node that paint, or remove the brush");
+                        at_key(self, f, &["brush"]);
                     }
                     return Err(Fail::reported());
                 }
-                let fill_stack: Vec<Rc<BrushVal>> = stack.iter().filter(|b| lands(b)).cloned().collect();
-                if blur > 0.0 && !fill_stack.is_empty() {
+                let fill_stack: Vec<Rc<BrushVal>> = stack.iter().filter(|b| lands(b, Slot::Fill)).cloned().collect();
+                let stroke_stack: Vec<Rc<BrushVal>> = stack.iter().filter(|b| lands(b, Slot::Stroke)).cloned().collect();
+                if blur > 0.0 && !(fill_stack.is_empty() && stroke_stack.is_empty()) {
                     let f = fail("E0362", "`blur:` on a brushed shape")
                         .fix("blur the parent instead: wrap the node in a `group` with `fx blur`");
-                    return Err(at_brush(self, f));
+                    return Err(at_key(self, f, &["blur", "brush"]));
+                }
+                if !stroke_stack.is_empty() && pick("dash").is_some() {
+                    let f = fail("E0362", "`dash:` on a brushed stroke")
+                        .note("a ribbon has no dash")
+                        .fix("remove the dash, or add `on:fill` to the brush");
+                    return Err(at_key(self, f, &["dash", "brush"]));
+                }
+                if !stroke_stack.is_empty() {
+                    for k in ["cap", "join"] {
+                        if let Some(span) = site(&[k]) {
+                            let f = fail("E0362", format!("`{k}:` on a brushed stroke"))
+                                .note("a brushed stroke has round ends and corners, and the brush shapes its ends")
+                                .fix(format!("remove `{k}:`, or add `on:fill` to the brush"));
+                            self.report(f, &file, span, &node);
+                            return Err(Fail::reported());
+                        }
+                    }
                 }
                 let explicit = a.num("seed").map(|s| s as u64);
-                self.area_marks(&fill_stack, key, explicit, &file)
+                (
+                    self.area_marks(&fill_stack, key, explicit, &file),
+                    self.ribbon_marks(&stroke_stack, key, explicit, &file),
+                )
             }
         };
-        let fill = fill.map(|paint| IrFill { paint, marks });
+        let mut channels = Channels::default();
+        for (k, _, example) in CHANNEL_KEYS {
+            let Some(v) = pick(k) else { continue };
+            if stroke_marks.is_empty() {
+                let Some(span) = site(&[k]) else { continue };
+                let f = fail("E0362", format!("`{k}:` has no effect without a brushed stroke"))
+                    .note(if width.is_none() { "this node has no stroke" } else { "this node's stroke has no brush" })
+                    .fix(format!("brush the stroke, or remove `{k}:`"));
+                self.report(f, &file, span, &node);
+                return Err(Fail::reported());
+            }
+            let values = numbers(&v).filter(|xs| !xs.is_empty() && xs.iter().all(|x| x.is_finite()));
+            let Some(values) = values else {
+                let f = fail("E0320", format!("`{k}:` takes a number or a list of numbers, got {}", v.kind()))
+                    .fix(format!("write `{example}`"));
+                return Err(at_key(self, f, &[k]));
+            };
+            channels.set(k, values);
+        }
+        let fill = fill.map(|paint| IrFill { paint, marks: fill_marks });
         let Some(width) = width else {
             return Ok(Shape {
                 geometry,
@@ -2864,13 +2911,47 @@ impl<'a> Evaluator<'a> {
             });
         };
         let tapered = matches!(width, W::List(_)) || taper.is_some();
+        let widths = match width {
+            W::Const(w) => vec![w],
+            W::List(ws) if ws.is_empty() => vec![1.0],
+            W::List(ws) => ws,
+        };
+        if !stroke_marks.is_empty() {
+            let paint = to_paint(&paint_v, bounds)
+                .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
+            let mut ribbon = brush::ribbon(
+                &geometry,
+                knots,
+                &widths,
+                taper.unwrap_or((0.0, 0.0)),
+                &channels,
+                stroke_marks,
+            );
+            if tapered {
+                // The same 0.75 output pixel step as the unbrushed tapered outline below.
+                let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+                ribbon.ink = Some(geom::ribbon_ink(&geometry, &ribbon, 0.75 / px));
+            }
+            return Ok(Shape {
+                geometry,
+                fill,
+                stroke: Some(Stroke {
+                    paint,
+                    width: widths.iter().copied().fold(0.0, f64::max) as f32,
+                    cap: Cap::Round,
+                    join: Join::Round,
+                    dash: Vec::new(),
+                    ribbon: Some(ribbon),
+                }),
+                blur,
+                children: vec![],
+            });
+        }
         if tapered {
-            let widths = match width {
-                W::Const(w) => vec![w],
-                W::List(ws) if ws.is_empty() => vec![1.0],
-                W::List(ws) => ws,
+            let knots = match knots {
+                [k] if k.len() == widths.len() => k.as_slice(),
+                _ => &[],
             };
-            let knots = knots.filter(|k| k.len() == widths.len()).unwrap_or(&[]);
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
@@ -2892,7 +2973,7 @@ impl<'a> Evaluator<'a> {
                 children: vec![],
             });
         }
-        let W::Const(w) = width else { unreachable!() };
+        let w = widths[0];
         let paint = to_paint(&paint_v, bounds)
             .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
         let cap = match pick("cap").as_ref().and_then(Value::word) {
@@ -2923,6 +3004,7 @@ impl<'a> Evaluator<'a> {
                 cap,
                 join,
                 dash,
+                ribbon: None,
             }),
             blur,
             children: vec![],

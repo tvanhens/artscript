@@ -1,4 +1,4 @@
-# shapes: the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush)
+# shapes: the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush, pressure, angle, tilt)
 
 Shapes are centered on their local origin, and `at:` places that origin in the parent. A `curve` or `path` is the exception: its points are in its local frame, so `at:` moves the `0,0` of its points. Children are placed in the parent's local frame. Under `circle 40 at:100,80`, a child at `0,0` sits at the circle's center. Under a closed `curve`, a child at `0,0` sits at the `0,0` of the curve's points.
 
@@ -25,7 +25,8 @@ Paint keys:
 
 - `fill:<color|gradient|field>`.
 - `stroke:<color>,<width>`. Strokes have round caps and joins. `stroke:3` alone uses `line(fill)`. A range is not a width. `stroke:p.ink,2..6` is an error, and the fix is `stroke:p.ink,[2 6]`. `cap:` and `join:` override, and `dash:4,2` or `dash:[4 2 3]` dashes. An odd dash list repeats once, as SVG does, in every format. A `dash:` that is not lengths is E0320.
-- Tapered ink: `stroke:p.ink,[2 8 3] taper:.3` on an open curve gives one width per point along its length, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
+- Tapered ink: `stroke:p.ink,[2 8 3] taper:.3` on an open curve gives one width per point along its length, and on a one-contour `path` one width per on-curve vertex, with ends thinning over 30%. `taper:0,.6` sets the start and end separately.
 - `blur:6` softens a shape's edge. `blur:` together with `brush:` is E0362; blur the parent instead.
-- `brush:dry`, `brush:[chip dry(strength:.3)]`, or `brush:none` shades the fill with a brush, a stack of brushes, or clears an inherited one. A stroke is not brushed yet: a brush that reaches a stroke slot is E0362 unless it carries `on:fill`. A brushed node is raster-only. See `brushes`.
+- `brush:dry`, `brush:[chip dry(strength:.3)]`, or `brush:none` shades the fill and the stroke with a brush, a stack of brushes, or clears an inherited one. A brushed stroke is a ribbon with round caps and joins and no dash: `dash:`, `cap:` and `join:` on the node's own line with it are E0362. A brushed node is raster-only. See `brushes`.
+- `pressure:[.3 1 .5]`, `angle:45`, `tilt:[0 1]` are the channels a stroke brush reads. A number is constant, a list with one value per point sits on the points, any other list spreads evenly along the stroke. They need a brushed stroke: on the line of any other node they are E0362, and inherited they do nothing there. See `brushes`.
 - `jitter:1.5,60` wobbles the outline like a hand-drawn edge. The pair is the amplitude and the wavelength.

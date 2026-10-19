@@ -1,6 +1,7 @@
-//! Brush declarations, brush values with overrides, and the fill marks a node's `brush:` key
-//! becomes. The SkSL contract itself lives in `artscript_brush`; this module binds `.art` values
-//! to it and reports every failure at the author's line.
+//! Brush declarations, brush values with overrides, the marks a node's `brush:` key becomes on
+//! its fill and its stroke, and the ribbon a brushed stroke's channels become. The SkSL contract
+//! itself lives in `artscript_brush`; this module binds `.art` values to it and reports every
+//! failure at the author's line.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -9,20 +10,32 @@ use artscript_brush::{
     HELPERS, MARK_FIELDS, MainKind, Origin, PLACEMENT_KEYS, Program, RESERVED_PREFIX,
     UniformKind, UniformValue,
 };
-use artscript_ir::{AreaMark, Stage};
+use artscript_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
 use artscript_syntax::ast::{Expr, Named, SkslBlock, Span};
+use skia_safe::ContourMeasureIter;
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
+use crate::geom::P;
 use crate::identity::{self, Key};
 use crate::scope::Module;
 use crate::value::{Kind, Value};
 
-/// A `brush` declaration after `check` accepted its program. Shared by every value made from it.
+/// A `brush` declaration after `check` accepted its programs. Shared by every value made from it.
 pub struct BrushDecl {
     pub name: String,
     /// Declared uniforms in head order.
     pub params: Vec<(String, UniformKind)>,
-    pub program: Arc<Program>,
+    /// The body under each main, indexed by [`MainKind`]: area first, ribbon second.
+    programs: [Arc<Program>; 2],
+}
+
+impl BrushDecl {
+    pub fn program(&self, kind: MainKind) -> &Arc<Program> {
+        &self.programs[match kind {
+            MainKind::Area => 0,
+            MainKind::Ribbon => 1,
+        }]
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,13 +311,20 @@ impl Evaluator<'_> {
         if head_failed {
             return Err(errors);
         }
-        let program = Program::assemble(MainKind::Area, &decl_params, &block.text);
-        if let Err(errs) = artscript_brush::check(&program) {
+        let area = Program::assemble(MainKind::Area, &decl_params, &block.text);
+        // The body is the same text under both mains, so the area check reports its errors once.
+        // The ribbon main is checked too, so render never meets a program eval did not.
+        let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
+        if let Err(errs) = artscript_brush::check(&area) {
             errors.extend(errs.into_iter().map(|e| {
                 let f = fail("E0360", format!("SkSL: {}", e.message))
                     .note(format!("in brush `{name}`"))
                     .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
                 (f, at(e.origin))
+            }));
+        } else if let Err(errs) = artscript_brush::check(&ribbon) {
+            errors.extend(errs.into_iter().map(|e| {
+                (fail("E0360", format!("SkSL on a stroke: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
             }));
         }
         if !errors.is_empty() {
@@ -314,7 +334,7 @@ impl Evaluator<'_> {
             decl: Rc::new(BrushDecl {
                 name: name.to_string(),
                 params: decl_params,
-                program: Arc::new(program),
+                programs: [Arc::new(area), Arc::new(ribbon)],
             }),
             uniforms,
             place,
@@ -423,8 +443,38 @@ impl Evaluator<'_> {
         names
     }
 
-    /// The fill's marks: one stage per brush, each seeded from this node's key, the slot, and
+    /// One stage per brush of `stack` on `slot`, each seeded from this node's key, the slot, and
     /// its index in the stack, through `identity::seed` so `seed:` pins it and L0104 sees it.
+    fn stages<'b>(
+        &mut self,
+        stack: &'b [Rc<BrushVal>],
+        slot: Slot,
+        kind: MainKind,
+        key: &Key,
+        explicit: Option<u64>,
+        file: &str,
+    ) -> Vec<(Stage, &'b Placement)> {
+        stack
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                let seed = identity::seed(file, &key.brush(slot.word(), i as u32), explicit, &mut self.uses);
+                let stage = Stage {
+                    program: b.decl.program(kind).clone(),
+                    uniforms: b
+                        .decl
+                        .params
+                        .iter()
+                        .zip(&b.uniforms)
+                        .map(|((n, _), u)| (n.clone(), *u))
+                        .collect(),
+                    seed: (seed ^ (seed >> 32)) as u32,
+                };
+                (stage, &b.place)
+            })
+            .collect()
+    }
+
     pub(crate) fn area_marks(
         &mut self,
         stack: &[Rc<BrushVal>],
@@ -432,31 +482,249 @@ impl Evaluator<'_> {
         explicit: Option<u64>,
         file: &str,
     ) -> Vec<AreaMark> {
-        stack
-            .iter()
-            .enumerate()
-            .map(|(i, b)| {
-                let seed = identity::seed(file, &key.brush(Slot::Fill.word(), i as u32), explicit, &mut self.uses);
-                let rad = b.place.dir_deg.to_radians();
+        self.stages(stack, Slot::Fill, MainKind::Area, key, explicit, file)
+            .into_iter()
+            .map(|(stage, place)| {
+                let rad = place.dir_deg.to_radians();
                 AreaMark {
-                    stage: Stage {
-                        program: b.decl.program.clone(),
-                        uniforms: b
-                            .decl
-                            .params
-                            .iter()
-                            .zip(&b.uniforms)
-                            .map(|((n, _), u)| (n.clone(), *u))
-                            .collect(),
-                        seed: (seed ^ (seed >> 32)) as u32,
-                    },
-                    dir_deg: b.place.dir_deg as f32,
+                    stage,
+                    dir_deg: place.dir_deg as f32,
                     cos_sin: [rad.cos() as f32, rad.sin() as f32],
-                    reach: b.place.reach as f32,
+                    reach: place.reach as f32,
                 }
             })
             .collect()
     }
+
+    pub(crate) fn ribbon_marks(
+        &mut self,
+        stack: &[Rc<BrushVal>],
+        key: &Key,
+        explicit: Option<u64>,
+        file: &str,
+    ) -> Vec<RibbonMark> {
+        self.stages(stack, Slot::Stroke, MainKind::Ribbon, key, explicit, file)
+            .into_iter()
+            .map(|(stage, place)| RibbonMark { stage, reach: place.reach as f32 })
+            .collect()
+    }
+}
+
+/// The per-point channels of a brushed stroke, as authored. `None` is the channel's default.
+#[derive(Default)]
+pub struct Channels {
+    pub pressure: Option<Vec<f64>>,
+    pub angle: Option<Vec<f64>>,
+    pub tilt: Option<Vec<f64>>,
+}
+
+/// The key, default, and spelling of each channel, in the order the Mark lists them.
+pub const CHANNEL_KEYS: &[(&str, f64, &str)] =
+    &[("pressure", 1.0, "pressure:[.3 1 .5]"), ("angle", 0.0, "angle:[0 45 90]"), ("tilt", 0.0, "tilt:[0 .5 1]")];
+
+impl Channels {
+    pub fn get(&self, key: &str) -> Option<&[f64]> {
+        match key {
+            "pressure" => self.pressure.as_deref(),
+            "angle" => self.angle.as_deref(),
+            "tilt" => self.tilt.as_deref(),
+            _ => unreachable!("channels are {CHANNEL_KEYS:?}"),
+        }
+    }
+
+    pub fn set(&mut self, key: &str, values: Vec<f64>) {
+        match key {
+            "pressure" => self.pressure = Some(values),
+            "angle" => self.angle = Some(values),
+            "tilt" => self.tilt = Some(values),
+            _ => unreachable!("channels are {CHANNEL_KEYS:?}"),
+        }
+    }
+}
+
+/// One contour of the geometry as the ribbon places values on it: its arc length, whether it
+/// closes, and the authored points it passes through, in order. A closed contour's last knot
+/// joins back to its first.
+struct Run<'a> {
+    start: f64,
+    len: f64,
+    closed: bool,
+    knots: &'a [P],
+}
+
+impl Run<'_> {
+    /// The chord from each knot to the next, the closing chord included on a closed contour.
+    fn chords(&self) -> Vec<f64> {
+        let k = self.knots;
+        let mut out: Vec<f64> = k.windows(2).map(|w| (w[1].0 - w[0].0).hypot(w[1].1 - w[0].1)).collect();
+        if self.closed && k.len() >= 2 {
+            let (a, b) = (k[k.len() - 1], k[0]);
+            out.push((b.0 - a.0).hypot(b.1 - a.1));
+        }
+        out
+    }
+
+    /// Local arc length of each knot by chord fraction, as the tapered outline places widths. A
+    /// closed contour adds its first knot again at `len`.
+    fn knot_at(&self) -> Vec<f64> {
+        let mut acc = vec![0.0];
+        for c in self.chords() {
+            acc.push(acc.last().unwrap() + c);
+        }
+        let total = acc.last().copied().unwrap().max(1e-9);
+        acc.iter().map(|a| a / total * self.len).collect()
+    }
+}
+
+/// A piecewise-linear channel on one contour: rising local arc lengths and their values.
+struct Line {
+    at: Vec<f64>,
+    values: Vec<f64>,
+}
+
+impl Line {
+    fn at(&self, s: f64) -> f64 {
+        let i = self.at.partition_point(|a| *a <= s);
+        if i == 0 {
+            return self.values[0];
+        }
+        if i == self.at.len() {
+            return self.values[i - 1];
+        }
+        let t = ((s - self.at[i - 1]) / (self.at[i] - self.at[i - 1]).max(1e-9)).clamp(0.0, 1.0);
+        self.values[i - 1] + (self.values[i] - self.values[i - 1]) * t
+    }
+}
+
+/// One [`Line`] per run for a list of values. A list with one value per knot puts value `i` on
+/// knot `i`, and a closed contour's list wraps back to its first value. Any other list spreads
+/// evenly by arc length over the whole path. An empty list is `default` everywhere.
+fn lines(values: &[f64], default: f64, spans: &[Run<'_>]) -> Vec<Line> {
+    let constant = |v: f64| spans.iter().map(|_| Line { at: vec![0.0], values: vec![v] }).collect();
+    match values {
+        [] => return constant(default),
+        [v] => return constant(*v),
+        _ => {}
+    }
+    let knots: usize = spans.iter().map(|sp| sp.knots.len()).sum();
+    if values.len() == knots {
+        let mut next = 0;
+        return spans
+            .iter()
+            .map(|sp| {
+                let own = &values[next..next + sp.knots.len()];
+                next += sp.knots.len();
+                if own.is_empty() {
+                    return Line { at: vec![0.0], values: vec![default] };
+                }
+                let mut vals = own.to_vec();
+                if sp.closed {
+                    vals.push(own[0]);
+                }
+                Line { at: sp.knot_at(), values: vals }
+            })
+            .collect();
+    }
+    let len: f64 = spans.iter().map(|sp| sp.len).sum();
+    let whole = Line {
+        at: (0..values.len()).map(|i| i as f64 / (values.len() - 1) as f64 * len).collect(),
+        values: values.to_vec(),
+    };
+    spans
+        .iter()
+        .map(|sp| {
+            let end = sp.start + sp.len;
+            let mut at = vec![0.0];
+            let mut vals = vec![whole.at(sp.start)];
+            for (a, v) in whole.at.iter().zip(&whole.values) {
+                if *a > sp.start && *a < end {
+                    at.push(a - sp.start);
+                    vals.push(*v);
+                }
+            }
+            at.push(sp.len);
+            vals.push(whole.at(end));
+            Line { at, values: vals }
+        })
+        .collect()
+}
+
+/// Velocity from knot spacing: knots are evenly timed, so a long chord is a fast segment and
+/// the mean chord is 1. A knot moves at the mean of the chords on either side of it, the closing
+/// chord included on a closed contour. A contour without knots moves at 1.
+fn velocity(spans: &[Run<'_>]) -> Vec<Line> {
+    let chords: Vec<Vec<f64>> = spans.iter().map(Run::chords).collect();
+    let all: Vec<f64> = chords.iter().flatten().copied().collect();
+    let mean = (all.iter().sum::<f64>() / all.len().max(1) as f64).max(1e-9);
+    spans
+        .iter()
+        .zip(&chords)
+        .map(|(sp, chords)| {
+            if chords.is_empty() {
+                return Line { at: vec![0.0], values: vec![1.0] };
+            }
+            let n = chords.len();
+            let mut v: Vec<f64> = (0..sp.knots.len())
+                .map(|i| {
+                    let before = if sp.closed { chords[(i + n - 1) % n] } else { chords[i.saturating_sub(1).min(n - 1)] };
+                    let after = chords[i.min(n - 1)];
+                    (before + after) / 2.0 / mean
+                })
+                .collect();
+            if sp.closed {
+                v.push(v[0]);
+            }
+            Line { at: sp.knot_at(), values: v }
+        })
+        .collect()
+}
+
+/// The ribbon a brushed stroke along `path` becomes. `knots` holds the authored points of each
+/// contour in path order: a curve's points, or a path's on-curve vertices. `widths` and each
+/// channel list sit on the knots when they have one value per knot and spread evenly otherwise.
+pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), ch: &Channels, marks: Vec<RibbonMark>) -> Ribbon {
+    let measured: Vec<(f64, bool)> = ContourMeasureIter::new(path, false, None)
+        .map(|m| (f64::from(m.length()), m.is_closed()))
+        .collect();
+    let aligned = knots.len() == measured.len();
+    let mut start = 0.0;
+    let spans: Vec<Run<'_>> = measured
+        .iter()
+        .enumerate()
+        .map(|(i, &(len, closed))| {
+            let sp = Run { start, len, closed, knots: if aligned { &knots[i] } else { &[] } };
+            start += len;
+            sp
+        })
+        .collect();
+    let width = lines(widths, 1.0, &spans);
+    let channel = |key: &str, default: f64| lines(ch.get(key).unwrap_or(&[]), default, &spans);
+    let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
+    let velocity = velocity(&spans);
+    let contours = spans
+        .iter()
+        .enumerate()
+        .map(|(i, sp)| {
+            let all = [&width[i], &pressure[i], &angle[i], &tilt[i], &velocity[i]];
+            let mut at: Vec<f64> = all.iter().flat_map(|c| c.at.iter().copied()).chain([0.0, sp.len]).collect();
+            at.sort_by(f64::total_cmp);
+            at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+            let knots = at
+                .iter()
+                .map(|&s| s.clamp(0.0, sp.len))
+                .map(|s| Knot {
+                    s: s as f32,
+                    half_width: (width[i].at(s) / 2.0) as f32,
+                    pressure: pressure[i].at(s) as f32,
+                    angle: angle[i].at(s) as f32,
+                    tilt: tilt[i].at(s) as f32,
+                    velocity: velocity[i].at(s) as f32,
+                })
+                .collect();
+            RibbonContour { len: sp.len as f32, closed: sp.closed, knots }
+        })
+        .collect();
+    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32], ink: None }
 }
 
 /// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime

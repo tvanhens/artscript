@@ -4,9 +4,10 @@
 
 use std::f64::consts::PI;
 
+use skia_safe::path::Verb;
 use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
 
-use artscript_ir::{Path, Point, Rect};
+use artscript_ir::{Path, Point, Rect, Ribbon, taper_ramp};
 
 use crate::seed::Rng;
 
@@ -79,6 +80,38 @@ pub fn spline(pts: &[P], tension: f64, closed: bool) -> Path {
     b.detach()
 }
 
+/// The on-curve vertices of each contour of `path` that has length, in path order. A closed
+/// contour does not repeat its first vertex at its end.
+pub fn vertices(path: &Path) -> Vec<Vec<P>> {
+    let mut out: Vec<Vec<P>> = Vec::new();
+    let mut run: Vec<P> = Vec::new();
+    let mut flush = |run: &mut Vec<P>, closed: bool| {
+        if closed && run.len() > 1 && run.first() == run.last() {
+            run.pop();
+        }
+        if run.windows(2).any(|w| w[0] != w[1]) || (closed && run.len() > 1) {
+            out.push(std::mem::take(run));
+        }
+        run.clear();
+    };
+    for (verb, pts) in skia_safe::path::Iter::new(path, false) {
+        let p = |q: &Point| (f64::from(q.x), f64::from(q.y));
+        match verb {
+            Verb::Move => {
+                flush(&mut run, false);
+                run.push(p(&pts[0]));
+            }
+            Verb::Line => run.push(p(&pts[1])),
+            Verb::Quad | Verb::Conic => run.push(p(&pts[2])),
+            Verb::Cubic => run.push(p(&pts[3])),
+            Verb::Close => flush(&mut run, true),
+            Verb::Done => break,
+        }
+    }
+    flush(&mut run, false);
+    out
+}
+
 pub struct Contour {
     pub pos: Vec<P>,
     pub tan: Vec<P>,
@@ -120,10 +153,6 @@ fn interp(x: f64, xs: &[f64], ys: &[f64]) -> f64 {
     ys[ys.len() - 1]
 }
 
-fn ease(x: f64) -> f64 {
-    (x.clamp(0.0, 1.0) * PI / 2.0).sin().powf(0.8)
-}
-
 /// Filled outline of a variable-width stroke along `path`'s first contour, with round caps.
 /// `widths` has one width per control point in `knots` (chord fractions follow the knots);
 /// with no knots the widths are spread evenly along the length.
@@ -153,30 +182,61 @@ pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), step: 
         vec![0.0, 1.0]
     };
     let ws: Vec<f64> = if widths.len() >= 2 { widths.to_vec() } else { vec![widths[0]; 2] };
-    let floor = 0.12;
     let w: Vec<f64> = s
         .iter()
-        .map(|&si| {
-            let mut w = interp(si / length, &chord, &ws);
-            if taper.0 > 0.0 {
-                w *= floor + (1.0 - floor) * ease(si / (taper.0 * length));
-            }
-            if taper.1 > 0.0 {
-                w *= floor + (1.0 - floor) * ease((length - si) / (taper.1 * length));
-            }
-            w
-        })
+        .map(|&si| interp(si / length, &chord, &ws) * taper_ramp(si / length, taper))
         .collect();
-    let n = c.pos.len();
-    let normal = |i: usize| (-c.tan[i].1, c.tan[i].0);
-    let r = |i: usize| w[i] / 2.0;
+    let r: Vec<f64> = w.iter().map(|w| w / 2.0).collect();
+    polygon(&capped_ring(&c.pos, &c.tan, &r))
+}
+
+/// Filled outline of a brushed stroke: every contour of `path` offset on both sides by the
+/// ribbon's tapered half width at each point, with round caps on an open contour and an outer
+/// and an inner edge on a closed one. The ribbon's ink fills this outline. `step` is as in
+/// [`brush`].
+pub fn ribbon_ink(path: &Path, ribbon: &Ribbon, step: f64) -> Path {
+    let taper = (f64::from(ribbon.taper[0]), f64::from(ribbon.taper[1]));
+    let mut b = PathBuilder::new();
+    for (measure, contour) in skia_safe::ContourMeasureIter::new(path, false, None).zip(&ribbon.contours) {
+        let length = f64::from(measure.length());
+        if length <= 0.0 {
+            continue;
+        }
+        let n = ((length / step.max(1e-6)).ceil() as usize).max(2);
+        let (mut pos, mut tan, mut r) = (Vec::with_capacity(n + 1), Vec::with_capacity(n + 1), Vec::with_capacity(n + 1));
+        for i in 0..=n {
+            let s = length * i as f64 / n as f64;
+            let (p, t) = measure.pos_tan(s as f32).unwrap_or_default();
+            pos.push((f64::from(p.x), f64::from(p.y)));
+            tan.push((f64::from(t.x), f64::from(t.y)));
+            let on = (s / length * f64::from(contour.len)) as f32;
+            r.push(f64::from(contour.at(on).half_width) * taper_ramp(s / length, taper));
+        }
+        if !contour.closed {
+            b.add_polygon(&capped_ring(&pos, &tan, &r).iter().map(|p| pt(*p)).collect::<Vec<_>>(), true);
+            continue;
+        }
+        let side = |sign: f64| -> Vec<Point> {
+            (0..n).map(|i| pt((pos[i].0 - sign * tan[i].1 * r[i], pos[i].1 + sign * tan[i].0 * r[i]))).collect()
+        };
+        b.add_polygon(&side(1.0), true);
+        b.add_polygon(&side(-1.0).into_iter().rev().collect::<Vec<_>>(), true);
+    }
+    b.detach()
+}
+
+/// The ring around the polyline `pos` with unit tangents `tan`, offset by `r[i]` on each side,
+/// with round caps at both ends.
+fn capped_ring(pos: &[P], tan: &[P], r: &[f64]) -> Vec<P> {
+    let n = pos.len();
+    let normal = |i: usize| (-tan[i].1, tan[i].0);
     let mut ring: Vec<P> = Vec::with_capacity(2 * n + 24);
     for i in 0..n {
         let (nx, ny) = normal(i);
-        ring.push((c.pos[i].0 + nx * r(i), c.pos[i].1 + ny * r(i)));
+        ring.push((pos[i].0 + nx * r[i], pos[i].1 + ny * r[i]));
     }
     let thetas: Vec<f64> = (1..13).map(|k| PI * k as f64 / 13.0).collect();
-    let (e, ne, te, re) = (c.pos[n - 1], normal(n - 1), c.tan[n - 1], r(n - 1));
+    let (e, ne, te, re) = (pos[n - 1], normal(n - 1), tan[n - 1], r[n - 1]);
     for th in &thetas {
         ring.push((
             e.0 + re * (th.cos() * ne.0 + th.sin() * te.0),
@@ -185,16 +245,16 @@ pub fn brush(path: &Path, knots: &[P], widths: &[f64], taper: (f64, f64), step: 
     }
     for i in (0..n).rev() {
         let (nx, ny) = normal(i);
-        ring.push((c.pos[i].0 - nx * r(i), c.pos[i].1 - ny * r(i)));
+        ring.push((pos[i].0 - nx * r[i], pos[i].1 - ny * r[i]));
     }
-    let (s0, n0, t0, r0) = (c.pos[0], normal(0), c.tan[0], r(0));
+    let (s0, n0, t0, r0) = (pos[0], normal(0), tan[0], r[0]);
     for th in &thetas {
         ring.push((
             s0.0 + r0 * (-th.cos() * n0.0 - th.sin() * t0.0),
             s0.1 + r0 * (-th.cos() * n0.1 - th.sin() * t0.1),
         ));
     }
-    polygon(&ring)
+    ring
 }
 
 pub fn polygon(pts: &[P]) -> Path {

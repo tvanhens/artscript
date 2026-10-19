@@ -107,7 +107,7 @@ pub struct Shape {
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
-    /// Drawn after the shape, clipped to `geometry` whatever the shape's fill or alpha (the
+    /// Drawn after the shape, clipped to [`Shape::clip`] whatever the shape's fill or alpha (the
     /// "clip by nesting" rule). The shape and its children form one isolated group, so a
     /// child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
@@ -159,10 +159,108 @@ pub struct Stage {
 #[derive(Clone, Debug)]
 pub struct Stroke {
     pub paint: Paint,
+    /// The widest the stroke gets. A ribbon's half width at each point is in its knots.
     pub width: f32,
     pub cap: Cap,
     pub join: Join,
     pub dash: Vec<f32>,
+    /// The brush stages that shade the stroke as a ribbon along the shape's geometry. `None` is a
+    /// plain stroke. A ribbon has round caps and joins and no dash.
+    pub ribbon: Option<Ribbon>,
+}
+
+/// A brushed stroke. The spine is the shape's geometry; each of its contours is one ribbon with
+/// its own channel knots. The stages run in order over the ribbon's `(s, d)` field: stage 0 reads
+/// `paint` as `m.paint`, each later stage reads the previous stage's color, and coverages multiply.
+#[derive(Clone, Debug)]
+pub struct Ribbon {
+    pub marks: Vec<RibbonMark>,
+    /// One per contour of the geometry, in path order.
+    pub contours: Vec<RibbonContour>,
+    /// The fraction of each contour's `len` over which its start and its end thin, through
+    /// [`taper_ramp`]. Each contour is its own pen stroke.
+    pub taper: [f32; 2],
+    /// The filled outline of a tapered or width-list ribbon, the ink an unbrushed stroke of the
+    /// same widths would fill. Outline effects, children and `inside` read it. `None` at
+    /// constant width, where those readers use the geometry and its stroke at `width`, as they
+    /// do for an unbrushed stroke.
+    pub ink: Option<Path>,
+}
+
+impl Ribbon {
+    pub fn reach(&self) -> f32 {
+        self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+    }
+}
+
+/// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the
+/// point of the spine whose ink covers the pixel deepest, `m.edge` is the half width there
+/// minus the distance to it.
+#[derive(Clone, Debug)]
+pub struct RibbonMark {
+    pub stage: Stage,
+    /// Local units the stage may paint past the ribbon's edge. Grows bounds and bake tiles.
+    pub reach: f32,
+}
+
+/// The channel knots of one contour. Between knots every value interpolates linearly by `s`.
+#[derive(Clone, Debug)]
+pub struct RibbonContour {
+    pub len: f32,
+    pub closed: bool,
+    /// Rising `s`, the first at 0 and the last at `len`.
+    pub knots: Vec<Knot>,
+}
+
+impl RibbonContour {
+    /// The channels at arc length `s`, clamped to the contour.
+    pub fn at(&self, s: f32) -> Knot {
+        let k = &self.knots;
+        let i = k.partition_point(|n| n.s <= s);
+        if i == 0 {
+            return k[0];
+        }
+        if i == k.len() {
+            return k[i - 1];
+        }
+        let (a, b) = (k[i - 1], k[i]);
+        let t = ((s - a.s) / (b.s - a.s).max(1e-9)).clamp(0.0, 1.0);
+        let mix = |x: f32, y: f32| x + (y - x) * t;
+        Knot {
+            s,
+            half_width: mix(a.half_width, b.half_width),
+            pressure: mix(a.pressure, b.pressure),
+            angle: mix(a.angle, b.angle),
+            tilt: mix(a.tilt, b.tilt),
+            velocity: mix(a.velocity, b.velocity),
+        }
+    }
+}
+
+/// The ribbon's channels at one arc length. `half_width` is before the taper.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Knot {
+    pub s: f32,
+    pub half_width: f32,
+    pub pressure: f32,
+    pub angle: f32,
+    pub tilt: f32,
+    pub velocity: f32,
+}
+
+/// How much of its width a stroke keeps at fraction `u` of its length under `taper`, the start
+/// and end fractions over which it thins. Shared by the tapered outline and the ribbon.
+pub fn taper_ramp(u: f64, taper: (f64, f64)) -> f64 {
+    const FLOOR: f64 = 0.12;
+    let ease = |x: f64| (x.clamp(0.0, 1.0) * std::f64::consts::PI / 2.0).sin().powf(0.8);
+    let mut w = 1.0;
+    if taper.0 > 0.0 {
+        w *= FLOOR + (1.0 - FLOOR) * ease(u / taper.0);
+    }
+    if taper.1 > 0.0 {
+        w *= FLOOR + (1.0 - FLOOR) * ease((1.0 - u) / taper.1);
+    }
+    w
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -341,9 +439,26 @@ pub enum EffectOp {
 }
 
 impl Shape {
-    /// Local units the fill's brush marks may paint past `geometry`. 0 without marks.
+    /// What the shape's children, `inside` and `copy` clip to: the geometry, as for any shape,
+    /// except that a brushed tapered stroke contributes its ink outline in place of the spine,
+    /// joined with the geometry when the shape also has a fill.
+    pub fn clip(&self) -> std::borrow::Cow<'_, Path> {
+        let ink = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).and_then(|r| r.ink.as_ref());
+        match ink {
+            None => std::borrow::Cow::Borrowed(&self.geometry),
+            Some(ink) if self.fill.is_none() => std::borrow::Cow::Borrowed(ink),
+            Some(ink) => std::borrow::Cow::Owned(
+                skia_safe::op(&self.geometry, ink, skia_safe::PathOp::Union).unwrap_or_else(|| ink.clone()),
+            ),
+        }
+    }
+
+    /// Local units the brush marks may paint past the fill's geometry or the ribbon's edge. 0
+    /// without marks.
     pub fn mark_reach(&self) -> f32 {
-        self.fill.as_ref().map_or(0.0, Fill::reach)
+        let fill = self.fill.as_ref().map_or(0.0, Fill::reach);
+        let stroke = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).map_or(0.0, Ribbon::reach);
+        fill.max(stroke)
     }
 }
 
@@ -535,7 +650,7 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Geometry plus half the stroke width, plus what the fill's brush marks may paint past it.
+/// Geometry plus half the stroke width, plus what the brush marks may paint past it.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
     if let Some(st) = &s.stroke {
