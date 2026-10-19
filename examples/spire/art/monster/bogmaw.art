@@ -115,20 +115,20 @@ layer legs_mid
   fx outline 5 color:p.ink
 
 layer head rot:8 pivot:480,640
-  curve 70,600 150,640 300,652 470,625 505,700 430,795 285,825 150,785 85,700 closed fill:p.bone.1 brush:sculpt(hi:p.bone.4 lo:p.flesh.0 scale:.8 glossk:.15 depth:.6) name:jaw
+  curve 96,606 160,642 300,654 472,628 510,700 436,792 294,822 162,785 104,706 closed fill:p.bone.1 brush:sculpt(hi:p.bone.4 lo:p.flesh.0 scale:.8 glossk:.15 depth:.6) name:jaw
     each k, ck in [150,700 230,770 380,750 440,700]
       curve 0,0 rand(6 14),rand(8 16) rand(4 20),rand(18 34) at:ck stroke:p.flesh.0,[1 3.5 1] a:.6 blur:.8 name:crack
     each i in 0..40
       circle 1.5+rand(0 1.5) at:rand(110 470),rand(680 800) fill:p.bone.0 a:.4 name:pore
     curve 90,640 290,690 480,652 stroke:p.bone.4,10 a:.35 blur:5
     curve 70,612 300,662 500,632 stroke:p.ink,34 a:.45 blur:14 name:helmet_cast
-    curve 80,640 300,690 500,655 stroke:p.flesh.0,26 a:.4 blur:10 name:lip_core
+    curve 100,642 300,690 505,657 stroke:p.flesh.0,26 a:.4 blur:10 name:lip_core
     curve 110,760 285,822 470,780 stroke:p.rim,10 a:.25 blur:6 name:jaw_bounce
     each k, rg in [0,0 1,34]
-      curve 92,690+rg.y 285,745+rg.y 495,682+rg.y stroke:p.flesh.0,12 a:.35 blur:5 name:ridge_dark
-      curve 92,683+rg.y 285,738+rg.y 495,675+rg.y stroke:p.bone.4,2 a:.45 blur:1 name:ridge_lit
-    curve 75,628 160,662 300,672 470,648 505,660 stroke:p.flesh.2,16 blur:2 name:lip_roll
-    curve 80,624 160,656 300,665 470,642 stroke:p.flesh.4,3 a:.55 blur:1 name:lip_lit
+      curve 108,692+rg.y 295,745+rg.y 500,684+rg.y stroke:p.flesh.0,12 a:.35 blur:5 name:ridge_dark
+      curve 108,685+rg.y 295,738+rg.y 500,677+rg.y stroke:p.bone.4,2 a:.45 blur:1 name:ridge_lit
+    curve 100,630 165,662 300,672 472,650 508,662 stroke:p.flesh.2,16 blur:2 name:lip_roll
+    curve 104,626 165,656 300,665 472,644 stroke:p.flesh.4,3 a:.55 blur:1 name:lip_lit
     curve 330,700 350,738 340,770 372,790 stroke:p.flesh.0,[1 5 4 1] a:.55 blur:1.5 name:crack_b
     curve 334,700 354,738 344,770 376,790 stroke:p.bone.4,[1 2 1.5 .5] a:.6 blur:.6 name:crease_lit_b
     curve 260,700 275,735 268,770 290,800 stroke:p.flesh.0,[1 6 5 1] a:.55 blur:1.5 name:big_crack
@@ -153,7 +153,8 @@ layer head rot:8 pivot:480,640
     ellipse 180,36 at:300,560 fill:p.ink a:.6 blur:20
     ellipse 200,22 at:300,668 fill:p.maw.0 a:.5 blur:10 name:gullet_shadow
   each k in 0..7
-    fang 14+rand(0 16) 6+rand(0 3) lean:rand(-6 4) at:160+k*42+rand(-8 8),652+abs(k-3)*2.5 rot:rand(-14 14) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:lower_tooth
+    let tx = 160+k*42+rand(-8 8)
+    fang 14+rand(0 16) 6+rand(0 3) lean:rand(-6 4) at:tx,673-25*((tx-300)/175)*((tx-300)/175) rot:rand(-14 14) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:lower_tooth
       fx outline 3 color:p.ink
   curve 105,600 120,510 190,440 320,400 460,430 525,520 500,610 470,592 300,585 120,600 closed fill:p.shell.3 brush:sculpt(scale:1.2 strength:.8 planes:.8 plump:.8 glossk:.45) name:helmet
     curve 110,598 300,585 490,600 stroke:p.shell.0,16 a:.8 blur:6
@@ -181,7 +182,7 @@ layer head rot:8 pivot:480,640
         curve -24,-2 0,-1 24,-2 stroke:p.ink,3
         curve -24,1 0,2 24,1 stroke:p.glow.4,1.5 a:.5
       fx glow 14 color:p.glow.3 a:.8 strength:1.6
-  fang 80 22 lean:-16 at:110,642 rot:-14 name:tusk_l
+  fang 80 22 lean:-16 at:122,644 rot:-14 name:tusk_l
     fx outline 5 color:p.ink
   fang 104 26 lean:12 at:440,640 rot:4 name:tusk_r
     fx outline 5 color:p.ink
