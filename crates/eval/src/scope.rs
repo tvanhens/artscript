@@ -185,8 +185,7 @@ pub struct FnDef {
 pub struct Record {
     pub path: String,
     pub key: Key,
-    /// The loop indices from the region root down to this node, the key the scope registered
-    /// it under.
+    /// The loop indices of the key the scope registered it under.
     pub copies: Vec<u32>,
     pub parent_world: Matrix,
     pub node: Option<Node>,
@@ -311,7 +310,6 @@ impl RefVal {
             .collect()
     }
 
-    /// The drawn parts named `name` whose scope is this shape, in this copy.
     pub fn parts_under(&self, name: &str) -> Vec<RefVal> {
         let (Some(home), Some(decl)) = (self.home(), self.record.decl) else {
             return Vec::new();
@@ -323,7 +321,6 @@ impl RefVal {
             .collect()
     }
 
-    /// The region this node was declared in, with its decl. `None` for the canvas.
     pub fn home_decl(&self) -> Option<(Rc<Region>, DeclId)> {
         let (home, decl) = (self.home()?, self.record.decl?);
         let region = home.borrow().region();
@@ -379,7 +376,7 @@ pub fn placed_anchors(top: &Rc<RefCell<Names>>) -> BTreeMap<String, (f64, f64)> 
 }
 
 /// The anchors under the shape `scope` of `names`, drawn in the copy `prefix`, each at
-/// `label.name.copies`. Groups and layers are transparent, so a path never spells them.
+/// `label.name.copies`.
 fn anchors_in(
     names: &Names,
     scope: Option<DeclId>,
@@ -421,7 +418,6 @@ fn anchors_in(
     }
 }
 
-/// The anchor `r` is, the anchors in the region it opens, and the anchors in its stamps.
 fn collect_anchors(r: &RefVal, out: &mut BTreeMap<String, (f64, f64)>) {
     if let Some(p) = r.record.anchor {
         out.insert(r.label.clone(), (p.x as f64, p.y as f64));

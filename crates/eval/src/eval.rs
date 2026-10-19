@@ -336,8 +336,7 @@ impl Scope {
         }
     }
 
-    /// A named node's key: the region owner, then each shape down to it with that shape's own
-    /// loop indices, so `thorax.1.sheen.0` is the path an author writes.
+    /// A named node's key is the path an author writes, such as `thorax.1.sheen.0`.
     fn named_key(&self, region: &identity::Region, id: DeclId) -> Key {
         let mut key = self.owner.clone();
         let mut taken = 0;
@@ -441,8 +440,6 @@ pub(crate) struct Evaluator<'a> {
     /// The stamp declarations whose blocks are being placed, outermost first. A set whose
     /// declaration is already here would place itself forever.
     pub(crate) stamping: Vec<*const crate::stamp::StampDecl>,
-    /// The siblings that read back to the running statement: the reads form a cycle, so it runs
-    /// as written and a read of a name one of them holds reports the cycle.
     blocked: Vec<order::Blocker>,
     /// Names of the statements that failed while blocked. A read of one stays quiet, because
     /// the cycle was reported at that statement.
@@ -3973,7 +3970,7 @@ impl<'a> Evaluator<'a> {
         let mut unresolved = false;
         for id in walked.ids {
             let decl = scope.region.decl(id);
-            if !decl.kind.opens_scope() {
+            if !decl.kind.opens_region() {
                 continue;
             }
             match self.child_scope(scope, decl) {
@@ -5566,7 +5563,7 @@ impl<'a> Evaluator<'a> {
                 let hop = segs[1..].iter().position(|s| !is_copy_index(s)).map(|i| i + 1);
                 if let Some(i) = hop
                     && decl.kind == identity::NameKind::Group
-                    && region.holds(id, &segs[i])
+                    && region.has_named_below(id, &segs[i])
                 {
                     return Err(group_hop(segs, 0, i));
                 }
@@ -5611,7 +5608,7 @@ impl<'a> Evaluator<'a> {
     ) -> R<Value> {
         let mut named_at = 0;
         // Where the path of the region `cur` sits in starts, so a fix can spell a full path there.
-        let mut region_at = 0;
+        let mut region_path_start = 0;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i + 1 == segs.len();
@@ -5685,7 +5682,7 @@ impl<'a> Evaluator<'a> {
                             if !nested.is_empty() {
                                 let found: Vec<(Rc<identity::Region>, DeclId)> =
                                     nested.into_iter().map(|id| (region.clone(), id)).collect();
-                                return Err(nested_ref(segs, region_at, i, &found));
+                                return Err(nested_ref(segs, region_path_start, i, &found));
                             }
                         }
                         let names = region
@@ -5696,7 +5693,7 @@ impl<'a> Evaluator<'a> {
                         (parts, names)
                     }
                     Some((region, decl)) => {
-                        if region.holds(decl, seg) {
+                        if region.has_named_below(decl, seg) {
                             return Err(group_hop(segs, named_at, i));
                         }
                         (Vec::new(), Vec::new())
@@ -5746,7 +5743,7 @@ impl<'a> Evaluator<'a> {
             label = format!("{label}.{seg}");
             if one.record.inner.is_some() || through_row {
                 index_depth = 0;
-                region_at = i + 1;
+                region_path_start = i + 1;
             } else {
                 index_depth = one.record.copies.len();
             }
@@ -5906,8 +5903,7 @@ fn component_names(module: &Module) -> BTreeSet<String> {
         .collect()
 }
 
-/// `segs[at]` names a group or a layer, and `segs[i]` a part under it. The fix drops the hop
-/// the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
+/// The fix drops the group hop the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
 fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
     let written = segs.join(".");
     let fail = fail(
@@ -5931,22 +5927,22 @@ fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
 
 /// `segs[at]` is a name that sits deeper than the node before it, under one or more shapes.
 /// The fix spells each full path, with the copy indices the author wrote on the shapes they
-/// belong to. `region_at` is where the region's own path starts in `segs`.
+/// belong to.
 fn nested_ref(
     segs: &[String],
-    region_at: usize,
+    region_path_start: usize,
     at: usize,
     found: &[(Rc<identity::Region>, DeclId)],
 ) -> Fail {
     let written = segs.join(".");
     let seg = &segs[at];
-    let mut indices: Vec<u32> = segs[region_at..at].iter().filter_map(|s| s.parse().ok()).collect();
+    let mut indices: Vec<u32> = segs[region_path_start..at].iter().filter_map(|s| s.parse().ok()).collect();
     let mut rest = at + 1;
     while rest < segs.len() && is_copy_index(&segs[rest]) {
         indices.extend(segs[rest].parse::<u32>());
         rest += 1;
     }
-    let prefix: String = segs[..region_at].iter().map(|s| format!("{s}.")).collect();
+    let prefix: String = segs[..region_path_start].iter().map(|s| format!("{s}.")).collect();
     let tail: String = segs[rest..].iter().map(|s| format!(".{s}")).collect();
     let mut paths: Vec<String> = Vec::new();
     for (region, id) in found {
@@ -5974,7 +5970,6 @@ fn nested_ref(
     f.fix("write one of the listed paths")
 }
 
-/// `@{label}` reaches a name that `b` holds, and `b` waits on the statement reading it.
 fn cycle(label: &str, b: &order::Blocker) -> Fail {
     let at = format!("{}:{}", b.site.file, b.site.span.line);
     let (who, it) = match &b.name {

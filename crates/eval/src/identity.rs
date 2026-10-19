@@ -437,17 +437,15 @@ pub enum RegionKind {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct DeclId(usize);
 
-/// Verbs that draw a group node. A named one is transparent: it opens no name scope and no
-/// path spells it.
+/// Verbs that draw a group node.
 const GROUPS: &[&str] = &["layer", "group", "inside", "outside", "mirror", "repeat", "grid"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NameKind {
-    /// A shape, `copy`, `edge`, or a boolean. The names under it are its own scope, and a path
-    /// spells it: `thorax.sheen`.
+    /// A shape, `copy`, `edge`, or a boolean. A path spells it: `thorax.sheen`.
     Shape,
     /// `layer x`, `group x`, or a named `inside`, `outside`, `mirror`, `repeat`, or `grid`.
-    /// It opens no scope and never appears in a path.
+    /// Groups are transparent: they open no scope and no path spells them.
     Group,
     /// A def call. A patch may hop through it.
     Instance,
@@ -458,8 +456,7 @@ pub enum NameKind {
 }
 
 impl NameKind {
-    /// Whether the names under it live in their own region.
-    pub fn opens_scope(self) -> bool {
+    pub fn opens_region(self) -> bool {
         matches!(self, NameKind::Instance | NameKind::Slot)
     }
 
@@ -481,7 +478,6 @@ pub struct NameDecl {
     /// matches on it.
     pub tree_parent: Option<DeclId>,
     /// The nearest named shape above this one in the region, or `None` at the region root.
-    /// The name is unique among the decls that share it, and a path spells every one of them.
     pub scope: Option<DeclId>,
     /// The component verb, when this decl is a call. A patch that hops through it
     /// while the call is off uses this to find the def's region.
@@ -536,7 +532,6 @@ impl Region {
         self.lookup_in(None, name)
     }
 
-    /// Every decl with this name whose scope is `scope`.
     pub fn lookup_in(&self, scope: Option<DeclId>, name: &str) -> &[DeclId] {
         let Some(name) = Name::parse(name) else {
             return &[];
@@ -547,12 +542,10 @@ impl Region {
             .unwrap_or(&[])
     }
 
-    /// Names at the region root in source order, without repeats.
     pub fn names(&self) -> Vec<&Name> {
         self.names_in(None)
     }
 
-    /// Names whose scope is `scope`, in source order, without repeats.
     pub fn names_in(&self, scope: Option<DeclId>) -> Vec<&Name> {
         let mut out: Vec<&Name> = Vec::new();
         for d in self.decls.iter().filter(|d| d.scope == scope) {
@@ -575,7 +568,6 @@ impl Region {
         out
     }
 
-    /// Whether `scope` is `id`'s scope or one above it.
     fn is_under(&self, id: DeclId, scope: Option<DeclId>) -> bool {
         let mut up = self.decl(id).scope;
         loop {
@@ -589,7 +581,6 @@ impl Region {
         }
     }
 
-    /// Decls named `name` under `scope`, deeper than its own names.
     pub fn nested(&self, scope: Option<DeclId>, name: &str) -> Vec<DeclId> {
         self.decl_ids()
             .filter(|&id| {
@@ -599,8 +590,7 @@ impl Region {
             .collect()
     }
 
-    /// Whether a part of any kind is declared somewhere below the draw `id` in the tree.
-    pub fn holds(&self, id: DeclId, name: &str) -> bool {
+    pub fn has_named_below(&self, id: DeclId, name: &str) -> bool {
         self.decl_ids().any(|c| {
             let mut up = self.decl(c).tree_parent;
             while let Some(p) = up {
@@ -640,7 +630,6 @@ impl Region {
         self.kind != RegionKind::File && name.starts_with('_')
     }
 
-    /// The E0340 note that lists the names a patch can reach under `scope`.
     fn names_note(&self, scope: Option<DeclId>) -> String {
         let names: Vec<String> = self
             .names_in(scope)
@@ -701,14 +690,14 @@ impl Region {
                 seen += 1;
                 j += 1;
             }
-            if j == hops.len() || ids.iter().all(|&id| self.decl(id).kind.opens_scope()) {
+            if j == hops.len() || ids.iter().all(|&id| self.decl(id).kind.opens_region()) {
                 return Ok(Walked {
                     ids,
                     rest: hops[j..].to_vec(),
                 });
             }
             if let Some(&id) = ids.iter().find(|&&id| self.decl(id).kind == NameKind::Group) {
-                return Err(WalkError::Group { at: i, after: j, id });
+                return Err(WalkError::Group { at: i, rest_at: j, id });
             }
             if let Some(&id) = ids.iter().find(|&&id| self.decl(id).kind == NameKind::Anchor) {
                 return Err(WalkError::Anchor(id));
@@ -765,7 +754,6 @@ pub enum WalkError {
     NoName,
     StarNotFinal,
     IndexFirst,
-    /// A copy index past the loops of the shape it follows.
     ExtraIndex(DeclId),
     /// No decl named `name` directly under `scopes` (none means the root). `nested` holds the
     /// decls of that name deeper down, for the fix.
@@ -775,8 +763,7 @@ pub enum WalkError {
         nested: Vec<DeclId>,
         at: usize,
     },
-    /// `hops[at]` names the group `id`, and `hops[after..]` goes on past its copy indices.
-    Group { at: usize, after: usize, id: DeclId },
+    Group { at: usize, rest_at: usize, id: DeclId },
     Anchor(DeclId),
     Private(Name),
 }
@@ -820,12 +807,8 @@ struct Declarer<'a> {
     out: &'a mut Vec<Diagnostic>,
 }
 
-/// Declares one region. It walks draw bodies, mask blocks, `if` arms, and loop bodies, and it
-/// stops at slot content, which becomes its own region in `nested`, keyed by the fill's or the
-/// slot's span. A second name under one shape, or at the root, is E0333 at its line, unless the
-/// two sit in exclusive arms of one `if`. A `name:` that is not one identifier, or a second name
-/// on one node, is E0312. It reads source only, so a statement that is never drawn is still
-/// checked.
+/// Declares one region. It stops at slot content, which becomes its own region in `nested`. It
+/// reads source only, so a statement that is never drawn is still checked.
 pub fn declare(
     file: &Rc<str>,
     kind: RegionKind,
@@ -1785,7 +1768,7 @@ impl Pending {
             if rest.is_empty() {
                 reached.set(true);
                 own.push(patch.clone());
-            } else if d.kind.opens_scope() {
+            } else if d.kind.opens_region() {
                 reached.set(true);
                 let mut next = patch.clone();
                 next.rest = rest;
@@ -1918,9 +1901,9 @@ fn validate(
                 "name a part under a shape".into(),
             );
         }
-        Err(WalkError::Group { at, after, id }) => {
+        Err(WalkError::Group { at, rest_at, id }) => {
             let name = &region.decl(id).name;
-            let fix = child_fix(&patch.rest[at + 1..after], &patch.rest[after..], region, id);
+            let fix = child_fix(&patch.rest[at + 1..rest_at], &patch.rest[rest_at..], region, id);
             return fail(
                 format!("{what} hops through `{name}`, which is a group"),
                 vec![GROUP_NOTE.into()],
@@ -1954,7 +1937,7 @@ fn validate(
             }
             true
         }
-        Some(Hop::Star) if walked.ids.iter().any(|&id| region.decl(id).kind.opens_scope()) => true,
+        Some(Hop::Star) if walked.ids.iter().any(|&id| region.decl(id).kind.opens_region()) => true,
         Some(Hop::Star) => {
             let has_child = region.decl_ids().any(|c| {
                 let d = region.decl(c);
@@ -1986,8 +1969,6 @@ fn validate(
 pub const GROUP_NOTE: &str =
     "a path names each shape on the way; groups, layers, and loops are not part of it";
 
-/// The message, notes, and fix for a path whose `name` is not directly under `scopes`.
-/// `after` is the rest of the written path, which the fix keeps.
 fn missing_text(
     region: &Region,
     what: &str,
@@ -2052,8 +2033,6 @@ fn missing_text(
     }
 }
 
-/// The fix for a hop through the group `group`: its name dropped, and a final `*` replaced by
-/// the first named child it has.
 fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, group: DeclId) -> String {
     if rest.len() == 1 && matches!(rest.first(), Some(Hop::Star)) {
         let first = region.decl_ids().find(|&id| {
@@ -2282,7 +2261,7 @@ mod tests {
             &mut bare_out,
         );
         let bare_id = bare.file().lookup("c")[0];
-        assert!(!bare.file().decl(bare_id).kind.opens_scope());
+        assert!(!bare.file().decl(bare_id).kind.opens_region());
         assert!(bare.region(Span { line: 6, col: 3 }).is_none());
 
         let mut out = Vec::new();
@@ -2297,7 +2276,7 @@ mod tests {
         );
         assert!(out.is_empty(), "{out:?}");
         let id = ids.file().lookup("c")[0];
-        assert!(ids.file().decl(id).kind.opens_scope());
+        assert!(ids.file().decl(id).kind.opens_region());
         let fill = ids.region(Span { line: 6, col: 3 }).expect("fill region");
         assert_eq!(fill.kind, RegionKind::Slot);
         assert_eq!(fill.names(), [&name("gem")]);
@@ -2451,7 +2430,7 @@ mod tests {
             .map(|id| file.spell(id, &[]))
             .collect();
         assert_eq!(nested, ["thorax.sheen", "abdomen.sheen"]);
-        assert!(file.holds(file.lookup_in(Some(thorax), "gloss")[0], "sheen"));
+        assert!(file.has_named_below(file.lookup_in(Some(thorax), "gloss")[0], "sheen"));
     }
 
     #[test]

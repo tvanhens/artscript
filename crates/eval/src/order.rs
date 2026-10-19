@@ -14,7 +14,6 @@ pub struct Step {
 /// A sibling statement that reads back to the one running. A read of a name it holds reports
 /// the cycle and names the statement.
 pub struct Blocker {
-    /// The name the statement itself declares, when it has one.
     pub name: Option<Name>,
     pub site: Site,
     /// The site of every decl in the statement's subtree, its own included.
