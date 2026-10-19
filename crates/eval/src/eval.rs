@@ -2125,6 +2125,7 @@ impl<'a> Evaluator<'a> {
         } else {
             let inner_world = world;
             let mut operand_frame = None;
+            let explicit = a.seed()?;
             let (geometry, knots, closed) = match verb {
                 "subtract" | "union" | "intersect" | "xor" => {
                     let op = match verb {
@@ -2189,7 +2190,6 @@ impl<'a> Evaluator<'a> {
                         return Err(fail("E0320", "`jitter:` wavelength must be positive")
                             .fix("write `jitter:1.5,60`"));
                     }
-                    let explicit = a.seed()?;
                     let jitter = identity::seed(sc.file(), &key.jitter(), explicit, &mut self.uses);
                     let mut rng = Rng::new(jitter);
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);

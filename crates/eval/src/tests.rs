@@ -6210,6 +6210,9 @@ fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
     let blot = ("lib/d.art", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
     let none: &[(&str, &str)] = &[];
     let cases = [
+        ("circle 4 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 jitter:0,60 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 fill:#000000 seed:foo name:n", "a word", none),
         ("circle rand(4 8 seed:\"a\") name:n", "a string", none),
         ("circle pick([4 8] seed:foo) name:n", "a word", none),
         ("rect 20x20 fill:simplex(16 seed:\"a\") -> [#000000 #ffffff] name:n", "a string", none),
