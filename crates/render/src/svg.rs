@@ -390,7 +390,7 @@ impl Writer {
         }
         if !shape.children.is_empty() {
             let cid = format!("{id}-nest");
-            self.clip_path_def(&cid, &shape.geometry);
+            self.clip_path_def(&cid, &shape.clip());
             self.body.push_str(&pad);
             self.body.push_str("<g clip-path=\"url(#");
             self.body.push_str(&cid);
@@ -419,23 +419,38 @@ impl Writer {
         self.body.push_str("\"/>\n");
     }
 
+    /// The geometry with its fill and stroke, or, under a tapered stroke, the geometry with its
+    /// fill and then the stroke's ink filled with the stroke's paint. Both take the shape's blur.
     fn path(&mut self, shape: &Shape, id: &str, pad: &str) {
+        let fid = format!("{id}-blur");
+        let filter = (shape.blur > 0.0).then_some(fid.as_str());
+        let fill = shape.fill.as_ref().map(|f| &f.paint);
+        match shape.stroke.as_ref().and_then(|st| Some((st, st.ink.as_ref()?))) {
+            None => self.path_element(&shape.geometry, fill, shape.stroke.as_ref(), id, filter, pad),
+            Some((stroke, ink)) => {
+                if fill.is_some() {
+                    self.path_element(&shape.geometry, fill, None, id, filter, pad);
+                }
+                let gid = if fill.is_some() { format!("{id}-ink") } else { id.to_string() };
+                self.path_element(ink, Some(&stroke.paint), None, &gid, filter, pad);
+            }
+        }
+        if filter.is_some() {
+            self.blur_filter(&fid, shape.blur);
+        }
+    }
+
+    /// One `<path>`, its gradients named from `gid`.
+    fn path_element(&mut self, path: &Path, fill: Option<&Paint>, stroke: Option<&Stroke>, gid: &str, filter: Option<&str>, pad: &str) {
         self.body.push_str(pad);
         self.body.push_str("<path d=\"");
-        self.body.push_str(&path_data(&shape.geometry));
+        self.body.push_str(&path_data(path));
         self.body.push('"');
-        self.body.push_str(fill_rule(&shape.geometry));
-        self.paint_attrs(shape.fill.as_ref().map(|f| &f.paint), shape.stroke.as_ref(), id);
-        if shape.blur > 0.0 {
-            let fid = format!("{id}-blur");
-            self.defs.push_str("    <filter id=\"");
-            self.defs.push_str(&fid);
-            self.defs.push_str("\" filterUnits=\"objectBoundingBox\" x=\"-100%\" y=\"-100%\" width=\"300%\" height=\"300%\">");
-            self.defs.push_str("<feGaussianBlur stdDeviation=\"");
-            self.defs.push_str(&fmt_num(shape.blur));
-            self.defs.push_str("\"/></filter>\n");
+        self.body.push_str(fill_rule(path));
+        self.paint_attrs(fill, stroke, gid);
+        if let Some(fid) = filter {
             self.body.push_str(" filter=\"url(#");
-            self.body.push_str(&fid);
+            self.body.push_str(fid);
             self.body.push_str(")\"");
         }
         self.body.push_str("/>\n");

@@ -720,7 +720,7 @@ pub fn hidden_child(
             for c in &s.stamps {
                 self.node(c, world, site);
             }
-            let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
+            let r = world.map_rect(s.clip().compute_tight_bounds()).0;
             self.clips.push((r, n.path.as_str()));
             for c in &s.children {
                 self.node(c, world, site);

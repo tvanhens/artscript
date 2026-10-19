@@ -157,6 +157,24 @@ fn a_brush_on_a_stroke_makes_a_ribbon_and_on_fill_narrows_it() {
 }
 
 #[test]
+fn a_tapered_stroke_keeps_the_fill_and_its_marks() {
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry }\nblob 30 at:50,50 fill:#ff0000 stroke:#000000,4 taper:.3 brush:dry(on:fill) name:a\nblob 30 at:50,50 fill:#00ff00 stroke:#000000,[2 8 2] name:b\n",
+        &[LIB],
+    );
+    assert_eq!(marks(&s, "a").len(), 1, "the fill keeps its brush under a taper");
+    for (name, hex) in [("a", 0xff0000), ("b", 0x00ff00)] {
+        let sh = shape(&s, name);
+        let Some(artscript_ir::Paint::Solid(c)) = sh.fill.as_ref().map(|f| &f.paint) else {
+            panic!("{name}: fill {:?}", sh.fill)
+        };
+        let rgb = ((c.r * 255.0).round() as u32) << 16 | ((c.g * 255.0).round() as u32) << 8 | (c.b * 255.0).round() as u32;
+        assert_eq!(rgb, hex, "{name}: the fill keeps its own color under a tapered stroke");
+        assert!(sh.stroke.is_some(), "{name}: the tapered stroke is a stroke");
+    }
+}
+
+#[test]
 fn a_fill_and_a_stroke_on_one_node_get_two_marks_seeded_apart() {
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry name:a\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry seed:7 name:b\n", &[LIB]);
     let fill_seed = seeds(&s, "a")[0];

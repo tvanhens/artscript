@@ -469,22 +469,14 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
         "bottom {}",
         b.bottom
     );
-    let ink = shape(&s, "ink").geometry.to_svg();
-    let lit = shape(&s, "lit").geometry.to_svg();
+    let outline = |name| shape(&s, name).stroke.as_ref().and_then(|st| st.ink.clone()).expect("tapered ink");
     assert_eq!(
-        ink, lit,
+        outline("ink").to_svg(),
+        outline("lit").to_svg(),
         "a width list built with each differs from the same literal list"
     );
-    assert!(
-        shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 3.5))
-    );
-    assert!(
-        !shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 4.6))
-    );
+    assert!(outline("ink").contains(artscript_ir::Point::new(50.0, 3.5)));
+    assert!(!outline("ink").contains(artscript_ir::Point::new(50.0, 4.6)));
 }
 
 #[test]
@@ -772,7 +764,7 @@ fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
     let s = scene(
         "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
     );
-    let ink = &shape(&s, "a").geometry;
+    let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
     let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
     assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
     assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
@@ -785,7 +777,7 @@ fn a_width_list_stroke_inks_every_contour_of_a_path() {
     let s = scene(
         "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
     );
-    let ink = &shape(&s, "a").geometry;
+    let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
     let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
     assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
 }
@@ -2027,6 +2019,14 @@ fn hidden_children(src: &str) -> Vec<Diagnostic> {
         .into_iter()
         .filter(|d| d.code == "L0105")
         .collect()
+}
+
+#[test]
+fn a_child_inside_a_tapered_stroke_is_not_hidden() {
+    let hidden = hidden_children(
+        "@target t.png 128x64\ncurve -40,0 40,0 fill:none stroke:#000,[2 20 2] at:64,32 name:line\n  circle 3 at:0,6 name:dot\n",
+    );
+    assert!(hidden.is_empty(), "{}", show(&hidden));
 }
 
 #[test]

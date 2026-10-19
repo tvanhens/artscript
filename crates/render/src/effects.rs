@@ -928,7 +928,7 @@ fn push_shape(shape: &Shape, out: &mut Vec<Region>) -> Result<(), RenderError> {
     if let Some(stroke) = &shape.stroke
         && let Some(coverage) = coverage(&stroke.paint)
     {
-        let filled = match stroke.ribbon.as_ref().and_then(|r| r.ink.as_ref()) {
+        let filled = match &stroke.ink {
             Some(ink) => ink.clone(),
             None => stroke_fill(&shape.geometry, stroke)?,
         };
