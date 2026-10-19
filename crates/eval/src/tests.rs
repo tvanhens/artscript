@@ -6066,6 +6066,24 @@ fn a_def_fx_outline_mask_names_and_numbers_its_nodes() {
     assert_ne!(at(&n[0]), at(&n[1]));
 }
 
+#[test]
+fn an_fx_line_is_numbered_by_its_source_position_whatever_an_earlier_branch_does() {
+    use artscript_ir::MaskSource;
+    let src = |guard: &str| {
+        format!(
+            "@target t.png 100x100\ncircle 20 at:50,50 name:c\n  if {guard}\n    fx glow 2\n  fx outline 3\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n"
+        )
+    };
+    let rect = |s: &Scene| match &outline_mask(s, "c").unwrap().source {
+        MaskSource::Nodes(n) => (n[0].path.clone(), at(&n[0])),
+        other => panic!("{other:?}"),
+    };
+    let taken = scene(&src("true"));
+    let skipped = scene(&src("false"));
+    assert_eq!(rect(&taken).0, "c.fx~2.mask~1.rect~1");
+    assert_eq!(rect(&taken), rect(&skipped));
+}
+
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
     match shape(s, path).fill.as_ref().map(|f| &f.paint) {
         Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
