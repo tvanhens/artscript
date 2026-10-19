@@ -667,6 +667,29 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
 }
 
 #[test]
+fn an_error_on_every_gif_frame_prints_once_with_the_png_targets() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifonce-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"g\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/x.art"),
+        "@target a.png 32x32\n@target b.png 32x32\n@target c.gif 32x32 bg:#000000 dur:1s fps:2\n\npalette k\n  color red #ff0000\n\ngroup name:g\n  anchor j 0,0\n  group name:h\n    anchor j 0,0\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check"]);
+    let err = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert_eq!(err.matches("error[E0333] art/x.art:11:5").count(), 1, "{err}");
+    assert!(!err.contains("first at") && !err.contains("worst at"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-only-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
