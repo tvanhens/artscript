@@ -1156,6 +1156,9 @@ impl<'a> Evaluator<'a> {
             DeclKind::Brush { name, params, sksl } => {
                 self.declare_brush(module, name, params, sksl.as_ref(), decl.span)
             }
+            DeclKind::Stamp { name, .. } => {
+                Err(fail("E0365", format!("stamp `{name}` cannot be declared yet")).fix("stamps land in the next commit"))
+            }
             DeclKind::Light { .. } => Err(
                 fail("E0390", "light (Phase 2) is not yet implemented in v0.1")
                     .fix("remove the declaration, or use built-in fields and fx lines"),

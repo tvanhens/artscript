@@ -95,7 +95,7 @@ fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(
         match item {
             Item::Scene(s) => walk_scene(s, f),
             Item::Decl(Decl {
-                kind: DeclKind::Def { body, .. },
+                kind: DeclKind::Def { body, .. } | DeclKind::Stamp { body, .. },
                 ..
             }) => body
                 .iter()
@@ -185,7 +185,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
             DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
-            DeclKind::Def { params, body, .. } => {
+            DeclKind::Def { params, body, .. } | DeclKind::Stamp { params, body, .. } => {
                 named(params, &mut out);
                 body.iter()
                     .filter_map(DefItem::fx)
@@ -243,6 +243,7 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         .collect();
     for d in file.decls() {
         if let DeclKind::Def { params, .. }
+        | DeclKind::Stamp { params, .. }
         | DeclKind::Rule { params, .. }
         | DeclKind::Finish { params, .. }
         | DeclKind::Brush { params, .. } = &d.kind
@@ -392,7 +393,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     idents(exprs, &scenes, &mut used);
     for d in file.decls() {
         match &d.kind {
-            DeclKind::Def { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
+            DeclKind::Def { body, .. } | DeclKind::Stamp { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
                 used.insert(fx.op.clone());
             }),
             DeclKind::Palette {
@@ -435,7 +436,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                     }
                 }
             }
-            DeclKind::Def { name, params, body } => {
+            DeclKind::Def { name, params, body } | DeclKind::Stamp { name, params, body } => {
                 let mut exprs = Vec::new();
                 let mut inner_scenes = Vec::new();
                 body.iter()
@@ -449,10 +450,10 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                 }
                 let mut inner = HashSet::new();
                 idents(exprs, &inner_scenes, &mut inner);
-                for p in params
-                    .iter()
-                    .filter(|p| p.key != "needs" && p.key != "size")
-                {
+                let placement = matches!(d.kind, DeclKind::Stamp { .. });
+                for p in params.iter().filter(|p| {
+                    p.key != "needs" && p.key != "size" && !(placement && matches!(p.key.as_str(), "spacing" | "count"))
+                }) {
                     if !inner.contains(&p.key) {
                         push(
                             p.span,

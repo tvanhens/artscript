@@ -102,12 +102,11 @@ impl<'a> Printer<'a> {
             }
             DeclKind::Def { name, params, body } => {
                 self.emit(line, 0, &join_head("def", name, &[], params));
-                for item in body {
-                    match item {
-                        DefItem::Scene(s) => self.scene(s, 1),
-                        DefItem::Fx(f) => self.fx(f, 1),
-                    }
-                }
+                self.def_body(body);
+            }
+            DeclKind::Stamp { name, params, body } => {
+                self.emit(line, 0, &join_head("stamp", name, &[], params));
+                self.def_body(body);
             }
             DeclKind::Rule { name, params, body } => {
                 self.emit(line, 0, &join_head("rule", name, &[], params));
@@ -158,6 +157,15 @@ impl<'a> Printer<'a> {
     fn scenes(&mut self, scenes: &[Scene], indent: usize) {
         for s in scenes {
             self.scene(s, indent);
+        }
+    }
+
+    fn def_body(&mut self, body: &[DefItem]) {
+        for item in body {
+            match item {
+                DefItem::Scene(s) => self.scene(s, 1),
+                DefItem::Fx(f) => self.fx(f, 1),
+            }
         }
     }
 

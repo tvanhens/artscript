@@ -342,32 +342,33 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn def_line(&mut self) -> Option<DefItem> {
+    /// `kw` is `def` or `stamp`, the declaration whose body this line is in.
+    fn def_line(&mut self, kw: &str) -> Option<DefItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DefItem::Fx),
             Head::Scene if self.at_kw(Word::If) => self.parse_if(true).map(DefItem::Scene),
             Head::Mask => {
                 self.reject_line_and_block(
-                    "a `def` body cannot hold a mask",
-                    "put the mask under a draw inside the def, or under the call site",
+                    format!("a `{kw}` body cannot hold a mask"),
+                    format!("put the mask under a draw inside the {kw}, or under the call site"),
                 );
                 None
             }
             Head::SlotFill(name) => {
                 self.reject_line_and_block(
-                    format!("a `def` body cannot hold slot fill `{name}:`"),
+                    format!("a `{kw}` body cannot hold slot fill `{name}:`"),
                     format!("declare it with `slot {name}`, or fill it under a component call"),
                 );
                 None
             }
             Head::Patch => {
                 self.reject_line_and_block(
-                    "a `def` body cannot hold a patch",
+                    format!("a `{kw}` body cannot hold a patch"),
                     "write the patch under a call of the component",
                 );
                 None
             }
-            head => self.scene_head(head, "in a def").map(DefItem::Scene),
+            head => self.scene_head(head, &format!("in a {kw}")).map(DefItem::Scene),
         }
     }
 
@@ -470,6 +471,7 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Rule)) => self.parse_rule(),
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
             Some(Tok::Ident(s)) if s == "brush" => self.parse_brush(),
+            Some(Tok::Ident(s)) if s == "stamp" => self.parse_stamp(),
             Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
             _ => None,
         }?;
@@ -627,10 +629,10 @@ impl<'a> Parser<'a> {
         let indent = self.cur_indent();
         self.bump();
         let name = self.expect_name();
-        if name == "brush" {
+        if words::is_decl_head(&name) {
             self.errors.push(
-                Diagnostic::error("E0105", span, "a def cannot be named `brush`")
-                    .with_note("a line that starts with `brush` declares a brush, so no instance of this def could be written")
+                Diagnostic::error("E0105", span, format!("a def cannot be named `{name}`"))
+                    .with_note(format!("a line that starts with `{name}` declares a {name}, so no instance of this def could be written"))
                     .with_fix("rename the def"),
             );
         }
@@ -643,8 +645,27 @@ impl<'a> Parser<'a> {
             );
         }
         self.reject_param_names(&params);
-        let body = self.block(indent, span.line, Self::def_line);
+        let body = self.block(indent, span.line, |p| p.def_line("def"));
         Some(DeclKind::Def { name, params, body })
+    }
+
+    /// `stamp NAME k:v...` with a body of the lines a def body takes.
+    fn parse_stamp(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let (args, params) = self.parse_items();
+        if !args.is_empty() {
+            self.fail(
+                span,
+                "a stamp takes named arguments only",
+                "write `stamp name key:value`",
+            );
+        }
+        self.reject_param_names(&params);
+        let body = self.block(indent, span.line, |p| p.def_line("stamp"));
+        Some(DeclKind::Stamp { name, params, body })
     }
 
     fn parse_rule(&mut self) -> Option<DeclKind> {
