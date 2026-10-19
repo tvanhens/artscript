@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use crate::Diagnostic;
 use crate::ast::{
     BinOp, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody, DrawItem, Expr, File, Fx,
-    Item, Mask, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SkslBlock, SlotFill, Span, Swatch,
-    SwatchKind, UnOp,
+    Item, Mask, MaskLine, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SkslBlock, SlotFill,
+    Span, Swatch, SwatchKind, UnOp,
 };
 use crate::lex::{self, Line, SizePart, Tok};
 use crate::words::{self, Word};
@@ -332,7 +332,9 @@ impl<'a> Parser<'a> {
     fn draw_line(&mut self, fx_branches: bool) -> Option<DrawItem> {
         match self.head() {
             Head::Fx => self.parse_fx().map(DrawItem::Fx),
-            Head::Mask => self.parse_mask(),
+            Head::Mask => self
+                .parse_mask()
+                .map(|MaskLine { mask, span }| DrawItem::Mask { mask, span }),
             Head::SlotFill(name) => self.parse_slot_fill(name).map(DrawItem::SlotFill),
             Head::Patch => self.parse_patch().map(DrawItem::Patch),
             Head::Scene if fx_branches && self.at_kw(Word::If) => {
@@ -613,7 +615,17 @@ impl<'a> Parser<'a> {
 
     fn finish_line(&mut self) -> Option<Fx> {
         match self.head() {
-            Head::Fx => self.parse_fx(),
+            Head::Fx => {
+                let mut fx = self.parse_fx()?;
+                if let Some(mask) = fx.mask.take() {
+                    self.fail(
+                        mask.span,
+                        "a finish line takes no mask",
+                        "write the mask under the node's own `fx outline` line",
+                    );
+                }
+                Some(fx)
+            }
             _ => {
                 self.reject_line_and_block(
                     "a finish holds only `fx` lines",
@@ -1140,17 +1152,47 @@ impl<'a> Parser<'a> {
             }
         };
         let (args, named) = self.parse_items();
-        self.no_block(indent);
+        let mut mask = None;
+        for line in self.block(indent, span.line, |p| p.fx_line()) {
+            if mask.is_some() {
+                self.fail(
+                    line.span,
+                    "an `fx` line takes one mask",
+                    "merge the masks into one `mask` block, or remove one",
+                );
+            } else if op != "outline" {
+                self.fail(
+                    line.span,
+                    format!("`fx {op}` takes no mask"),
+                    "only `fx outline` takes a mask; remove it, or move it under the draw",
+                );
+            } else {
+                mask = Some(line);
+            }
+        }
         Some(Fx {
             op,
             args,
             named,
             span,
-            mask: None,
+            mask,
         })
     }
 
-    fn parse_mask(&mut self) -> Option<DrawItem> {
+    fn fx_line(&mut self) -> Option<MaskLine> {
+        match self.head() {
+            Head::Mask => self.parse_mask(),
+            _ => {
+                self.reject_line_and_block(
+                    "only `mask` goes under an `fx` line",
+                    "dedent it, or write `mask` over the shapes that keep the ring",
+                );
+                None
+            }
+        }
+    }
+
+    fn parse_mask(&mut self) -> Option<MaskLine> {
         let span = self.cur_span();
         let indent = self.cur_indent();
         self.bump();
@@ -1183,7 +1225,7 @@ impl<'a> Parser<'a> {
                 return None;
             }
         };
-        Some(DrawItem::Mask { mask, span })
+        Some(MaskLine { mask, span })
     }
 
     fn parse_patch(&mut self) -> Option<Patch> {
