@@ -5,7 +5,7 @@ const { spawnSync } = require("node:child_process");
 const platforms = require("../platforms.json");
 
 function fail(message) {
-  console.error(`artscript: ${message}`);
+  console.error(`ramose: ${message}`);
   process.exit(1);
 }
 
@@ -17,7 +17,7 @@ function isMusl() {
 const musl = isMusl();
 const here = `${process.platform}-${process.arch}${musl ? " (musl)" : ""}`;
 const supported = platforms.map((p) => p.key).join(", ");
-const fallback = "cargo install --git https://github.com/tvanhens/artscript artscript";
+const fallback = "cargo install --git https://github.com/tvanhens/ramose ramose";
 
 const entry = musl ? undefined : platforms.find((p) => p.os === process.platform && p.cpu === process.arch);
 if (!entry) {

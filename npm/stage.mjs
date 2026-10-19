@@ -9,7 +9,7 @@ const platforms = JSON.parse(readFileSync(join(npmDir, "platforms.json"), "utf8"
 
 const common = {
   license: "BUSL-1.1",
-  repository: { type: "git", url: "git+https://github.com/tvanhens/artscript.git" },
+  repository: { type: "git", url: "git+https://github.com/tvanhens/ramose.git" },
 };
 
 function die(message) {
@@ -41,7 +41,7 @@ function stagePlatform(version, key, binary, outDir) {
   writeJson(join(dir, "package.json"), {
     name: p.package,
     version,
-    description: `The artscript binary for ${key}.`,
+    description: `The ramose binary for ${key}.`,
     ...common,
     os: [p.os],
     cpu: [p.cpu],
@@ -52,9 +52,9 @@ function stagePlatform(version, key, binary, outDir) {
 }
 
 function stageMain(version, outDir) {
-  const dir = join(outDir, "artscript");
+  const dir = join(outDir, "ramose");
   rmSync(dir, { recursive: true, force: true });
-  cpSync(join(npmDir, "artscript"), dir, { recursive: true });
+  cpSync(join(npmDir, "ramose"), dir, { recursive: true });
   copyFileSync(join(npmDir, "platforms.json"), join(dir, "platforms.json"));
   for (const f of ["README.md", "LICENSE"]) copyFileSync(join(root, f), join(dir, f));
   const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
