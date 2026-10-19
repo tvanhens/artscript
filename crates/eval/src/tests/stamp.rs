@@ -389,3 +389,12 @@ fn an_unpainted_host_gives_its_effects_the_stamps_color() {
     let glow = explain(&group, &BTreeSet::new()).lines().find(|l| l.starts_with("g  ")).unwrap().split("[fx glow 6 ").nth(1).unwrap()[..7].to_string();
     assert!(line.contains(&format!("[fx glow 6 {glow}]")), "the dots color the glow as a group of them does: {line} vs {glow}");
 }
+
+#[test]
+fn the_rig_carries_anchors_inside_stamps() {
+    let ev = run_with("@target t.png 256x256\ndef bud\n  circle 3 fill:#22aa66 name:b\n  anchor tip 0,-3\nstamp buds spacing:40\n  bud name:bud\ncurve 20,128 236,128 stroke:#333333,2 stamp:buds name:vine\n", &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let tip = ev.rig.anchors.get("vine.buds.2.bud.tip").copied();
+    assert_eq!(tip, Some((120.0, 125.0)), "{:?}", ev.rig.anchors);
+    assert_eq!(ev.rig.anchors.keys().filter(|k| k.starts_with("vine.buds.")).count(), 5, "{:?}", ev.rig.anchors);
+}

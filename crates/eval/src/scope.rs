@@ -368,6 +368,18 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
     for child in r.children() {
         collect_anchors(&child, private_scope, out);
     }
+    for row in r.record.rows.iter() {
+        for (i, stamp) in row.stamps.iter().enumerate() {
+            let stamp = RefVal {
+                label: format!("{}.{}.{i}", r.label, row.name),
+                record: stamp.borrow().clone(),
+                source: Some(Rc::as_ptr(stamp) as usize),
+                canvas: None,
+                extent: Extent::Visual,
+            };
+            collect_anchors(&stamp, private_scope, out);
+        }
+    }
 }
 
 pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
