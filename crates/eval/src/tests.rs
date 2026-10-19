@@ -771,6 +771,19 @@ fn round_cuts_corners_of_a_flat_curve_and_a_poly() {
 }
 
 #[test]
+fn curve_never_goes_past_its_points() {
+    let s = scene(
+        "@target t.png 120x80\n\
+         curve 10,30 30,43 60,43 90,43 110,20 tension:1 name:foot\n\
+         curve 20,20 60,10 100,20 60,60 closed name:loop\n",
+    );
+    let foot = shape(&s, "foot").geometry.compute_tight_bounds();
+    assert!(foot.bottom <= 43.0, "foot bulges to {}", foot.bottom);
+    let ring = shape(&s, "loop").geometry.compute_tight_bounds();
+    assert_eq!((ring.left, ring.top, ring.right, ring.bottom), (20.0, 10.0, 100.0, 60.0));
+}
+
+#[test]
 fn jitter_is_amplitude_and_wavelength() {
     let a = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,30\n");
     let b = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,90\n");

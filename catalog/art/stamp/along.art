@@ -15,10 +15,9 @@
 # own, holding green grass tufts every 9 px. Each tuft is three thin tapered blades that stand
 # upright, lean by a random -10 to 10 degrees, and vary in height from 7 to 13 px; their blades
 # are dry-brushed, so they break into streaks. A solid green hill fills a closed curve through the
-# ridge's four points and 240,240 and 120,240, which the curve's tension rounds into a blob: its
-# top follows the ridge from about 120,210 to 240,195, its corners are rounded, its sides bulge out
-# to x 116 and x 245 near y 220, and its bottom bulges down to y 249 between x 160 and 200. The
-# tufts stand on its top edge.
+# ridge's four points and 240,240 and 120,240. A curve never goes past its points, so its top follows
+# the ridge from 120,210 to 240,194, its sides are straight at x 120 and x 240, and its bottom is flat
+# along y 240. The tufts stand on its top edge.
 # The .svg target uses profile:svg: the dots, leaves, circle, and ticks stay vector paths. Only the
 # vine's own brushed stroke and each tuft's brushed blades are baked to raster tiles, and the
 # vine's leaves stay vector paths drawn over its tile, so the image matches the PNG.

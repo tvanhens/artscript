@@ -3045,7 +3045,7 @@ impl<'a> Evaluator<'a> {
                     // A tension-0 spline is cubics. Skia's corner effect only rounds line joins,
                     // so the straight sides are a polygon before the same effect `poly` uses.
                     Some(round) => geom::round_corners(&geom::polygon(&pts), round),
-                    None => geom::spline(&pts, tension, closed),
+                    None => geom::spline(&pts, tension, closed, true),
                 };
                 (path, vec![pts], closed, first)
             }
