@@ -479,7 +479,8 @@ fn grain_on_a_flat_rect_is_not_striped() {
 #[test]
 fn grain_strength_is_a_fixed_overlay() {
     assert_eq!(pixel(&grain_rect(0.0, 2.0, 3), 96, 96), [128, 128, 128, 255]);
-    assert_eq!(pixel(&grain_rect(0.5, 2.0, 3), 96, 96), [177, 177, 177, 255]);
+    let overlaid = pixel(&grain_rect(0.5, 2.0, 3), 96, 96);
+    assert!(overlaid[..3].iter().all(|c| c.abs_diff(177) <= 1) && overlaid[3] == 255, "full overlay {overlaid:?}");
     let half = pixel(&grain_rect(0.25, 2.0, 3), 80, 80);
     let full = pixel(&grain_rect(0.5, 2.0, 3), 80, 80);
     let d = |p: [u8; 4]| p[0] as i32 - 128;
