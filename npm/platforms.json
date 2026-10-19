@@ -1,0 +1,7 @@
+[
+  { "key": "darwin-arm64", "os": "darwin", "cpu": "arm64", "target": "aarch64-apple-darwin", "runner": "macos-14", "exe": "artscript" },
+  { "key": "darwin-x64", "os": "darwin", "cpu": "x64", "target": "x86_64-apple-darwin", "runner": "macos-15-intel", "exe": "artscript" },
+  { "key": "linux-x64-gnu", "os": "linux", "cpu": "x64", "libc": "glibc", "target": "x86_64-unknown-linux-gnu", "runner": "ubuntu-22.04", "exe": "artscript" },
+  { "key": "linux-arm64-gnu", "os": "linux", "cpu": "arm64", "libc": "glibc", "target": "aarch64-unknown-linux-gnu", "runner": "ubuntu-22.04-arm", "exe": "artscript" },
+  { "key": "win32-x64", "os": "win32", "cpu": "x64", "target": "x86_64-pc-windows-msvc", "runner": "windows-2022", "exe": "artscript.exe" }
+]

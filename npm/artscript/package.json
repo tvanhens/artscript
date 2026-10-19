@@ -1,0 +1,17 @@
+{
+  "name": "artscript",
+  "description": "A language for procedural art that a language model can write and check.",
+  "license": "BUSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tvanhens/artscript.git"
+  },
+  "homepage": "https://github.com/tvanhens/artscript#readme",
+  "bin": {
+    "artscript": "bin/artscript.js"
+  },
+  "files": [
+    "bin/artscript.js",
+    "platforms.json"
+  ]
+}
