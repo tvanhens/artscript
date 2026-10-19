@@ -1230,6 +1230,7 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
+            DeclKind::Fn { .. } => Ok(()),
             DeclKind::Anim {
                 name,
                 dur,

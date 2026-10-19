@@ -474,6 +474,7 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
             Some(Tok::Ident(s)) if s == "brush" => self.parse_brush(),
             Some(Tok::Ident(s)) if s == "stamp" => self.parse_stamp(),
+            Some(Tok::Ident(s)) if s == "fn" => self.parse_fn(),
             Some(Tok::Kw(Word::Anim)) => self.parse_anim(),
             _ => None,
         }?;
@@ -717,6 +718,55 @@ impl<'a> Parser<'a> {
         self.reject_param_names(&params);
         let body = self.block(indent, span.line, |p| p.scene_line("in a rule"));
         Some(DeclKind::Rule { name, params, body })
+    }
+
+    fn parse_fn(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let name = self.expect_name();
+        let shown = if name.is_empty() { "name" } else { &name };
+        let shape = format!("write `fn {shown}(a b) = <expr>`");
+        if !self.eat(&Tok::LParen) {
+            self.fail(span, "expected `(` after the name", shape);
+            self.no_block(indent);
+            return None;
+        }
+        let mut params: Vec<String> = Vec::new();
+        while !self.eat(&Tok::RParen) {
+            if self.eol() {
+                self.fail(span, "expected `)` after the parameters", shape);
+                self.no_block(indent);
+                return None;
+            }
+            let pspan = self.cur_span();
+            let p = self.expect_name();
+            if p.is_empty() {
+                self.no_block(indent);
+                return None;
+            }
+            if params.contains(&p) {
+                self.fail(
+                    pspan,
+                    format!("duplicate parameter `{p}`"),
+                    "give each parameter its own name",
+                );
+            }
+            params.push(p);
+        }
+        if !self.eat(&Tok::Eq) {
+            self.fail(span, "expected `=` after the parameters", shape);
+            self.no_block(indent);
+            return None;
+        }
+        let body = self.parse_tuple();
+        self.expect_eol("a `fn` body is one expression");
+        self.reject_block(
+            indent,
+            "a fn has no body block",
+            &format!("dedent the block, or fold it into the expression after `=` in `fn {name}`"),
+        );
+        Some(DeclKind::Fn { name, params, body })
     }
 
     fn parse_light(&mut self) -> Option<DeclKind> {

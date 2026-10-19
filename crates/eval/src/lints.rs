@@ -189,6 +189,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
             DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
+            DeclKind::Fn { body, .. } => out.push((body, d.span)),
             DeclKind::Def { params, body, .. } | DeclKind::Stamp { params, body, .. } => {
                 named(params, &mut out);
                 body.iter()
@@ -253,6 +254,9 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         | DeclKind::Brush { params, .. } = &d.kind
         {
             out.extend(params.iter().map(|p| p.key.clone()));
+        }
+        if let DeclKind::Fn { params, .. } = &d.kind {
+            out.extend(params.iter().cloned());
         }
     }
     all_scenes(&file.items, &mut |s| {
@@ -484,6 +488,17 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                             "use it in the body or remove it",
                         );
                     }
+                }
+            }
+            DeclKind::Fn { name, params, body } => {
+                let mut inner = HashSet::new();
+                idents(vec![(body, d.span)], &[], &mut inner);
+                for p in params.iter().filter(|p| !inner.contains(*p)) {
+                    push(
+                        d.span,
+                        format!("parameter `{p}` of `{name}` is never used"),
+                        "use it in the body or remove it",
+                    );
                 }
             }
             _ => {}

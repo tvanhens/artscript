@@ -121,6 +121,10 @@ impl<'a> Printer<'a> {
                 self.emit(line, 0, &join_head("rule", name, &[], params));
                 self.scenes(body, 1);
             }
+            DeclKind::Fn { name, params, body } => {
+                let head = format!("fn {name}({})", params.join(" "));
+                self.emit(line, 0, &format!("{head} = {}", fmt_expr(body)));
+            }
             DeclKind::Light { name, named } => {
                 self.emit(line, 0, &join_head("light", name, &[], named));
             }
