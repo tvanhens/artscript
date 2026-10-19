@@ -435,8 +435,10 @@ pub enum EffectOp {
     Adjust { hue: f32, sat: f32, light: f32 },
     /// Line of `width` around the node's shape geometry, drawn behind the content.
     /// Earlier effects do not change the traced path. Ink past an edge of the traced
-    /// geometry's box is dropped on every side `sides` leaves out.
-    Outline { width: f32, color: Color, sides: Sides },
+    /// geometry's box is dropped on every side `sides` leaves out. `mask` keeps the ring's
+    /// ink only where it keeps it, in the node's local coordinates like the node's own mask,
+    /// and its `feather` fades the ring's alpha at the mask edge. The content is untouched.
+    Outline { width: f32, color: Color, sides: Sides, mask: Option<Box<Mask>> },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.
@@ -484,6 +486,16 @@ pub fn parse_origin(origin: &str) -> Option<(&str, u32, u32)> {
 }
 
 impl Node {
+    /// The node's own mask, then the mask of each `fx outline`, in effect order. Every mask
+    /// draws in this node's local coordinates, and the nodes of each are walked with its own.
+    pub fn masks(&self) -> impl Iterator<Item = &Mask> + '_ {
+        let outlines = self.effects.iter().filter_map(|e| match &e.op {
+            EffectOp::Outline { mask, .. } => mask.as_deref(),
+            _ => None,
+        });
+        self.mask.as_deref().into_iter().chain(outlines)
+    }
+
     /// Every node directly under this one, in draw order: a shape's stamps, then its children,
     /// or a group's children. Every walker over the tree reads this. Only a renderer tells a
     /// shape's stamps and children apart, through [`Shape`]'s own fields, because only it clips.
@@ -588,9 +600,10 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, sides, .. } = effect.op
-                && width > 0.0
+            if let EffectOp::Outline { width, sides, .. } = &effect.op
+                && *width > 0.0
             {
+                let (width, sides) = (*width, *sides);
                 let traced = self.local_ink().map(|r| {
                     let reach = |on: bool| if on { width } else { 0.0 };
                     Rect::new(

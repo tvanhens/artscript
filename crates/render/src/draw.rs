@@ -44,10 +44,10 @@ impl<'a> SceneIndex<'a> {
         self.nodes.insert(node.path.as_str(), node);
         self.parents.insert(node.path.as_str(), parent_world);
         let world = parent_world * node.transform;
-        if let Some(mask) = &node.mask
-            && let MaskSource::Nodes(inner) = &mask.source
-        {
-            self.walk(inner, world);
+        for mask in node.masks() {
+            if let MaskSource::Nodes(inner) = &mask.source {
+                self.walk(inner, world);
+            }
         }
         for child in node.descendants() {
             self.visit(child, world);
@@ -287,7 +287,7 @@ fn paint_layer_steps(
     ctx: &DrawCtx<'_>,
     world: Matrix,
     reach: Option<IRect>,
-    mut steps: Vec<effects::LayerStep>,
+    mut steps: Vec<effects::LayerStep<'_>>,
 ) -> Result<(), RenderError> {
     let Some(bounds) = canvas.device_clip_bounds().and_then(|clip| match reach {
         Some(reach) => IRect::intersect(&clip, &reach),
@@ -316,7 +316,7 @@ fn paint_layer_steps(
                 effects::apply_image_filter(ctx.backend, image, &local_to_px, filter)?
             }
             effects::LayerStep::Outline(outline) => {
-                effects::outline_geometry(ctx, image, &local_to_px, node, outline)?
+                effects::outline_geometry(ctx, world, image, &local_to_px, node, outline)?
             }
         };
     }
@@ -342,7 +342,7 @@ fn reach_px(
     ctx: &DrawCtx<'_>,
     parent_world: &Matrix,
     parent_to_px: &Matrix,
-    steps: &[effects::LayerStep],
+    steps: &[effects::LayerStep<'_>],
 ) -> Option<IRect> {
     let index = &ctx.index;
     let mut reach =
@@ -612,7 +612,7 @@ fn apply_clip_mask(canvas: &Canvas, clip: &Clip) -> Result<(), RenderError> {
     Ok(())
 }
 
-fn apply_mask(
+pub(crate) fn apply_mask(
     canvas: &Canvas,
     mask: &Mask,
     ctx: &DrawCtx<'_>,
@@ -710,7 +710,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
     if let Some(clip) = &node.clip {
         pad = pad.max(clip.feather * 3.0);
     }
-    if let Some(mask) = &node.mask {
+    for mask in node.masks() {
         pad = pad.max(mask.feather * 3.0);
         if let MaskSource::Nodes(nodes) = &mask.source {
             for n in nodes {

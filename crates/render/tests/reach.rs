@@ -157,6 +157,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
         width: 3.0,
         color: color(0, 0, 0, 255),
         sides: artscript_ir::Sides::ALL,
+    mask: None,
     });
     let loose = covers("outline", &outline);
     assert!(
@@ -167,6 +168,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
         width: 3.0,
         color: color(0, 0, 0, 255),
         sides: artscript_ir::Sides { top: true, right: false, bottom: false, left: false },
+    mask: None,
     });
     let loose = covers("outline on one side", &top_only);
     assert!(
@@ -272,6 +274,7 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
             width: 4.0,
             color: color(255, 0, 0, 255),
             sides: artscript_ir::Sides::ALL,
+        mask: None,
         }));
         covers(&format!("{name} outline"), &outlined);
     }

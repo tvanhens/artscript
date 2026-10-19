@@ -1,6 +1,6 @@
 use crate::ast::{
     BinOp, CheckKind, Decl, DeclKind, DefItem, Draw, DrawItem, Expr, File, Fx, Item, Mask, Named,
-    Patch, Scene, SceneKind, Swatch, SwatchKind, UnOp,
+    Patch, Scene, SceneKind, Span, Swatch, SwatchKind, UnOp,
 };
 use crate::lex::{self, Comment};
 
@@ -255,19 +255,7 @@ impl<'a> Printer<'a> {
         match item {
             DrawItem::Scene(s) => self.scene(s, indent),
             DrawItem::Fx(f) => self.fx(f, indent),
-            DrawItem::Mask {
-                mask: Mask::Value(e),
-                span,
-            } => {
-                self.emit(span.line, indent, &format!("mask {}", fmt_expr(e)));
-            }
-            DrawItem::Mask {
-                mask: Mask::Block(body),
-                span,
-            } => {
-                self.emit(span.line, indent, "mask");
-                self.scenes(body, indent + 1);
-            }
+            DrawItem::Mask { mask, span } => self.mask(mask, *span, indent),
             DrawItem::SlotFill(fill) => {
                 self.emit(fill.span.line, indent, &format!("{}:", fill.name));
                 self.scenes(&fill.body, indent + 1);
@@ -294,6 +282,19 @@ impl<'a> Printer<'a> {
             indent,
             &join_head("fx", &fx.op, &fx.args, &fx.named),
         );
+        if let Some(line) = &fx.mask {
+            self.mask(&line.mask, line.span, indent + 1);
+        }
+    }
+
+    fn mask(&mut self, mask: &Mask, span: Span, indent: usize) {
+        match mask {
+            Mask::Value(e) => self.emit(span.line, indent, &format!("mask {}", fmt_expr(e))),
+            Mask::Block(body) => {
+                self.emit(span.line, indent, "mask");
+                self.scenes(body, indent + 1);
+            }
+        }
     }
 
     fn stmt_if(
