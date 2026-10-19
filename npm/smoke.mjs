@@ -56,7 +56,10 @@ for (const { name, args } of installers) {
   writeFileSync(join(project, "package.json"), '{"name":"smoke","private":true}\n');
   run(`${name} install`, name, args(tarballs), project);
 
-  const bin = join(project, "node_modules", ".bin", win ? "artscript.cmd" : "artscript");
+  // On Windows npm links artscript.cmd and bun links artscript.exe.
+  const names = win ? ["artscript.cmd", "artscript.exe"] : ["artscript"];
+  const bin = names.map((n) => join(project, "node_modules", ".bin", n)).find(existsSync);
+  if (!bin) die(`${name} install`, `node_modules/.bin has none of ${names.join(", ")}`);
   const out = run(`${name} artscript --version`, bin, ["--version"], project).trim();
   if (out !== `artscript ${version}`) die(`${name} artscript --version`, `expected "artscript ${version}", got "${out}"`);
 
