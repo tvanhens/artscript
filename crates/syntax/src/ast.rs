@@ -477,3 +477,27 @@ pub enum Expr {
         otherwise: Box<Expr>,
     },
 }
+
+impl Expr {
+    /// The words a parameter default `one_of(a b c)` declares, first word first. `None` when this
+    /// is not a `one_of` call, and an error message when it is one with anything but bare words.
+    pub fn one_of_words(&self) -> Option<Result<Vec<String>, &'static str>> {
+        let Expr::Call { func, args, named } = self else {
+            return None;
+        };
+        if func != "one_of" {
+            return None;
+        }
+        let words: Option<Vec<String>> = args
+            .iter()
+            .map(|a| match a {
+                Expr::Ident(w) => Some(w.clone()),
+                _ => None,
+            })
+            .collect();
+        Some(match words {
+            Some(w) if !w.is_empty() && named.is_empty() => Ok(w),
+            _ => Err("`one_of` takes one or more bare words"),
+        })
+    }
+}

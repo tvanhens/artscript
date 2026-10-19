@@ -1,9 +1,10 @@
 # Curve options on paper, 256x128. Open curves are stroked dark ink 3px with no fill.
 # Top row, control points (-24,12) (0,-16) (24,12) relative to each cell's at:, left to right: (1) an open curve, a
 # smooth arch from the left point to the right point; (2) the same points with tension:0, so the path is straight
-# segments forming a sharp peak; (3) tension:1, a boxier arch with a flat top and shoulders, bulging wider than cell 1.
-# Bottom row, closed curves use points (-22,14) (0,-18) (22,14): (4) closed, filled red with 2px ink outline, a smooth
-# rounded triangle-like blob; (5) closed with tension:0 and no round, a sharp-cornered red triangle; (6) closed with
+# segments forming a sharp peak; (3) tension:1, a boxier arch with a flat top and shoulders. No arch goes
+# past its points: each spans x -24 to 24 and peaks at y -16.
+# Bottom row, closed curves use points (-22,14) (0,-18) (22,14): (4) closed, filled red with 2px ink outline, a
+# triangle with a flat bottom edge, sides that bow outward, and a smooth rounded top that peaks at the top point; (5) closed with tension:0 and no round, a sharp-cornered red triangle; (6) closed with
 # tension:0 round:8, the same triangle with its three corners visibly rounded, filled blue.
 # (7) the fourth bottom-row cell: an open curve built from the list variable pts of four points (-20,10) (-8,-14)
 # (8,14) (20,-10), a smooth S-shaped wave, stroked ink 3px with no fill.
