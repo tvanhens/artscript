@@ -1,13 +1,13 @@
 //! Stamp declarations, stamp values with overrides, the `stamp:` key, and the placement of a
 //! stamp's block along a node's geometry. A stamp is a block drawn once per placement, in a frame
-//! on the spine with x along the direction of travel. Each placement is an isolated group with
-//! its own key, so `rand` in the block differs per stamp and `seed:` on the host pins them all.
+//! on the spine with x along the direction of travel. Each placement is a group with its own
+//! key, so `rand` in the block differs per stamp and `seed:` on the host pins them all.
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use artscript_ir::{Matrix, Node, NodeKind, Paint, Point};
+use artscript_ir::{Blend, Matrix, Node, NodeKind, Paint, Point};
 use artscript_syntax::Severity;
 use artscript_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
@@ -605,7 +605,10 @@ impl Evaluator<'_> {
         let before = self.diags.len();
         let children = self.eval_block_nodes(frame.decl.body.iter().filter_map(DefItem::scene), &mut body);
         let origin = format!("{}:{}", frame.decl.module, frame.decl.span.line);
-        let mut node = new_node(path.clone(), origin, place, NodeKind::Group { isolate: true, children });
+        // A layer per stamp costs a save_layer each. Only a blend inside needs one, to keep it off
+        // the host and the other stamps; the host's own layer already keeps it off the backdrop.
+        let isolate = children.iter().any(blends);
+        let mut node = new_node(path.clone(), origin, place, NodeKind::Group { isolate, children });
         let fill = first_fill(&node).unwrap_or(Rgba::GRAY);
         let branch_fx = branch_fx.take();
         let lines = in_source_order(frame.decl.body.iter().filter_map(DefItem::fx), &branch_fx, &body);
@@ -701,6 +704,11 @@ impl StampFrame<'_> {
             None => Value::None,
         }
     }
+}
+
+/// Whether `n` or anything under it draws with a blend mode other than normal.
+fn blends(n: &Node) -> bool {
+    n.blend != Blend::Normal || n.descendants().any(blends)
 }
 
 fn site_of(spine: &Spine<'_>, contour: usize, s: f64, i: u32) -> Site {

@@ -69,7 +69,7 @@ fn a_stamp_draws_its_block_once_per_site_under_the_host_and_replaces_the_default
     assert_eq!(x_positions(&line.stamps)[..3], [2.5, 7.5, 12.5]);
     let first = &line.stamps[0];
     assert_eq!(first.path, "line.dots.0");
-    assert!(matches!(first.kind, NodeKind::Group { isolate: true, .. }));
+    assert!(matches!(first.kind, NodeKind::Group { isolate: false, .. }), "a stamp with no blend inside is a plain group");
     assert_eq!(first.origin, "lib/garden.art:9");
     assert_eq!(first.descendants().map(|n| n.path.as_str()).collect::<Vec<_>>(), ["line.dots.0.circle~1"]);
     assert!(paths(&s).contains(&"line.dots.19.circle~1".to_string()));
@@ -397,4 +397,12 @@ fn the_rig_carries_anchors_inside_stamps() {
     let tip = ev.rig.anchors.get("vine.buds.2.bud.tip").copied();
     assert_eq!(tip, Some((120.0, 125.0)), "{:?}", ev.rig.anchors);
     assert_eq!(ev.rig.anchors.keys().filter(|k| k.starts_with("vine.buds.")).count(), 5, "{:?}", ev.rig.anchors);
+}
+
+#[test]
+fn a_stamp_is_a_layer_only_when_a_blend_inside_needs_one() {
+    let s = ok("@target t.png 200x100\nstamp inked spacing:10\n  circle 2 fill:#000000 blend:multiply\nstamp nested spacing:10\n  group\n    circle 2 fill:#000000 blend:screen\ncurve 0,30 100,30 stamp:inked name:a\ncurve 0,60 100,60 stamp:nested name:b\n");
+    for host in ["a", "b"] {
+        assert!(stamps(&s, host).iter().all(|n| matches!(n.kind, NodeKind::Group { isolate: true, .. })), "{host}");
+    }
 }

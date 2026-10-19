@@ -72,6 +72,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 ## What a stamp is part of
 
 - Stamps draw after the host's fill and stroke and before its clipped children, in the host's frame, and they are not clipped to the host's geometry: a leaf spills past its stem. They are the host's ink, so the host's `fx`, mask, `a:`, and `blend:` cover them, and `fx outline` traces them. They are not the host's geometry: children, `inside`, `copy`, booleans, and anchors see the spine as before. The host's bounds and bake tiles include its stamps, each stamp's own `fx`, and any brush reach inside it.
+- A `blend:` inside the block blends within that one stamp, so a `blend:multiply` leaf darkens only itself, not the stem or the other leaves. A block with no blend draws straight onto the host.
 - A stamped node stays vector in `.svg` unless the block is brushed. Then only that shape is baked to a PNG tile, as any brushed node is, and `profile:vector` reports it.
 
 ## Seeds and determinism
