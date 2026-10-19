@@ -771,6 +771,19 @@ fn round_cuts_corners_of_a_flat_curve_and_a_poly() {
 }
 
 #[test]
+fn curve_never_goes_past_its_points() {
+    let s = scene(
+        "@target t.png 120x80\n\
+         curve 10,30 30,43 60,43 90,43 110,20 tension:1 name:foot\n\
+         curve 20,20 60,10 100,20 60,60 closed name:loop\n",
+    );
+    let foot = shape(&s, "foot").geometry.compute_tight_bounds();
+    assert!(foot.bottom <= 43.0, "foot bulges to {}", foot.bottom);
+    let ring = shape(&s, "loop").geometry.compute_tight_bounds();
+    assert_eq!((ring.left, ring.top, ring.right, ring.bottom), (20.0, 10.0, 100.0, 60.0));
+}
+
+#[test]
 fn jitter_is_amplitude_and_wavelength() {
     let a = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,30\n");
     let b = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,90\n");
@@ -6885,6 +6898,149 @@ fn an_alias_fixed_argument_follows_the_instance_palette_like_a_default() {
     );
     assert_eq!(fill_hex(node(&s, "plain.i")), "#111111");
     assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
+}
+
+const TILE: &str = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2 name:filled\n  if kind == floor_top\n    circle 3 name:floor\n";
+
+fn errors(ev: &Evaluation) -> Vec<&Diagnostic> {
+    ev.diagnostics.iter().filter(|d| d.code == "E0320").collect()
+}
+
+#[test]
+fn a_word_outside_one_of_is_an_error_at_the_call_naming_the_allowed_words() {
+    for call in ["tile kind:flor_top", "tile flor_top"] {
+        let ev = run_with(&format!("{TILE}{call}\n"), &[]);
+        let es = errors(&ev);
+        assert_eq!(es.len(), 1, "{call}: {}", show(&ev.diagnostics));
+        assert_eq!(es[0].span.line, 7, "{call}");
+        assert!(
+            es[0].message.contains("floor_top, fill, fill_b") && es[0].message.contains("flor_top"),
+            "{}",
+            es[0].message
+        );
+        assert!(es[0].fix.is_some());
+    }
+}
+
+#[test]
+fn a_number_for_a_one_of_parameter_is_an_error() {
+    let ev = run_with(&format!("{TILE}tile kind:3\n"), &[]);
+    assert_eq!(errors(&ev).len(), 1, "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn an_alias_fixed_word_outside_one_of_is_an_error() {
+    let ev = run_with(&format!("{TILE}def wall = tile kind:flor_top\nwall\n"), &[]);
+    assert_eq!(errors(&ev).len(), 1, "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_word_inside_one_of_is_accepted_and_the_first_word_is_the_default() {
+    let s = scene(&format!("{TILE}tile name:a\ntile kind:fill name:b\ntile fill_b name:c\n"));
+    let all = paths(&s);
+    assert!(all.iter().any(|p| p == "a.floor"), "{all:?}");
+    assert!(all.iter().any(|p| p == "b.filled"), "{all:?}");
+    assert!(!all.iter().any(|p| p.starts_with("c.")), "{all:?}");
+}
+
+#[test]
+fn a_plain_word_default_still_accepts_any_word() {
+    let ev = run_with(
+        "@target t.png 16x16\ndef tile kind:floor_top\n  circle 2\ntile kind:flor_top\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_malformed_one_of_is_one_error_at_the_def() {
+    for decl in ["one_of()", "one_of(1 2)", "one_of(a b c:1)"] {
+        let ev = run_with(
+            &format!("@target t.png 16x16\ndef tile kind:{decl}\n  circle 2\ntile kind:a\ntile kind:b\n"),
+            &[],
+        );
+        let es = errors(&ev);
+        assert_eq!(es.len(), 1, "{decl}: {}", show(&ev.diagnostics));
+        assert!(es[0].message.contains("one_of"), "{}", es[0].message);
+        assert_eq!(es[0].span.line, 2, "{decl}: {}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
+    let lib = ("lib/tiles.art", "def tile kind:one_of(1 2)\n  circle 2\n");
+    let ev = run_with("@target t.png 16x16\nuse tiles\ncircle 2\n", &[lib]);
+    let es = errors(&ev);
+    assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(es[0].file.ends_with("tiles.art"), "{}", show(&ev.diagnostics));
+    assert_eq!(es[0].span.line, 1, "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn one_of_outside_a_parameter_default_is_an_unknown_function() {
+    let ev = run_with("@target t.png 16x16\nlet k = one_of(a b)\ncircle 2\n", &[]);
+    assert!(
+        ev.diagnostics.iter().any(|d| d.message.contains("one_of")),
+        "{}",
+        show(&ev.diagnostics)
+    );
+}
+
+fn unknown_words(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
+    run_with(src, libs)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "L0107")
+        .collect()
+}
+
+#[test]
+fn comparing_a_one_of_parameter_with_another_word_warns_and_names_the_words() {
+    let hits = unknown_words(
+        &format!("{TILE}  if flor == kind\n    circle 1\n  if kind != flor\n    circle 1\n"),
+        &[],
+    );
+    let lines: Vec<u32> = hits.iter().map(|d| d.span.line).collect();
+    assert_eq!(lines, [7, 9], "{}", show(&hits));
+    let d = &hits[0];
+    assert_eq!(d.severity, artscript_syntax::Severity::Warning);
+    assert_eq!(d.message, "`kind` is never `flor`");
+    assert_eq!(d.notes, ["`kind` is one of floor_top, fill, fill_b"]);
+    assert!(d.fix.is_some());
+}
+
+#[test]
+fn comparing_a_one_of_parameter_with_its_words_or_other_names_is_quiet() {
+    let hits = unknown_words(
+        &format!(
+            "{TILE}  let other = fill\n  if kind == other\n    circle 1\n  if kind == fill_b\n    circle 1\n"
+        ),
+        &[],
+    );
+    assert!(hits.is_empty(), "{}", show(&hits));
+    let rebound = unknown_words(
+        "@target t.png 16x16\ndef tile kind:one_of(a b)\n  let kind = c\n  if kind == c\n    circle 1\n",
+        &[],
+    );
+    assert!(rebound.is_empty(), "{}", show(&rebound));
+}
+
+#[test]
+fn unknown_word_off_is_silent() {
+    let manifest = "[project]\nout = \"out\"\n\n[lint]\nunknown-word = \"off\"\n";
+    let p = Project::from_sources(
+        manifest,
+        [(
+            "art/t.art".to_string(),
+            format!("{TILE}  if kind == flor\n    circle 1\n"),
+        )]
+        .into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(ev.diagnostics.iter().all(|d| d.code != "L0107"), "{}", show(&ev.diagnostics));
 }
 
 mod brush;
