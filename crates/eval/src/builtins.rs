@@ -191,7 +191,7 @@ impl Evaluator<'_> {
                 Value::Vec2(Coord::Num(r * d.cos()), Coord::Num(r * d.sin()))
             }
             "rand" => {
-                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let explicit = get("seed").as_ref().map(Value::seed).transpose()?;
                 let mut rng = Rng::new(self.next_seed(explicit));
                 let (lo, hi) = match a.len() {
                     0 => (0.0, 1.0),
@@ -207,7 +207,7 @@ impl Evaluator<'_> {
                 if items.is_empty() {
                     return Err(fail("E0320", "`pick` needs a non-empty list"));
                 }
-                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let explicit = get("seed").as_ref().map(Value::seed).transpose()?;
                 let mut rng = Rng::new(self.next_seed(explicit));
                 items[(rng.unit() * items.len() as f64) as usize % items.len()].clone()
             }
@@ -294,7 +294,7 @@ impl Evaluator<'_> {
                     _ => NoiseKind::Value,
                 };
                 let scale = a.first().and_then(Value::num).unwrap_or(32.0) as f32;
-                let explicit = get("seed").and_then(|v| v.num()).map(|s| s as u64);
+                let explicit = get("seed").as_ref().map(Value::seed).transpose()?;
                 let wrap = match get("wrap") {
                     None => None,
                     Some(v) => Some(wrap_period(&v).ok_or_else(|| {

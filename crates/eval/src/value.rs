@@ -205,6 +205,13 @@ impl Value {
         self.pair().ok_or_else(|| self.not_a_vector(key))
     }
 
+    /// The value of a `seed:` key, or E0320.
+    pub fn seed(&self) -> R<u64> {
+        self.num().map(|s| s as u64).ok_or_else(|| {
+            fail("E0320", format!("`seed:` takes a number, got {}", self.kind())).fix("write `seed:7`")
+        })
+    }
+
     /// Like [`Value::pair_for`], for a key whose coordinates are canvas units, never percents.
     pub fn vec2_for(&self, key: &str) -> R<(f64, f64)> {
         match self.pair() {
