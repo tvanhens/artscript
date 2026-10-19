@@ -1,4 +1,4 @@
-//! `artscript` command line: build, check, fmt, explain, init, docs.
+//! `ramose` command line: build, check, fmt, explain, init, docs.
 //!
 //! `docs` prints the core language card and an index of topics. `docs <topic>...` prints the card and those topic files.
 
@@ -33,22 +33,22 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use artscript_eval::{Format, Plan, Project, TargetJob, find_root, load, plan, project::rel_path};
-use artscript_syntax::ast::Span;
-use artscript_syntax::{Diagnostic, Severity};
+use ramose_eval::{Format, Plan, Project, TargetJob, find_root, load, plan, project::rel_path};
+use ramose_syntax::ast::Span;
+use ramose_syntax::{Diagnostic, Severity};
 
-const USAGE: &str = "usage: artscript <command>
+const USAGE: &str = "usage: ramose <command>
 
 commands:
   build [--only GLOB]... [--allow-warnings] [--backend auto|gpu|cpu]
                                            render every @target, write art-manifest.json
   check [--json] [--only GLOB]... [FILE...]
                                            evaluate stills and sample GIFs, without rendering. FILE and --only limit the check to those entry files and the libraries they import
-  fmt [--check] [FILE...]                  rewrite .art files. no files means the whole project. --check lists changes and writes nothing
+  fmt [--check] [FILE...]                  rewrite .ramo files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
   docs [TOPIC...]                          print the core language card and topic index, or the card and the named topics
-  std [NAME]                               list the bundled libraries, or print one (`artscript std brushes > lib/brushes.art` forks it)
+  std [NAME]                               list the bundled libraries, or print one (`ramose std brushes > lib/brushes.ramo` forks it)
 
 exit codes: 0 ok, 1 compile error, 2 assert or lint error, 3 warnings only";
 
@@ -86,7 +86,7 @@ fn main() -> ExitCode {
             None => std_cmd(args.get(1).map(String::as_str)),
         },
         Some("--version" | "-V") => {
-            outln!("artscript {}", artscript_eval::VERSION);
+            outln!("ramose {}", ramose_eval::VERSION);
             0
         }
         Some("--help" | "-h" | "help") | None => {
@@ -121,7 +121,7 @@ const TOPICS: &[(&str, &str)] = &[
 fn docs(names: &[String]) -> u8 {
     if names.is_empty() {
         out!("{CARD}\n{}", topic_index());
-        outln!("\nRun `artscript docs <topic> [topic...]` and name every topic the task touches in one call.");
+        outln!("\nRun `ramose docs <topic> [topic...]` and name every topic the task touches in one call.");
         return 0;
     }
     let mut bodies = Vec::new();
@@ -138,23 +138,23 @@ fn docs(names: &[String]) -> u8 {
     0
 }
 
-/// `artscript std` lists the bundled libraries by their `use` path; `artscript std <name>` prints
+/// `ramose std` lists the bundled libraries by their `use` path; `ramose std <name>` prints
 /// that file so an author can fork it.
 fn std_cmd(name: Option<&str>) -> u8 {
     let Some(name) = name else {
-        for (path, _) in artscript_eval::STD {
+        for (path, _) in ramose_eval::STD {
             outln!("{path}");
         }
         return 0;
     };
     let wanted = name.strip_prefix("std/").unwrap_or(name);
-    match artscript_eval::STD.iter().find(|(p, _)| p.strip_prefix("std/") == Some(wanted)) {
+    match ramose_eval::STD.iter().find(|(p, _)| p.strip_prefix("std/") == Some(wanted)) {
         Some((_, src)) => {
             out!("{src}");
             0
         }
         None => {
-            let names: Vec<&str> = artscript_eval::STD.iter().map(|(p, _)| *p).collect();
+            let names: Vec<&str> = ramose_eval::STD.iter().map(|(p, _)| *p).collect();
             errln!("error: no bundled library `{name}`\n\nbundled: {}", names.join(", "));
             1
         }
@@ -274,9 +274,9 @@ fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
             Diagnostic::error(
                 "E0200",
                 Span::default(),
-                "no artscript.toml in this directory or any parent"
+                "no ramose.toml in this directory or any parent"
             )
-            .with_fix("run `artscript init` to create a project here")
+            .with_fix("run `ramose init` to create a project here")
         );
         return 1;
     };
@@ -358,9 +358,9 @@ impl Selector {
     fn unmatched(&self) -> Diagnostic {
         match self {
             Selector::File(f) => Diagnostic::error("E0200", Span::default(), format!("`{f}` has no @target"))
-                .with_fix("pass an entry file, one with an `@target` line, such as `art/x.art`"),
+                .with_fix("pass an entry file, one with an `@target` line, such as `art/x.ramo`"),
             Selector::Glob(g) => Diagnostic::error("E0200", Span::default(), format!("`--only '{g}'` matches no target"))
-                .with_fix("match an entry file such as `art/x.art` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories"),
+                .with_fix("match an entry file such as `art/x.ramo` or an output path such as `props/x.png`. `*` stays in one directory, and `**` crosses directories"),
         }
     }
 }
@@ -392,7 +392,7 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
     for d in plan.diagnostics.iter().filter(|d| d.severity == Severity::Error && selectors.iter().any(|s| s.hits(&d.file))) {
         entries.insert(&d.file);
     }
-    let scope: BTreeSet<String> = entries.iter().flat_map(|f| artscript_eval::dependencies(project, f)).collect();
+    let scope: BTreeSet<String> = entries.iter().flat_map(|f| ramose_eval::dependencies(project, f)).collect();
     let mut diags: Vec<Diagnostic> = plan
         .diagnostics
         .iter()
@@ -406,9 +406,9 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
     }
     for job in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
-            artscript_eval::sample_outputs(project, job).diagnostics
+            ramose_eval::sample_outputs(project, job).diagnostics
         } else {
-            artscript_eval::evaluate_outputs(project, job).diagnostics
+            ramose_eval::evaluate_outputs(project, job).diagnostics
         };
         diags.extend(frame_diags);
     }
@@ -433,9 +433,9 @@ fn fmt(project: &Project, cwd: &Path, check: bool, files: &[String]) -> u8 {
     let mut dirty = Vec::new();
     for rel in &selected {
         let Some(src) = project.files.get(rel) else {
-            return usage_error(&format!("`{rel}` is not an .art file in this project"));
+            return usage_error(&format!("`{rel}` is not a .ramo file in this project"));
         };
-        match artscript_syntax::format_source(src) {
+        match ramose_syntax::format_source(src) {
             Ok(out) if &out != src => {
                 if check {
                     dirty.push(rel.clone());
@@ -472,7 +472,7 @@ fn resolve_art(project: &Project, cwd: &Path, arg: &str) -> Result<String, Strin
     if project.files.contains_key(&rel) {
         Ok(rel)
     } else {
-        Err(format!("`{arg}` is not an .art file in this project"))
+        Err(format!("`{arg}` is not a .ramo file in this project"))
     }
 }
 
@@ -502,9 +502,9 @@ fn explain(project: &Project, file: &Path) -> u8 {
         );
         return 1;
     };
-    let ev = artscript_eval::evaluate(project, job);
+    let ev = ramose_eval::evaluate(project, job);
     if let Some(scene) = &ev.scene {
-        out!("{}", artscript_eval::explain(scene, &ev.seeded));
+        out!("{}", ramose_eval::explain(scene, &ev.seeded));
     }
     report(ev.diagnostics, true, false)
 }
@@ -530,24 +530,24 @@ const INIT_ART: &str =
     "@target hello.png 512x512 scale:1,2\n\ncircle 160 fill:p.sky stroke:p.ink.line,6\n";
 
 fn init(cwd: &Path) -> u8 {
-    if cwd.join("artscript.toml").exists() {
+    if cwd.join("ramose.toml").exists() {
         errln!(
             "{}",
             Diagnostic::error(
                 "E0200",
                 Span::default(),
-                "artscript.toml already exists here"
+                "ramose.toml already exists here"
             )
-            .with_fix("run `artscript build` instead")
+            .with_fix("run `ramose build` instead")
         );
         return 1;
     }
     let name = cwd.file_name().map_or("art".into(), |n| n.to_string_lossy());
     let manifest = format!("[project]\nname = {}\n{INIT_MANIFEST}", toml::Value::String(name.into()));
     let files = [
-        ("artscript.toml", manifest.as_str()),
-        ("lib/palette/house.art", INIT_PALETTE),
-        ("art/hello.art", INIT_ART),
+        ("ramose.toml", manifest.as_str()),
+        ("lib/palette/house.ramo", INIT_PALETTE),
+        ("art/hello.ramo", INIT_ART),
     ];
     for (rel, body) in files {
         let path = cwd.join(rel);
@@ -631,13 +631,13 @@ mod tests {
         assert!(glob_match("**/*.png", "produce/momo_peach.png"));
         assert!(glob_match("**", "a/b/c"));
         assert!(glob_match(
-            "art/**/momo?peach.art",
-            "art/produce/momo_peach.art"
+            "art/**/momo?peach.ramo",
+            "art/produce/momo_peach.ramo"
         ));
-        assert!(glob_match("art/{tiles,props}/x/*.art", "art/props/x/c.art"));
+        assert!(glob_match("art/{tiles,props}/x/*.ramo", "art/props/x/c.ramo"));
         assert!(glob_match("{a,b{c,d}}.png", "bd.png"));
         assert!(glob_match("x{,_big}.png", "x.png"));
-        assert!(!glob_match("art/{tiles,props}/*.art", "art/fx/c.art"));
+        assert!(!glob_match("art/{tiles,props}/*.ramo", "art/fx/c.ramo"));
         assert!(parse_glob("art/{tiles").is_err());
         assert!(parse_glob("art/tiles}").is_err());
     }

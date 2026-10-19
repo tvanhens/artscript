@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub use artscript_brush::UniformValue;
+pub use ramose_brush::UniformValue;
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
 mod retained;
@@ -156,7 +156,7 @@ pub struct AreaMark {
 #[derive(Clone, Debug)]
 pub struct Stage {
     /// The assembled program eval checked. Render compiles the same text.
-    pub program: Arc<artscript_brush::Program>,
+    pub program: Arc<ramose_brush::Program>,
     /// Author uniforms in declaration order, by name.
     pub uniforms: Vec<(String, UniformValue)>,
     /// The site seed, reduced to 32 bits. Render derives the shader's seed uniforms from it.

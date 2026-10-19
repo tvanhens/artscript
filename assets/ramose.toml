@@ -1,5 +1,5 @@
 [project]
-name = "artscript-logo"
+name = "ramose-logo"
 out  = "."
 lib  = []
 std  = "0.1"

@@ -9,7 +9,7 @@
       "path": "monster/bogmaw.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monster/bogmaw.art",
+      "source": "art/monster/bogmaw.ramo",
       "status": "pass",
       "target": null
     },
@@ -22,7 +22,7 @@
       "path": "monster/bogmaw_card.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monster/bogmaw.art",
+      "source": "art/monster/bogmaw.ramo",
       "status": "pass",
       "target": null
     }

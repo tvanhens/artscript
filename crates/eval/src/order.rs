@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use artscript_syntax::ast::{Expr, Scene, SceneKind};
+use ramose_syntax::ast::{Expr, Scene, SceneKind};
 
 use crate::identity::{DeclId, Name, Region, Site};
 use crate::lints::{scene_line_and_direct_fx_mask_patch_exprs, walk_expr, walk_scene};

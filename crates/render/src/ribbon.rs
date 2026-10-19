@@ -7,8 +7,8 @@
 
 use std::collections::HashMap;
 
-use artscript_brush::S_CHUNK;
-use artscript_ir::{Knot, RibbonContour, taper_ramp};
+use ramose_brush::S_CHUNK;
+use ramose_ir::{Knot, RibbonContour, taper_ramp};
 use skia_safe::{AlphaType, ColorType, ContourMeasure, Data, IRect, ISize, Image, ImageInfo, Matrix, Point, RoundOut, images};
 
 use crate::RenderError;

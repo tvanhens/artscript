@@ -5,8 +5,8 @@
 //! was checked by eval, so a compile or binding failure is an internal error and names the node
 //! it came from.
 
-use artscript_brush::Seeds;
-use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
+use ramose_brush::Seeds;
+use ramose_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
 use skia_safe::{Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders};
 
 use crate::RenderError;
@@ -206,7 +206,7 @@ impl Frame {
         };
         let last = stages.len() - 1;
         for (i, (stage, mark)) in stages.iter().enumerate() {
-            let effect = artscript_brush::effect(&stage.program).map_err(|e| internal(origin, e))?;
+            let effect = ramose_brush::effect(&stage.program).map_err(|e| internal(origin, e))?;
             let mut u = Uniforms::new(&effect);
             u.set(origin, "u_dtl", &mat9(&self.dtl))?;
             u.set(origin, "u_paint", &u_paint)?;

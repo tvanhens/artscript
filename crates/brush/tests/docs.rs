@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::Path;
 
-use artscript_brush::{HELPERS, MARK_FIELDS, PLACEMENT_KEYS};
+use ramose_brush::{HELPERS, MARK_FIELDS, PLACEMENT_KEYS};
 
 #[test]
 fn brushes_topic_names_every_mark_field_helper_and_placement_key() {

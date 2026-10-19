@@ -1,4 +1,4 @@
-# artscript
+# ramose
 
 `docs/language.md` and the topic files in `docs/topics/` are the author card. They describe the draft the code implements today. The design is still open. A better design can replace any rule, and it can break today's outputs.
 
@@ -20,7 +20,7 @@ A PR description records why its design choice was made. Replace an earlier choi
 
 ### Inputs are the author's own files
 
-- artscript is a local authoring CLI. Its inputs are the author's own `.art` files and manifest, not untrusted uploads. Do not flag memory or CPU exhaustion that needs a pathological input, such as an extreme `fps`, `dur`, canvas size, or frame count. Do not ask for new per-resource caps, budgets shared across workers, or streaming rewrites to survive such inputs.
+- ramose is a local authoring CLI. Its inputs are the author's own `.ramo` files and manifest, not untrusted uploads. Do not flag memory or CPU exhaustion that needs a pathological input, such as an extreme `fps`, `dur`, canvas size, or frame count. Do not ask for new per-resource caps, budgets shared across workers, or streaming rewrites to survive such inputs.
   Flag instead: a crash, hang, or out-of-memory exit on an input the size of the files in `examples/`, and any limit that silently truncates or corrupts output instead of reporting an error.
 
 ### Builds are deterministic
@@ -42,9 +42,9 @@ A PR description records why its design choice was made. Replace an earlier choi
 
 ## When the `visual` test fails
 
-- `cargo test -p artscript --test visual` compares the catalog with its goldens. A failure writes a `golden | actual | diff` sheet for each changed golden to `target/visual-diff/`. CI uploads the sheets as the `visual-diff` artifact.
+- `cargo test -p ramose --test visual` compares the catalog with its goldens. A failure writes a `golden | actual | diff` sheet for each changed golden to `target/visual-diff/`. CI uploads the sheets as the `visual-diff` artifact.
 - Open every sheet. If a change is a regression, fix the code.
-- If every change is intended, run `ARTSCRIPT_BLESS=1 cargo test -p artscript --test visual`, commit `catalog/golden/`, and name each changed golden and the reason in the PR description.
+- If every change is intended, run `RAMOSE_BLESS=1 cargo test -p ramose --test visual`, commit `catalog/golden/`, and name each changed golden and the reason in the PR description.
 - A new language feature gets a fixture. See `catalog/README.md`.
 
 ## When `claude-review` fails

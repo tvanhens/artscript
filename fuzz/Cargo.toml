@@ -1,5 +1,5 @@
 [package]
-name = "artscript-fuzz"
+name = "ramose-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2024"
@@ -9,10 +9,10 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-artscript-syntax = { path = "../crates/syntax" }
-artscript-ir = { path = "../crates/ir" }
-artscript-eval = { path = "../crates/eval" }
-artscript-render = { path = "../crates/render" }
+ramose-syntax = { path = "../crates/syntax" }
+ramose-ir = { path = "../crates/ir" }
+ramose-eval = { path = "../crates/eval" }
+ramose-render = { path = "../crates/render" }
 
 # Kept out of the main workspace: it builds only on nightly with cargo-fuzz.
 [workspace]

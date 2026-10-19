@@ -1,5 +1,5 @@
 [package]
-name = "artscript-syntax"
+name = "ramose-syntax"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

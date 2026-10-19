@@ -1,17 +1,17 @@
 //! Brush declarations, brush values with overrides, the marks a node's `brush:` key becomes on
 //! its fill and its stroke, and the ribbon a brushed stroke's channels become. The SkSL contract
-//! itself lives in `artscript_brush`; this module binds `.art` values to it and reports every
+//! itself lives in `ramose_brush`; this module binds `.ramo` values to it and reports every
 //! failure at the author's line.
 
 use std::rc::Rc;
 use std::sync::Arc;
 
-use artscript_brush::{
+use ramose_brush::{
     HELPERS, MARK_FIELDS, MainKind, Origin, PLACEMENT_KEYS, Program, RESERVED_PREFIX,
     UniformKind, UniformValue,
 };
-use artscript_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
-use artscript_syntax::ast::{Expr, Named, SkslBlock, Span};
+use ramose_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
+use ramose_syntax::ast::{Expr, Named, SkslBlock, Span};
 use skia_safe::{ContourMeasure, ContourMeasureIter};
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
@@ -301,7 +301,7 @@ impl Evaluator<'_> {
             Origin::Frame => block.span,
         };
         let head_failed = !errors.is_empty();
-        for (ident, origin) in artscript_brush::reserved_identifiers(&block.text) {
+        for (ident, origin) in ramose_brush::reserved_identifiers(&block.text) {
             errors.push((
                 fail("E0363", format!("`{ident}` is reserved: names starting with `{RESERVED_PREFIX}` belong to the runtime"))
                     .fix("rename it"),
@@ -315,7 +315,7 @@ impl Evaluator<'_> {
         // The body is the same text under both mains, so the area check reports its errors once.
         // The ribbon main is checked too, so render never meets a program eval did not.
         let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
-        if let Err(errs) = artscript_brush::check(&area) {
+        if let Err(errs) = ramose_brush::check(&area) {
             // SkSL stops at the first bad uniform line, so each param is compiled alone to report
             // them all. The body's errors may follow from the bad name, so they wait for a rename.
             let names: Vec<(Fail, Span)> = if errs.iter().any(|e| matches!(e.origin, Origin::Param(_))) {
@@ -323,7 +323,7 @@ impl Evaluator<'_> {
                     .iter()
                     .enumerate()
                     .filter_map(|(i, (key, kind))| {
-                        let why = artscript_brush::rejects_param_name(key, *kind)?;
+                        let why = ramose_brush::rejects_param_name(key, *kind)?;
                         let f = fail("E0363", format!("a brush parameter cannot be named `{key}`: SkSL reserves it"))
                             .note(format!("SkSL: {why}"))
                             .fix("rename the parameter");
@@ -343,7 +343,7 @@ impl Evaluator<'_> {
                     .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
                 (f, at(e.origin))
             }));
-        } else if let Err(errs) = artscript_brush::check(&ribbon) {
+        } else if let Err(errs) = ramose_brush::check(&ribbon) {
             errors.extend(errs.into_iter().map(|e| {
                 (fail("E0360", format!("SkSL on a stroke: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
             }));

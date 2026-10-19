@@ -2,7 +2,7 @@
 //! PNG tile of that whole subtree, except a stamped shape whose own paint alone is raster-only:
 //! its fill and stroke become a tile, and its stamps and children stay elements over it.
 
-use artscript_ir::{
+use ramose_ir::{
     Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
     NodeKind, Paint, Path, Point, Profile, Scene, Shape, Stop, Stroke,
 };

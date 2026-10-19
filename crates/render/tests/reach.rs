@@ -1,11 +1,11 @@
 mod common;
 
-use artscript_ir::{
+use ramose_ir::{
     Cap, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
     Rect, Stroke,
 };
 use skia_safe::PathBuilder;
-use artscript_render::{Backend, render_rgba};
+use ramose_render::{Backend, render_rgba};
 use common::{color, effect, scene, solid};
 
 const SIDE: f32 = 240.0;
@@ -156,7 +156,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
     let outline = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
-        sides: artscript_ir::Sides::ALL,
+        sides: ramose_ir::Sides::ALL,
         mask: None,
         brush: vec![],
     });
@@ -168,7 +168,7 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
     let top_only = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
-        sides: artscript_ir::Sides { top: true, right: false, bottom: false, left: false },
+        sides: ramose_ir::Sides { top: true, right: false, bottom: false, left: false },
         mask: None,
         brush: vec![],
     });
@@ -275,7 +275,7 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
         outlined.effects.push(effect(EffectOp::Outline {
             width: 4.0,
             color: color(255, 0, 0, 255),
-            sides: artscript_ir::Sides::ALL,
+            sides: ramose_ir::Sides::ALL,
             mask: None,
             brush: vec![],
         }));
@@ -287,15 +287,15 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
 #[test]
 fn a_brushed_outline_grows_the_outer_extent_by_its_reach() {
     let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 5, m)); }\n";
-    let program = artscript_brush::Program::assemble(artscript_brush::MainKind::Ribbon, &[], body);
-    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    let stage = artscript_ir::Stage { program: std::sync::Arc::new(program), uniforms: vec![], seed: 1 };
+    let program = ramose_brush::Program::assemble(ramose_brush::MainKind::Ribbon, &[], body);
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    let stage = ramose_ir::Stage { program: std::sync::Arc::new(program), uniforms: vec![], seed: 1 };
     let brushed = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
-        sides: artscript_ir::Sides::ALL,
+        sides: ramose_ir::Sides::ALL,
         mask: None,
-        brush: vec![artscript_ir::RibbonMark { stage, reach: 6.0 }],
+        brush: vec![ramose_ir::RibbonMark { stage, reach: 6.0 }],
     });
     let outer = brushed.outer_bounds(&Matrix::new_identity(), &|_| None).unwrap();
     assert_eq!(outer, Rect::from_ltrb(91.0, 91.0, 149.0, 149.0), "the square grows by the width plus the reach");

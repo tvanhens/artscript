@@ -1,20 +1,20 @@
 [package]
-name = "artscript"
+name = "ramose"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "artscript"
+name = "ramose"
 path = "src/main.rs"
 
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-artscript-syntax.workspace = true
-artscript-ir.workspace = true
-artscript-render.workspace = true
-artscript-eval.workspace = true
+ramose-syntax.workspace = true
+ramose-ir.workspace = true
+ramose-render.workspace = true
+ramose-eval.workspace = true
 toml = "0.8"
 
 [dev-dependencies]

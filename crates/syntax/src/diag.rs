@@ -79,7 +79,7 @@ const SHOWN_TARGETS: usize = 3;
 
 impl fmt::Display for Diagnostic {
     /// ```text
-    /// error[E0311] art/chars/hero.art:18:7  hero.body.torso.tunic  [hero.png]
+    /// error[E0311] art/chars/hero.ramo:18:7  hero.body.torso.tunic  [hero.png]
     ///   tunic needs @torso, but the host `goblin` has no part named torso
     ///   parts available: chest, belly
     ///   fix: rename goblin's `chest` to `torso`

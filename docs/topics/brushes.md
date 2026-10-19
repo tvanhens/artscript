@@ -4,7 +4,7 @@ A brush is an SkSL program that shades a fill, a stroke, or the ring of an `fx o
 
 ```
 use std/brushes { dry chip bristle }
-use house { wall }                                   # lib/house.art: let wall = dry(strength:.55 dir:-8)
+use house { wall }                                   # lib/house.ramo: let wall = dry(strength:.55 dir:-8)
 
 layer back brush:wall                                # groups, layers and styles pass brush: down like fill:
   rect 512x300 at:256,362 fill:p.stone.2
@@ -30,7 +30,7 @@ brush scuff strength:.5 scale:1 tint:p.ink rag:3 reach:3
 - `brush NAME k:v...` with exactly one `sksl """..."""` child. `brush` opens a declaration only as a line's first word. Everywhere else it is an ordinary name, so `brush:` is a key and `brush` may be a def parameter or a `let`. A def cannot be named `brush` (E0105), since no instance line of it could be written. A brush is a value: it exports through `use` like a `def`, and `let wall = dry(strength:.55 dir:-8)` names a configured brush.
 - Head keys are typed by their default. A key in the placement set (`dir`, `reach`, `on`) sets placement and is not a uniform: `scuff` reads its edge offset from `rag`, and `reach:3` lets it paint past the edge. Every other key declares a uniform the body reads by name: a number is `float`, a color is `float4` (straight rgba), a vector is `float2`. Any other default is E0363. A parameter cannot take the name of a `Mark` field, a helper, or an SkSL keyword, type or builtin such as `flat`, `half` or `sin`. It cannot start with `u_`, which belongs to the runtime. Each such parameter is E0363 at its key. A body that uses a `u_` name outside a comment is E0363 at that name, and the body's other errors are still reported.
 - The body defines `float4 shade(Mark m)` and returns straight rgb and a coverage in 0..1. The frame multiplies the coverage by the paint's alpha, premultiplies, dithers, and snaps the result to 8-bit levels.
-- The body is compiled when its file loads, under the fill frame and the stroke frame, so `artscript check` reports a broken brush without rendering, and a library brush is checked even when nothing uses it. An SkSL error is E0360 at the `.art` file, line, and column inside the `sksl` block. A broken parameter is reported at its key. An error outside the body, such as a missing `shade`, is reported once at the `sksl` keyword; the errors it causes inside the frame are left out. Every error in one body is reported, not only the first.
+- The body is compiled when its file loads, under the fill frame and the stroke frame, so `ramose check` reports a broken brush without rendering, and a library brush is checked even when nothing uses it. An SkSL error is E0360 at the `.ramo` file, line, and column inside the `sksl` block. A broken parameter is reported at its key. An error outside the body, such as a missing `shade`, is reported once at the `sksl` keyword; the errors it causes inside the frame are left out. Every error in one body is reported, not only the first.
 
 ## The Mark
 
@@ -114,7 +114,7 @@ A brushed stroke is a ribbon. The shape's geometry is the spine, and every devic
 
 ## std/brushes
 
-`use std/brushes { dry chip bristle }` imports the bundled library. `std/` names only bundled libraries: a project file under `std/` at the project root or at a lib root is E0213, and `use std/nope` is E0210. `artscript std` lists the bundled libraries, and `artscript std brushes` prints the file, so `artscript std brushes > lib/brushes.art` forks it. The lints do not run on a bundled file. `std/stamps` holds the bundled stamps; see `stamps`.
+`use std/brushes { dry chip bristle }` imports the bundled library. `std/` names only bundled libraries: a project file under `std/` at the project root or at a lib root is E0213, and `use std/nope` is E0210. `ramose std` lists the bundled libraries, and `ramose std brushes` prints the file, so `ramose std brushes > lib/brushes.ramo` forks it. The lints do not run on a bundled file. `std/stamps` holds the bundled stamps; see `stamps`.
 
 - `dry strength:.5 scale:1 fade:0 dir:0`: coverage breaks into parallel streaks along `dir` on a fill and along the ribbon on a stroke; `fade` wears the paint out toward the far end.
 - `chip strength:.6 scale:1 grit:.5`: a chipped, gritty edge. `scale` is the chip size, and the inside stays solid. On a stroke thinner than about `strength * 18 * scale` the whole ribbon is edge.

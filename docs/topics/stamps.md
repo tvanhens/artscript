@@ -81,7 +81,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 
 ## std/stamps
 
-`use std/stamps { dots ticks leaves }` imports the bundled library. `artscript std stamps` prints the file, so `artscript std stamps > lib/stamps.art` forks it. Each takes `tint:` and reads the host's paint when it is `none`.
+`use std/stamps { dots ticks leaves }` imports the bundled library. `ramose std stamps` prints the file, so `ramose std stamps > lib/stamps.ramo` forks it. Each takes `tint:` and reads the host's paint when it is `none`.
 
 - `dots r:2 spacing:6 tint:none`: a dot of radius `r` at each placement.
 - `ticks reach:4 spacing:8 tint:none`: a 1-unit line across the path, `reach` units to each side.

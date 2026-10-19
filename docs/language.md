@@ -1,8 +1,8 @@
-# artscript language card
+# ramose language card
 
 This card and the topic files in `docs/topics/` are the author card for the draft the code implements today. The name of the draft is v0.1. The design is still open. A better design can replace any rule here, and it can break today's outputs.
 
-artscript is a declarative language for procedural art. `artscript build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment. `artscript docs <topic> [topic...]` prints the full rules for each topic in the index that `artscript docs` prints after this card.
+ramose is a declarative language for procedural art. `ramose build` turns every entry file into PNG, SVG, and GIF. One statement per line: `verb positional… key:value…`, children indented two spaces. `#` starts a comment. `ramose docs <topic> [topic...]` prints the full rules for each topic in the index that `ramose docs` prints after this card.
 
 A line that does not draw says so with its first word: `use palette style finish def rule fn let light brush stamp anim` declare, `if else each` branch and loop, `assert expect` check, `slot` exposes a slot, `play` starts an anim, `ramp color` are palette rows, `fx` adds an effect, `mask` masks, `.part` patches, and `name:` at the end of a line fills a slot. Every other line is a draw: a shape, a structure verb, or a component. `fx`, `mask`, `slot`, `finish`, `anim`, and `play` are reserved, so `let fx = 1` is an error. `brush`, `stamp`, and `fn` open a declaration only as a line's first word; elsewhere they are plain names, so `brush:` and `stamp:` are keys and `brush` and `stamp` are parameters.
 

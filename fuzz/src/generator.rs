@@ -854,7 +854,7 @@ pub fn show(bytes: &[u8]) -> String {
     let mut out = String::new();
     for (i, part) in text.split('\0').enumerate() {
         if i == 0 {
-            let _ = write!(out, "==== art/t.art ====\n{part}");
+            let _ = write!(out, "==== art/t.ramo ====\n{part}");
         } else {
             let (path, src) = part.split_once('\n').unwrap_or((part, ""));
             let _ = write!(out, "==== {path} ====\n{src}");
@@ -3063,7 +3063,7 @@ impl<'u, 'd> Gen<'u, 'd> {
         let mut base = Module::default();
         let default_palette = if mine {
             let (pal, lines) = self.palette(None);
-            files.push(("lib/palette/mine.art".into(), lines.join("\n") + "\n"));
+            files.push(("lib/palette/mine.ramo".into(), lines.join("\n") + "\n"));
             base.add_pal("p", &pal);
             "palette/mine"
         } else {
@@ -3098,7 +3098,7 @@ impl<'u, 'd> Gen<'u, 'd> {
                 .collect::<Vec<_>>()
                 .join("\n")
                 + "\n";
-            files.push((format!("lib/{path}.art"), src));
+            files.push((format!("lib/{path}.ramo"), src));
             libs.push((path, std::mem::take(&mut self.own)));
         }
         self.scope = base.clone();
@@ -3180,7 +3180,7 @@ impl<'u, 'd> Gen<'u, 'd> {
         }
         entry.push('\n');
         let mut out = entry.into_bytes();
-        files.push(("artscript.toml".into(), self.manifest(default_palette)));
+        files.push(("ramose.toml".into(), self.manifest(default_palette)));
         for (path, src) in files {
             out.push(0);
             out.extend_from_slice(path.as_bytes());

@@ -1,19 +1,19 @@
 //! The evaluator: modules and declarations, the drawing statements, components with slots and
-//! patches, and expressions. Produces the scene IR described in `artscript-ir`.
+//! patches, and expressions. Produces the scene IR described in `ramose-ir`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
-use artscript_ir::{
+use ramose_ir::{
     Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
     Point, Rect, Shape, Stroke,
 };
-use artscript_syntax::ast::{
+use ramose_syntax::ast::{
     self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
     SceneKind, Span, Swatch, SwatchKind, UnOp,
 };
-use artscript_syntax::{Diagnostic, format_expr};
+use ramose_syntax::{Diagnostic, format_expr};
 
 use crate::brush::{self, BrushVal, CHANNEL_KEYS, Channels, Slot};
 use crate::checks::{CheckState, Pending as CheckPending};
@@ -1121,7 +1121,7 @@ impl<'a> Evaluator<'a> {
             .project
             .source(file)
             .ok_or_else(|| fail("E0210", format!("no file `{file}`")))?;
-        match artscript_syntax::parse(src) {
+        match ramose_syntax::parse(src) {
             Ok(f) => {
                 let f = Rc::new(f);
                 self.parsed.insert(file.to_string(), f.clone());
@@ -1352,7 +1352,7 @@ impl<'a> Evaluator<'a> {
         alias: &Option<String>,
         items: &[String],
     ) -> R<()> {
-        let rooted = format!("{path}.art");
+        let rooted = format!("{path}.ramo");
         let target = match self.project.resolve_use(path) {
             Some(f) => f,
             None if self.project.files.contains_key(&rooted) => rooted,
@@ -1362,10 +1362,10 @@ impl<'a> Evaluator<'a> {
                     self.project.library_names().join(", ")
                 ));
                 return Err(if path.starts_with("std/") {
-                    f.fix("`std/` names only the bundled libraries; `artscript std` lists them")
+                    f.fix("`std/` names only the bundled libraries; `ramose std` lists them")
                 } else {
                     f.fix(format!(
-                        "create `{}/{path}.art`, or fix the path",
+                        "create `{}/{path}.ramo`, or fix the path",
                         self.project.manifest.lib[0]
                     ))
                 });
@@ -3055,7 +3055,7 @@ impl<'a> Evaluator<'a> {
                             }));
                         }
                         let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
-                        let b = artscript_ir::union_bounds(&nodes).unwrap_or(Rect::new_empty());
+                        let b = ramose_ir::union_bounds(&nodes).unwrap_or(Rect::new_empty());
                         let p = (b.width() as f64 + gap, b.height() as f64 + gap);
                         pitch = Some(p);
                         let t = cell_at(p, row, col);
@@ -5122,8 +5122,8 @@ impl<'a> Evaluator<'a> {
             Expr::Unary(UnOp::Neg, x) => {
                 let v = self.expr(x, sc)?;
                 match v {
-                    Value::Field(f) => Value::Field(Rc::new(artscript_ir::Field::Unary(
-                        artscript_ir::FieldFn::Neg,
+                    Value::Field(f) => Value::Field(Rc::new(ramose_ir::Field::Unary(
+                        ramose_ir::FieldFn::Neg,
                         Box::new((*f).clone()),
                     ))),
                     other => arith(Arith::Mul, &other, &Value::Num(-1.0))
@@ -6072,10 +6072,10 @@ pub(crate) fn osa_distance(a: &str, b: &str) -> usize {
     d[a.len()][b.len()]
 }
 
-fn mask_below(f: &artscript_ir::Field, t: f64) -> Value {
-    let complement = artscript_ir::Field::Binary(
-        artscript_ir::FieldOp::Sub,
-        Box::new(artscript_ir::Field::Const(1.0)),
+fn mask_below(f: &ramose_ir::Field, t: f64) -> Value {
+    let complement = ramose_ir::Field::Binary(
+        ramose_ir::FieldOp::Sub,
+        Box::new(ramose_ir::Field::Const(1.0)),
         Box::new(f.clone()),
     );
     Value::FieldMask(Rc::new(complement), 1.0 - t)

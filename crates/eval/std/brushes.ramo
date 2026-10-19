@@ -1,8 +1,8 @@
-# std/brushes: the house brushes. Every built-in is `.art` code. `artscript std brushes`
+# std/brushes: the house brushes. Every built-in is `.ramo` code. `ramose std brushes`
 # prints this file so you can copy it into lib/ and fork it.
 # A brush body defines `float4 shade(Mark m)` and returns straight rgb plus coverage.
 # Mark: p dev u s v d len width pressure angle tilt velocity edge uv seed paint px.
-# Helpers: hash12 hash22 vnoise simplex worley fbm rot seeded cover. See `artscript docs brushes`.
+# Helpers: hash12 hash22 vnoise simplex worley fbm rot seeded cover. See `ramose docs brushes`.
 
 # Stroke: bristle streaks along the ribbon, gaps where pressure is low or the hand moves fast,
 # ragged ends. `gaps` is how much pressure thins the paint, `speed` how much velocity does.

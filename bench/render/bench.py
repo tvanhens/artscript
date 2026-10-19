@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Time cold `artscript build` runs of the catacombs scene and check that every run writes the same bytes.
+"""Time cold `ramose build` runs of the catacombs scene and check that every run writes the same bytes.
 
     python3 bench/render/bench.py [--runs 5] [--backend cpu] BINARY [BINARY...]
 
@@ -22,9 +22,9 @@ SCENE = Path(__file__).resolve().parent / "catacombs"
 
 
 def build(binary: Path, backend: str) -> tuple[float, float, dict[str, str]]:
-    with tempfile.TemporaryDirectory(prefix="artscript-bench-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="ramose-bench-") as tmp:
         project = Path(tmp) / "catacombs"
-        shutil.copytree(SCENE, project, ignore=shutil.ignore_patterns("assets", ".artscript"))
+        shutil.copytree(SCENE, project, ignore=shutil.ignore_patterns("assets", ".ramose"))
         before = resource.getrusage(resource.RUSAGE_CHILDREN)
         start = time.perf_counter()
         done = subprocess.run(

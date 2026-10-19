@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Replays each target's corpus under source coverage and prints the union line and region coverage
-# of the artscript crates. `fuzz/coverage.sh show <file-substring>` prints that file's uncovered lines.
+# of the ramose crates. `fuzz/coverage.sh show <file-substring>` prints that file's uncovered lines.
 set -euo pipefail
 cd "$(dirname "$0")"
 export ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_leaks=1"

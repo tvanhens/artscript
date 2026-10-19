@@ -1,13 +1,13 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-    <img src="assets/logo-paper.png" alt="artscript" width="280">
+    <img src="assets/logo-paper.png" alt="ramose" width="280">
   </picture>
 </p>
 
 <p align="center">
   A language for procedural art that a language model can write and check.<br>
-  The CLI builds <code>.art</code> files into PNG, SVG, and GIF.
+  The CLI builds <code>.ramo</code> files into PNG, SVG, and GIF.
 </p>
 
 <p align="center">
@@ -20,11 +20,11 @@
   <img src="examples/spire/assets/monster/bogmaw_card.png" alt="The bogmaw: a beetle-shelled monster with three amber eyes, bone teeth, spines, moss, and glowing mushrooms on its back" width="640">
 </p>
 
-<p align="center"><sub>The bogmaw, from 199 lines of <a href="examples/spire/art/monster/bogmaw.art">artscript</a>.</sub></p>
+<p align="center"><sub>The bogmaw, from 199 lines of <a href="examples/spire/art/monster/bogmaw.ramo">ramose</a>.</sub></p>
 
 ---
 
-A model can draw one asset in SVG. It has trouble drawing the hundredth in the same style, changing one detail without rewriting the file, and telling whether its output is right. artscript keeps style in palettes and components, and `artscript check` reports each broken rule with a line number and a fix.
+A model can draw one asset in SVG. It has trouble drawing the hundredth in the same style, changing one detail without rewriting the file, and telling whether its output is right. ramose keeps style in palettes and components, and `ramose check` reports each broken rule with a line number and a fix.
 
 ## The bogmaw
 
@@ -55,7 +55,7 @@ layer legs_far
   fx outline 4 color:p.shell.0
 ```
 
-Every color comes from the 13-row [`bog` palette](examples/spire/lib/palette/bog.art), so a recolor is a palette edit. `bogmaw.art` is 5,479 tokens, and the brushes, parts, and palette it imports are 2,397 more.
+Every color comes from the 13-row [`bog` palette](examples/spire/lib/palette/bog.ramo), so a recolor is a palette edit. `bogmaw.ramo` is 5,479 tokens, and the brushes, parts, and palette it imports are 2,397 more.
 
 ## Other examples
 
@@ -74,7 +74,7 @@ Every color comes from the 13-row [`bog` palette](examples/spire/lib/palette/bog
 
 ## Why it suits a model
 
-**Small files.** The core language card, [`docs/language.md`](docs/language.md), is 988 tokens. `artscript docs <topic>` prints one of fourteen topics, so a task loads only what it needs.
+**Small files.** The core language card, [`docs/language.md`](docs/language.md), is 988 tokens. `ramose docs <topic>` prints one of fourteen topics, so a task loads only what it needs.
 
 **Local edits.** Style lives in palettes, components, and named parts. To give the chibi monk blue eyes, change one line:
 
@@ -83,14 +83,14 @@ Every color comes from the 13-row [`bog` palette](examples/spire/lib/palette/bog
 +  color iris #4f7fc0
 ```
 
-The rebuild changes only the eyes. `artscript fmt` prints one canonical form, so a diff holds only the change.
+The rebuild changes only the eyes. `ramose fmt` prints one canonical form, so a diff holds only the change.
 
-**Errors with fixes.** `artscript check --json` evaluates the project without rendering and returns each failure with its location and a fix:
+**Errors with fixes.** `ramose check --json` evaluates the project without rendering and returns each failure with its location and a fix:
 
 ```json
 {
   "code": "C0101",
-  "file": "art/slime.art",
+  "file": "art/slime.ramo",
   "fix": "set .eye.1 at:50,-114",
   "message": "assert level(@eye.0 @eye.1)",
   "node": "",
@@ -100,13 +100,13 @@ The rebuild changes only the eyes. `artscript fmt` prints one canonical form, so
 }
 ```
 
-**Checks instead of eyes.** `assert` and `expect` lines state the composition rules, such as eyes level or the body inside the canvas with a margin. `artscript explain` prints every node with its bounds and colors, so a model can find where things are without looking at a render.
+**Checks instead of eyes.** `assert` and `expect` lines state the composition rules, such as eyes level or the body inside the canvas with a margin. `ramose explain` prints every node with its bounds and colors, so a model can find where things are without looking at a render.
 
 **Many files, one style.** Projects share palettes and component libraries with `use`. One `@target` line builds every variant in a matrix. `build --only 'monster/*'` renders only the matching files, so several agents can work in one project. Builds are deterministic on one machine and backend, and `art-manifest.json` records a hash for each output.
 
 ## One file, three slimes
 
-This is all of [`examples/slime/art/slime.art`](examples/slime/art/slime.art), 435 tokens. It builds three PNGs and three GIFs:
+This is all of [`examples/slime/art/slime.ramo`](examples/slime/art/slime.ramo), 435 tokens. It builds three PNGs and three GIFs:
 
 ```
 @target slime_{flavor}.png 512x512 each flavor:[mint grape peach]
@@ -152,17 +152,17 @@ assert inside(@body canvas margin:24)
 </p>
 
 - `ramp mint #7fd4a8 5` makes five stops, with cooler shadows and warmer lights. `jelly.line` is a matching outline color. A new flavor is one palette row.
-- The highlight, shadow, and eyes are children of `body`, so artscript clips them to it. A wrong coordinate cannot push them outside the slime.
+- The highlight, shadow, and eyes are children of `body`, so ramose clips them to it. A wrong coordinate cannot push them outside the slime.
 - The shadow is the body minus a shifted copy of itself. Reshape the body and the shadow follows.
 - `anim wobble` scales the `squash` group over time. The PNG draws the rest pose, and the GIF plays the loop.
 - Move one eye with `at:50*s,-110+4*s` and `check` exits 2 with the diagnostic above. It checks every GIF frame and reports the worst one.
 
 ## The agent loop
 
-1. Give the model `artscript docs <topic>...` for the topics the task needs, and the project's palettes and component libraries.
-2. The model writes or edits an `.art` file.
-3. Run `artscript check --json`. Return the diagnostics to the model until the command exits 0.
-4. Run `artscript build --only '<its files>'`.
+1. Give the model `ramose docs <topic>...` for the topics the task needs, and the project's palettes and component libraries.
+2. The model writes or edits a `.ramo` file.
+3. Run `ramose check --json`. Return the diagnostics to the model until the command exits 0.
+4. Run `ramose build --only '<its files>'`.
 5. Review the source diff and the changed hashes in `art-manifest.json`.
 
 ## What the language covers
@@ -182,47 +182,45 @@ assert inside(@body canvas margin:24)
 
 ## Get started
 
-artscript builds with stable Rust.
+ramose builds with stable Rust.
 
 ```sh
-git clone https://github.com/tvanhens/artscript
-cd artscript
-cargo install --path crates/cli
+cargo install --git https://github.com/tvanhens/ramose ramose
 ```
 
 Make a project and build it:
 
 ```sh
 mkdir my-art && cd my-art
-artscript init
-artscript build
+ramose init
+ramose build
 ```
 
-`init` writes a manifest, a starter palette, and `art/hello.art`. `build` writes `assets/hello.png`, `assets/hello@2x.png`, and `assets/art-manifest.json`.
+`init` writes a manifest, a starter palette, and `art/hello.ramo`. `build` writes `assets/hello.png`, `assets/hello@2x.png`, and `assets/art-manifest.json`.
 
 | Command | What it does |
 |---|---|
-| `artscript build [--only GLOB]...` | Render every `@target` and write the manifest |
-| `artscript check [--json]` | Evaluate every target and run its checks, without rendering |
-| `artscript fmt [--check]` | Rewrite `.art` files in the canonical style |
-| `artscript explain <file>` | Print the evaluated node tree |
-| `artscript docs [TOPIC]...` | Print the language card or the named topics |
-| `artscript init` | Create a starter project |
+| `ramose build [--only GLOB]...` | Render every `@target` and write the manifest |
+| `ramose check [--json]` | Evaluate every target and run its checks, without rendering |
+| `ramose fmt [--check]` | Rewrite `.ramo` files in the canonical style |
+| `ramose explain <file>` | Print the evaluated node tree |
+| `ramose docs [TOPIC]...` | Print the language card or the named topics |
+| `ramose init` | Create a starter project |
 
 ## Learn more
 
 - [`docs/language.md`](docs/language.md) is the core language card. [`docs/topics/`](docs/topics) has one file per topic.
 - [`examples/spire`](examples/spire) is the bogmaw, with its own brushes, stamps, and parts library.
 - [`examples/chibi`](examples/chibi) has a shared palette, a face-parts library, and an animated character.
-- [`assets/logo.art`](assets/logo.art) draws the logo. The wordmark is [Inter](https://rsms.me/inter/), under the SIL Open Font License.
+- [`assets/logo.ramo`](assets/logo.ramo) draws the logo. The wordmark is [Inter](https://rsms.me/inter/), under the SIL Open Font License.
 
-artscript is a v0.1 draft. Expect breaking changes.
+ramose is a v0.1 draft. Expect breaking changes.
 
 ## License
 
-artscript is source-available under the [Business Source License 1.1](LICENSE).
+ramose is source-available under the [Business Source License 1.1](LICENSE).
 
-- **Free.** Use artscript to make art for your own games, apps, and other projects, including commercial ones. The images and animations you build are yours, and the license places no restriction on them.
-- **Needs a commercial license.** You need one to offer artscript to other people as part of a platform, such as a hosted or API asset generator, a game engine or editor that includes it, or an AI product that writes artscript for its users. [Contact the author](https://github.com/tvanhens) for terms.
+- **Free.** Use ramose to make art for your own games, apps, and other projects, including commercial ones. The images and animations you build are yours, and the license places no restriction on them.
+- **Needs a commercial license.** You need one to offer ramose to other people as part of a platform, such as a hosted or API asset generator, a game engine or editor that includes it, or an AI product that writes ramose for its users. [Contact the author](https://github.com/tvanhens) for terms.
 
 Each version becomes available under the Apache License 2.0 four years after its release. [`LICENSE`](LICENSE) has the full terms.

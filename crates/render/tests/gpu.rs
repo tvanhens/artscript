@@ -1,7 +1,7 @@
 mod common;
 
-use artscript_ir::EffectOp;
-use artscript_render::{Backend, gpu_available, render_png};
+use ramose_ir::EffectOp;
+use ramose_render::{Backend, gpu_available, render_png};
 use common::{circle_at, color, effect, red, scene, solid};
 
 fn decode(png: &[u8]) -> (i32, i32, Vec<u8>) {
@@ -19,15 +19,15 @@ fn decode(png: &[u8]) -> (i32, i32, Vec<u8>) {
     (w, h, buf)
 }
 
-fn layered_scene() -> artscript_ir::Scene {
+fn layered_scene() -> ramose_ir::Scene {
     let mut ringed = solid("ringed", circle_at(50.0, 60.0, 24.0), red());
-    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
+    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
     let mut soft = solid("soft", circle_at(110.0, 60.0, 24.0), color(0, 90, 220, 255));
     soft.opacity = 0.6;
     let mut cut = solid("cut", circle_at(50.0, 60.0, 10.0), color(255, 255, 255, 255));
     let keep = solid("keep", skia_safe::Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 50.0, 120.0), None), color(255, 255, 255, 255));
-    let mask = artscript_ir::Mask { source: artscript_ir::MaskSource::Nodes(vec![keep]), luminance: false, feather: 3.0, invert: false };
-    cut.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: Some(Box::new(mask)), brush: vec![] }));
+    let mask = ramose_ir::Mask { source: ramose_ir::MaskSource::Nodes(vec![keep]), luminance: false, feather: 3.0, invert: false };
+    cut.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: Some(Box::new(mask)), brush: vec![] }));
     scene(160.0, 120.0, vec![ringed, soft, cut])
 }
 
