@@ -210,7 +210,10 @@ fn children_of_a_brushed_fill_clip_to_its_coverage_not_its_geometry() {
     assert_eq!(pixel(&png, 40, 40)[3], 0, "the child does not fill the gap the brush leaves");
     assert_eq!(pixel(&png, 15, 40)[3], 0, "the child does not spill past the geometry");
     let partial = pixel(&png, 52, 40);
-    assert!((100..=104).contains(&partial[3]) && partial[2] > 250, "40% coverage shows 40% of the child: {partial:?}");
+    assert!(
+        partial[3].abs_diff(163) <= 2 && partial[0].abs_diff(95) <= 2 && partial[2].abs_diff(160) <= 2,
+        "40% blue child over 40% red fill is 64% alpha, 60% of it the fill's red lost to the child: {partial:?}"
+    );
 }
 
 #[test]

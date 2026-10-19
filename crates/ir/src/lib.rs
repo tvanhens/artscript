@@ -114,8 +114,9 @@ pub struct Shape {
     /// (children, `inside`, `copy`, booleans and anchors see the spine as before).
     pub stamps: Vec<Node>,
     /// Drawn after the shape, clipped to [`Shape::clip`] whatever the shape's fill or alpha (the
-    /// "clip by nesting" rule). The shape, its stamps and its children form one isolated group,
-    /// so a child's blend mode never reaches content below the shape.
+    /// "clip by nesting" rule), or to the coverage of a brushed fill. The shape, its stamps and
+    /// its children form one isolated group, so a child's blend mode never reaches content below
+    /// the shape.
     pub children: Vec<Node>,
 }
 

@@ -7,12 +7,21 @@
 
 use artscript_brush::Seeds;
 use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage, Stroke};
-use skia_safe::{Canvas, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, runtime_effect::ChildPtr, shaders};
+use skia_safe::canvas::SaveLayerRec;
+use skia_safe::{BlendMode, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders};
 
 use crate::RenderError;
 use crate::draw::DrawCtx;
 use crate::paint::content_paint;
 use crate::ribbon::{STRIP_ROWS, Spec, Spine};
+
+/// What a chain's alpha means. `Coverage` is the product of the stage coverages alone, as if the
+/// base paint were opaque.
+#[derive(Clone, Copy)]
+enum Ink {
+    Paint,
+    Coverage,
+}
 
 pub(crate) fn draw_area(
     canvas: &Canvas,
@@ -21,10 +30,56 @@ pub(crate) fn draw_area(
     ctx: &DrawCtx<'_>,
     origin: &str,
 ) -> Result<(), RenderError> {
+    paint_area(canvas, geometry, fill, ctx, origin, Ink::Paint)
+}
+
+/// Runs `children` clipped to the coverage the fill's brush leaves. The coverage is composited
+/// over the whole children layer, so what the brush leaves transparent clears the children, and
+/// the layer is bounded by the rect the fill draws over.
+pub(crate) fn with_coverage(
+    canvas: &Canvas,
+    geometry: &Path,
+    fill: &Fill,
+    ctx: &DrawCtx<'_>,
+    origin: &str,
+    children: impl FnOnce() -> Result<(), RenderError>,
+) -> Result<(), RenderError> {
     let Some(frame) = Frame::of(canvas) else { return Ok(()) };
+    let ltd = canvas.local_to_device();
+    canvas.save();
+    canvas.reset_matrix();
+    canvas.clip_irect(area_rect(&frame, geometry, fill), ClipOp::Intersect);
+    canvas.set_matrix(&ltd);
+    canvas.save_layer(&SaveLayerRec::default());
+    let drawn = children().and_then(|()| {
+        let mut keep = Paint::default();
+        keep.set_blend_mode(BlendMode::DstIn);
+        canvas.save_layer(&SaveLayerRec::default().paint(&keep));
+        let covered = paint_area(canvas, geometry, fill, ctx, origin, Ink::Coverage);
+        canvas.restore();
+        covered
+    });
+    canvas.restore();
+    canvas.restore();
+    drawn
+}
+
+fn area_rect(frame: &Frame, geometry: &Path, fill: &Fill) -> IRect {
     let reach = fill.reach();
     let local = geometry.compute_tight_bounds().with_outset((reach, reach));
-    let rounded: IRect = frame.ltd.map_rect(local).0.round_out();
+    frame.ltd.map_rect(local).0.round_out()
+}
+
+fn paint_area(
+    canvas: &Canvas,
+    geometry: &Path,
+    fill: &Fill,
+    ctx: &DrawCtx<'_>,
+    origin: &str,
+    ink: Ink,
+) -> Result<(), RenderError> {
+    let Some(frame) = Frame::of(canvas) else { return Ok(()) };
+    let rounded = area_rect(&frame, geometry, fill);
     // The field keeps a 2 px margin past the drawn area, so `edge` at its border is measured, not clamped.
     let field_rect = rounded.with_outset((2, 2));
     let Some(dev) = IRect::intersect(&frame.clip, &rounded) else { return Ok(()) };
@@ -42,6 +97,7 @@ pub(crate) fn draw_area(
     let shader = frame.chain(
         &stages,
         &fill.paint,
+        ink,
         origin,
         &|u, mark| {
             u.set(origin, "u_sdfo", &[field_rect.left as f32, field_rect.top as f32])?;
@@ -91,6 +147,7 @@ pub(crate) fn draw_ribbon(
             let shader = frame.chain(
                 &stages,
                 &stroke.paint,
+                Ink::Paint,
                 origin,
                 &|u, _| {
                     u.set(origin, "u_fieldo", &[rect.left as f32, rect.top as f32])?;
@@ -131,6 +188,7 @@ impl Frame {
         &self,
         stages: &[(&Stage, &M)],
         paint: &IrPaint,
+        ink: Ink,
         origin: &str,
         extra: &dyn Fn(&mut Uniforms, &M) -> Result<(), RenderError>,
         child: &dyn Fn(&str) -> Option<Shader>,
@@ -138,11 +196,17 @@ impl Frame {
         // A solid paint is bound exactly as a uniform. Any other paint is a child shader placed by
         // the device matrix, so stage 0 reads it at each device pixel.
         let (u_paint, mut prev, mut from_prev) = match paint {
-            IrPaint::Solid(c) => ([c.r, c.g, c.b, c.a], shaders::color(skia_safe::Color::TRANSPARENT), 0.0_f32),
+            IrPaint::Solid(c) => {
+                let a = if matches!(ink, Ink::Coverage) { 1.0 } else { c.a };
+                ([c.r, c.g, c.b, a], shaders::color(skia_safe::Color::TRANSPARENT), 0.0_f32)
+            }
             other => {
-                let base = content_paint(other, 0.0, None)?
+                let mut base = content_paint(other, 0.0, None)?
                     .shader()
                     .ok_or_else(|| RenderError::Skia("base paint shader".into()))?;
+                if matches!(ink, Ink::Coverage) {
+                    base = base.with_color_filter(opaque());
+                }
                 ([0.0; 4], base.with_local_matrix(&self.ltd), 1.0)
             }
         };
@@ -191,6 +255,13 @@ impl Frame {
         canvas.draw_irect(dev, &paint);
         canvas.restore();
     }
+}
+
+fn opaque() -> skia_safe::ColorFilter {
+    let matrix = ColorMatrix::new(
+        1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    );
+    color_filters::matrix(&matrix, None)
 }
 
 /// `u_frame`: the geometry's center and the size of its bounds rotated into the brush direction,
