@@ -6084,6 +6084,26 @@ fn an_fx_line_is_numbered_by_its_source_position_whatever_an_earlier_branch_does
     assert_eq!(rect(&taken), rect(&skipped));
 }
 
+#[test]
+fn a_call_block_fx_line_counts_after_the_def_s_own_lines() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4\nbadge at:30,50 name:b\n  fx outline 3\n    mask\n      circle 2\n",
+    );
+    let masks: Vec<String> = node(&s, "b")
+        .effects
+        .iter()
+        .filter_map(|e| match &e.op {
+            EffectOp::Outline { mask: Some(m), .. } => match &m.source {
+                MaskSource::Nodes(n) => Some(n[0].path.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(masks, ["b.fx~1.mask~1.rect~1", "b.fx~2.mask~1.circle~1"]);
+}
+
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
     match shape(s, path).fill.as_ref().map(|f| &f.paint) {
         Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,

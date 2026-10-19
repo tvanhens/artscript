@@ -100,7 +100,8 @@ enum Seg {
     Copy(u32),
     Anon(Anon),
     Mask,
-    /// The nth `fx` line under a node, which owns an outline mask.
+    /// The nth `fx` line under a node, counted through every line the node owns, which owns
+    /// an outline mask.
     Fx(u32),
 }
 
@@ -202,7 +203,8 @@ impl Key {
         self.extend(Seg::Mask, &[])
     }
 
-    /// The mask under the node's `fx` line number `n`, counted from 1 in source order.
+    /// The mask under the node's `fx` line number `n`, counted from 1 in source order over
+    /// every `fx` line the node owns, under a skipped branch too.
     pub fn fx_mask(&self, n: u32) -> Key {
         self.extend(Seg::Fx(n), &[]).mask()
     }

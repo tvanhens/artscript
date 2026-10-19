@@ -107,11 +107,13 @@ fn check_finish_line(module: &Module, finish: &str, line: &FxLine) -> R<()> {
     Ok(())
 }
 
-/// One `fx` line as written under a node, with the scope it was written in. `frame` and
-/// `world` are the node's, where a mask under the line evaluates, as the node's own mask does.
+/// One `fx` line as written under a node, with the scope it was written in. `ordinal` is the
+/// line's number among every `fx` line its owner has, from `fx_ordinals`. `frame` and `world`
+/// are the node's, where a mask under the line evaluates, as the node's own mask does.
 pub(crate) struct FxSite<'s> {
     pub line: &'s FxLine,
     pub scope: &'s Scope,
+    pub ordinal: u32,
     pub frame: Rect,
     pub world: Matrix,
 }
@@ -123,7 +125,7 @@ impl Evaluator<'_> {
     pub(crate) fn lower_fx(&mut self, sites: &[FxSite<'_>], key: &Key, fill: Rgba) -> Vec<Effect> {
         let path = key.to_string();
         let mut out = Vec::new();
-        for (i, site) in sites.iter().enumerate() {
+        for site in sites {
             let file = site.scope.file().to_string();
             let op = site.line.op.as_str();
             let finish = if is_effect_name(op) { None } else { site.scope.module.finishes.borrow().get(op).cloned() };
@@ -141,7 +143,7 @@ impl Evaluator<'_> {
                         }
                     };
                     if let (Some(line), EffectOp::Outline { mask, .. }) = (&site.line.mask, &mut effect.op) {
-                        match self.outline_mask(line, site, &file, &key.fx_mask(i as u32 + 1)) {
+                        match self.outline_mask(line, site, &file, &key.fx_mask(site.ordinal)) {
                             Ok(m) => *mask = m.map(Box::new),
                             Err(e) => self.report(e, &file, line.span, &path),
                         }

@@ -469,6 +469,38 @@ pub(crate) fn in_source_order<'a>(
     all
 }
 
+/// The number of every `fx` line a draw, def, or call block owns, by the line's span: its
+/// direct lines and those under its `if` arms, taken or not, counted from 1 in source order.
+/// A mask under the line keys on this number, so a branch skipped this frame moves no other
+/// line's mask.
+pub(crate) fn fx_ordinals<'a>(
+    direct: impl Iterator<Item = &'a ast::Fx>,
+    scenes: impl Iterator<Item = &'a Scene>,
+) -> BTreeMap<Span, u32> {
+    fn under_ifs<'a>(scenes: impl Iterator<Item = &'a Scene>, out: &mut Vec<Span>) {
+        for s in scenes {
+            match &s.kind {
+                SceneKind::If {
+                    then, otherwise, ..
+                } => {
+                    under_ifs(then.iter(), out);
+                    under_ifs(otherwise.iter(), out);
+                }
+                SceneKind::Fx(f) => out.push(f.span),
+                _ => {}
+            }
+        }
+    }
+    let mut spans: Vec<Span> = direct.map(|f| f.span).collect();
+    under_ifs(scenes, &mut spans);
+    spans.sort();
+    spans
+        .into_iter()
+        .enumerate()
+        .map(|(i, span)| (span, i as u32 + 1))
+        .collect()
+}
+
 fn holds_play(scenes: &[Scene]) -> bool {
     scenes.iter().any(|st| match &st.kind {
         SceneKind::Play { name, .. } => name.is_some(),
@@ -2251,9 +2283,10 @@ impl<'a> Evaluator<'a> {
             self.report_operand_fx(&of, &branch_fx, sc);
         }
         let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
+        let ordinals = fx_ordinals(body.fx(), body.scenes());
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope, frame: body_frame, world })
+            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
@@ -3411,11 +3444,15 @@ impl<'a> Evaluator<'a> {
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &call_fx, sc);
         }
-        let mut lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
-        lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
-        let sites: Vec<FxSite> = lines
+        let def_lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
+        let call_lines = in_source_order(block.fx(), &call_fx, &call_sc);
+        let def_ordinals = fx_ordinals(comp.body.iter().filter_map(DefItem::fx), comp.body.iter().filter_map(DefItem::scene));
+        let call_ordinals = fx_ordinals(block.fx(), block.scenes());
+        let sites: Vec<FxSite> = def_lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope, frame: call_sc.frame, world })
+            .map(|l| (l, def_ordinals[&l.0.span]))
+            .chain(call_lines.iter().map(|l| (l, def_ordinals.len() as u32 + call_ordinals[&l.0.span])))
+            .map(|((line, scope), ordinal)| FxSite { line, scope, ordinal, frame: call_sc.frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
@@ -3957,7 +3994,7 @@ impl<'a> Evaluator<'a> {
 
     fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
         let mut inner = sc.child(key.clone(), sc.frame, sc.world);
-        let mut fx_lines = 0;
+        let ordinals = fx_ordinals(draw.body.fx(), draw.body.scenes());
         for item in draw.body.items() {
             match item {
                 DrawItem::Scene(st) => {
@@ -3970,12 +4007,9 @@ impl<'a> Evaluator<'a> {
                     let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
                     self.collect_surface(body, &mut mask_sc, false);
                 }
-                DrawItem::Fx(f) => {
-                    fx_lines += 1;
-                    if !f.mask_block().is_empty() {
-                        let mut mask_sc = sc.child(key.fx_mask(fx_lines), sc.frame, sc.world);
-                        self.collect_surface(f.mask_block(), &mut mask_sc, false);
-                    }
+                DrawItem::Fx(f) if !f.mask_block().is_empty() => {
+                    let mut mask_sc = sc.child(key.fx_mask(ordinals[&f.span]), sc.frame, sc.world);
+                    self.collect_surface(f.mask_block(), &mut mask_sc, false);
                 }
                 _ => {}
             }
