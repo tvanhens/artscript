@@ -77,7 +77,7 @@ pub struct Lch {
     pub h: f64,
 }
 
-fn to_linear(u: f64) -> f64 {
+pub(crate) fn to_linear(u: f64) -> f64 {
     if u <= 0.04045 {
         u / 12.92
     } else {
@@ -85,7 +85,7 @@ fn to_linear(u: f64) -> f64 {
     }
 }
 
-fn to_srgb(u: f64) -> f64 {
+pub(crate) fn to_srgb(u: f64) -> f64 {
     if u <= 0.0031308 {
         12.92 * u
     } else {

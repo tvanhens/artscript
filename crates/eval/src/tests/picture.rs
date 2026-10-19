@@ -1,4 +1,4 @@
-//! `image(...)` reads a picture from the project folder.
+//! `image(...)` and `sample(...)` read pictures from the project folder.
 
 use std::path::PathBuf;
 
@@ -7,7 +7,7 @@ use skia_safe::{Color, Color4f, EncodedImageFormat, Paint as SkPaint, surfaces};
 
 use crate::{Evaluation, Project, evaluate, plan};
 
-use super::{diag, shape, show};
+use super::{diag, node, shape, show};
 
 /// A 4x2 PNG whose left half is red and right half is blue, in a folder of its own.
 fn picture_dir(name: &str) -> PathBuf {
@@ -55,7 +55,19 @@ fn image_fill_stretches_over_the_bounds_and_cover_keeps_the_aspect() {
 }
 
 #[test]
+fn sample_averages_a_box_in_linear_light() {
+    let s = scene_in(
+        picture_dir("sample"),
+        "@target t.png 64x64\nlet red = sample(\"two.png\" 0,0 r:0)\nlet mixed = sample(\"two.png\" 2,0 r:1)\nrect 4x4 fill:red name:a\nrect 4x4 fill:mixed name:b\n",
+    );
+    assert_eq!(super::fill_hex(node(&s, "a")), "#ff0000");
+    assert_eq!(super::fill_hex(node(&s, "b")), "#9c00d5");
+}
+
+#[test]
 fn a_missing_picture_or_position_is_e0320() {
     let missing = eval_in(picture_dir("missing"), "@target t.png 8x8\nrect 4x4 fill:image(\"nope.png\")\n");
     assert!(diag(&missing, "E0320").message.contains("cannot read image \"nope.png\""));
+    let outside = eval_in(picture_dir("outside"), "@target t.png 8x8\nrect 4x4 fill:sample(\"two.png\" 9,0)\n");
+    assert!(diag(&outside, "E0320").message.contains("outside the 4x2 picture"));
 }

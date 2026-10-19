@@ -287,23 +287,35 @@ impl Evaluator<'_> {
                 let start = get("from").and_then(|v| v.num()).unwrap_or(0.0);
                 gradient(GradKind::Conic { at, start }, self.stops(&a)?)
             }
-            "image" => {
+            "image" | "sample" => {
                 let path = match a.first() {
                     Some(Value::Str(s)) => s.as_str(),
                     _ => {
                         return Err(fail("E0320", format!("`{func}` needs the picture's path as a string"))
-                            .fix(format!("write `{func}(\"ref/photo.jpg\")`")));
+                            .fix(format!("write `{func}(\"ref/photo.jpg\"{})`", if func == "sample" { " 240,500" } else { "" })));
                     }
                 };
                 let decoded = image::load(&self.project.root, path).map_err(|m| {
                     fail("E0320", m).note("image paths are relative to the folder with artscript.toml")
                 })?;
-                let fit = match get("fit").as_ref().map(|v| v.word()) {
-                    None | Some(Some("stretch")) => Fit::Stretch,
-                    Some(Some("cover")) => Fit::Cover,
-                    Some(_) => return Err(fail("E0320", "`fit:` on `image` is `stretch` or `cover`").fix("write `image(\"ref/photo.jpg\" fit:cover)`")),
-                };
-                Value::Image(ImagePaint { decoded, fit })
+                if func == "image" {
+                    let fit = match get("fit").as_ref().map(|v| v.word()) {
+                        None | Some(Some("stretch")) => Fit::Stretch,
+                        Some(Some("cover")) => Fit::Cover,
+                        Some(_) => return Err(fail("E0320", "`fit:` on `image` is `stretch` or `cover`").fix("write `image(\"ref/photo.jpg\" fit:cover)`")),
+                    };
+                    Value::Image(ImagePaint { decoded, fit })
+                } else {
+                    let (x, y) = a.get(1).and_then(Value::vec2).ok_or_else(|| {
+                        fail("E0320", "`sample` needs a pixel position like 240,500").fix("write `sample(\"ref/photo.jpg\" 240,500)`")
+                    })?;
+                    let r = get("r").and_then(|v| v.num()).unwrap_or(2.0);
+                    let c = decoded.sample(x, y, r.round() as i32).ok_or_else(|| {
+                        fail("E0320", format!("`sample` at {x},{y} is outside the {}x{} picture", decoded.width, decoded.height))
+                            .note("positions are picture pixels, origin top-left")
+                    })?;
+                    Value::Color(Col::plain(c))
+                }
             }
             "simplex" | "perlin" | "worley" | "value" => {
                 let kind = match func {
@@ -381,7 +393,7 @@ impl Evaluator<'_> {
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
-                    .note("pictures: image")
+                    .note("pictures: image sample")
                     .note("lists: concat")
                     .fix("check the spelling"));
             }

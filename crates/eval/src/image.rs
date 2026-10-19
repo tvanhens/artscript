@@ -10,6 +10,8 @@ use std::time::SystemTime;
 use skia_safe::image::CachingHint;
 use skia_safe::{AlphaType, ColorType, Data, Image, ImageInfo};
 
+use crate::color::{Rgba, to_linear, to_srgb};
+
 /// How `image(...)` fills the shape's bounds.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fit {
@@ -32,8 +34,33 @@ pub struct Decoded {
     pub width: i32,
     pub height: i32,
     /// Row-major RGBA, 8 bits per channel, not premultiplied.
-    #[allow(dead_code)]
     rgba: Vec<u8>,
+}
+
+impl Decoded {
+    /// The color at pixel `x`,`y` (origin top-left), averaged over the box of `radius` pixels
+    /// around it that lies inside the picture, in linear light. `None` when `x`,`y` is outside.
+    pub fn sample(&self, x: f64, y: f64, radius: i32) -> Option<Rgba> {
+        let (cx, cy) = (x.floor() as i64, y.floor() as i64);
+        if cx < 0 || cy < 0 || cx >= self.width as i64 || cy >= self.height as i64 {
+            return None;
+        }
+        let r = i64::from(radius.max(0));
+        let (x0, x1) = ((cx - r).max(0), (cx + r).min(self.width as i64 - 1));
+        let (y0, y1) = ((cy - r).max(0), (cy + r).min(self.height as i64 - 1));
+        let mut sum = [0.0_f64; 3];
+        for py in y0..=y1 {
+            for px in x0..=x1 {
+                let at = (py as usize * self.width as usize + px as usize) * 4;
+                for (s, byte) in sum.iter_mut().zip(&self.rgba[at..at + 3]) {
+                    *s += to_linear(f64::from(*byte) / 255.0);
+                }
+            }
+        }
+        let n = ((x1 - x0 + 1) * (y1 - y0 + 1)) as f64;
+        let [r, g, b] = sum.map(|s| (to_srgb(s / n) * 255.0).round() / 255.0);
+        Some(Rgba { r, g, b, a: 1.0 })
+    }
 }
 
 type Stamp = (SystemTime, u64);
