@@ -406,7 +406,7 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
     }
     for job in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
-            artscript_eval::sample(project, job).diagnostics
+            artscript_eval::sample_outputs(project, job).diagnostics
         } else {
             artscript_eval::evaluate_outputs(project, job).diagnostics
         };

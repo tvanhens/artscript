@@ -307,20 +307,26 @@ fn run_gif(
     key: String,
     backend: Backend,
 ) -> Outcome {
-    use artscript_eval::{frame_delays, sample};
-    let sampled = sample(project, job);
-    let mut diagnostics = sampled.diagnostics;
+    use artscript_eval::{frame_delays, sample_outputs};
+    let mut sampled = sample_outputs(project, job);
+    let mut diagnostics = std::mem::take(&mut sampled.diagnostics);
     let mut outputs = Vec::new();
     let compile_error = diagnostics
         .iter()
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
-    if !compile_error
-        && let Ok(delays) = frame_delays(sampled.frames.len(), sampled.dur)
-        && !delays.is_empty()
-    {
-        let scenes: Vec<_> = sampled.frames.iter().map(|f| &f.scene).collect();
+    if !compile_error {
         for out in &job.outputs {
-            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sampled.loops, backend);
+            let Some(sample) = sampled.at(job.sample_scale(out)) else {
+                continue;
+            };
+            let Ok(delays) = frame_delays(sample.frames.len(), sample.dur) else {
+                continue;
+            };
+            if delays.is_empty() {
+                continue;
+            }
+            let scenes: Vec<_> = sample.frames.iter().map(|f| &f.scene).collect();
+            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sample.loops, backend);
             let bytes = match bytes {
                 Ok(b) => b,
                 Err(artscript_render::RenderError::TransparentGif) => {

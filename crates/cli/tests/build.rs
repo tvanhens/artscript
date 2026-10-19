@@ -303,6 +303,45 @@ fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
 }
 
 #[test]
+fn a_gif_writes_one_file_per_scale() {
+    let dir = std::env::temp_dir().join(format!("artscript-cli-gifscale-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("artscript.toml"),
+        "[project]\nname = \"gifscale\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.art"),
+        "@target dot.gif 64x64 scale:.5,1 bg:#ffffff fps:2 dur:1s\ncircle 8*scale at:32,32\n",
+    )
+    .unwrap();
+    let size = |name: &str| {
+        let bytes = fs::read(dir.join("assets").join(name)).unwrap();
+        let le = |i: usize| u16::from_le_bytes([bytes[i], bytes[i + 1]]);
+        (le(6), le(8))
+    };
+    for _ in 0..2 {
+        let out = artscript(&dir, &["build", "--backend", "cpu"]);
+        assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+        assert_eq!(size("dot@0.5x.gif"), (32, 32));
+        assert_eq!(size("dot.gif"), (64, 64));
+    }
+    let scales: Vec<_> = manifest(&dir)["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| (o["path"].as_str().unwrap().to_string(), o["scale"].as_f64().unwrap()))
+        .collect();
+    assert_eq!(
+        scales,
+        [("dot.gif".to_string(), 1.0), ("dot@0.5x.gif".to_string(), 0.5)]
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_gif_frame_longer_than_the_field_is_e0206() {
     let dir = std::env::temp_dir().join(format!("artscript-cli-long-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

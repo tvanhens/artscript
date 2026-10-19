@@ -61,25 +61,25 @@ pub struct TargetJob {
     /// The `palette:` expression: a palette or a palette module that `p` names for the whole scene.
     pub palette: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked tiles and tapered strokes sample at: 1 for a GIF, the target's highest scale for a
-    /// PNG (never below 1 for an SVG). A PNG output samples at its own `scale:` instead.
+    /// Scale baked tiles and tapered strokes sample at: the target's highest scale (never below 1 for
+    /// an SVG). A PNG or GIF output samples at its own `scale:` instead.
     pub bake_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
 
 impl TargetJob {
-    /// The scale `out` is drawn from: a PNG output's own `scale:`, else the job's `bake_scale`.
+    /// The scale `out` is drawn from: a PNG or GIF output's own `scale:`, else the job's `bake_scale`.
     pub fn sample_scale(&self, out: &OutputSpec) -> f32 {
         match out.format {
-            Format::Png => out.scale,
-            Format::Svg | Format::Gif => self.bake_scale,
+            Format::Png | Format::Gif => out.scale,
+            Format::Svg => self.bake_scale,
         }
     }
 
-    /// What the file reads as `scale`: a PNG output's own scale, which `evaluate_outputs` sets as the
-    /// job's `bake_scale`, and 1 for an SVG or GIF.
+    /// What the file reads as `scale`: a PNG or GIF output's own scale, which `evaluate_outputs` and
+    /// `sample_outputs` set as the job's `bake_scale`, and 1 for an SVG.
     pub fn draw_scale(&self) -> f64 {
-        let scale = if self.outputs.iter().any(|o| o.format == Format::Png) {
+        let scale = if self.outputs.iter().any(|o| o.format != Format::Svg) {
             self.bake_scale
         } else {
             1.0
@@ -419,8 +419,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
             .collect();
     }
     let bake_scale = match format {
-        Format::Gif => 1.0,
-        Format::Png => scales.iter().copied().fold(0.0f32, f32::max),
+        Format::Png | Format::Gif => scales.iter().copied().fold(0.0f32, f32::max),
         Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
     };
     let sized_name = OUTPUT_VARS
@@ -450,12 +449,12 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 })
             };
             let outputs = match format {
-                Format::Svg | Format::Gif => vec![OutputSpec {
+                Format::Svg => vec![OutputSpec {
                     path: name(1.0)?,
                     format,
                     scale: 1.0,
                 }],
-                Format::Png => scales
+                Format::Png | Format::Gif => scales
                     .iter()
                     .map(|s| {
                         let path = name(*s)?;
@@ -637,14 +636,22 @@ mod tests {
     }
 
     #[test]
-    fn an_svg_and_a_gif_fill_placeholders_at_scale_one() {
+    fn an_svg_fills_placeholders_at_scale_one() {
         assert_eq!(
             output_paths("@target s_{w}x{h}_{scale}.svg 24x12 scale:1,2"),
             ["s_24x12_1.svg"]
         );
+    }
+
+    #[test]
+    fn a_gif_names_each_scale_like_a_png() {
         assert_eq!(
-            output_paths("@target g_{w}x{h}_{scale}.gif 24x12 scale:2 bg:#ffffff"),
-            ["g_24x12_1.gif"]
+            output_paths("@target g_{w}x{h}_{scale}.gif 24x12 scale:.5,2 bg:#ffffff"),
+            ["g_12x6_0.5.gif", "g_48x24_2.gif"]
+        );
+        assert_eq!(
+            output_paths("@target t.gif 8x8 scale:1,2 bg:#ffffff"),
+            ["t.gif", "t@2x.gif"]
         );
     }
 
@@ -700,18 +707,19 @@ mod tests {
     }
 
     #[test]
-    fn a_gif_stays_one_output_at_scale_one() {
+    fn a_gif_writes_one_output_per_scale_and_bakes_at_the_highest() {
         let p = project(&[(
             "art/k.art",
-            "@target t.gif 8x8 scale:1,2 bg:#ffffff\nrect 1\n",
+            "@target t.gif 8x8 scale:.5,2 bg:#ffffff\nrect 1\n",
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
         assert_eq!(plan.jobs.len(), 1);
-        assert_eq!(plan.jobs[0].outputs.len(), 1);
-        assert_eq!(plan.jobs[0].outputs[0].path, "t.gif");
-        assert_eq!(plan.jobs[0].outputs[0].scale, 1.0);
-        assert_eq!(plan.jobs[0].bake_scale, 1.0);
+        let job = &plan.jobs[0];
+        let outputs: Vec<_> = job.outputs.iter().map(|o| (o.path.as_str(), o.scale)).collect();
+        assert_eq!(outputs, [("t@0.5x.gif", 0.5), ("t@2x.gif", 2.0)]);
+        assert_eq!(job.bake_scale, 2.0);
+        assert_eq!(job.sample_scale(&job.outputs[0]), 0.5);
     }
 
     #[test]

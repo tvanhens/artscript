@@ -2850,18 +2850,18 @@ fn a_play_start_rand_ignores_a_toggling_let() {
 }
 
 #[test]
-fn a_gif_scale_list_does_not_refine_a_tapered_stroke() {
-    let one = scene(
-        "@target t.gif 40x40 scale:1 bg:#ffffff\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n",
+fn a_gif_scale_two_refines_a_tapered_stroke() {
+    let out = gif_samples(
+        "@target t.gif 40x40 scale:1,2 bg:#ffffff dur:1s fps:2\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n",
     );
-    let listed = scene(
-        "@target t.gif 40x40 scale:1,2 bg:#ffffff\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n",
-    );
-    let n = |s: &Scene| match &node(s, "ink").kind {
-        NodeKind::Shape(shape) => shape.geometry.count_points(),
-        NodeKind::Group { .. } => panic!("ink is a group"),
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    let n = |scale: f32| {
+        let frames = &out.at(scale).unwrap_or_else(|| panic!("no sample at {scale}")).frames;
+        assert_eq!(frames.len(), 2, "{scale}");
+        let ink = shape(&frames[0].scene, "ink").stroke.as_ref().and_then(|st| st.ink.as_ref());
+        ink.expect("tapered ink").count_points()
     };
-    assert_eq!(n(&one), n(&listed));
+    assert!(n(2.0) > n(1.0), "{} vs {}", n(2.0), n(1.0));
 }
 
 #[test]
@@ -6052,17 +6052,34 @@ fn scale_is_the_number_the_target_wrote() {
 }
 
 #[test]
-fn scale_is_one_for_an_svg_and_a_gif_whatever_scale_they_list() {
-    for target in [
-        "@target t.svg 40x40 scale:1,2",
-        "@target t.gif 40x40 scale:2 bg:#ffffff",
-    ] {
-        let p = project(&[("art/t.art", &format!("{target}\ncircle 5*scale name:c\n"))]);
-        let plan = plan(&p);
-        let ev = evaluate(&p, &plan.jobs[0]);
-        assert!(ev.diagnostics.is_empty(), "{target}: {}", show(&ev.diagnostics));
-        let s = ev.scene.unwrap();
-        assert_eq!(shape(&s, "c").geometry.compute_tight_bounds().width(), 10.0, "{target}");
+fn scale_is_one_for_an_svg_whatever_scale_it_lists() {
+    let p = project(&[("art/t.art", "@target t.svg 40x40 scale:1,2\ncircle 5*scale name:c\n")]);
+    let plan = plan(&p);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(shape(&s, "c").geometry.compute_tight_bounds().width(), 10.0);
+}
+
+fn gif_samples(src: &str) -> crate::OutputSamples {
+    let p = project(&[("art/t.art", src)]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    crate::sample_outputs(&p, &plan.jobs[0])
+}
+
+#[test]
+fn scale_reads_each_gif_outputs_own_scale() {
+    let out = gif_samples("@target t.gif 40x40 scale:.5,2 bg:#ffffff dur:1s fps:2\ncircle 5*scale name:c\n");
+    assert!(out.diagnostics.is_empty(), "{}", show(&out.diagnostics));
+    assert_eq!(out.samples.len(), 2);
+    for scale in [0.5, 2.0] {
+        let frames = &out.at(scale).unwrap_or_else(|| panic!("no sample at {scale}")).frames;
+        assert!(!frames.is_empty(), "{scale}");
+        for f in frames {
+            let w = f64::from(shape(&f.scene, "c").geometry.compute_tight_bounds().width());
+            assert!((w - 10.0 * f64::from(scale)).abs() < 0.05, "{scale}: {w}");
+        }
     }
 }
 
