@@ -24,7 +24,7 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
     })
 }
 
-fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
+pub(crate) fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
         Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
@@ -54,7 +54,7 @@ fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     }
 }
 
-fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
+pub(crate) fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
     f(s);
     match &s.kind {
         SceneKind::If {
@@ -95,7 +95,7 @@ fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(
         match item {
             Item::Scene(s) => walk_scene(s, f),
             Item::Decl(Decl {
-                kind: DeclKind::Def { body, .. },
+                kind: DeclKind::Def { body, .. } | DeclKind::Stamp { body, .. },
                 ..
             }) => body
                 .iter()
@@ -185,7 +185,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
             DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
-            DeclKind::Def { params, body, .. } => {
+            DeclKind::Def { params, body, .. } | DeclKind::Stamp { params, body, .. } => {
                 named(params, &mut out);
                 body.iter()
                     .filter_map(DefItem::fx)
@@ -243,6 +243,7 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         .collect();
     for d in file.decls() {
         if let DeclKind::Def { params, .. }
+        | DeclKind::Stamp { params, .. }
         | DeclKind::Rule { params, .. }
         | DeclKind::Finish { params, .. }
         | DeclKind::Brush { params, .. } = &d.kind
@@ -344,6 +345,22 @@ pub fn unknown_target(
     out
 }
 
+/// Every identifier, function and verb a def or stamp body mentions, anywhere in it.
+pub(crate) fn body_idents(body: &[DefItem]) -> BTreeSet<String> {
+    let mut exprs = Vec::new();
+    let mut scenes = Vec::new();
+    body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut exprs));
+    for s in body.iter().filter_map(DefItem::scene) {
+        walk_scene(s, &mut |c| {
+            scene_line_and_direct_fx_mask_patch_exprs(c, &mut exprs);
+            scenes.push(c);
+        });
+    }
+    let mut out = HashSet::new();
+    idents(exprs, &scenes, &mut out);
+    out.into_iter().collect()
+}
+
 fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
     for (e, _) in exprs {
         walk_expr(e, &mut |x| match x {
@@ -392,7 +409,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     idents(exprs, &scenes, &mut used);
     for d in file.decls() {
         match &d.kind {
-            DeclKind::Def { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
+            DeclKind::Def { body, .. } | DeclKind::Stamp { body, .. } => body.iter().filter_map(DefItem::fx).for_each(|fx| {
                 used.insert(fx.op.clone());
             }),
             DeclKind::Palette {
@@ -435,7 +452,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                     }
                 }
             }
-            DeclKind::Def { name, params, body } => {
+            DeclKind::Def { name, params, body } | DeclKind::Stamp { name, params, body } => {
                 let mut exprs = Vec::new();
                 let mut inner_scenes = Vec::new();
                 body.iter()
@@ -449,10 +466,10 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
                 }
                 let mut inner = HashSet::new();
                 idents(exprs, &inner_scenes, &mut inner);
-                for p in params
-                    .iter()
-                    .filter(|p| p.key != "needs" && p.key != "size")
-                {
+                let placement = matches!(d.kind, DeclKind::Stamp { .. });
+                for p in params.iter().filter(|p| {
+                    p.key != "needs" && p.key != "size" && !(placement && matches!(p.key.as_str(), "spacing" | "count"))
+                }) {
                     if !inner.contains(&p.key) {
                         push(
                             p.span,
@@ -693,20 +710,22 @@ pub fn hidden_child(
                 }
             }
             let world = parent * n.transform;
-            let clip = match &n.kind {
-                NodeKind::Shape(s) => {
-                    let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
-                    self.clips.push((r, n.path.as_str()));
-                    true
+            let NodeKind::Shape(s) = &n.kind else {
+                for c in n.descendants() {
+                    self.node(c, world, site);
                 }
-                NodeKind::Group { .. } => false,
+                return;
             };
-            for c in n.children() {
+            // Stamps are the shape's ink and spill past it; only the children are clipped.
+            for c in &s.stamps {
                 self.node(c, world, site);
             }
-            if clip {
-                self.clips.pop();
+            let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
+            self.clips.push((r, n.path.as_str()));
+            for c in &s.children {
+                self.node(c, world, site);
             }
+            self.clips.pop();
         }
     }
     let mut paths = HashMap::new();
@@ -768,14 +787,20 @@ pub fn hidden_child(
 /// them for effects that read another node.
 fn index<'n>(nodes: &'n [Node], parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
     for n in nodes {
-        out.insert(n.path.as_str(), (n, parent));
-        let world = parent * n.transform;
-        if let Some(mask) = &n.mask
-            && let MaskSource::Nodes(inner) = &mask.source
-        {
-            index(inner, world, out);
-        }
-        index(n.children(), world, out);
+        index_node(n, parent, out);
+    }
+}
+
+fn index_node<'n>(n: &'n Node, parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
+    out.insert(n.path.as_str(), (n, parent));
+    let world = parent * n.transform;
+    if let Some(mask) = &n.mask
+        && let MaskSource::Nodes(inner) = &mask.source
+    {
+        index(inner, world, out);
+    }
+    for c in n.descendants() {
+        index_node(c, world, out);
     }
 }
 

@@ -366,7 +366,7 @@ pub fn reflect(node: &mut artscript_ir::Node) {
         ns.iter_mut().for_each(reflect);
     }
     match &mut node.kind {
-        artscript_ir::NodeKind::Shape(s) => s.children.iter_mut().for_each(reflect),
+        artscript_ir::NodeKind::Shape(s) => s.stamps.iter_mut().chain(&mut s.children).for_each(reflect),
         artscript_ir::NodeKind::Group { children, .. } => children.iter_mut().for_each(reflect),
     }
 }
@@ -985,7 +985,7 @@ impl ModuleIds {
         );
         ordinals(&file, &top, &mut anon, &mut tags);
         for d in parsed.decls() {
-            if let DeclKind::Def { name, body, .. } = &d.kind {
+            if let DeclKind::Def { name, body, .. } | DeclKind::Stamp { name, body, .. } = &d.kind {
                 let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
                 let r = declare(
                     &file,

@@ -19,6 +19,7 @@ pub mod project;
 mod range;
 mod scope;
 mod seed;
+mod stamp;
 pub mod targets;
 mod value;
 

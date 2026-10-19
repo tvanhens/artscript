@@ -9,7 +9,7 @@ use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
-use crate::identity::{DeclId, Entry, Key, NameKind, Names, RegionKind};
+use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, RegionKind};
 use crate::value::Value;
 
 pub struct Module {
@@ -168,6 +168,15 @@ pub struct Record {
     pub decl: Option<DeclId>,
     /// Set when this node opens a scope (an instance or a slot).
     pub inner: Option<Rc<RefCell<Names>>>,
+    /// The stamp sets this node placed, in `stamp:` order. A hop after this record that names
+    /// no child looks here: `@vine.leaves.6`, then `.blade` continues in that stamp's `inner`.
+    pub rows: Rc<Vec<RowRecord>>,
+}
+
+/// One stamp set a node placed: its name and one record per stamp, index by position.
+pub struct RowRecord {
+    pub name: Name,
+    pub stamps: Vec<Rc<RefCell<Record>>>,
 }
 
 /// The resolved target of an `@ref`. Everything is measured in canvas coordinates.
@@ -315,7 +324,7 @@ fn collect_strokes(n: &Node, out: &mut Vec<f64>) {
     {
         out.push((st.width as f64 * 100.0).round() / 100.0);
     }
-    for c in n.children() {
+    for c in n.descendants() {
         collect_strokes(c, out);
     }
 }
@@ -358,6 +367,18 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
     };
     for child in r.children() {
         collect_anchors(&child, private_scope, out);
+    }
+    for row in r.record.rows.iter() {
+        for (i, stamp) in row.stamps.iter().enumerate() {
+            let stamp = RefVal {
+                label: format!("{}.{}.{i}", r.label, row.name),
+                record: stamp.borrow().clone(),
+                source: Some(Rc::as_ptr(stamp) as usize),
+                canvas: None,
+                extent: Extent::Visual,
+            };
+            collect_anchors(&stamp, private_scope, out);
+        }
     }
 }
 

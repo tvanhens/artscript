@@ -30,7 +30,7 @@ use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AnimDef, Component, Extent, Module, Palette, Record, RefVal, RuleDef, StyleDef, ref_from,
+    AnimDef, Component, Extent, Module, Palette, Record, RefVal, RowRecord, RuleDef, StyleDef, ref_from,
 };
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
@@ -82,11 +82,11 @@ const NODE_KEYS: &[&str] = &[
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 const PAINT_KEYS: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp",
 ];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend",
 ];
 
 struct Builtin {
@@ -144,9 +144,10 @@ pub(crate) struct Host {
 #[derive(Clone)]
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
-    /// Def parameters whose default is a brush, by their index in `env`. A call on one is
-    /// checked against the default's declaration whatever the instance bound.
-    pub brush_params: Rc<Vec<(usize, Rc<BrushVal>)>>,
+    /// Def and stamp parameters whose default is a brush or a stamp, by their index in `env`,
+    /// with that default. A call on one is checked against the default's declaration whatever
+    /// the instance bound.
+    pub typed_params: Rc<Vec<(usize, Value)>>,
     pub module: Rc<Module>,
     owner: Key,
     parent: Key,
@@ -154,17 +155,17 @@ pub(crate) struct Scope {
     parent_copies: Vec<u32>,
     scope_loops: Vec<Span>,
     pub(crate) names: Rc<RefCell<Names>>,
-    lookup: Lookup,
+    pub(crate) lookup: Lookup,
     pending: Rc<Pending>,
-    ids: Rc<ModuleIds>,
-    depth: u32,
+    pub(crate) ids: Rc<ModuleIds>,
+    pub(crate) depth: u32,
     pub frame: Rect,
     /// Canvas from local coordinates.
     pub world: Matrix,
     pub style: Rc<Vec<(String, Value)>>,
     pub palette: Option<Value>,
     pub inst: Option<Rc<Instance>>,
-    host: Option<Rc<Host>>,
+    pub(crate) host: Option<Rc<Host>>,
     pub checks: Rc<RefCell<Vec<CheckPending>>>,
     /// Where an `fx` line under a taken `if` goes: the draw or def that owns this block.
     branch_fx: Option<Rc<RefCell<Vec<BranchFx>>>>,
@@ -190,6 +191,18 @@ struct Provisional {
 }
 
 impl Scope {
+    /// Names bound here or in the module whose value passes `is`, the local ones first. A
+    /// misspelled `brush:` or `stamp:` word lists them.
+    pub(crate) fn names_where(&self, is: impl Fn(&Value) -> bool) -> Vec<String> {
+        let mut names: Vec<String> = self.env.iter().filter(|(_, v)| is(v)).map(|(k, _)| k.clone()).collect();
+        for (k, v) in self.module.globals.borrow().iter() {
+            if is(v) && !names.contains(k) {
+                names.push(k.clone());
+            }
+        }
+        names
+    }
+
     fn child(&self, parent: Key, frame: Rect, world: Matrix) -> Scope {
         Scope {
             parent,
@@ -219,7 +232,7 @@ impl Scope {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn enter(
+    pub(crate) fn enter(
         &self,
         key: Key,
         names: Rc<RefCell<Names>>,
@@ -254,7 +267,7 @@ impl Scope {
     }
 
     /// Gives this block's `fx` lines under a taken `if` to a fresh list the owner lowers.
-    fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<BranchFx>>> {
+    pub(crate) fn collect_branch_fx(&mut self) -> Rc<RefCell<Vec<BranchFx>>> {
         let fx = Rc::new(RefCell::new(Vec::new()));
         self.branch_fx = Some(fx.clone());
         fx
@@ -350,7 +363,7 @@ pub(crate) struct Evaluator<'a> {
     pub canvas: Rect,
     pub background: Option<Rgba>,
     pub check: Option<CheckState>,
-    ids: HashMap<String, Rc<ModuleIds>>,
+    pub(crate) ids: HashMap<String, Rc<ModuleIds>>,
     incoming: Vec<PendingPatch>,
     reported: BTreeSet<ReportKey>,
     pub(crate) uses: identity::PositionalUses,
@@ -371,7 +384,10 @@ pub(crate) struct Evaluator<'a> {
     pub(crate) prepass: bool,
     silence: bool,
     /// Every placed record by node path, for `.outer` to find the nodes an `of:@x` effect reads.
-    placed: RefCell<HashMap<String, Rc<RefCell<Record>>>>,
+    pub(crate) placed: RefCell<HashMap<String, Rc<RefCell<Record>>>>,
+    /// The stamp declarations whose blocks are being placed, outermost first. A set whose
+    /// declaration is already here would place itself forever.
+    pub(crate) stamping: Vec<*const crate::stamp::StampDecl>,
 }
 
 struct StyleHit {
@@ -393,7 +409,7 @@ struct AnimClock {
     dur: f64,
 }
 
-struct SeedSnap {
+pub(crate) struct SeedSnap {
     file: String,
     key: Key,
     count: u64,
@@ -425,14 +441,14 @@ fn is_copy_index(seg: &str) -> bool {
 }
 
 /// An `fx` line under a taken `if`, with the bindings in effect where the branch reached it.
-struct BranchFx {
+pub(crate) struct BranchFx {
     line: ast::Fx,
     env: Vec<(String, Value)>,
 }
 
 /// A block's direct `fx` lines and those under its taken `if`s, merged by line, each with the
 /// scope it evaluates in. One block is one file.
-fn in_source_order<'a>(
+pub(crate) fn in_source_order<'a>(
     direct: impl Iterator<Item = &'a ast::Fx>,
     branch: &'a [BranchFx],
     scope: &Scope,
@@ -573,7 +589,7 @@ fn mat_trs(
         * Matrix::translate((f(-pivot.0), f(-pivot.1)))
 }
 
-fn new_node(path: String, origin: String, transform: Matrix, kind: NodeKind) -> Node {
+pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: NodeKind) -> Node {
     Node {
         path,
         origin,
@@ -835,15 +851,17 @@ fn blend_of(w: &str) -> Option<Blend> {
     })
 }
 
-/// The first shape color under a node, used for effect defaults.
-fn first_fill(n: &Node) -> Option<Rgba> {
+/// The first shape color under a node, used for effect defaults. A shape with no paint of its
+/// own, such as a dotted line, takes its stamps' color.
+pub(crate) fn first_fill(n: &Node) -> Option<Rgba> {
     match &n.kind {
         NodeKind::Shape(s) => s
             .fill
             .as_ref()
             .map(|f| &f.paint)
             .or(s.stroke.as_ref().map(|st| &st.paint))
-            .map(key_color),
+            .map(key_color)
+            .or_else(|| s.stamps.iter().find_map(first_fill)),
         NodeKind::Group { children, .. } => children.iter().find_map(first_fill),
     }
 }
@@ -878,6 +896,7 @@ impl<'a> Evaluator<'a> {
             prepass: false,
             silence: false,
             placed: RefCell::new(HashMap::new()),
+            stamping: Vec::new(),
         }
     }
 
@@ -926,7 +945,7 @@ impl<'a> Evaluator<'a> {
         &self.uses
     }
 
-    fn snap_seed(&self) -> SeedSnap {
+    pub(crate) fn snap_seed(&self) -> SeedSnap {
         SeedSnap {
             file: self.seed_file.clone(),
             key: self.seed_key.clone(),
@@ -934,7 +953,7 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    fn restore_seed(&mut self, snap: SeedSnap) {
+    pub(crate) fn restore_seed(&mut self, snap: SeedSnap) {
         self.seed_file = snap.file;
         self.seed_key = snap.key;
         self.seed_count = snap.count;
@@ -946,7 +965,7 @@ impl<'a> Evaluator<'a> {
         order
     }
 
-    fn unstable_scope(&mut self, key: &Key, region: &identity::Region, file: &str, span: Span) {
+    pub(crate) fn unstable_scope(&mut self, key: &Key, region: &identity::Region, file: &str, span: Span) {
         if key.is_stable() || region.is_empty() {
             return;
         }
@@ -1156,6 +1175,7 @@ impl<'a> Evaluator<'a> {
             DeclKind::Brush { name, params, sksl } => {
                 self.declare_brush(module, name, params, sksl.as_ref(), decl.span)
             }
+            DeclKind::Stamp { name, params, body } => self.declare_stamp(module, name, params, body, decl.span),
             DeclKind::Light { .. } => Err(
                 fail("E0390", "light (Phase 2) is not yet implemented in v0.1")
                     .fix("remove the declaration, or use built-in fields and fx lines"),
@@ -1268,7 +1288,7 @@ impl<'a> Evaluator<'a> {
         let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
-            brush_params: Rc::default(),
+            typed_params: Rc::default(),
             module: module.clone(),
             owner: Key::root(),
             parent: Key::root(),
@@ -1750,6 +1770,7 @@ impl<'a> Evaluator<'a> {
                 home: None,
                 decl: None,
                 inner,
+                rows: Rc::default(),
             },
         )
     }
@@ -2177,7 +2198,7 @@ impl<'a> Evaluator<'a> {
             } else {
                 stroke_expr(named, expanded_style.as_deref(), sc)
             };
-            let shape = self.paint_shape(
+            let (shape, rows) = self.paint_shape(
                 &a,
                 geometry,
                 &knots,
@@ -2187,10 +2208,11 @@ impl<'a> Evaluator<'a> {
                 stroke_src.as_ref(),
                 &key,
                 named,
+                st.span,
             )?;
             node = new_node(path.clone(), origin, m, NodeKind::Shape(Box::new(shape)));
             if let Some(id) = decl {
-                record = Some(self.place(
+                let r = self.place(
                     sc,
                     id,
                     &key,
@@ -2199,7 +2221,9 @@ impl<'a> Evaluator<'a> {
                     None,
                     at,
                     None,
-                ));
+                );
+                r.borrow_mut().rows = Rc::new(rows);
+                record = Some(r);
             }
             let gb = match &node.kind {
                 NodeKind::Shape(s) => geom::bounds(&s.geometry),
@@ -2296,6 +2320,7 @@ impl<'a> Evaluator<'a> {
                         ))),
                         stroke: None,
                         blur: 0.0,
+                        stamps: vec![],
                         children: vec![],
                     };
                     let n = new_node(
@@ -2726,7 +2751,8 @@ impl<'a> Evaluator<'a> {
         stroke_src: Option<&Expr>,
         key: &Key,
         named: &[Named],
-    ) -> R<Shape> {
+        span: Span,
+    ) -> R<(Shape, Vec<RowRecord>)> {
         let style: &[(String, Value)] = &sc.style;
         let pick = |k: &str| {
             a.get(k).cloned().or_else(|| {
@@ -2760,9 +2786,28 @@ impl<'a> Evaluator<'a> {
             Const(f64),
             List(Vec<f64>),
         }
+        let (file, node) = (sc.file().to_string(), sc.node_name());
+        let site = |keys: &[&str]| keys.iter().find_map(|k| named.iter().find(|n| n.key == *k).map(|n| n.span));
+        let at_key = |this: &mut Self, f: Fail, keys: &[&str]| -> Fail {
+            match site(keys) {
+                Some(span) => {
+                    this.report(f, &file, span, &node);
+                    Fail::reported()
+                }
+                None => f.note(format!("`{}:` is inherited from an enclosing line or style", keys[0])),
+            }
+        };
+        let sets = match pick("stamp") {
+            None => Vec::new(),
+            Some(v) => match self.stamp_stack(&v, sc) {
+                Ok(sets) => sets,
+                Err(f) => return Err(at_key(self, f, &["stamp"])),
+            },
+        };
         let stroke_v = pick("stroke");
         let (paint_v, width) = match stroke_v {
-            None if !closed && fill.is_none() => (
+            // A stamped open path with no stroke draws no line: the stamps are its ink.
+            None if !closed && fill.is_none() && sets.is_empty() => (
                 Value::Color(Col::plain(color::line(Rgba::GRAY))),
                 Some(W::Const(2.0)),
             ),
@@ -2806,17 +2851,6 @@ impl<'a> Evaluator<'a> {
             None => None,
         };
         let blur = pick("blur").and_then(|v| v.num()).unwrap_or(0.0) as f32;
-        let (file, node) = (sc.file().to_string(), sc.node_name());
-        let site = |keys: &[&str]| keys.iter().find_map(|k| named.iter().find(|n| n.key == *k).map(|n| n.span));
-        let at_key = |this: &mut Self, f: Fail, keys: &[&str]| -> Fail {
-            match site(keys) {
-                Some(span) => {
-                    this.report(f, &file, span, &node);
-                    Fail::reported()
-                }
-                None => f.note(format!("`{}:` is inherited from an enclosing line or style", keys[0])),
-            }
-        };
         let (fill_marks, stroke_marks) = match pick("brush") {
             None => (Vec::new(), Vec::new()),
             Some(bv) => {
@@ -2884,11 +2918,18 @@ impl<'a> Evaluator<'a> {
         let mut channels = Channels::default();
         for (k, _, example) in CHANNEL_KEYS {
             let Some(v) = pick(k) else { continue };
-            if stroke_marks.is_empty() {
+            if stroke_marks.is_empty() && !sets.iter().any(|s| s.reads(k)) {
                 let Some(span) = site(&[k]) else { continue };
-                let f = fail("E0362", format!("`{k}:` has no effect without a brushed stroke"))
-                    .note(if width.is_none() { "this node has no stroke" } else { "this node's stroke has no brush" })
-                    .fix(format!("brush the stroke, or remove `{k}:`"));
+                let why = if !sets.is_empty() {
+                    format!("the node's stamps do not read `{k}`")
+                } else if width.is_none() {
+                    "this node has no stroke".to_string()
+                } else {
+                    "this node's stroke has no brush".to_string()
+                };
+                let f = fail("E0362", format!("`{k}:` has no effect because nothing on this node reads it"))
+                    .note(why)
+                    .fix(format!("brush the stroke, read `{k}` in a stamp, or remove `{k}:`"));
                 self.report(f, &file, span, &node);
                 return Err(Fail::reported());
             }
@@ -2901,51 +2942,73 @@ impl<'a> Evaluator<'a> {
             channels.set(k, values);
         }
         let fill = fill.map(|paint| IrFill { paint, marks: fill_marks });
-        let Some(width) = width else {
-            return Ok(Shape {
-                geometry,
-                fill,
-                stroke: None,
-                blur,
-                children: vec![],
-            });
+        let tapered = matches!(width, Some(W::List(_))) || (width.is_some() && taper.is_some());
+        let widths = match &width {
+            None => vec![0.0],
+            Some(W::Const(w)) => vec![*w],
+            Some(W::List(ws)) if ws.is_empty() => vec![1.0],
+            Some(W::List(ws)) => ws.clone(),
         };
-        let tapered = matches!(width, W::List(_)) || taper.is_some();
-        let widths = match width {
-            W::Const(w) => vec![w],
-            W::List(ws) if ws.is_empty() => vec![1.0],
-            W::List(ws) => ws,
+        let stroke_paint = match &width {
+            Some(_) => Some(to_paint(&paint_v, bounds).ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?),
+            None => None,
         };
-        if !stroke_marks.is_empty() {
-            let paint = to_paint(&paint_v, bounds)
-                .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
-            let mut ribbon = brush::ribbon(
-                &geometry,
-                knots,
-                &widths,
-                taper.unwrap_or((0.0, 0.0)),
-                &channels,
-                stroke_marks,
-            );
+        let spine = (!sets.is_empty() || !stroke_marks.is_empty())
+            .then(|| brush::Spine::new(&geometry, knots, &widths, &channels));
+        let (stamps, rows) = match &spine {
+            Some(spine) if !sets.is_empty() => {
+                let host = crate::stamp::Host {
+                    key,
+                    explicit: a.num("seed").map(|s| s as u64),
+                    world,
+                    own_site: site(&["stamp"]),
+                    span,
+                    paint: stroke_paint.clone().or_else(|| fill.as_ref().map(|f| f.paint.clone())),
+                };
+                let mut at_stamp = |this: &mut Self, f: Fail| at_key(this, f, &["stamp"]);
+                self.stamps(&sets, spine, &host, sc, &mut at_stamp)?
+            }
+            _ => (Vec::new(), Vec::new()),
+        };
+        if width.is_none() {
+            return Ok((
+                Shape {
+                    geometry,
+                    fill,
+                    stroke: None,
+                    blur,
+                    stamps,
+                    children: vec![],
+                },
+                rows,
+            ));
+        }
+        let paint = stroke_paint.expect("a stroke has a paint");
+        if let Some(spine) = spine.filter(|_| !stroke_marks.is_empty()) {
+            let mut ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
             if tapered {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
                 let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
                 ribbon.ink = Some(geom::ribbon_ink(&geometry, &ribbon, 0.75 / px));
             }
-            return Ok(Shape {
-                geometry,
-                fill,
-                stroke: Some(Stroke {
-                    paint,
-                    width: widths.iter().copied().fold(0.0, f64::max) as f32,
-                    cap: Cap::Round,
-                    join: Join::Round,
-                    dash: Vec::new(),
-                    ribbon: Some(ribbon),
-                }),
-                blur,
-                children: vec![],
-            });
+            return Ok((
+                Shape {
+                    geometry,
+                    fill,
+                    stroke: Some(Stroke {
+                        paint,
+                        width: widths.iter().copied().fold(0.0, f64::max) as f32,
+                        cap: Cap::Round,
+                        join: Join::Round,
+                        dash: Vec::new(),
+                        ribbon: Some(ribbon),
+                    }),
+                    blur,
+                    stamps,
+                    children: vec![],
+                },
+                rows,
+            ));
         }
         if tapered {
             let knots = match knots {
@@ -2965,17 +3028,19 @@ impl<'a> Evaluator<'a> {
             let ob = geom::bounds(&outline);
             let paint = to_paint(&paint_v, ob)
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
-            return Ok(Shape {
-                geometry: outline,
-                fill: Some(IrFill::plain(paint)),
-                stroke: None,
-                blur,
-                children: vec![],
-            });
+            return Ok((
+                Shape {
+                    geometry: outline,
+                    fill: Some(IrFill::plain(paint)),
+                    stroke: None,
+                    blur,
+                    stamps,
+                    children: vec![],
+                },
+                rows,
+            ));
         }
         let w = widths[0];
-        let paint = to_paint(&paint_v, bounds)
-            .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
         let cap = match pick("cap").as_ref().and_then(Value::word) {
             Some("butt") => Cap::Butt,
             Some("square") => Cap::Square,
@@ -2995,20 +3060,24 @@ impl<'a> Evaluator<'a> {
                 .map(|v| v as f32)
                 .collect(),
         };
-        Ok(Shape {
-            geometry,
-            fill,
-            stroke: Some(Stroke {
-                paint,
-                width: w as f32,
-                cap,
-                join,
-                dash,
-                ribbon: None,
-            }),
-            blur,
-            children: vec![],
-        })
+        Ok((
+            Shape {
+                geometry,
+                fill,
+                stroke: Some(Stroke {
+                    paint,
+                    width: w as f32,
+                    cap,
+                    join,
+                    dash,
+                    ribbon: None,
+                }),
+                blur,
+                stamps,
+                children: vec![],
+            },
+            rows,
+        ))
     }
 
     pub(crate) fn bind_params(
@@ -3136,14 +3205,14 @@ impl<'a> Evaluator<'a> {
         let mut def_scope = self.module_scope(&module);
         def_scope.palette = palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
-        let mut brush_params = Vec::new();
+        let mut typed_params = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
             let default = self.expr(&p.value, &dsc);
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
-            if let Ok(Value::Brush(b)) = &default {
-                brush_params.push((env.len(), b.clone()));
+            if let Ok(d @ (Value::Brush(_) | Value::Stamp(_))) = &default {
+                typed_params.push((env.len(), d.clone()));
             }
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
@@ -3240,7 +3309,7 @@ impl<'a> Evaluator<'a> {
             sc.depth + 1,
         );
         body_scope.env = env;
-        body_scope.brush_params = Rc::new(brush_params);
+        body_scope.typed_params = Rc::new(typed_params);
         body_scope.module = module;
         body_scope.ids = def_ids;
         body_scope.inst = Some(inst.clone());
@@ -3281,6 +3350,7 @@ impl<'a> Evaluator<'a> {
                     home: None,
                     decl: None,
                     inner: Some(names.clone()),
+                    rows: Rc::default(),
                 }));
                 self.placed.borrow_mut().insert(path.clone(), rec.clone());
                 rec
@@ -4487,6 +4557,7 @@ impl<'a> Evaluator<'a> {
                     home: None,
                     decl: None,
                     inner: None,
+                    rows: Rc::default(),
                 },
                 source: None,
                 canvas: Some(self.canvas),
@@ -5033,6 +5104,7 @@ impl<'a> Evaluator<'a> {
                 return Ok(Value::Num(v));
             }
             let one = self.one_ref(&cur, &label, sc)?;
+            let mut through_row = false;
             let (matched, names): (Vec<RefVal>, Vec<String>) = match &one.record.inner {
                 Some(inner) => {
                     let region = inner.borrow().region();
@@ -5057,8 +5129,20 @@ impl<'a> Evaluator<'a> {
                         return Err(group_hop(segs, named_at, i));
                     }
                     let kids = one.children();
-                    let names = kids.iter().map(|c| c.record.name.clone()).collect();
-                    (kids.into_iter().filter(|c| c.record.name == seg).collect(), names)
+                    let mut names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
+                    let mut matched: Vec<RefVal> = kids.into_iter().filter(|c| c.record.name == seg).collect();
+                    if let Some(row) = one.record.rows.iter().find(|r| r.name.as_str() == seg) {
+                        matched.extend(row.stamps.iter().map(|r| RefVal {
+                            label: format!("{label}.{seg}"),
+                            record: r.borrow().clone(),
+                            source: Some(Rc::as_ptr(r) as usize),
+                            canvas: None,
+                            extent: Extent::Visual,
+                        }));
+                        through_row = true;
+                    }
+                    names.extend(one.record.rows.iter().map(|r| r.name.to_string()));
+                    (matched, names)
                 }
             };
             if matched.is_empty() {
@@ -5088,7 +5172,7 @@ impl<'a> Evaluator<'a> {
             cur = matched;
             named_at = i;
             label = format!("{label}.{seg}");
-            index_depth = if one.record.inner.is_some() {
+            index_depth = if one.record.inner.is_some() || through_row {
                 0
             } else {
                 one.record.key.trailing_copies().len()

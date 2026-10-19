@@ -740,6 +740,9 @@ fn gather(
     match &node.kind {
         NodeKind::Shape(shape) => {
             push_shape(shape, &mut local)?;
+            for stamp in &shape.stamps {
+                gather(stamp, &local_to_px, false, &mut local)?;
+            }
             let fill_holds_children = shape.fill.as_ref().and_then(|f| coverage(&f.paint)).is_some();
             let children = if fill_holds_children { &[][..] } else { &shape.children[..] };
             for child in children {

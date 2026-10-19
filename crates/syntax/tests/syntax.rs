@@ -1346,3 +1346,44 @@ fn brush_is_a_name_everywhere_but_at_a_line_start() {
     assert_eq!((e.code.as_str(), e.span.line), ("E0105", 2), "{e:?}");
     assert!(e.message.contains("cannot be named `brush`"), "{e:?}");
 }
+
+#[test]
+fn a_stamp_declares_a_def_body_and_round_trips() {
+    let src = "stamp leaves spacing:8+8*pressure tint:p.moss.2\n  let side = if mod(i 2) == 0 then 1 else -1\n  leaf 5+7*pressure tint:tint at:0,side*2 rot:side*rand(15 40)\n  fx glow 2\n";
+    let file = must_parse(src);
+    let Some(DeclKind::Stamp { name, params, body }) = file.decls().next().map(|d| &d.kind) else {
+        panic!("{file:?}");
+    };
+    assert_eq!(name, "leaves");
+    assert_eq!(params.iter().map(|p| p.key.as_str()).collect::<Vec<_>>(), ["spacing", "tint"]);
+    assert_eq!(body.len(), 3);
+    assert!(body[2].fx().is_some());
+    assert_eq!(format_source(src).unwrap(), src);
+    round_trip_source(src);
+}
+
+#[test]
+fn stamp_is_a_name_everywhere_but_at_a_line_start() {
+    let file = must_parse("def tuft size:60 stamp:none\n  rect size stamp:stamp(spacing:5)\nlet stamp = 1\nuse x { stamp }\ncurve 0,0 4,4 stamp:[a b]\n");
+    assert_eq!(file.decls().count(), 2);
+    assert_eq!(file.scenes().count(), 2);
+    let errs = errors("layer a\n  stamp dots\n    circle 2\n");
+    assert!(errs.iter().any(|e| e.message.contains("declaration cannot go")), "{errs:?}");
+    let errs = errors("stamp 4 spacing:1\n  circle 2\n");
+    assert!(errs.iter().any(|e| e.message.contains("expected a name")), "{errs:?}");
+    let errs = errors("stamp dots 3 spacing:1\n  circle 2\n");
+    assert!(errs.iter().any(|e| e.message.contains("named arguments only")), "{errs:?}");
+    let e = one_error("rect 4\ndef stamp size:20\n  rect size\n");
+    assert_eq!((e.code.as_str(), e.span.line), ("E0105", 2), "{e:?}");
+    assert!(e.message.contains("cannot be named `stamp`"), "{e:?}");
+}
+
+#[test]
+fn a_stamp_body_takes_what_a_def_body_takes() {
+    let errs = errors("stamp dots spacing:4\n  circle 2\n    mask @x\n  mask @y\n  lashes:\n    circle 1\n  .eye off\n");
+    let messages: Vec<&str> = errs.iter().map(|e| e.message.as_str()).collect();
+    assert!(messages.iter().any(|m| m.contains("a `stamp` body cannot hold a mask")), "{messages:?}");
+    assert!(messages.iter().any(|m| m.contains("a `stamp` body cannot hold slot fill `lashes:`")), "{messages:?}");
+    assert!(messages.iter().any(|m| m.contains("a `stamp` body cannot hold a patch")), "{messages:?}");
+    assert_eq!(errs.len(), 3, "{messages:?}");
+}

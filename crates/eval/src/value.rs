@@ -6,6 +6,7 @@ use std::rc::Rc;
 use artscript_ir::Field;
 
 use crate::brush::BrushVal;
+use crate::stamp::StampVal;
 use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
@@ -77,6 +78,8 @@ pub enum Value {
     Rule(Rc<RuleDef>),
     /// A `brush` declaration with its uniform values and placement bound.
     Brush(Rc<BrushVal>),
+    /// A `stamp` declaration with its parameter values, placement and set name bound.
+    Stamp(Rc<StampVal>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.
     Unseen,
@@ -101,6 +104,7 @@ pub enum Kind {
     Ref,
     Rule,
     Brush,
+    Stamp,
     Unseen,
 }
 
@@ -123,6 +127,7 @@ impl fmt::Display for Kind {
             Kind::Ref => "a node reference",
             Kind::Rule => "a rule",
             Kind::Brush => "a brush",
+            Kind::Stamp => "a stamp",
             Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
@@ -150,6 +155,7 @@ impl Value {
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
             Value::Brush(_) => Kind::Brush,
+            Value::Stamp(_) => Kind::Stamp,
             Value::Unseen => Kind::Unseen,
         }
     }
@@ -299,6 +305,7 @@ impl Value {
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
             Value::Brush(b) => format!("brush {}", b.decl.name),
+            Value::Stamp(s) => format!("stamp {}", s.decl.name),
             Value::Unseen => "unseen".into(),
         }
     }
@@ -419,6 +426,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
         (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
+        (Value::Stamp(x), Value::Stamp(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,
         (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {

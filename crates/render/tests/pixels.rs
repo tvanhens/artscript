@@ -1,8 +1,8 @@
 mod common;
 
-use artscript_ir::{Field, NodeKind, NoiseKind, Paint, Path, Point, Profile};
+use artscript_ir::{Field, Matrix, NodeKind, NoiseKind, Paint, Path, Point, Profile};
 use artscript_render::{Backend, render_png, render_svg, raster_only_features, RenderError};
-use common::{circle_at, color, effect, pixel, red, scene, solid};
+use common::{circle_at, color, effect, pixel, red, scene, solid, stamp, with_stamps};
 
 use artscript_ir::EffectOp;
 
@@ -995,4 +995,64 @@ fn wrapped_noise_fills_the_ramp_without_clipping_its_ends() {
         assert!(clipped < 0.01, "{kind:?} puts {:.1}% of pixels on a ramp end", clipped * 100.0);
         assert!(lo < 20.0 && hi > 225.0, "{kind:?} spans only {lo}..{hi} of the ramp");
     }
+}
+
+/// A red circle with a blue 8x8 stamp placed past its edge and one inside it, where a green
+/// child also sits.
+fn stamped_circle() -> artscript_ir::Node {
+    let square = || solid("sq", Path::rect(skia_safe::Rect::from_xywh(-4.0, -4.0, 8.0, 8.0), None), color(0, 0, 255, 255));
+    let mut host = solid("body", circle_at(40.0, 40.0, 20.0), red());
+    let outside = stamp("body.dots.0", Matrix::translate((70.0, 40.0)), vec![square()]);
+    let inside = stamp("body.dots.1", Matrix::translate((40.0, 40.0)), vec![square()]);
+    let child = solid("body.ink", Path::rect(skia_safe::Rect::from_xywh(38.0, 38.0, 4.0, 4.0), None), color(0, 255, 0, 255));
+    with_stamps(&mut host, vec![outside, inside], vec![child]);
+    host
+}
+
+#[test]
+fn a_stamp_draws_unclipped_over_the_fill_and_under_the_children() {
+    let png = render_png(&scene(80.0, 80.0, vec![stamped_circle()]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 70, 40), [0, 0, 255, 255], "past the edge, where a child would be clipped");
+    assert_eq!(pixel(&png, 43, 40), [0, 0, 255, 255], "over the fill");
+    assert_eq!(pixel(&png, 40, 40), [0, 255, 0, 255], "under the child");
+    assert_eq!(pixel(&png, 25, 40), [255, 0, 0, 255]);
+}
+
+#[test]
+fn the_host_s_opacity_and_mask_cover_its_stamps() {
+    let mut host = stamped_circle();
+    host.opacity = 0.5;
+    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 70, 40)[3], 128);
+    let mut host = stamped_circle();
+    host.mask = Some(Box::new(artscript_ir::Mask {
+        source: artscript_ir::MaskSource::Nodes(vec![solid("m", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 60.0, 80.0), None), red())]),
+        luminance: false,
+        feather: 0.0,
+        invert: false,
+    }));
+    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 70, 40), [0, 0, 0, 0], "the mask ends at x 60");
+    assert_eq!(pixel(&png, 43, 40), [0, 0, 255, 255]);
+}
+
+#[test]
+fn svg_writes_stamps_as_paths_before_the_clipped_children() {
+    let svg = render_svg(&scene(80.0, 80.0, vec![stamped_circle()]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(!svg.contains("<image"), "{svg}");
+    let at = |needle: &str| svg.find(needle).unwrap_or_else(|| panic!("no {needle} in {svg}"));
+    assert!(at("<g id=\"body\" style=\"isolation:isolate\"") < at("id=\"body.dots.0\""), "{svg}");
+    assert!(at("id=\"body.dots.0\"") < at("id=\"body.dots.1\""), "{svg}");
+    assert!(at("id=\"body.dots.1\"") < at("clip-path=\"url(#body-nest)\""), "{svg}");
+    assert!(at("clip-path=\"url(#body-nest)\"") < at("id=\"body.ink\""), "{svg}");
+}
+
+#[test]
+fn fx_outline_traces_the_stamps_unclipped() {
+    let mut host = stamped_circle();
+    host.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
+    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 76, 40), [0, 0, 0, 255], "a ring around the stamp past the circle's edge");
+    assert_eq!(pixel(&png, 70, 40), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255], "and around the circle");
 }

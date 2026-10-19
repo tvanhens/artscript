@@ -35,15 +35,21 @@ impl<'a> SceneIndex<'a> {
 
     fn walk(&mut self, nodes: &'a [Node], parent_world: Matrix) {
         for node in nodes {
-            self.nodes.insert(node.path.as_str(), node);
-            self.parents.insert(node.path.as_str(), parent_world);
-            let world = parent_world * node.transform;
-            if let Some(mask) = &node.mask
-                && let MaskSource::Nodes(inner) = &mask.source
-            {
-                self.walk(inner, world);
-            }
-            self.walk(node.children(), world);
+            self.visit(node, parent_world);
+        }
+    }
+
+    fn visit(&mut self, node: &'a Node, parent_world: Matrix) {
+        self.nodes.insert(node.path.as_str(), node);
+        self.parents.insert(node.path.as_str(), parent_world);
+        let world = parent_world * node.transform;
+        if let Some(mask) = &node.mask
+            && let MaskSource::Nodes(inner) = &mask.source
+        {
+            self.walk(inner, world);
+        }
+        for child in node.descendants() {
+            self.visit(child, world);
         }
     }
 
@@ -169,6 +175,37 @@ pub fn bake_node(
         return Err(RenderError::Skia("bake scale must be positive".into()));
     }
     let ctx = DrawCtx::new(scene, backend);
+    let mut drawn = node.clone();
+    drawn.blend = Blend::Normal;
+    let parent = ctx.index.parent_world(&node.path);
+    bake(&ctx, &drawn, parent, bake_scale)
+}
+
+/// Renders a shape's own fill and stroke on transparent, in the shape's local coordinates, with
+/// none of its stamps, children, effects, mask, or opacity: the SVG writer draws those as elements.
+pub fn bake_paint(scene: &Scene, node: &Node, bake_scale: f32, backend: Backend) -> Result<Baked, RenderError> {
+    if !(bake_scale.is_finite() && bake_scale > 0.0) {
+        return Err(RenderError::Skia("bake scale must be positive".into()));
+    }
+    let ctx = DrawCtx::new(scene, backend);
+    let mut drawn = node.clone();
+    drawn.transform = Matrix::new_identity();
+    drawn.opacity = 1.0;
+    drawn.blend = Blend::Normal;
+    drawn.clip = None;
+    drawn.mask = None;
+    drawn.effects.clear();
+    if let NodeKind::Shape(shape) = &mut drawn.kind {
+        shape.stamps.clear();
+        shape.children.clear();
+    }
+    let parent = ctx.index.parent_world(&node.path) * node.transform;
+    // The same pixel density as a tile of the whole node, which is drawn in the parent's units.
+    bake(&ctx, &drawn, parent, bake_scale * transform_scale(&node.transform))
+}
+
+/// `node` drawn on transparent in its parent's coordinates, where `parent` is the canvas from them.
+fn bake(ctx: &DrawCtx<'_>, node: &Node, parent: Matrix, bake_scale: f32) -> Result<Baked, RenderError> {
     let mut bounds = node
         .bounds()
         .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
@@ -182,16 +219,13 @@ pub fn bake_node(
     }
     let pw = (bounds.width() * bake_scale).ceil().max(1.0) as i32;
     let ph = (bounds.height() * bake_scale).ceil().max(1.0) as i32;
-    let mut surface = gpu::surface(backend, (pw, ph))
+    let mut surface = gpu::surface(ctx.backend, (pw, ph))
         .ok_or_else(|| RenderError::Skia("bake surface".into()))?;
     let canvas = surface.canvas();
     canvas.scale((bake_scale, bake_scale));
     canvas.translate((-bounds.left, -bounds.top));
-    let mut drawn = node.clone();
-    drawn.blend = Blend::Normal;
-    let parent = ctx.index.parent_world(&node.path);
-    draw_node(canvas, &drawn, &ctx, parent)?;
-    let image = gpu::finish(backend, &mut surface)?;
+    draw_node(canvas, node, ctx, parent)?;
+    let image = gpu::finish(ctx.backend, &mut surface)?;
     Ok(Baked {
         png: png_bytes(&image)?,
         x: bounds.left,
@@ -343,8 +377,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
         Some(MaskSource::Nodes(nodes)) => &nodes[..],
         _ => &[],
     };
-    node.children()
-        .iter()
+    node.descendants()
         .chain(masks)
         .filter_map(|child| Some(child.transform.map_rect(path_extent(child)?).0))
         .chain(own)
@@ -510,14 +543,18 @@ fn draw_shape(
         Ok(())
     };
 
-    if shape.children.is_empty() {
+    if shape.children.is_empty() && shape.stamps.is_empty() {
         return paint_shape(canvas);
     }
 
-    // The layer keeps children's blend modes off the pixels below the shape. The clip is the
-    // geometry, not the painted alpha, so a fill:none or translucent shape still shows them.
+    // The layer keeps the stamps' and children's blend modes off the pixels below the shape. The
+    // clip is the geometry, not the painted alpha, so a fill:none or translucent shape still
+    // shows the children. Stamps are not clipped: a leaf spills past its stem.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
+    for stamp in &shape.stamps {
+        draw_node(canvas, stamp, ctx, world)?;
+    }
     canvas.clip_path(&shape.clip(), ClipOp::Intersect, true);
     for child in &shape.children {
         draw_node(canvas, child, ctx, world)?;
@@ -651,7 +688,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
             }
         }
     }
-    for child in node.children() {
+    for child in node.descendants() {
         pad = pad.max(visual_pad(child));
     }
     pad
