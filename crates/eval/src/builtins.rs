@@ -360,6 +360,24 @@ impl Evaluator<'_> {
                     ridged: func == "ridged",
                 }))
             }
+            "len" => match a.as_slice() {
+                [Value::Str(s)] => Value::Num(s.chars().count() as f64),
+                [v @ (Value::List(_) | Value::Range(_))] => Value::Num(v.items().unwrap_or_default().len() as f64),
+                _ => return Err(fail("E0320", "`len` counts the characters of a string or the items of a list").fix("write `len(title)`")),
+            },
+            "sum" => {
+                let items = match a.as_slice() {
+                    [v @ (Value::List(_) | Value::Range(_))] => v.items().unwrap_or_default(),
+                    _ => a.clone(),
+                };
+                let mut total = 0.0;
+                for v in &items {
+                    total += v.num().ok_or_else(|| {
+                        fail("E0320", format!("`sum` adds numbers, got {}", v.kind())).fix("write `sum(widths)` with a list of numbers")
+                    })?;
+                }
+                Value::Num(total)
+            }
             "concat" => {
                 if a.len() < 2 {
                     return Err(fail("E0320", "`concat` joins two or more lists")
@@ -394,7 +412,7 @@ impl Evaluator<'_> {
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
                     .note("pictures: image sample")
-                    .note("lists: concat")
+                    .note("lists: concat sum len")
                     .fix("check the spelling"));
             }
         })
