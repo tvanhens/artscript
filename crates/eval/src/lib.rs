@@ -107,26 +107,12 @@ impl OutputScenes {
 /// Evaluates a target once for each scale its outputs draw at, because a file reads `scale` and
 /// may draw differently at each.
 pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
-    let mut scales: Vec<f32> = Vec::new();
-    for out in &job.outputs {
-        let scale = job.sample_scale(out);
-        if !scales.contains(&scale) {
-            scales.push(scale);
-        }
-    }
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let mut scenes = Vec::new();
-    for scale in scales {
-        let at = TargetJob {
-            bake_scale: scale,
-            ..job.clone()
-        };
+    for at in draw_jobs(job) {
+        let scale = at.bake_scale;
         let ev = evaluate(project, &at);
-        for d in ev.diagnostics {
-            if !diagnostics.contains(&d) {
-                diagnostics.push(d);
-            }
-        }
+        merge_diagnostics(&mut diagnostics, ev.diagnostics);
         scenes.extend(ev.scene.map(|scene| ScaleScene {
             scale,
             scene,
@@ -136,6 +122,74 @@ pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
     OutputScenes {
         diagnostics,
         scenes,
+    }
+}
+
+/// One target's frames sampled at one scale.
+pub struct ScaleSample {
+    /// The scale the frames were sampled at, as `TargetJob::sample_scale` names it.
+    pub scale: f32,
+    /// Its diagnostics are in `OutputSamples::diagnostics`, so this sample's own list is empty.
+    pub sample: Sample,
+}
+
+pub struct OutputSamples {
+    /// Every scale's diagnostics, a repeat of one scale-independent diagnostic kept once.
+    pub diagnostics: Vec<Diagnostic>,
+    /// One sample per distinct draw scale, in output order.
+    pub samples: Vec<ScaleSample>,
+}
+
+impl OutputSamples {
+    pub fn at(&self, scale: f32) -> Option<&Sample> {
+        self.samples
+            .iter()
+            .find(|s| s.scale == scale)
+            .map(|s| &s.sample)
+    }
+}
+
+/// `sample` once for each scale a target's outputs draw at, as `evaluate_outputs` does for a still.
+pub fn sample_outputs(project: &Project, job: &TargetJob) -> OutputSamples {
+    let mut diagnostics: Vec<Diagnostic> = Vec::new();
+    let mut samples = Vec::new();
+    for at in draw_jobs(job) {
+        let mut sample = sample(project, &at);
+        merge_diagnostics(&mut diagnostics, std::mem::take(&mut sample.diagnostics));
+        samples.push(ScaleSample {
+            scale: at.bake_scale,
+            sample,
+        });
+    }
+    OutputSamples {
+        diagnostics,
+        samples,
+    }
+}
+
+/// The job once per distinct `sample_scale` of its outputs, in output order, each baking at that scale.
+fn draw_jobs(job: &TargetJob) -> Vec<TargetJob> {
+    let mut scales: Vec<f32> = Vec::new();
+    for out in &job.outputs {
+        let scale = job.sample_scale(out);
+        if !scales.contains(&scale) {
+            scales.push(scale);
+        }
+    }
+    scales
+        .into_iter()
+        .map(|scale| TargetJob {
+            bake_scale: scale,
+            ..job.clone()
+        })
+        .collect()
+}
+
+fn merge_diagnostics(into: &mut Vec<Diagnostic>, from: Vec<Diagnostic>) {
+    for d in from {
+        if !into.contains(&d) {
+            into.push(d);
+        }
     }
 }
 
@@ -411,9 +465,16 @@ fn gif_background_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic>
     )
 }
 
+/// The GIF outputs drawn from frames sampled at `job.bake_scale`, so each scale checks only its own.
+fn gif_outputs_at(job: &TargetJob) -> impl Iterator<Item = &OutputSpec> {
+    job.outputs
+        .iter()
+        .filter(|o| o.format == Format::Gif && o.scale == job.bake_scale)
+}
+
 fn gif_dimension_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
     let scene = &frames.first()?.scene;
-    let over = job.outputs.iter().filter(|o| o.format == Format::Gif).any(|o| {
+    let over = gif_outputs_at(job).any(|o| {
         let w = (scene.width * o.scale).ceil();
         let h = (scene.height * o.scale).ceil();
         w > u16::MAX as f32 || h > u16::MAX as f32
@@ -475,13 +536,9 @@ fn projected_retention(kept: u64, peak: u64, frames_left: usize) -> u64 {
 /// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
 fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
     let scene = &frames.first()?.scene;
-    let over = job
-        .outputs
-        .iter()
-        .filter(|o| o.format == Format::Gif)
-        .any(|o| {
-            gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_CLIP_BUDGET
-        });
+    let over = gif_outputs_at(job).any(|o| {
+        gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_CLIP_BUDGET
+    });
     if !over {
         return None;
     }
