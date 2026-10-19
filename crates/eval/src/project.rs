@@ -12,7 +12,10 @@ pub const MANIFEST: &str = "artscript.toml";
 
 /// The bundled standard library, by `use` path. `use std/brushes` reads this table and never a
 /// file, so a project cannot shadow it and `fmt` and the lints never see it.
-pub const STD: &[(&str, &str)] = &[("std/brushes", include_str!("../std/brushes.art"))];
+pub const STD: &[(&str, &str)] = &[
+    ("std/brushes", include_str!("../std/brushes.art")),
+    ("std/stamps", include_str!("../std/stamps.art")),
+];
 
 /// The project-relative name a bundled library is known by in diagnostics and dependencies.
 pub fn std_file(path: &str) -> String {

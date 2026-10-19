@@ -445,23 +445,27 @@ fn std_brushes_import_like_any_library_and_a_shadowing_file_is_refused() {
 }
 
 #[test]
-fn std_files_are_formatted_lint_clean_and_their_brushes_compile() {
+fn std_files_are_formatted_lint_clean_and_their_brushes_and_stamps_draw() {
     let linted = "[project]\nout = \"out\"\nlib = [\"lib\"]\n";
     for (path, src) in crate::STD {
         let formatted = artscript_syntax::format_source(src).unwrap_or_else(|e| panic!("{path}: {e:?}"));
         assert_eq!(&formatted, src, "{path} is not fmt-clean");
-        let names: Vec<String> = artscript_syntax::parse(src)
-            .unwrap()
-            .decls()
-            .filter_map(|d| match &d.kind {
-                artscript_syntax::ast::DeclKind::Brush { name, .. } => Some(name.clone()),
-                _ => None,
-            })
-            .collect();
-        assert!(!names.is_empty(), "{path} declares no brush");
+        let (mut brushes, mut stamps) = (Vec::new(), Vec::new());
+        for d in artscript_syntax::parse(src).unwrap().decls() {
+            match &d.kind {
+                artscript_syntax::ast::DeclKind::Brush { name, .. } => brushes.push(name.clone()),
+                artscript_syntax::ast::DeclKind::Stamp { name, .. } => stamps.push(name.clone()),
+                _ => {}
+            }
+        }
+        let names: Vec<String> = brushes.iter().chain(&stamps).cloned().collect();
+        assert!(!names.is_empty(), "{path} declares no brush or stamp");
         let mut art = format!("@target t.png 100x100\nuse {path} {{ {} }}\npalette pal\n  color red #ff0000\n", names.join(" "));
-        for (i, n) in names.iter().enumerate() {
+        for (i, n) in brushes.iter().enumerate() {
             art.push_str(&format!("rect 20x20 at:{},50 fill:pal.red brush:{n} name:n{i}\n", 20 + i * 30));
+        }
+        for (i, n) in stamps.iter().enumerate() {
+            art.push_str(&format!("curve 10,{} 50,{} 90,{} stroke:pal.red,2 stamp:{n} name:s{i}\n", 20 + i * 20, 10 + i * 20, 20 + i * 20));
         }
         let files: BTreeMap<String, String> = [("art/t.art".to_string(), art)].into();
         let p = Project::from_sources(linted, files).unwrap();
