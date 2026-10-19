@@ -196,8 +196,13 @@ pub struct Ribbon {
 
 impl Ribbon {
     pub fn reach(&self) -> f32 {
-        self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+        ribbon_reach(&self.marks)
     }
+}
+
+/// The farthest any of `marks` may paint past the ribbon's edge, in local units.
+pub fn ribbon_reach(marks: &[RibbonMark]) -> f32 {
+    marks.iter().map(|m| m.reach).fold(0.0, f32::max)
 }
 
 /// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the
@@ -438,7 +443,9 @@ pub enum EffectOp {
     /// geometry's box is dropped on every side `sides` leaves out. `mask` keeps the ring's
     /// ink only where it keeps it, in the node's local coordinates like the node's own mask,
     /// and its `feather` fades the ring's alpha at the mask edge. The content is untouched.
-    Outline { width: f32, color: Color, sides: Sides, mask: Option<Box<Mask>> },
+    /// `brush` shades the ring as a closed ribbon of half width `width` along each contour of
+    /// the traced area, with the area on the ribbon's right; empty is a plain ring.
+    Outline { width: f32, color: Color, sides: Sides, mask: Option<Box<Mask>>, brush: Vec<RibbonMark> },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.
@@ -600,10 +607,10 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, sides, .. } = &effect.op
+            if let EffectOp::Outline { width, sides, brush, .. } = &effect.op
                 && *width > 0.0
             {
-                let (width, sides) = (*width, *sides);
+                let (width, sides) = (*width + ribbon_reach(brush), *sides);
                 let traced = self.local_ink().map(|r| {
                     let reach = |on: bool| if on { width } else { 0.0 };
                     Rect::new(

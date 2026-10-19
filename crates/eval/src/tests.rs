@@ -5399,7 +5399,7 @@ fn an_unknown_key_on_an_fx_line_is_e0321() {
     let ev = run_with(
         "@target t.png 64x64\n\
          finish surface\n  fx rim 3 dri:1,1\n\
-         rect 30 at:32,32 fill:#7fd4a8\n  fx glow 4 bogus:1 colour:#ffffff\n  fx outline 4 brush:dry\n  fx surface\n  fx blur 2 color:#000000\n",
+         rect 30 at:32,32 fill:#7fd4a8\n  fx glow 4 bogus:1 colour:#ffffff\n  fx outline 4 tint:dry\n  fx surface\n  fx blur 2 color:#000000\n",
         &[],
     );
     let found: Vec<(u32, String, String)> = ev
@@ -5413,7 +5413,7 @@ fn an_unknown_key_on_an_fx_line_is_e0321() {
         (3, "`fx rim` has no key `dri`", "did you mean `dir:`?"),
         (5, "`fx glow` has no key `bogus`", list),
         (5, "`fx glow` has no key `colour`", "did you mean `color:`?"),
-        (6, "`fx outline` has no key `brush`", list),
+        (6, "`fx outline` has no key `tint`", list),
         (8, "`fx blur` has no key `color`", list),
     ];
     assert_eq!(

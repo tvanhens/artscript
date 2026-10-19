@@ -70,7 +70,7 @@ fn outline_traces_the_children_a_fill_none_parent_shows() {
         }
         _ => unreachable!(),
     }
-    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let png = render_png(&scene(80.0, 80.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255]);
@@ -109,7 +109,7 @@ fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
 #[test]
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 80, 60), [0, 0, 0, 255]);
@@ -127,7 +127,7 @@ fn outline_ring_is_round() {
 #[test]
 fn svg_outline_is_a_round_stroked_path() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let scene = scene(140.0, 140.0, vec![node]);
     let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let outline_at = svg.find("stroke-linejoin=\"round\"").expect(&svg);
@@ -144,7 +144,7 @@ fn glass(outline: bool) -> artscript_ir::Scene {
     let rect = Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None);
     let mut node = solid("glass", rect, color(0, 0, 255, 128));
     if outline {
-        node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+        node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     }
     scene(64.0, 64.0, vec![node])
 }
@@ -172,7 +172,7 @@ fn translucent_group(outline: bool) -> artscript_ir::Scene {
     let mut group = solid("pair", circle_at(0.0, 0.0, 1.0), red());
     group.kind = NodeKind::Group { isolate: false, children: vec![tinted, faded] };
     if outline {
-        group.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+        group.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     }
     scene(80.0, 64.0, vec![group])
 }
@@ -192,7 +192,7 @@ fn haloed(halo: Option<EffectOp>, outline: bool) -> artscript_ir::Scene {
     let mut node = solid("disc", circle_at(32.0, 32.0, 18.0), color(79, 127, 224, 255));
     node.effects.extend(halo.map(effect));
     if outline {
-        node.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(12, 0, 72, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+        node.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(12, 0, 72, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     }
     scene(64.0, 64.0, vec![node])
 }
@@ -259,7 +259,7 @@ fn outline_ring_stays_on_top_of_an_earlier_shadow() {
 fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
     let rings = |halo: bool| {
         let mut s = haloed(halo.then(glow), true);
-        s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+        s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
         render_png(&s, 1.0, Backend::Cpu).unwrap()
     };
     let (plain, ringed) = (rings(false), rings(true));
@@ -318,7 +318,7 @@ fn svg_outline_on_a_translucent_fill_is_not_faded() {
 fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
     let rect = Path::rect(skia_safe::Rect::from_xywh(20000.0, -30000.0, 40.0, 40.0), None);
     let mut node = solid("far", rect, color(0, 0, 255, 128));
-    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let svg = render_svg(&scene(64.0, 64.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let mask = svg.split("<mask").nth(1).and_then(|s| s.split('>').next()).expect(&svg);
     let attr = |name: &str| -> f32 {
@@ -417,7 +417,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
 #[test]
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 160, 120), [0, 0, 0, 255]);
@@ -536,7 +536,7 @@ fn adjust_keeps_soft_edges_dark() {
     if let NodeKind::Shape(s) = &mut leaf.kind {
         s.blur = 3.0;
     }
-    leaf.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(10, 40, 25, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    leaf.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(10, 40, 25, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let mut layer = solid("layer", circle_at(0.0, 0.0, 1.0), color(0, 0, 0, 0));
     layer.kind = NodeKind::Group { isolate: true, children: vec![leaf] };
     layer.effects.push(effect(EffectOp::Adjust { hue: 0.0, sat: 0.05, light: -0.06 }));
@@ -683,7 +683,7 @@ fn masked_bar(mask: artscript_ir::MaskSource, outline: bool) -> artscript_ir::Sc
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255));
     bar.mask = Some(Box::new(artscript_ir::Mask { source: mask, luminance: false, feather: 0.0, invert: false }));
     if outline {
-        bar.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+        bar.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     }
     scene(80.0, 80.0, vec![bar])
 }
@@ -774,7 +774,7 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
             invert: false,
         });
         if outline {
-            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+            s.children[0].effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
         }
         s
     };
@@ -831,7 +831,7 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
 fn sided_tile(sides: artscript_ir::Sides, turn: f32) -> Vec<u8> {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
     node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides, mask: None, brush: vec![] }));
     render_png(&scene(100.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap()
 }
 
@@ -891,7 +891,7 @@ fn a_rotated_node_keeps_its_sides_in_its_own_frame() {
 #[test]
 fn svg_bakes_a_one_sided_outline_like_the_png() {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: TOP_ONLY, mask: None }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: TOP_ONLY, mask: None, brush: vec![] }));
     let scene = scene(100.0, 100.0, vec![node]);
     assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline sides"));
     assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
@@ -903,7 +903,7 @@ fn svg_bakes_a_one_sided_outline_like_the_png() {
 /// only.
 fn masked_ring(mask: artscript_ir::Mask) -> artscript_ir::Scene {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
-    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: Some(Box::new(mask)) }));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: Some(Box::new(mask)), brush: vec![] }));
     scene(120.0, 120.0, vec![node])
 }
 
@@ -1125,7 +1125,7 @@ fn svg_writes_stamps_as_paths_before_the_clipped_children() {
 #[test]
 fn fx_outline_traces_the_stamps_unclipped() {
     let mut host = stamped_circle();
-    host.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
+    host.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }));
     let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 76, 40), [0, 0, 0, 255], "a ring around the stamp past the circle's edge");
     assert_eq!(pixel(&png, 70, 40), [0, 0, 255, 255]);

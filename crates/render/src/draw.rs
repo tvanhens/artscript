@@ -357,7 +357,7 @@ fn reach_px(
     let ring = steps
         .iter()
         .map(|step| match step {
-            effects::LayerStep::Outline(outline) => outline.width,
+            effects::LayerStep::Outline(outline) => outline.reach(),
             effects::LayerStep::Filter(_) => 0.0,
         })
         .fold(0.0_f32, f32::max);
@@ -549,7 +549,7 @@ fn draw_shape(
                     )?;
                     canvas.draw_path(&shape.geometry, &paint);
                 }
-                (Some(ribbon), _) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
+                (Some(ribbon), _) => crate::mark::draw_ribbon(canvas, &shape.geometry, &stroke.paint, ribbon, ctx, origin)?,
             }
         }
         Ok(())
@@ -704,7 +704,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
             artscript_ir::EffectOp::Blur { sigma } => *sigma * 3.0,
             artscript_ir::EffectOp::Shadow { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur * 3.0,
             artscript_ir::EffectOp::Glow { radius, .. } => *radius * 3.0,
-            artscript_ir::EffectOp::Outline { width, .. } => *width + 2.0,
+            artscript_ir::EffectOp::Outline { width, brush, .. } => *width + artscript_ir::ribbon_reach(brush) + 2.0,
             artscript_ir::EffectOp::Inner { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur,
             artscript_ir::EffectOp::Rim { width, .. } => *width + 2.0,
             _ => 0.0,

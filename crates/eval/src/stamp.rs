@@ -607,7 +607,7 @@ impl Evaluator<'_> {
             .iter()
             .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body.frame, world: body.world })
             .collect();
-        node.effects = self.lower_fx(&sites, &key, fill);
+        node.effects = self.lower_fx(&sites, &key, fill, None);
         self.run_checks(&checks);
         let rec = Rc::new(RefCell::new(Record {
             name: String::new(),

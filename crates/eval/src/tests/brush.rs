@@ -3,12 +3,12 @@
 
 use std::collections::BTreeMap;
 
-use artscript_ir::{AreaMark, Cap, Join, Ribbon, Scene, UniformValue};
+use artscript_ir::{AreaMark, Cap, EffectOp, Join, Ribbon, RibbonMark, Scene, UniformValue};
 use artscript_syntax::Diagnostic;
 
 use crate::{Project, evaluate, plan};
 
-use super::{diag, project, run_with, shape, show};
+use super::{diag, node, project, run_with, shape, show};
 
 const DRY: &str = "\
 brush dry strength:.5 scale:1 dir:0
@@ -672,4 +672,60 @@ fn dash_cap_and_join_on_a_tapered_stroke_are_e0362_at_the_key() {
     assert!(matches!((stroke.cap, stroke.join), (Cap::Round, Join::Round)), "inherited cap and join do nothing");
     let s = ok("@target t.png 96x96\ncurve 10,48 48,20 86,48 stroke:#202030,2 dash:4,2 cap:butt name:a\n", &[]);
     assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().dash, vec![4.0, 2.0], "a stroke of one width keeps its dash");
+}
+
+fn outline_brushes<'a>(s: &'a Scene, path: &str) -> Vec<&'a [RibbonMark]> {
+    node(s, path)
+        .effects
+        .iter()
+        .filter_map(|e| match &e.op {
+            EffectOp::Outline { brush, .. } => Some(brush.as_slice()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn fx_outline_takes_a_brush_and_seeds_each_line_apart_from_the_stroke_and_each_other() {
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry }\n\
+         rect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry name:a\n  fx outline 3 brush:dry\n  fx outline 2 brush:[dry dry(strength:.9 reach:4)]\n  fx outline 1 brush:none\n\
+         rect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:dry seed:7 name:b\n  fx outline 3 brush:dry\n",
+        &[LIB],
+    );
+    let rings = outline_brushes(&s, "a");
+    assert_eq!(rings.iter().map(|r| r.len()).collect::<Vec<_>>(), [1, 2, 0]);
+    assert_eq!(rings[1].iter().map(|m| m.reach).collect::<Vec<_>>(), [0.0, 4.0]);
+    let mut seeds = vec![ribbon(&s, "a").marks[0].stage.seed, rings[0][0].stage.seed, rings[1][0].stage.seed, rings[1][1].stage.seed];
+    seeds.sort_unstable();
+    seeds.dedup();
+    assert_eq!(seeds.len(), 4, "the stroke, each outline line, and each stage seed apart");
+    let rings = outline_brushes(&s, "b");
+    assert_eq!(rings[0][0].stage.seed, ribbon(&s, "b").marks[0].stage.seed, "seed: pins the outline's brush too");
+}
+
+#[test]
+fn an_outline_brush_narrowed_to_the_fill_is_e0362_at_the_key() {
+    let d = first("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 name:a\n  fx outline 3 brush:dry(on:fill)\n", &[LIB], "E0362");
+    assert!(d.message.contains("narrowed to `on:fill`"), "{d}");
+    assert_eq!(col(&d), (4, 16), "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 name:a\n  fx outline 3 brush:[dry dry(on:fill)]\n", &[LIB], "E0362");
+    assert!(d.message.contains("stage 2 of `brush:` (`dry`)"), "{d}");
+    ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 name:a\n  fx outline 3 brush:dry(on:stroke)\n", &[LIB]);
+}
+
+#[test]
+fn a_finish_brushes_its_outlines_from_its_parameters_and_seeds_each_line_apart() {
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry }\n\
+         finish edged strength:.5\n  fx outline 4 brush:dry(strength:strength)\n  fx outline 2 brush:dry\n\
+         rect 40x40 at:50,50 fill:#ff0000 name:a\n  fx edged strength:.9\n\
+         rect 40x40 at:50,50 fill:#ff0000 name:b\n  fx edged\n",
+        &[LIB],
+    );
+    let rings = outline_brushes(&s, "a");
+    assert_eq!(rings.len(), 2);
+    assert_eq!(rings[0][0].stage.uniforms[0], ("strength".to_string(), UniformValue::Float(0.9)));
+    assert_ne!(rings[0][0].stage.seed, rings[1][0].stage.seed, "two outlines in one finish seed apart");
+    assert_eq!(outline_brushes(&s, "b")[0][0].stage.uniforms[0], ("strength".to_string(), UniformValue::Float(0.5)));
 }

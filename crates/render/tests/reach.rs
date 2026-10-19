@@ -157,7 +157,8 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
         width: 3.0,
         color: color(0, 0, 0, 255),
         sides: artscript_ir::Sides::ALL,
-    mask: None,
+        mask: None,
+        brush: vec![],
     });
     let loose = covers("outline", &outline);
     assert!(
@@ -168,7 +169,8 @@ fn the_outer_extent_of_a_small_blur_is_tight() {
         width: 3.0,
         color: color(0, 0, 0, 255),
         sides: artscript_ir::Sides { top: true, right: false, bottom: false, left: false },
-    mask: None,
+        mask: None,
+        brush: vec![],
     });
     let loose = covers("outline on one side", &top_only);
     assert!(
@@ -274,9 +276,29 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
             width: 4.0,
             color: color(255, 0, 0, 255),
             sides: artscript_ir::Sides::ALL,
-        mask: None,
+            mask: None,
+            brush: vec![],
         }));
         covers(&format!("{name} outline"), &outlined);
     }
 }
 
+
+#[test]
+fn a_brushed_outline_grows_the_outer_extent_by_its_reach() {
+    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 5, m)); }\n";
+    let program = artscript_brush::Program::assemble(artscript_brush::MainKind::Ribbon, &[], body);
+    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    let stage = artscript_ir::Stage { program: std::sync::Arc::new(program), uniforms: vec![], seed: 1 };
+    let brushed = with(EffectOp::Outline {
+        width: 3.0,
+        color: color(0, 0, 0, 255),
+        sides: artscript_ir::Sides::ALL,
+        mask: None,
+        brush: vec![artscript_ir::RibbonMark { stage, reach: 6.0 }],
+    });
+    let outer = brushed.outer_bounds(&Matrix::new_identity(), &|_| None).unwrap();
+    assert_eq!(outer, Rect::from_ltrb(91.0, 91.0, 149.0, 149.0), "the square grows by the width plus the reach");
+    let loose = covers("brushed outline", &brushed);
+    assert!(loose <= 1.0, "brushed outline: the extent lies {loose} px past the ink");
+}

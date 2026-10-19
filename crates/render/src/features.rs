@@ -128,6 +128,7 @@ fn effect_feature(op: &EffectOp) -> Option<&'static str> {
     match op {
         EffectOp::Outline { sides, .. } if !sides.is_all() => Some("fx outline sides"),
         EffectOp::Outline { mask: Some(_), .. } => Some("fx outline mask"),
+        EffectOp::Outline { brush, .. } if !brush.is_empty() => Some("brush outline"),
         EffectOp::Inner { .. } => Some("fx inner"),
         EffectOp::Rim { .. } => Some("fx rim"),
         EffectOp::Grain { .. } => Some("fx grain"),
