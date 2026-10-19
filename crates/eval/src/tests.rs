@@ -4161,7 +4161,7 @@ fn a_cycle_through_an_unnamed_sibling_names_its_line() {
     assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
     let d = errors[0];
     assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
-    assert!(d.message.contains("before the statement at art/t.art:5 is drawn"), "{d}");
+    assert!(d.message.contains("before the statement at art/t.ramo:5 is drawn"), "{d}");
     assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
 }
 
@@ -7408,7 +7408,7 @@ fn a_name_is_unique_under_its_nearest_shape() {
     );
     let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0333").collect();
     assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
-    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 5));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.ramo", 5));
     assert!(hits[0].message.contains("under `thorax`"), "{}", hits[0]);
     assert_eq!(hits[0].notes, ["first named at line 3"]);
 }
@@ -7421,7 +7421,7 @@ fn a_bare_reference_to_a_nested_part_names_the_full_path() {
     );
     let hits: Vec<_> = one.diagnostics.iter().filter(|d| d.code == "E0350").collect();
     assert_eq!(hits.len(), 1, "{}", show(&one.diagnostics));
-    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 4));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.ramo", 4));
     assert!(hits[0].message.contains("`@sheen.cy` names `sheen`, which is nested under `thorax`"), "{}", hits[0]);
     assert_eq!(hits[0].fix.as_deref(), Some("write @thorax.sheen.cy"));
 
@@ -7442,7 +7442,7 @@ fn a_bare_reference_to_a_nested_part_names_the_full_path() {
     assert_eq!(d.notes, ["`@thorax.sheen.cy`", "`@abdomen.sheen.cy`"]);
     assert_eq!(d.fix.as_deref(), Some("write one of the listed paths"));
 
-    let lib = ("lib/bug.art", "def bug\n  circle 10 name:head\n    circle 2 at:3,0 name:eye_l\n");
+    let lib = ("lib/bug.ramo", "def bug\n  circle 10 name:head\n    circle 2 at:3,0 name:eye_l\n");
     let skipped = run_with(
         "@target t.png 40x40\nuse bug\nbug at:20,20 name:b\nlet x = @b.eye_l.cx\n",
         &[lib],
@@ -7458,7 +7458,7 @@ fn a_bare_reference_to_a_nested_part_names_the_full_path() {
 
 #[test]
 fn a_patch_follows_the_shape_path() {
-    let lib = ("lib/bug.art", "def bug\n  circle 10 name:thorax\n    circle 2 fill:#ffffff name:sheen\n");
+    let lib = ("lib/bug.ramo", "def bug\n  circle 10 name:thorax\n    circle 2 fill:#ffffff name:sheen\n");
     let filled = scene_with(
         "@target t.png 40x40\nuse bug\nbug name:b\n  .thorax.sheen fill:#ff0000\n",
         &[lib],
@@ -7476,12 +7476,12 @@ fn a_patch_follows_the_shape_path() {
     );
     let hits: Vec<_> = bare.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&bare.diagnostics));
-    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 4));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.ramo", 4));
     assert!(hits[0].message.contains("nested under `thorax`"), "{}", hits[0]);
     assert_eq!(hits[0].fix.as_deref(), Some("write .thorax.sheen"));
 
     let looped = (
-        "lib/bugs.art",
+        "lib/bugs.ramo",
         "def bugs\n  each i in 0..2\n    circle 10 at:i*20,0 name:thorax\n      each j in 0..2\n        circle 2 at:0,j*5 name:sheen\n",
     );
     let copy = scene_with(
@@ -7491,7 +7491,7 @@ fn a_patch_follows_the_shape_path() {
     let sheens: Vec<String> = paths(&copy).into_iter().filter(|p| p.contains("sheen")).collect();
     assert_eq!(sheens, ["b.thorax.0.sheen.0", "b.thorax.0.sheen.1", "b.thorax.1.sheen.1"]);
 
-    let grouped = ("lib/hero.art", "def hero\n  group face\n    circle 2 fill:#ffffff name:eye_l\n");
+    let grouped = ("lib/hero.ramo", "def hero\n  group face\n    circle 2 fill:#ffffff name:eye_l\n");
     let through = scene_with(
         "@target t.png 40x40\nuse hero\nhero name:h\n  .eye_l fill:#ff0000\n",
         &[grouped],
@@ -7509,7 +7509,7 @@ fn a_patch_follows_the_shape_path() {
 #[test]
 fn a_group_under_a_shape_stays_out_of_a_reference_path() {
     let lib = (
-        "lib/hero.art",
+        "lib/hero.ramo",
         "def hero\n  circle 10 name:head\n    group face\n      circle 2 at:3,0 name:eye_l\n      anchor brow 0,-4\n",
     );
     scene_with(
