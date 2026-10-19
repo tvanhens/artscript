@@ -992,7 +992,13 @@ impl ModuleIds {
         ordinals(&file, &top, &mut anon, &mut tags);
         for d in parsed.decls() {
             if let DeclKind::Def { name, body, .. } | DeclKind::Stamp { name, body, .. } = &d.kind {
-                let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
+                let stmts: Vec<&Scene> = body
+                    .iter()
+                    .flat_map(|item| match item {
+                        DefItem::Scene(s) => std::slice::from_ref(s),
+                        DefItem::Fx(f) => f.mask_block(),
+                    })
+                    .collect();
                 let r = declare(
                     &file,
                     RegionKind::Def,
@@ -1003,7 +1009,12 @@ impl ModuleIds {
                     out,
                 );
                 regions.insert(d.span, Rc::new(r));
-                ordinals(&file, &stmts, &mut anon, &mut tags);
+                let scenes: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
+                ordinals(&file, &scenes, &mut anon, &mut tags);
+                for f in body.iter().filter_map(DefItem::fx) {
+                    let block: Vec<&Scene> = f.mask_block().iter().collect();
+                    ordinals(&file, &block, &mut anon, &mut tags);
+                }
             }
         }
         ModuleIds {
