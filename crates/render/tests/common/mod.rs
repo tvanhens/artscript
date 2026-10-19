@@ -64,3 +64,29 @@ pub fn effect(op: EffectOp) -> Effect {
     Effect { op, input: EffectInput::Previous, name: None }
 }
 
+
+/// A stamp: an isolated group placed by `transform` in its host's frame, holding `children`.
+pub fn stamp(path: &str, transform: Matrix, children: Vec<Node>) -> Node {
+    Node {
+        path: path.into(),
+        origin: "test:1".into(),
+        transform,
+        opacity: 1.0,
+        blend: Blend::Normal,
+        clip: None,
+        mask: None,
+        effects: vec![],
+        kind: NodeKind::Group { isolate: true, children },
+    }
+}
+
+/// Puts `stamps` and `children` on the shape `host`.
+pub fn with_stamps(host: &mut Node, stamps: Vec<Node>, children: Vec<Node>) {
+    match &mut host.kind {
+        NodeKind::Shape(shape) => {
+            shape.stamps = stamps;
+            shape.children = children;
+        }
+        _ => unreachable!("the host is a shape"),
+    }
+}

@@ -7,8 +7,8 @@ use std::sync::Arc;
 
 use artscript_brush::{MainKind, Program, UniformKind, UniformValue};
 use artscript_ir::{AreaMark, Fill, NodeKind, Paint, Path, Point, Stage, Stop};
-use artscript_render::{Backend, gpu_available, render_png};
-use common::{color, pixel, red, scene, solid};
+use artscript_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
+use common::{color, pixel, red, scene, solid, stamp, with_stamps};
 
 fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
@@ -148,4 +148,27 @@ fn gpu_brush_render_is_close_to_cpu_and_repeatable() {
     }
     assert!(worst <= 16, "max channel difference {worst}, {differing} pixels differ");
     assert_eq!(gpu, render_png(&s, 1.0, Backend::Gpu).unwrap());
+}
+
+#[test]
+fn only_a_brushed_stamp_bakes_in_svg() {
+    let plain = solid("line.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
+    let dry = stage("float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }", &[], &[], 3);
+    let textured = brushed("line.dots.1.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), Paint::Solid(red()), vec![mark(dry, 0.0)]);
+    let mut host = solid("line", Path::rect(skia_safe::Rect::from_xywh(0.0, 38.0, 80.0, 4.0), None), color(0, 0, 0, 255));
+    with_stamps(
+        &mut host,
+        vec![
+            stamp("line.dots.0", artscript_ir::Matrix::translate((20.0, 40.0)), vec![plain]),
+            stamp("line.dots.1", artscript_ir::Matrix::translate((60.0, 40.0)), vec![textured]),
+        ],
+        vec![],
+    );
+    let scene = scene(80.0, 80.0, vec![host]);
+    let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
+    assert_eq!(census, ["line.dots.1.c brush fill"]);
+    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 1, "{svg}");
+    assert!(svg.contains("<g id=\"line.dots.0.c\""), "the plain stamp stays a path: {svg}");
+    assert!(svg.contains("<g id=\"line.dots.1.c\">"), "the brushed stamp's shape is the baked node: {svg}");
 }
