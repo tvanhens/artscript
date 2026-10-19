@@ -899,6 +899,80 @@ fn svg_bakes_a_one_sided_outline_like_the_png() {
     assert!(svg.contains("<image"), "{svg}");
 }
 
+/// A white disc of radius 20 at 60,60 with a black outline 6 wide, kept by `mask` over the ring
+/// only.
+fn masked_ring(mask: artscript_ir::Mask) -> artscript_ir::Scene {
+    let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
+    node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: Some(Box::new(mask)) }));
+    scene(120.0, 120.0, vec![node])
+}
+
+/// Keeps the left half of the canvas, `x < 60`, in the node's own coordinates.
+fn left_half(feather: f32) -> artscript_ir::Mask {
+    artscript_ir::Mask {
+        source: artscript_ir::MaskSource::Nodes(vec![solid("keep", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 60.0, 120.0), None), color(255, 255, 255, 255))]),
+        luminance: false,
+        feather,
+        invert: false,
+    }
+}
+
+#[test]
+fn outline_mask_keeps_the_ring_where_the_mask_keeps_it_and_leaves_the_content_alone() {
+    let png = render_png(&masked_ring(left_half(0.0)), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 37, 60), [0, 0, 0, 255], "ring on the kept side");
+    assert_eq!(pixel(&png, 83, 60), [0, 0, 0, 0], "no ring on the cut side");
+    assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
+    assert_eq!(pixel(&png, 75, 60), [255, 255, 255, 255], "the content is not masked");
+    assert_eq!(pixel(&png, 45, 60), [255, 255, 255, 255]);
+}
+
+#[test]
+fn outline_mask_feather_fades_the_ring_alpha_and_keeps_its_width() {
+    let soft = render_png(&masked_ring(left_half(4.0)), 1.0, Backend::Cpu).unwrap();
+    let hard = render_png(&masked_ring(left_half(0.0)), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&soft, 45, 43), [0, 0, 0, 255], "three sigmas into the kept side");
+    assert_eq!(pixel(&soft, 75, 43), [0, 0, 0, 0], "three sigmas into the cut side");
+    let at_edge = pixel(&soft, 60, 37)[3];
+    assert!((100..=156).contains(&at_edge), "half strength at the mask edge, got {at_edge}");
+    assert_eq!(pixel(&soft, 60, 37)[..3], [0, 0, 0]);
+    assert!(pixel(&soft, 60, 35)[3] > 0, "the ring still reaches its outer edge");
+    assert_eq!(pixel(&soft, 60, 33), [0, 0, 0, 0], "and no further");
+    assert_eq!(pixel(&hard, 60, 33), [0, 0, 0, 0]);
+    assert_eq!(pixel(&soft, 60, 60), [255, 255, 255, 255]);
+}
+
+#[test]
+fn outline_field_mask_breaks_the_ring_and_renders_the_same_every_time() {
+    let mask = artscript_ir::Mask {
+        source: artscript_ir::MaskSource::Field {
+            field: Field::Noise { kind: NoiseKind::Simplex, scale: 10.0, seed: 7, wrap: None },
+            threshold: Some(0.5),
+        },
+        luminance: false,
+        feather: 0.0,
+        invert: false,
+    };
+    let scene = masked_ring(mask);
+    let png = render_png(&scene, 1.0, Backend::Cpu).unwrap();
+    let ring: Vec<u8> = (0..360).step_by(5).map(|deg| {
+        let a = (deg as f32).to_radians();
+        pixel(&png, (60.0 + 23.0 * a.cos()).round() as i32, (60.0 + 23.0 * a.sin()).round() as i32)[3]
+    }).collect();
+    assert!(ring.iter().any(|&a| a == 255) && ring.iter().any(|&a| a == 0), "{ring:?}");
+    assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
+    assert_eq!(png, render_png(&scene, 1.0, Backend::Cpu).unwrap());
+}
+
+#[test]
+fn svg_bakes_a_masked_outline_like_the_png() {
+    let scene = masked_ring(left_half(0.0));
+    assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline mask"));
+    assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
+    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(svg.contains("<image"), "{svg}");
+}
+
 fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, w, h), None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
