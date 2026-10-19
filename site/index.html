@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>artscript: a small language for painted art your model writes</title>
+<title>artscript: art assets your coding agent can write</title>
 <meta name="description" content="artscript is a small text language and CLI that builds painted PNG, SVG and GIF art. A model writes it, checks it and fixes it. One file fans out a whole family of assets.">
 <link rel="icon" href="brand/mark.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,6 +18,7 @@
   <nav class="nav" aria-label="Main">
     <a class="tile tile--ink nav__mark" href="#top" aria-label="artscript, back to top"><img src="brand/mark.png" width="512" height="512" alt=""></a>
     <div class="tile tile--surface nav__links">
+      <a class="nav__word" href="#top">artscript</a>
       <a class="link" href="#features">Language</a>
       <a class="link" href="#plate">Examples</a>
       <a class="link" href="https://github.com/tvanhens/artscript/blob/main/docs/language.md">Docs</a>
@@ -28,12 +29,13 @@
 
   <div class="hero__board">
     <div class="tile tile--surface hero__name">
-      <h1 class="display">artscript</h1>
+      <h1 class="display">Art assets your agent can write</h1>
+      <p class="lead hero__sub">artscript is a small text language for painted icons, characters and props. Your coding agent writes it. The CLI builds it into PNG, SVG and GIF.</p>
     </div>
     <figure class="tile tile--card hero__picture shutter">
       <img src="art/moths/assets/specimen/luna_tailed.png" width="1600" height="1600" fetchpriority="high"
         alt="A pale green luna moth with long tails and red eyespots, painted with a grainy wash and pinned through the thorax">
-      <figcaption class="caption">specimen/luna_tailed.png</figcaption>
+      <figcaption class="caption">specimen/luna_tailed.png, built from art/specimen.art</figcaption>
     </figure>
     <figure class="tile tile--surface hero__source">
       <pre data-lang="art"><code># The hero: one luna specimen, large, pinned through the thorax.
@@ -54,12 +56,11 @@ layer pin
     </figure>
     <div class="hero__pair">
       <div class="tile tile--ink hero__what">
-        <p class="lead">A small language for procedural art. One text file builds painted PNG, SVG and GIF.</p>
-        <pre data-lang="sh"><code>artscript check --json
-artscript build</code></pre>
+        <p class="lead">A model can draw one icon. It struggles to draw the hundredth in the same style, to change one detail, or to tell whether its output is right.</p>
+        <p class="hero__answer">artscript keeps the style in palettes and components, edits stay one line, and <code>artscript check</code> tells the agent what is wrong and how to fix it.</p>
       </div>
       <div class="tile tile--accent hero__action">
-        <p class="lead">Your model writes it, checks it and fixes it.</p>
+        <p class="lead">Free for your own games and apps, commercial ones included.</p>
         <a class="button" href="#install">Install the CLI</a>
       </div>
     </div>
