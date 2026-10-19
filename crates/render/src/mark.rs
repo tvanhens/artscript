@@ -11,7 +11,7 @@ use skia_safe::{Canvas, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, Roun
 
 use crate::RenderError;
 use crate::draw::DrawCtx;
-use crate::paint::content_paint;
+use crate::paint::{content_paint, dither_origin, mat9};
 use crate::ribbon::{STRIP_ROWS, Spec, Spine};
 
 pub(crate) fn draw_area(
@@ -158,6 +158,7 @@ impl Frame {
             u.set(origin, "u_seed", &[seeds.seed])?;
             u.set(origin, "u_seedo", &seeds.offset)?;
             u.set(origin, "u_px", &[self.px])?;
+            u.set(origin, "u_dito", &dither_origin(&self.ltd))?;
             extra(&mut u, mark)?;
             for (name, value) in &stage.uniforms {
                 u.set(origin, name, value.floats())?;
@@ -183,8 +184,6 @@ impl Frame {
 
     fn draw(&self, canvas: &Canvas, dev: IRect, shader: Shader) {
         let mut paint = Paint::default();
-        // The program dithers and snaps its own output, so Skia's dither must stay off.
-        paint.set_dither(false);
         paint.set_shader(shader);
         canvas.save();
         canvas.reset_matrix();
@@ -214,15 +213,6 @@ fn device_scale(m: &Matrix) -> f32 {
     let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
     let sy = (m.scale_y() * m.scale_y() + m.skew_x() * m.skew_x()).sqrt();
     (sx * sy).sqrt().max(1e-4)
-}
-
-/// Column-major 3x3, as SkSL lays out a `float3x3` uniform.
-fn mat9(m: &Matrix) -> [f32; 9] {
-    [
-        m.scale_x(), m.skew_y(), m.persp_x(),
-        m.skew_x(), m.scale_y(), m.persp_y(),
-        m.translate_x(), m.translate_y(), m[8],
-    ]
 }
 
 /// The uniform block of one effect, written by name. A name the program does not declare, or a

@@ -3198,8 +3198,7 @@ def blot
   fx grain .3
 ";
 
-/// The 48x48 pixels centered on `cx`,`cy`. Paint dithers on an 8px device grid, so two crops
-/// match byte for byte only when their centers differ by a multiple of 8.
+/// The 48x48 pixels centered on `cx`,`cy`.
 fn crop(scene: &Scene, cx: i32, cy: i32) -> Vec<u8> {
     let (w, h, buf) =
         artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
@@ -3249,6 +3248,16 @@ fn a_seeded_noise_fill_draws_the_same_pixels_off_the_8px_grid() {
          rect 40x40 at:132,32 fill:fbm(simplex(6 seed:3)) -> [#000 #fff] name:b\n",
     );
     assert!(crop(&s, 32, 32) == crop(&s, 132, 32), "the noise fill drew different pixels 100px over");
+}
+
+#[test]
+fn a_brushed_copy_draws_the_same_pixels_off_the_8px_grid() {
+    let s = scene(
+        "@target t.png 200x64 bg:#ffffff\nuse std/brushes { dry }\n\
+         rect 40x40 at:32,32 fill:#3366cc brush:dry(strength:.6) seed:7 name:a\n\
+         rect 40x40 at:133,32 fill:#3366cc brush:dry(strength:.6) seed:7 name:b\n",
+    );
+    assert!(crop(&s, 32, 32) == crop(&s, 133, 32), "the brush drew different pixels 101px over");
 }
 
 #[test]
