@@ -972,6 +972,32 @@ fn a_viewport_target_skips_the_off_canvas_lint() {
 }
 
 #[test]
+fn a_diagnostic_several_targets_raise_alike_prints_once_with_its_targets() {
+    let dir = fixture("across-targets", &[]);
+    fs::write(
+        dir.join("art/t.art"),
+        "@target a.png 64x64\n@target b.png 64x64\n@target c_{k}.png 64x64 each k:[x y]\nrect 40x20 at:60,32 fill:p.rim name:wide\n",
+    )
+    .unwrap();
+    let out = artscript(&dir, &["check", "--json"]);
+    assert_eq!(out.status.code(), Some(3), "{}", text(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let cut: Vec<&serde_json::Value> = json["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|d| d["code"] == "L0102")
+        .collect();
+    assert_eq!(cut.len(), 1, "{json}");
+    assert_eq!(cut[0]["targets"], serde_json::json!(["a.png", "b.png", "c_x.png", "c_y.png"]), "{json}");
+
+    let plain = text(&artscript(&dir, &["check"]));
+    assert_eq!(plain.matches("warning[L0102]").count(), 1, "{plain}");
+    assert!(plain.contains("in 4 targets: a.png, b.png, c_x.png, … (+1)"), "{plain}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn an_unknown_target_word_or_key_is_an_error() {
     let dir = fixture("target-unknown", &[]);
     for (line, what) in [
