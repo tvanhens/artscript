@@ -5,7 +5,7 @@ lib  = ["lib"]
 std  = "0.1"
 
 [defaults]
-palette = "palette/house"
+palette = "palette/moths"
 scale   = [1]
 bg      = "none"
 profile = "auto"

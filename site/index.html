@@ -179,15 +179,12 @@ moth wing:wing pattern:pattern tails:tails at:360,328 scale:2.15 name:specimen</
     <div class="field__card" data-ui data-reveal>
       <div class="card">
         <p class="card__file"><code>art/sprout_broken.art</code></p>
-        <pre class="card__code" data-lang="art"><code>  each k in [-1 1]
-    ellipse 22,8 at:k*72,48 fill:p.coral.3 a:.45 blur:6 name:cheek
-    circle 15 at:k*50,22+k*9 fill:sprout.ink name:eye
-      circle 5 at:-5,-6 fill:sprout.seed.4
-  curve -14,52 0,60 14,52 stroke:sprout.ink,4 name:mouth
-  fx outline 5
+        <pre class="card__code" data-lang="art"><code>each k in [-1 1]
+  circle 16 at:256+k*84,299 fill:fade(p.ember.4 .3) blur:5 name:halo
+  ellipse 11,10 at:256+k*84,299+k*14 rot:-20*k fill:fade(mix(p.ink p.luna .2) .8) blur:1 name:eye
 
 assert level(@eye.0 @eye.1) tol:.5
-assert inside(@body canvas margin:24)</code></pre>
+assert inside(@specimen canvas margin:24)</code></pre>
       </div>
     </div>
     <p class="field__clause lead" data-reveal>First the model writes it.</p>
@@ -196,26 +193,26 @@ assert inside(@body canvas margin:24)</code></pre>
   <div class="field field--dark">
     <div class="field__card" data-ui data-reveal>
       <div class="card">
-        <img class="card__img" src="art/studies/assets/sprout_broken.png" width="512" height="512" loading="lazy" alt="A round seedling character whose right eye sits lower than its left">
+        <img class="card__img" src="art/studies/assets/sprout_broken.png" width="512" height="512" loading="lazy" alt="A pale green luna moth whose right hindwing eyespot sits lower than the left one">
         <dl class="card__rows">
           <div><dt>exit</dt><dd><code>2</code></dd></div>
           <div><dt>code</dt><dd><code>C0101</code></dd></div>
           <div><dt>message</dt><dd><code>assert level(@eye.0 @eye.1) tol:.5</code></dd></div>
-          <div><dt>notes</dt><dd><code>eye.cy = 329   eye.cy = 347   difference 18 &gt; tol 0.5</code></dd></div>
-          <div><dt>fix</dt><dd><code>set .eye.1 at:50,13</code></dd></div>
+          <div><dt>notes</dt><dd><code>eye.cy = 285   eye.cy = 313   difference 28 &gt; tol 0.5</code></dd></div>
+          <div><dt>fix</dt><dd><code>set .eye.1 at:340,285</code></dd></div>
         </dl>
       </div>
     </div>
-    <p class="field__clause lead" data-reveal>Then check finds the eyes.</p>
+    <p class="field__clause lead" data-reveal>Then check finds the eyespot.</p>
   </div>
 
   <div class="field field--mid">
     <div class="field__card" data-ui data-reveal>
       <div class="card">
-        <img class="card__img" src="art/studies/evidence/sprout.png" width="512" height="512" loading="lazy" alt="The seedling with level eyes and a green leaf">
+        <img class="card__img" src="art/studies/evidence/sprout.png" width="512" height="512" loading="lazy" alt="The same luna moth with both hindwing eyespots level">
         <dl class="card__rows">
           <div><dt>path</dt><dd><code>sprout.png</code></dd></div>
-          <div><dt>hash</dt><dd><code>8daee09c806aa725</code></dd></div>
+          <div><dt>hash</dt><dd><code>636faf643c7a6c5d</code></dd></div>
           <div><dt>status</dt><dd><code>pass</code></dd></div>
         </dl>
       </div>
@@ -228,12 +225,12 @@ assert inside(@body canvas margin:24)</code></pre>
       <div class="card">
         <pre class="card__code card__diff" data-lang="diff"><code>--- a/art/sprout.art
 +++ b/art/sprout.art
-@@ -7 +7 @@
--  ramp leaf #6f8a4f 5
-+  ramp leaf <mark>#d9773a</mark> 5</code></pre>
-        <img class="card__img" src="art/studies/evidence/sprout_recolor.png" width="512" height="512" loading="lazy" alt="The same seedling with an orange leaf and stem">
+@@ -8 +8 @@
+-  ramp luna #b9cfae 7
++  ramp luna <mark>#b8a8d6</mark> 7</code></pre>
+        <img class="card__img" src="art/studies/evidence/sprout_recolor.png" width="512" height="512" loading="lazy" alt="The same moth recoloured lilac">
         <dl class="card__rows">
-          <div><dt>hash</dt><dd><code>8daee09c806aa725 → fdd045a16fb5e59c</code></dd></div>
+          <div><dt>hash</dt><dd><code>636faf643c7a6c5d → a512dce4233634d1</code></dd></div>
         </dl>
       </div>
     </div>
@@ -247,59 +244,83 @@ assert inside(@body canvas margin:24)</code></pre>
   <article class="feat feat--text-top" data-reveal>
     <div class="feat__text">
       <h3 class="feat__name">One hex, a whole ramp.</h3>
-      <p>A ramp turns one colour into five stops. Its shadows shift toward cool blue-violet and its lights toward warm yellow, so this stone is shaded from a single hex.</p>
-      <pre data-lang="art"><code>palette study
-  ramp pebble #ff6a5a 5</code></pre>
+      <p>A ramp turns one hex into a run of stops, with shadows shifting toward cool blue-violet and lights toward warm yellow. Each of the five wing palettes lifted from lib/palette/moths.art is one hex and seven stops, and every chip here is one stop.</p>
+      <pre data-lang="art"><code>palette moths
+  ramp luna #b9cfae 7
+  ramp dusk #5d6686 7
+  ramp ember #c2703f 7
+  ramp bone #e6dfd0 7
+  ramp rosy #e39ab0 7
+
+each r, wing in [luna dusk ember bone rosy]
+  each i in 0..7
+    rect 70x54 r:5 at:124+i*92,82+r*84 fill:p.{wing}.{i} brush:wash(dir:-12) jitter:.8,18 name:chip</code></pre>
     </div>
-    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/ramp.png" width="800" height="500" loading="lazy" alt="Five painted colour chips from deep red to pale peach beside a shaded coral pebble"></div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/ramp.png" width="800" height="500" loading="lazy" alt="Five rows of seven painted chips, green, navy, rust, bone and pink, each row running from dark to near white"></div>
   </article>
 
   <article class="feat feat--art-top" data-reveal>
-    <div class="feat__art feat__art--top feat__art--leaf"><img src="art/studies/assets/clip.png" width="800" height="800" loading="lazy" alt="A tilted green leaf with painted veins and a noise texture kept inside its outline"></div>
+    <div class="feat__art feat__art--top"><img src="art/studies/assets/clip.png" width="800" height="800" loading="lazy" alt="One pale green moth forewing with fine dust, veins, two pink bands and a ringed red eyespot, all cut off at the wing’s edge"></div>
     <div class="feat__text">
       <h3 class="feat__name">Shading stays inside.</h3>
-      <p>Children clip to their parent. The texture on this leaf is an 800 by 800 rectangle, but it is the leaf’s child, so it paints only inside the leaf.</p>
-      <pre data-lang="art"><code>    rect 800x800 fill:fbm(simplex(26)) -&gt; [fade(p.leaf.0 0) fade(p.leaf.0 .45)] name:texture</code></pre>
+      <p>Children clip to their parent. The mottle, dust, veins, bands and eyespot on this forewing are all children of the wing curve. Some are drawn on a 300 by 300 rectangle or run past the edge, but each paints only inside the wing.</p>
+      <pre data-lang="art"><code>  curve pts closed tension:.45 fill:grad(6,-6 120,-72 deep c,.45 shade(c 1),.8 shade(c 2)) stroke:fade(line(c) .5),1.2 brush:wash name:fw
+    rect 300x300 at:66,-30 fill:(worley(2 seed:9)-.72)*5+.5 -&gt; [fade(m 0) fade(m 0) fade(m .6)] name:dust
+      mask (fbm(simplex(16 seed:4))-.5)*2.5+.5
+    each k in 0..6
+      curve 6,-20 60,-46+k*12 150,-110+k*20 stroke:fade(deep .25),.7 taper:.05,.3 name:vein</code></pre>
     </div>
   </article>
 
   <article class="feat feat--text-top" data-reveal>
     <div class="feat__text">
       <h3 class="feat__name">Brushes written in SkSL.</h3>
-      <p>A brush is a small SkSL program that shades each pixel of a fill or a stroke. This swash stacks two brushes from std/brushes over one curve, with a width and a pressure at each point.</p>
-      <pre data-lang="art"><code>brush:[bristle(strength:.85 gaps:.9) dry(strength:.25)] pressure:[.7 1 1 .85 .55 .3 .1]</code></pre>
+      <p>A brush is a small SkSL program that shades each pixel of a fill or a stroke. The wash brush is lifted from lib/moth.art. It grains the paint with fbm, streaks it along a direction and roughens the edge. Each stroke here calls it with a width at each point and a taper.</p>
+      <pre data-lang="art"><code>brush wash strength:.3 scale:1 streak:.5 rag:1 reach:1.5 dir:-25
+  sksl """
+  float4 shade(Mark m) {
+    float g = fbm(m.uv / (16 * scale) + o, 3) - .5;
+    float e = m.edge + g * 2 * rag;
+    return float4(c, cover(e, m));
+curve 70,96 300,70 530,100 740,76 stroke:p.luna.3,[52 78 70 26] taper:.04,.3 brush:wash(dir:0) name:luna</code></pre>
     </div>
-    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/brush.png" width="800" height="500" loading="lazy" alt="One coral brush stroke with dry bristle texture, thick at the start and trailing off"></div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/brush.png" width="800" height="500" loading="lazy" alt="Four wide painted strokes, green, slate blue, rust and pink, with grainy paint, each swelling in the middle and ending in a point"></div>
   </article>
 
   <article class="feat feat--art-top" data-reveal>
-    <div class="feat__art feat__art--top"><img src="art/studies/assets/stamp.png" width="800" height="800" loading="lazy" alt="A brown vine with leaves along it, larger and sparser near the root"></div>
+    <div class="feat__art feat__art--top"><img src="art/studies/assets/stamp.png" width="800" height="800" loading="lazy" alt="A moth head at seven times size, with two long feathered antennae above a round furry head and a grey bristled thorax"></div>
     <div class="feat__text">
       <h3 class="feat__name">Stamps follow the path.</h3>
-      <p>A stamp is a block of drawing laid along a stroke. Each leaf here reads the stroke’s pressure, so the sprigs grow larger and further apart toward the root.</p>
-      <pre data-lang="art"><code>stamp sprigs spacing:22+34*pressure
-  let side = if mod(i 2) == 0 then 1 else -1</code></pre>
+      <p>A stamp is a block of drawing laid along a stroke. Each antenna is one curve. The barbs stamp from lib/moth.art lays a pair of barbs every 2 units and sizes each by how far along the stroke it sits. The fur stamp rims the thorax the same way.</p>
+      <pre data-lang="art"><code>stamp barbs spacing:2 h:9 tint:p.ink
+  let l = h*(.25+.75*sin(u*180))*(1-u*.35)
+  curve 0,0 l*.35,0-l stroke:tint,.6 taper:0,.7 name:barb_l
+  curve 0,0 l*.35,l stroke:tint,.6 taper:0,.7 name:barb_r
+    curve 3,-55 14,-72 32,-92 54,-104 stroke:body,[1.8 1.4 1 .5] taper:0,.4 stamp:barbs(tint:body h:9) name:antenna</code></pre>
     </div>
   </article>
 
   <article class="feat feat--text-top" data-reveal>
     <div class="feat__text">
       <h3 class="feat__name">Noise as paint.</h3>
-      <p>Simplex, perlin, worley and fbm fields fill a shape through a ramp or a list of colours. The stone is fbm noise. The lichen is worley noise mapped through three greens.</p>
-      <pre data-lang="art"><code>fill:fbm(simplex(90)) -&gt; [p.stone.1 p.stone.3]</code></pre>
+      <p>Simplex, perlin, worley and fbm fields fill a shape through a ramp or a list of colours. This hindwing is mottled by fbm. Its dust is worley noise, masked by a second fbm so the dots gather in patches.</p>
+      <pre data-lang="art"><code>  curve pts closed tension:.45 fill:grad(4,-8 88,52 deep c,.4 shade(c 1)) stroke:fade(line(c) .45),1 brush:wash(dir:-60) name:hw
+    copy @hw fill:fbm(simplex(22 seed:3)) -&gt; [fade(m 0) fade(m .35)] a:.7 name:mottle
+    copy @hw fill:(worley(2 seed:10)-.72)*5+.5 -&gt; [fade(m 0) fade(m 0) fade(m .4)] name:dust
+      mask (fbm(simplex(16 seed:11))-.5)*2.5+.5</code></pre>
     </div>
-    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/field.png" width="800" height="800" loading="lazy" alt="A grey stone mottled with noise and patches of green lichen"></div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/field.png" width="800" height="800" loading="lazy" alt="A pale bone hindwing, darker at the root, mottled with soft noise and dotted with grey dust, with four fine veins"></div>
   </article>
 
   <article class="feat feat--art-top" data-reveal>
-    <div class="feat__art feat__art--top feat__art--gif"><picture><source srcset="art/studies/assets/sway.png" media="(prefers-reduced-motion: reduce)"><img src="art/studies/assets/sway.gif" width="400" height="400" loading="lazy" alt="A small sprig with three leaves swaying in a loop"></picture></div>
+    <div class="feat__art feat__art--top feat__art--gif"><picture><source srcset="art/studies/assets/sway.png" media="(prefers-reduced-motion: reduce)"><img src="art/studies/assets/sway.gif" width="400" height="400" loading="lazy" alt="The head of a bone-grey moth with two feathered antennae twitching from their roots in a loop"></picture></div>
     <div class="feat__text">
       <h3 class="feat__name">Motion is a patch.</h3>
-      <p>An anim keys the rotation of three named parts over 1.5 seconds. The GIF target plays the loop. A PNG target of the same file draws the frame at 375 ms.</p>
-      <pre data-lang="art"><code>anim sway dur:1.5s loop
-  .sprig rot:key(-6 6 -6)
-  .crown rot:key(4 -8 4)
-  .low rot:key(-5 7 -5)</code></pre>
+      <p>An anim patches a named part of a drawing. Here it turns the moth’s antennae about their roots on a looping key over 2 seconds, and the moth itself is unchanged. The GIF target plays the loop. A PNG target of the same file draws the frame at 500 ms.</p>
+      <pre data-lang="art"><code>anim twitch dur:2s loop
+  .m.antenna pivot:3,-55 rot:key(0 5 -2 0 ease:in_out)
+play twitch
+moth wing:bone shape:sharp pattern:8 at:200,470 scale:3.6 name:m</code></pre>
     </div>
   </article>
 </section>

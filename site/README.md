@@ -5,7 +5,7 @@ A static page: `index.html`, `styles.css` and `main.js`. It has no build step. O
 Every picture on the page is artscript output, built from the sources in this folder:
 
 - `art/moths/` holds the moth family. `lib/moth.art` is the one component. `art/plate.art` builds the 16 specimens, `art/demo.art` builds the 40 images behind the demo controls, `art/specimen.art` builds the hero, and `art/flutter.art` builds the GIF.
-- `art/studies/` holds the six feature studies and the sprout that the agent-loop section follows. `evidence/` holds the real `check --json` output, the one-line diff and the manifest hashes that the section shows.
+- `art/studies/` holds the six feature studies, which reuse `lib/moth.art`, and the luna moth (`art/sprout.art`) that the agent-loop section follows. `evidence/` holds the real `check --json` output, the one-line diff and the manifest hashes that the section shows.
 - `brand/` holds the transparent nav mark. Its def is copied from `assets/logo.art`.
 
 ## Rebuild the art

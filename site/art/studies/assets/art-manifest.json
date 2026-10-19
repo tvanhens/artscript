@@ -3,8 +3,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "ee75fbf85aff1672",
-      "line": 1,
+      "hash": "8fe0f0487b22a41d",
+      "line": 2,
       "matrix": {},
       "path": "brush.png",
       "pivot": null,
@@ -16,8 +16,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "1a591db4c295ee9f",
-      "line": 1,
+      "hash": "a7df5f1d0478ed7a",
+      "line": 2,
       "matrix": {},
       "path": "clip.png",
       "pivot": null,
@@ -29,8 +29,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "1780b9e3686ed24e",
-      "line": 1,
+      "hash": "2225b7f1ffccfa0c",
+      "line": 2,
       "matrix": {},
       "path": "field.png",
       "pivot": null,
@@ -42,8 +42,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "cf87e452ff104c91",
-      "line": 1,
+      "hash": "368fc32506217a9f",
+      "line": 2,
       "matrix": {},
       "path": "ramp.png",
       "pivot": null,
@@ -55,8 +55,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "fdd045a16fb5e59c",
-      "line": 1,
+      "hash": "a512dce4233634d1",
+      "line": 2,
       "matrix": {},
       "path": "sprout.png",
       "pivot": null,
@@ -70,8 +70,8 @@
       "checks": [
         "C0101: assert level(@eye.0 @eye.1) tol:.5"
       ],
-      "hash": "dc4fcbff48e3285d",
-      "line": 1,
+      "hash": "56df2c71eb6ecb3b",
+      "line": 2,
       "matrix": {},
       "path": "sprout_broken.png",
       "pivot": null,
@@ -83,8 +83,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "24aabbe18d59727f",
-      "line": 1,
+      "hash": "3526af0512767ffb",
+      "line": 2,
       "matrix": {},
       "path": "stamp.png",
       "pivot": null,
@@ -95,8 +95,8 @@
     },
     {
       "checks": [],
-      "hash": "631fdad2d1033ddd",
-      "line": 1,
+      "hash": "95842e3ea0d9474e",
+      "line": 2,
       "matrix": {},
       "path": "sway.gif",
       "scale": 1.0,
@@ -107,8 +107,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "f1d17ab0ecef56c1",
-      "line": 2,
+      "hash": "46e01385301fab0d",
+      "line": 3,
       "matrix": {},
       "path": "sway.png",
       "pivot": null,

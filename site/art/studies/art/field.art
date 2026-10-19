@@ -1,12 +1,18 @@
+# A bone hindwing painted by two fields: fbm mottle through the marks colour, and worley dust masked by stretched fbm.
 @target field.png 800x800
 
-ellipse 250,30 at:410,612 fill:p.ink a:.22 blur:14
-blob 280 seed:9 wobble:.12 at:400,410 scale:1,.7 fill:fbm(simplex(90)) -> [p.stone.1 p.stone.3] name:stone
-  rect 600x600 fill:worley(12) -> [fade(p.stone.0 .3) fade(p.stone.0 0)] name:pits
-  each k, c in [-120,-150,70 10,-210,46 -200,-30,40 90,-120,30 -40,-60,26]
-    blob c.2 at:c.0,c.1 fill:fbm(worley(14)) -> [p.moss.1 p.lichen.2 p.lichen.4] jitter:5,14 a:.9 name:lichen
-  subtract fill:p.stone.0 a:.7 blur:16
-    copy @stone
-    copy @stone at:-50,-70
-  ellipse 130,60 at:-90,-150 fill:p.stone.4 a:.4 blur:30
-  fx outline 4
+use moth { wash }
+use palette/moths { marks }
+
+let c = p.bone
+let m = marks.bone
+let deep = mix(shade(c -3) p.ember.1 .35)
+let pts = [4,-8 46,-4 86,18 88,52 84,78 76,108 68,134 58,132 52,104 44,78 26,60 4,28]
+group at:110,74 scale:5.2
+  curve pts closed tension:.45 fill:grad(4,-8 88,52 deep c,.4 shade(c 1)) stroke:fade(line(c) .45),1 brush:wash(dir:-60) name:hw
+    copy @hw fill:fbm(simplex(22 seed:3)) -> [fade(m 0) fade(m .35)] a:.7 name:mottle
+    copy @hw fill:(worley(2 seed:10)-.72)*5+.5 -> [fade(m 0) fade(m 0) fade(m .4)] name:dust
+      mask (fbm(simplex(16 seed:11))-.5)*2.5+.5
+    copy @hw fill:none stroke:fade(deep .35),2 name:rim
+    each k in 0..3
+      curve 4,-8 40,20+k*18 94,30+k*42 stroke:fade(deep .22),.7 taper:.05,.4 name:vein

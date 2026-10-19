@@ -1,5 +1,5 @@
 --- a/art/sprout.art
 +++ b/art/sprout.art
-@@ -7 +7 @@
--  ramp leaf #6f8a4f 5
-+  ramp leaf #d9773a 5
+@@ -8 +8 @@
+-  ramp luna #b9cfae 7
++  ramp luna #b8a8d6 7

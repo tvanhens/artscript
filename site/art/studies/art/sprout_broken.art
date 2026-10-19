@@ -1,27 +1,19 @@
-@target sprout_broken.png 512x512
+# The agent-loop subject: one luna moth with its hindwing eyespots drawn here, over the def.
+@target sprout_broken.png 512x512 palette:study
 
-use flora { leaf }
+use moth { moth }
+use palette/moths { moths marks }
 
-palette sprout
-  ramp seed #d9a066 5
-  ramp leaf #6f8a4f 5
-  color ink #1d1c2e
+palette study from moths
+  ramp luna #b9cfae 7
 
-ellipse 120,14 at:256,446 fill:sprout.ink a:.2 blur:10
-curve 256,200 252,160 262,136 stroke:sprout.leaf.1,[10 6] taper:0,.3 name:stem
-leaf 110 tone:sprout.leaf.2 at:260,140 rot:-40 name:leaf
-leaf 72 tone:sprout.leaf.3 at:258,148 rot:-160 name:bud
-circle 130 at:256,316 fill:radial(sprout.seed.3 sprout.seed.1 at:.35,.3) name:body
-  subtract fill:sprout.seed.0 a:.5 blur:6
-    copy @body
-    copy @body at:-26,-30
-  ellipse 50,30 at:-60,-70 fill:sprout.seed.4 a:.6 blur:12
-  each k in [-1 1]
-    ellipse 22,8 at:k*72,48 fill:p.coral.3 a:.45 blur:6 name:cheek
-    circle 15 at:k*50,22+k*9 fill:sprout.ink name:eye
-      circle 5 at:-5,-6 fill:sprout.seed.4
-  curve -14,52 0,60 14,52 stroke:sprout.ink,4 name:mouth
-  fx outline 5
+moth wing:luna pattern:2 at:256,250 scale:1.6 name:specimen
+each k in [-1 1]
+  circle 16 at:256+k*84,299 fill:fade(p.ember.4 .3) blur:5 name:halo
+  ellipse 11,10 at:256+k*84,299+k*14 rot:-20*k fill:fade(mix(p.ink p.luna .2) .8) blur:1 name:eye
+    circle 7.5 at:.8,.8 fill:mix(p.luna.4 marks.luna .35) blur:.5
+    circle 3 at:1.5,1.5 fill:p.coral
+    ellipse 4.5,2 at:-3,-3.5 rot:-40 fill:fade(p.paper .85) blur:.7
 
 assert level(@eye.0 @eye.1) tol:.5
-assert inside(@body canvas margin:24)
+assert inside(@specimen canvas margin:24)

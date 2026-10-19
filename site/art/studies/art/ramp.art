@@ -1,18 +1,9 @@
+# The five wing palettes, one ramp per row, each stop a painted chip.
 @target ramp.png 800x500
 
-use std/brushes { chip }
+use moth { wash }
 
-palette study
-  ramp pebble #ff6a5a 5
-
-each i in 0..5
-  rect 64x220 r:10 at:80+i*68,250 fill:study.pebble.{i} brush:chip(scale:.6) name:chip
-
-ellipse 140,18 at:596,362 fill:p.ink a:.22 blur:10
-blob 150 seed:4 wobble:.1 at:590,250 scale:1,.72 fill:radial(study.pebble.3 study.pebble.2 study.pebble.1 at:.36,.3 r:240) name:stone
-  subtract fill:study.pebble.0 a:.6 blur:8
-    copy @stone
-    copy @stone at:-30,-36
-  ellipse 46,24 at:-52,-62 fill:study.pebble.4 a:.8 blur:10
-  fx grain .05
-  fx outline 4
+each r, wing in [luna dusk ember bone rosy]
+  each i in 0..7
+    rect 70x54 r:5 at:124+i*92,82+r*84 fill:p.{wing}.{i} brush:wash(dir:-12) jitter:.8,18 name:chip
+      fx shadow 0,2 blur:3 color:p.ink a:.14

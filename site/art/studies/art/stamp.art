@@ -1,10 +1,17 @@
-@target stamp.png 800x800
+# The head of a luna moth: each antenna is one curve with the barbs stamp, and the fur stamp rims the thorax.
+@target stamp.png 800x800 viewport
 
-use std/brushes { bristle }
-use flora { leaf }
+use moth { fuzz fur barbs }
 
-stamp sprigs spacing:22+34*pressure
-  let side = if mod(i 2) == 0 then 1 else -1
-  leaf 26+70*pressure tone:pick([p.leaf.2 p.leaf.3 p.moss.2]) at:0,side*3 rot:side*rand(35 60) name:leaf
-
-curve 90,700 250,660 340,540 310,400 420,260 580,240 710,110 stroke:p.bark.1,[16 14 11 9 6 4 2] brush:bristle pressure:[1 .95 .85 .7 .5 .3 .1] stamp:sprigs name:vine
+let body = mix(p.luna p.ink .55)
+group at:400,900 scale:7
+  ellipse 12,17 at:0,-32 fill:body brush:fuzz(h:2 scale:1) name:thorax
+    ellipse 6,9 at:-2,-4 fill:fade(shade(body 2) .35) blur:3
+  ellipse 11.5,16 at:0,-32 fill:none stamp:fur(tint:body h:3 spacing:1) name:thorax_fur
+  circle 6.5 at:0,-52 fill:shade(body -1) brush:fuzz(h:1.5 scale:.5) name:head
+    circle 2.2 at:-3.5,-1 fill:p.ink
+    circle 2.2 at:3.5,-1 fill:p.ink
+    circle .7 at:-4,-1.7 fill:p.paper
+    circle .7 at:3,-1.7 fill:p.paper
+  mirror x
+    curve 3,-55 14,-72 32,-92 54,-104 stroke:body,[1.8 1.4 1 .5] taper:0,.4 stamp:barbs(tint:body h:9) name:antenna
