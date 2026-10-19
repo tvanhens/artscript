@@ -23,9 +23,9 @@ pub struct Diagnostic {
     pub span: Span,
     /// Node path such as `hero.body.head`, or empty.
     pub node: String,
-    /// First output path of the target whose evaluation raised this, such as `hero.png`. Empty when
-    /// no one target raised it: a plan error, or a lint on a library's own text.
-    pub target: String,
+    /// First output path of each target whose evaluation raised this, such as `hero.png`. Empty
+    /// when no target raised it: a plan error, or a lint on a library's own text.
+    pub targets: Vec<String>,
     pub message: String,
     /// Extra lines shown under the message (measured values, available names).
     pub notes: Vec<String>,
@@ -40,7 +40,7 @@ impl Diagnostic {
             file: String::new(),
             span,
             node: String::new(),
-            target: String::new(),
+            targets: Vec::new(),
             message: message.into(),
             notes: Vec::new(),
             fix: None,
@@ -75,6 +75,8 @@ impl Diagnostic {
     }
 }
 
+const SHOWN_TARGETS: usize = 3;
+
 impl fmt::Display for Diagnostic {
     /// ```text
     /// error[E0311] art/chars/hero.art:18:7  hero.body.torso.tunic  [hero.png]
@@ -82,6 +84,8 @@ impl fmt::Display for Diagnostic {
     ///   parts available: chest, belly
     ///   fix: rename goblin's `chest` to `torso`
     /// ```
+    ///
+    /// Several targets go on their own line, `in 4 targets: a.png, b.png, c.png, … (+1)`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sev = match self.severity {
             Severity::Info => "info",
@@ -92,8 +96,16 @@ impl fmt::Display for Diagnostic {
         if !self.node.is_empty() {
             write!(f, "  {}", self.node)?;
         }
-        if !self.target.is_empty() {
-            write!(f, "  [{}]", self.target)?;
+        if let [target] = self.targets.as_slice() {
+            write!(f, "  [{target}]")?;
+        }
+        let n = self.targets.len();
+        if n > 1 {
+            let shown = &self.targets[..n.min(SHOWN_TARGETS)];
+            write!(f, "\n  in {n} targets: {}", shown.join(", "))?;
+            if n > SHOWN_TARGETS {
+                write!(f, ", … (+{})", n - SHOWN_TARGETS)?;
+            }
         }
         write!(f, "\n  {}", self.message)?;
         for n in &self.notes {
