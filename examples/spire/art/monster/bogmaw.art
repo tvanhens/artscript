@@ -95,6 +95,21 @@ layer body
       fx outline 3 color:p.ink
     curve -13,1 0,-2 13,1 at:mu fill:none stamp:clump(r:6 spacing:5) name:shroom_moss
 
+layer collar_layer
+  curve 650,420 662,540 640,660 stroke:p.ink,30 a:.55 blur:14 name:collar_cast
+  curve 482,398 545,372 612,378 642,450 652,560 628,664 562,676 520,664 540,575 530,488 closed fill:p.shell.3 brush:sculpt(scale:1.4 strength:.85 planes:.8 plump:.8 glossk:.4) name:collar
+    curve 612,380 640,452 650,560 626,662 stroke:p.shell.6,3 a:.8 blur:.6
+    curve 620,384 648,454 658,560 634,664 stroke:p.shell.0,7 a:.7 blur:1.5
+    curve 596,410 584,480 588,560 stroke:p.shine,4 taper:.4 a:.25 blur:1.5
+    ellipse 90,60 at:600,650 fill:p.ink a:.5 blur:30
+    curve 530,520 560,600 600,670 640,640 stroke:p.ink,50 a:.4 blur:24 name:collar_core
+    curve 540,395 556,480 552,560 546,650 stroke:p.ink,44 a:.6 blur:16 name:head_wedge
+    each i in 0..8
+      circle 2+rand(0 3) at:rand(560 630),rand(440 630) fill:p.shell.0 a:.55 name:collar_pit
+        circle 1.5 at:1,1.2 fill:p.shell.5 a:.5 blur:1
+    curve 486,404 550,380 612,386 634,420 fill:none stamp:clump(r:8) name:collar_moss
+    fx outline 6 color:p.ink
+
 layer legs_mid
   leg 505,680 455,775 470,872 w:36 tone:p.leg.5 bend:10 spur:0 name:leg_n0
   fx outline 5 color:p.ink
@@ -172,22 +187,6 @@ layer head rot:8 pivot:480,640
     fx outline 5 color:p.ink
   fang 104 26 lean:12 at:440,640 rot:4 name:tusk_r
     fx outline 5 color:p.ink
-
-layer collar_layer
-  curve 485,410 525,490 532,580 512,655 stroke:p.ink,44 a:.6 blur:18 name:collar_shadow
-  curve 650,420 662,540 640,660 stroke:p.ink,30 a:.55 blur:14 name:collar_cast
-  curve 482,398 545,372 612,378 642,450 652,560 628,664 562,676 520,664 540,575 530,488 closed fill:p.shell.3 brush:sculpt(scale:1.4 strength:.85 planes:.8 plump:.8 glossk:.4) name:collar
-    curve 612,380 640,452 650,560 626,662 stroke:p.shell.6,3 a:.8 blur:.6
-    curve 620,384 648,454 658,560 634,664 stroke:p.shell.0,7 a:.7 blur:1.5
-    curve 548,400 530,470 534,560 stroke:p.shine,4 taper:.4 a:.3 blur:1.5
-    ellipse 90,60 at:600,650 fill:p.ink a:.5 blur:30
-    curve 530,520 560,600 600,670 640,640 stroke:p.ink,50 a:.4 blur:24 name:collar_core
-    curve 520,400 534,480 530,560 524,640 stroke:p.ink,26 a:.55 blur:10 name:head_wedge
-    each i in 0..8
-      circle 2+rand(0 3) at:rand(560 630),rand(440 630) fill:p.shell.0 a:.55 name:collar_pit
-        circle 1.5 at:1,1.2 fill:p.shell.5 a:.5 blur:1
-    curve 486,404 550,380 612,386 634,420 fill:none stamp:clump(r:8) name:collar_moss
-    fx outline 6 color:p.ink
 
 layer legs_near
   leg 575,670 548,772 592,875 w:33 tone:p.leg.4 bend:-12 name:leg_n1
