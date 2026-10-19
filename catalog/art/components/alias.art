@@ -1,0 +1,25 @@
+# One def, limb: a blue bar 32 wide and 10 tall named bone, a paper disc of radius 6 with an ink outline named hand at one end of the bar, an anchor tip just past the hand, and an empty slot glove on the hand. Two aliases: limb_l fixes tone:p.red and side:-1, so its hand sits at the left end; limb_r fixes side:1.
+# 256x64 canvas, four cells of 64x64, each limb centered in its cell.
+# Left to right: limb as declared (blue bar, paper hand at the right end, nothing else);
+# limb_l with a gold dot of radius 4 that the entry file draws at @l.tip (red bar, paper hand at the left end, the gold dot just left of the hand with a gap between them, which shows the alias exposes the def's anchor directly);
+# limb_r patched with `.hand fill:p.green` (blue bar, green hand at the right end, which shows a patch reaches the def's part through the alias);
+# limb_r 24 with its glove slot filled with an ink ring (a shorter blue bar, 24 wide, paper hand at the right end with an ink ring around it, which shows the open len parameter and the slot both pass through the alias).
+@target components/alias.png 256x64
+
+def limb len:32 tone:p.blue side:1
+  rect len,10 fill:tone name:bone
+  circle 6 at:side*len/2,0 fill:p.paper stroke:p.ink,1 name:hand
+  anchor tip side*(len/2+11),0
+  slot glove at:side*len/2,0
+
+def limb_l = limb tone:p.red side:-1
+def limb_r = limb side:1
+
+limb at:32,32 name:plain
+limb_l at:96,32 name:l
+circle 4 at:@l.tip fill:p.gold name:mark
+limb_r at:160,32 name:r
+  .hand fill:p.green
+limb_r 24 at:224,32 name:short
+  glove:
+    circle 8 fill:none stroke:p.ink,2

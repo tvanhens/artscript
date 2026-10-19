@@ -55,7 +55,7 @@ fn phrase(v: &Value) -> String {
 }
 
 fn stepped(v: &Value) -> bool {
-    matches!(v, Value::Bool(_) | Value::Ident(_) | Value::Component(_))
+    matches!(v, Value::Bool(_) | Value::Ident(_) | Value::Component(_) | Value::Alias(_))
 }
 
 fn animatable(v: &Value) -> Result<(), String> {
