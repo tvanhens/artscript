@@ -1,66 +1,49 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.png">
-    <img src="assets/logo-paper.png" alt="The artscript logo: a pebble with a coral corner mark over the lowercase wordmark" width="300">
+    <img src="assets/logo-paper.png" alt="artscript" width="280">
   </picture>
 </p>
 
 <p align="center">
-  <b>Art assets your LLM can write, read, and fix.</b><br>
-  A compact language for procedural art, and a CLI that builds it to PNG, SVG, and GIF.
+  A language for procedural art that a language model can write and check.<br>
+  The CLI builds <code>.art</code> files into PNG, SVG, and GIF.
 </p>
 
 <p align="center">
-  <a href="#get-started"><img src="https://img.shields.io/badge/install-cargo%20install-1f2328?style=flat" alt="Install with cargo"></a>
   <a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-stable-1f2328?style=flat" alt="Stable Rust"></a>
   <a href="docs/language.md"><img src="https://img.shields.io/badge/status-v0.1%20draft-ff6b5b?style=flat" alt="v0.1 draft"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-1f2328?style=flat" alt="Business Source License 1.1"></a>
 </p>
 
-<p align="center"><sub>
-  <a href="#the-bogmaw">The bogmaw</a> ·
-  <a href="#built-for-the-models-side-of-the-loop">Why</a> ·
-  <a href="#one-file-three-slimes">A whole file</a> ·
-  <a href="#the-agent-loop">Agent loop</a> ·
-  <a href="#get-started">Get started</a>
-</sub></p>
-
 <p align="center">
-  <img src="examples/spire/assets/monster/bogmaw_card.png" alt="The bogmaw: a moss-covered, beetle-shelled monster with three amber eyes, a jaw of bone teeth, spined plates, and glowing mushrooms on its back" width="640">
+  <img src="examples/spire/assets/monster/bogmaw_card.png" alt="The bogmaw: a beetle-shelled monster with three amber eyes, bone teeth, spines, moss, and glowing mushrooms on its back" width="640">
 </p>
 
-<p align="center"><sub>The bogmaw. About 200 lines of artscript, built to a 1024px PNG. No pixel was painted by hand.</sub></p>
+<p align="center"><sub>The bogmaw, from 199 lines of <a href="examples/spire/art/monster/bogmaw.art">artscript</a>.</sub></p>
 
 ---
 
-A game needs hundreds of creatures, props, and icons, and every one of them needs variants. A model can draw one of them in SVG. It struggles to draw the hundredth in the same style, to change one detail without regenerating the file, or to tell whether its own output is right.
-
-artscript gives the model a language it can hold in one turn: palettes, components, brushes, and checks, in plain indented text. The CLI renders it, and it reports what is wrong with a line number and a fix.
+A model can draw one asset in SVG. It has trouble drawing the hundredth in the same style, changing one detail without rewriting the file, and telling whether its output is right. artscript keeps style in palettes and components, and `artscript check` reports each broken rule with a line number and a fix.
 
 ## The bogmaw
 
-[`examples/spire`](examples/spire) is one painted monster, written as a project. This is its whole palette:
+[`examples/spire`](examples/spire) draws one monster. The moss on its back is a stamp, a block of drawing repeated along a curve:
 
 ```
-palette bog
-  ramp shell #4f7d6b 7 hue:6
-  ramp belly #c49a7c 5
-  ramp flesh #8a4a52 5
-  ramp maw #3a1424 5
-  ramp bone #e3d5b0 5
-  ramp moss #7f9a3c 5
-  ramp glow #ffb43a 5
-  color ink #1b1420
-  color shine #fff4d6
-  color rim #9fd6e0
-  color backdrop #26232c
-  ramp rust #b8643a 5
-  ramp leg #5d6b45 7 hue:8
+stamp clump spacing:7 r:9 tone:p.moss.2
+  each j in 0..3
+    circle r*(.3+1*rand(0 1)*rand(0 1)+.15) at:rand(-7 7),rand(-6 10)+j*3 fill:pick([shade(tone -2) shade(tone -1) tone shade(tone 1)]) name:bit
+      circle r*.35 at:0-r*.2,0-r*.3 fill:shade(tone 2) a:.55 blur:2
 ```
 
-Each `ramp` turns one color into a painted range, with cool shadows and warm lights. Every stroke in the picture picks a stop from this list, so a recolor is a palette edit.
+Each copy picks its own sizes and shades from a seed, so the moss varies and the build stays the same every time. One line lays it along the shell:
 
-The far legs are the same `leg` component as the near ones. One `fx` line pushes them back into the shade:
+```
+curve 380,345 470,290 560,262 640,250 720,258 800,296 856,356 896,430 fill:none stamp:clump(r:10) name:moss_top
+```
+
+The far legs reuse the `leg` component from the near legs. `fx adjust` shifts their hue and darkens them so they sit behind the body:
 
 ```
 layer legs_far
@@ -72,39 +55,37 @@ layer legs_far
   fx outline 4 color:p.shell.0
 ```
 
-The moss is a `stamp`, a block of drawing that artscript lays along a curve again and again. Each copy draws a few circles with their own seeded sizes and shades. The shell plates use `sculpt`, a brush from the project's library, which shades a flat fill into a lit, glossy form.
+Every color comes from the 13-row [`bog` palette](examples/spire/lib/palette/bog.art), so a recolor is a palette edit. `bogmaw.art` is 5,479 tokens, and the brushes, parts, and palette it imports are 2,397 more.
 
-`bogmaw.art` is 5,438 tokens. The brushes, parts, and palette it imports add 2,397.
-
-## More from the same language
+## Other examples
 
 <table>
   <tr>
     <td width="33%" align="center"><img src="examples/slime/assets/slime_grape.gif" alt="A grape-purple jelly slime squashing and stretching"></td>
-    <td width="33%" align="center"><img src="examples/chibi/assets/character/moss_monk_idle.gif" alt="A chibi monk with a leaf sprouting from its head, bobbing gently"></td>
+    <td width="33%" align="center"><img src="examples/chibi/assets/character/moss_monk_idle.gif" alt="A chibi monk with a leaf on its head, bobbing"></td>
     <td width="33%" align="center"><img src="examples/chibi/assets/monument/stone_lantern.png" alt="A mossy stone lantern"></td>
   </tr>
   <tr>
-    <td align="center"><sub><a href="examples/slime">slime</a>: three flavors and three loops from one 435-token file</sub></td>
-    <td align="center"><sub><a href="examples/chibi">chibi</a>: an animated character built from a shared face-parts library</sub></td>
-    <td align="center"><sub><a href="examples/chibi">chibi</a>: props and monuments in one house style</sub></td>
+    <td align="center"><sub><a href="examples/slime">slime</a>: three flavors, animated, from one file</sub></td>
+    <td align="center"><sub><a href="examples/chibi">chibi</a>: a character built from a shared face-parts library</sub></td>
+    <td align="center"><sub><a href="examples/chibi">chibi</a>: a prop in the same house style</sub></td>
   </tr>
 </table>
 
-## Built for the model's side of the loop
+## Why it suits a model
 
-**Small enough to write in one turn.** The core language card, [`docs/language.md`](docs/language.md), is 988 tokens. `artscript docs <topic>` adds only the topics a task needs. There are fourteen.
+**Small files.** The core language card, [`docs/language.md`](docs/language.md), is 988 tokens. `artscript docs <topic>` prints one of fourteen topics, so a task loads only what it needs.
 
-**Edits stay local.** Style lives in palettes, components, and named parts, not in baked coordinates. To give the chibi monk blue eyes, a model changes one line:
+**Local edits.** Style lives in palettes, components, and named parts. To give the chibi monk blue eyes, change one line:
 
 ```diff
 -  color iris #9a6a3a
 +  color iris #4f7fc0
 ```
 
-Rebuilt, only the eyes change. Every other pixel is identical. `artscript fmt` prints one canonical form, so diffs carry only what changed.
+The rebuild changes only the eyes. `artscript fmt` prints one canonical form, so a diff holds only the change.
 
-**Feedback a model can act on.** `artscript check` evaluates a whole project without rendering. `--json` gives the agent the location and a fix:
+**Errors with fixes.** `artscript check --json` evaluates the project without rendering and returns each failure with its location and a fix:
 
 ```json
 {
@@ -119,13 +100,13 @@ Rebuilt, only the eyes change. Every other pixel is identical. `artscript fmt` p
 }
 ```
 
-**Eyes optional.** A model doesn't need to look at a render to know where things are. `assert` and `expect` lines encode the composition rules: eyes level, the body inside the canvas with a margin, the head as wide as the body. `artscript explain` prints every node with its bounds and resolved colors as text.
+**Checks instead of eyes.** `assert` and `expect` lines state the composition rules, such as eyes level or the body inside the canvas with a margin. `artscript explain` prints every node with its bounds and colors, so a model can find where things are without looking at a render.
 
-**Made for big projects.** Shared palettes and component libraries (`use parts { leg fang }`) keep a house style across files. One `@target` line fans out every variant in a matrix. `build --only 'monster/*'` lets each agent render just the files it owns. Builds are deterministic on one machine and backend, and `art-manifest.json` records a hash per output, so a reviewer sees exactly which assets changed.
+**Many files, one style.** Projects share palettes and component libraries with `use`. One `@target` line builds every variant in a matrix. `build --only 'monster/*'` renders only the matching files, so several agents can work in one project. Builds are deterministic on one machine and backend, and `art-manifest.json` records a hash for each output.
 
 ## One file, three slimes
 
-This is all of [`examples/slime/art/slime.art`](examples/slime/art/slime.art). It builds three PNGs and three animated GIFs:
+This is all of [`examples/slime/art/slime.art`](examples/slime/art/slime.art), 435 tokens. It builds three PNGs and three GIFs:
 
 ```
 @target slime_{flavor}.png 512x512 each flavor:[mint grape peach]
@@ -170,18 +151,18 @@ assert inside(@body canvas margin:24)
   <img src="examples/slime/assets/slime_peach.gif" alt="A peach-orange jelly slime squashing and stretching" width="200">
 </p>
 
-- **One color in, a painted ramp out.** `ramp mint #7fd4a8 5` makes five stops whose shadows shift cool and whose lights shift warm. `jelly.line` is a matching outline color. A new flavor is one palette row.
-- **Children clip to their parent.** The highlight, the shadow, and the eyes sit under `body`, so none of them can spill outside it, whatever the model gets wrong about coordinates.
-- **Shapes are values.** The shadow is the body minus a nudged copy of itself. Reshape the body and the shadow follows.
-- **Motion is a patch.** `anim wobble` scales the `squash` group over time. The PNG draws the rest pose, and the GIF plays the loop.
-- **The rules travel with the art.** Tilt the eyes with `at:50*s,-110+4*s` and `check` exits 2 with the diagnostic shown above. It checks every GIF frame too, and it reports the worst moment.
+- `ramp mint #7fd4a8 5` makes five stops, with cooler shadows and warmer lights. `jelly.line` is a matching outline color. A new flavor is one palette row.
+- The highlight, shadow, and eyes are children of `body`, so artscript clips them to it. A wrong coordinate cannot push them outside the slime.
+- The shadow is the body minus a shifted copy of itself. Reshape the body and the shadow follows.
+- `anim wobble` scales the `squash` group over time. The PNG draws the rest pose, and the GIF plays the loop.
+- Move one eye with `at:50*s,-110+4*s` and `check` exits 2 with the diagnostic above. It checks every GIF frame and reports the worst one.
 
 ## The agent loop
 
-1. Give the model the output of `artscript docs <topic>...` for the topics the task touches, and the project's palette and component libraries.
+1. Give the model `artscript docs <topic>...` for the topics the task needs, and the project's palettes and component libraries.
 2. The model writes or edits an `.art` file.
-3. Run `artscript check --json`. Feed any diagnostics back, and repeat until it exits 0.
-4. Run `artscript build --only '<its files>'` to render.
+3. Run `artscript check --json`. Return the diagnostics to the model until the command exits 0.
+4. Run `artscript build --only '<its files>'`.
 5. Review the source diff and the changed hashes in `art-manifest.json`.
 
 ## What the language covers
@@ -189,14 +170,14 @@ assert inside(@body canvas margin:24)
 | | |
 |---|---|
 | **Shapes** | `rect`, `circle`, `ellipse`, `poly`, `star`, `curve`, `blob`, SVG `path`, booleans (`subtract`, `union`, `intersect`, `xor`), `mirror`, `repeat`, `grid` |
-| **Ink** | Tapered brush strokes with one width per point, hand-drawn `jitter`, round caps and joins |
-| **Brushes and stamps** | SkSL brushes that shade a fill or a stroke, and stamps that lay a block of drawing along a path |
+| **Ink** | Tapered strokes with one width per point, hand-drawn `jitter`, round caps and joins |
+| **Brushes and stamps** | SkSL brushes that shade a fill or stroke, and stamps that repeat a block of drawing along a path |
 | **Color** | Hue-shifted ramps, OKLCH gradients (linear, radial, conic), `shade`, `mix`, `fade` |
-| **Texture** | `simplex`, `perlin`, `worley`, and `fbm` noise fields, as fills or as masks |
-| **Effects** | `rim`, `outline`, `glow`, `shadow`, `inner`, `grain`, `blur`, `adjust`, and named `finish` stacks you reuse |
-| **Components** | `def` with typed parameters, slots, anchors, and `.part` overrides, shared across files with `use` |
+| **Texture** | `simplex`, `perlin`, `worley`, and `fbm` noise, as fills or masks |
+| **Effects** | `rim`, `outline`, `glow`, `shadow`, `inner`, `grain`, `blur`, `adjust`, and reusable `finish` stacks |
+| **Components** | `def` with typed parameters, slots, anchors, and `.part` overrides, shared with `use` |
 | **Motion** | `anim` clips with keyframes and easing, played into GIFs |
-| **Output** | PNG at any `@2x` scale, SVG, GIF, and `art-manifest.json` |
+| **Output** | PNG at any scale, SVG, GIF, and `art-manifest.json` |
 | **Checks** | `assert` and `expect` on position, size, alignment, symmetry, overlap, and stroke width |
 
 ## Get started
@@ -209,7 +190,7 @@ cd artscript
 cargo install --path crates/cli
 ```
 
-Make a project, then build it:
+Make a project and build it:
 
 ```sh
 mkdir my-art && cd my-art
@@ -225,15 +206,15 @@ artscript build
 | `artscript check [--json]` | Evaluate every target and run its checks, without rendering |
 | `artscript fmt [--check]` | Rewrite `.art` files in the canonical style |
 | `artscript explain <file>` | Print the evaluated node tree |
-| `artscript docs [TOPIC]...` | Print the language card, or the named topics |
+| `artscript docs [TOPIC]...` | Print the language card or the named topics |
 | `artscript init` | Create a starter project |
 
 ## Learn more
 
-- [`docs/language.md`](docs/language.md) is the core language card, and [`docs/topics/`](docs/topics) holds one file per topic. `artscript docs` prints both.
-- [`examples/spire`](examples/spire) is the bogmaw: custom brushes, stamps, and a parts library for a painted monster.
-- [`examples/chibi`](examples/chibi) is a full project with a shared palette, a face-parts library, and an animated character.
-- [`assets/logo.art`](assets/logo.art) draws the logo above. The wordmark is set in [Inter](https://rsms.me/inter/), under the SIL Open Font License.
+- [`docs/language.md`](docs/language.md) is the core language card. [`docs/topics/`](docs/topics) has one file per topic.
+- [`examples/spire`](examples/spire) is the bogmaw, with its own brushes, stamps, and parts library.
+- [`examples/chibi`](examples/chibi) has a shared palette, a face-parts library, and an animated character.
+- [`assets/logo.art`](assets/logo.art) draws the logo. The wordmark is [Inter](https://rsms.me/inter/), under the SIL Open Font License.
 
 artscript is a v0.1 draft. Expect breaking changes.
 
@@ -241,7 +222,7 @@ artscript is a v0.1 draft. Expect breaking changes.
 
 artscript is source-available under the [Business Source License 1.1](LICENSE).
 
-- **Free.** Use artscript to make art for your own games, apps, and other projects, commercial ones included. The images and animations you build are yours, and the license places no restriction on them.
-- **Needs a commercial license.** Offering artscript to other people as part of a platform: a hosted or API asset generator, a game engine or editor that includes it, or an AI product that builds artscript for its users. [Contact the author](https://github.com/tvanhens) for terms.
+- **Free.** Use artscript to make art for your own games, apps, and other projects, including commercial ones. The images and animations you build are yours, and the license places no restriction on them.
+- **Needs a commercial license.** You need one to offer artscript to other people as part of a platform, such as a hosted or API asset generator, a game engine or editor that includes it, or an AI product that writes artscript for its users. [Contact the author](https://github.com/tvanhens) for terms.
 
-Each version becomes available under the Apache License 2.0 four years after its release. The [`LICENSE`](LICENSE) file has the full terms.
+Each version becomes available under the Apache License 2.0 four years after its release. [`LICENSE`](LICENSE) has the full terms.
