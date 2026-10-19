@@ -357,3 +357,25 @@ fn an_unnamed_host_whose_block_names_parts_is_one_e0312_at_the_host() {
     let got: Vec<(&str, &str, u32)> = ds.iter().map(|d| (d.code.as_str(), d.file.as_str(), d.span.line)).collect();
     assert_eq!(got, [("E0312", "art/t.art", 3)], "{}", show(&ds));
 }
+
+#[test]
+fn a_let_or_each_in_a_block_cannot_rebind_a_bound_name() {
+    let src = "\
+@target t.png 64x64
+stamp shadow spacing:10
+  let pressure = 1
+  circle 2*pressure fill:#000000 name:bead
+stamp looped spacing:10
+  each i in 0..2
+    circle 1 fill:#000000
+  group
+    each k, angle in [1 2]
+      circle 1 fill:#000000
+curve 0,10 60,10 pressure:[.1 1] stamp:shadow name:a
+curve 0,30 60,30 stamp:looped name:b
+";
+    let ds = errors(src);
+    let got: Vec<(String, u32)> = ds.iter().map(|d| (d.code.clone(), d.span.line)).collect();
+    assert_eq!(got, [("E0365".to_string(), 3), ("E0365".into(), 6), ("E0365".into(), 9)], "{}", show(&ds));
+    assert!(ds[0].message.contains("`pressure`"), "{}", ds[0]);
+}

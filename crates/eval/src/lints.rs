@@ -54,7 +54,7 @@ pub(crate) fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     }
 }
 
-fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
+pub(crate) fn walk_scene<'a>(s: &'a Scene, f: &mut impl FnMut(&'a Scene)) {
     f(s);
     match &s.kind {
         SceneKind::If {

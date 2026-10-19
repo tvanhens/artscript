@@ -17,7 +17,7 @@ use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, first_fill, in_source_o
 use crate::fx::FxSite;
 use crate::geom::P;
 use crate::identity::{self, Key, Lookup, Name, Names, Pending};
-use crate::lints::body_idents;
+use crate::lints::{body_idents, walk_scene};
 use crate::scope::{Module, Record, RowRecord};
 use crate::value::{Col, Value};
 
@@ -249,6 +249,16 @@ impl Evaluator<'_> {
             if let Some((what, at)) = forbidden_line(s) {
                 errors.push((fail("E0365", format!("a stamp block cannot hold {what}")).fix("draw it inside a def and place the def from the block"), at));
             }
+            walk_scene(s, &mut |line| {
+                for bound in rebinds(line) {
+                    errors.push((
+                        fail("E0365", format!("a stamp block cannot rebind `{bound}`: the block reads that name from each placement"))
+                            .note(format!("bound names: {}", STAMP_NAMES.join(" ")))
+                            .fix("rename the variable"),
+                        line.span,
+                    ));
+                }
+            });
         }
         if !errors.is_empty() {
             return Err(errors);
@@ -774,6 +784,18 @@ fn forbidden_line(s: &Scene) -> Option<(&'static str, Span)> {
         SceneKind::Each { body, .. } => body.iter().find_map(forbidden_line),
         _ => None,
     }
+}
+
+/// The bound stamp names a `let` or `each` line rebinds. The channel-reader check scans the
+/// block for these names, so a shadow would make it read a channel the block never sees.
+fn rebinds(s: &Scene) -> Vec<&str> {
+    use artscript_syntax::ast::SceneKind;
+    let names: Vec<&str> = match &s.kind {
+        SceneKind::Let { name, .. } => vec![name],
+        SceneKind::Each { index, var, .. } => index.iter().chain([var]).map(String::as_str).collect(),
+        _ => Vec::new(),
+    };
+    names.into_iter().filter(|n| STAMP_NAMES.contains(n)).collect()
 }
 
 fn expr_idents(e: &Expr) -> BTreeSet<String> {
