@@ -41,12 +41,17 @@ impl Evaluator<'_> {
         let bound = at
             .map(|i| sc.env[i].1.clone())
             .or_else(|| sc.module.global(func));
-        if let Some((_, default)) = at.and_then(|i| sc.brush_params.iter().find(|(j, _)| *j == i)) {
-            return self.call_brush_param(default, bound, args, named, sc);
+        if let Some((_, default)) = at.and_then(|i| sc.typed_params.iter().find(|(j, _)| *j == i)) {
+            return match default {
+                Value::Brush(b) => self.call_brush_param(b, bound, args, named, sc),
+                Value::Stamp(s) => self.call_stamp_param(s, bound, args, named, sc),
+                other => unreachable!("typed parameters are brushes and stamps, not {}", other.kind()),
+            };
         }
         match bound {
             Some(Value::Rule(rule)) => return self.call_rule(&rule, args, named, sc),
             Some(Value::Brush(b)) => return self.call_brush(&b, args, named, sc),
+            Some(Value::Stamp(s)) => return self.call_stamp(&s, args, named, sc),
             Some(Value::Unseen) => return Err(unseen(func)),
             _ => {}
         }

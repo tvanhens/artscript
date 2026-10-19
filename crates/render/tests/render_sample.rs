@@ -166,6 +166,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
             fill: Some(artscript_ir::Fill::plain(fill)),
             stroke: None,
             blur: 0.0,
+            stamps: vec![],
             children: vec![],
         })),
     }

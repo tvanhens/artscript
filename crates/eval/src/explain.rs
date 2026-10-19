@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use artscript_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Scene};
+use artscript_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Rect, Scene};
 
 use crate::value::num;
 
@@ -43,17 +43,22 @@ fn effect(e: &Effect) -> String {
     }
 }
 
-fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String) {
+fn bounds_text(b: Rect) -> String {
+    format!("{},{} {}x{}", num(b.left as f64), num(b.top as f64), num(b.width() as f64), num(b.height() as f64))
+}
+
+/// `stamp` labels a node that sits in its host's `stamps`; any other node is labelled by its kind.
+fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String, stamp: bool) {
     let pad = "  ".repeat(depth);
     let kind = match &n.kind {
+        _ if stamp => "stamp",
         NodeKind::Group { isolate: true, .. } => "layer",
         NodeKind::Group { .. } => "group",
         NodeKind::Shape(_) => "shape",
     };
     let _ = write!(out, "{pad}{}  {kind}", n.path);
     if let Some(b) = n.bounds() {
-        let b = parent.map_rect(b).0;
-        let _ = write!(out, "  {},{} {}x{}", num(b.left as f64), num(b.top as f64), num(b.width() as f64), num(b.height() as f64));
+        let _ = write!(out, "  {}", bounds_text(parent.map_rect(b).0));
     }
     if let NodeKind::Shape(s) = &n.kind {
         if let Some(f) = &s.fill {
@@ -70,6 +75,9 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
         }
         if s.blur > 0.0 {
             let _ = write!(out, "  blur:{}", num(s.blur as f64));
+        }
+        if !s.stamps.is_empty() {
+            let _ = write!(out, "  stamps:{}", s.stamps.len());
         }
     }
     if n.opacity < 1.0 {
@@ -93,12 +101,50 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
         && let MaskSource::Nodes(nodes) = &mask.source
     {
         for c in nodes {
-            walk(c, world, depth + 1, seeded, out);
+            walk(c, world, depth + 1, seeded, out, false);
         }
     }
-    for c in n.children() {
-        walk(c, world, depth + 1, seeded, out);
+    if let NodeKind::Shape(s) = &n.kind {
+        for set in s.stamps.chunk_by(|a, b| set_of(&a.path) == set_of(&b.path)) {
+            fold(set, world, depth + 1, seeded, out);
+        }
     }
+    for c in n.descendants().skip(stamps_of(n)) {
+        walk(c, world, depth + 1, seeded, out, false);
+    }
+}
+
+fn stamps_of(n: &Node) -> usize {
+    match &n.kind {
+        NodeKind::Shape(s) => s.stamps.len(),
+        NodeKind::Group { .. } => 0,
+    }
+}
+
+/// `vine.leaves` of `vine.leaves.6`.
+fn set_of(path: &str) -> &str {
+    path.rsplit_once('.').map_or(path, |(set, _)| set)
+}
+
+/// One set of stamps. A run of three or more prints as one line with the set's bounds, then its
+/// first and last stamp in full, so a 400-leaf vine stays readable.
+fn fold(set: &[Node], world: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String) {
+    if set.len() <= 2 {
+        for c in set {
+            walk(c, world, depth, seeded, out, true);
+        }
+        return;
+    }
+    let (first, last) = (&set[0], &set[set.len() - 1]);
+    let pad = "  ".repeat(depth);
+    let index = |n: &Node| n.path.rsplit_once('.').map_or("", |(_, i)| i).to_string();
+    let _ = write!(out, "{pad}{}.{}..{}  stamp x{}", set_of(&first.path), index(first), index(last), set.len());
+    if let Some(b) = artscript_ir::union_bounds(set) {
+        let _ = write!(out, "  {}", bounds_text(world.map_rect(b).0));
+    }
+    let _ = writeln!(out, "  ({})", first.origin);
+    walk(first, world, depth, seeded, out, true);
+    walk(last, world, depth, seeded, out, true);
 }
 
 pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
@@ -108,7 +154,7 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     }
     out.push('\n');
     for c in &scene.children {
-        walk(c, Matrix::new_identity(), 0, seeded, &mut out);
+        walk(c, Matrix::new_identity(), 0, seeded, &mut out, false);
     }
     out
 }

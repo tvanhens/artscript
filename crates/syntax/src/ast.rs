@@ -123,6 +123,13 @@ pub enum DeclKind {
         params: Vec<Named>,
         sksl: Option<SkslBlock>,
     },
+    /// `stamp leaves spacing:8 tint:p.moss.2` + a body of the lines a def body takes. The body
+    /// is drawn once per placement along a stamped node's geometry.
+    Stamp {
+        name: String,
+        params: Vec<Named>,
+        body: Vec<DefItem>,
+    },
     /// `anim idle dur:2s loop` with a body of patch lines.
     Anim {
         name: String,
@@ -335,7 +342,8 @@ pub struct Patch {
     pub span: Span,
 }
 
-/// A def body line. Effects attach to the instance. A def body holds no mask, slot fill, or patch.
+/// A def or stamp body line. Effects attach to the instance. The body holds no mask, slot fill, or
+/// patch.
 #[derive(Clone, Debug, PartialEq)]
 pub enum DefItem {
     Scene(Scene),

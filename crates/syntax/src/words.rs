@@ -11,6 +11,7 @@ pub(crate) enum Word {
     Let,
     Light,
     Brush,
+    Stamp,
     Assert,
     Expect,
     If,
@@ -57,7 +58,7 @@ pub(crate) enum Class {
     ReservedName,
     PaletteHead,
     /// A declaration head only when it starts a line. Everywhere else it is an ordinary name,
-    /// so `brush:` is a key and `brush` a parameter.
+    /// so `brush:` is a key and `brush` a parameter, and `stamp:` a key and `stamp` a parameter.
     DeclHead,
 }
 
@@ -73,6 +74,7 @@ const WORDS: &[(Word, &str, Class)] = &[
     (Word::Let, "let", Class::Keyword),
     (Word::Light, "light", Class::Keyword),
     (Word::Brush, "brush", Class::DeclHead),
+    (Word::Stamp, "stamp", Class::DeclHead),
     (Word::Assert, "assert", Class::Keyword),
     (Word::Expect, "expect", Class::Keyword),
     (Word::If, "if", Class::Keyword),
