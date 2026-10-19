@@ -6906,3 +6906,39 @@ fn edge_to_the_end_of_an_open_curve_is_one_piece() {
         }
     }
 }
+
+#[test]
+fn fill_stroke_and_blur_on_an_instance_point_at_palette_and_fx_blur() {
+    let lib = [("lib/arm.art", ARM_LIB)];
+    for (line, key) in [
+        ("hero_arm fill:#ff0000", "fill"),
+        ("hero_arm stroke:#000000,2", "stroke"),
+        ("arm_l fill:#ff0000", "fill"),
+        ("def red = hero_arm fill:#ff0000", "fill"),
+    ] {
+        let ev = run_with(&format!("@target t.png 100x100\nuse arm\n{line}\n"), &lib);
+        let d = diag(&ev, "E0321");
+        assert!(d.message.ends_with(&format!("has no parameter `{key}`")), "{line}: {d}");
+        assert_eq!(
+            d.fix.as_deref(),
+            Some("recolor the instance with `palette:`, or give `hero_arm` a color parameter"),
+            "{line}"
+        );
+    }
+
+    for line in ["hero_arm blur:2", "arm_l blur:2", "def soft = hero_arm blur:2"] {
+        let ev = run_with(&format!("@target t.png 100x100\nuse arm\n{line}\n"), &lib);
+        let d = diag(&ev, "E0321");
+        assert_eq!(
+            d.fix.as_deref(),
+            Some("blur the instance with an `fx blur N` line under it"),
+            "{line}"
+        );
+    }
+
+    let ev = run_with(
+        "@target t.png 100x100\ndef dot fill:#ff0000 blur:0\n  circle 4 fill:fill blur:blur\ndot fill:#00ff00 blur:1\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
