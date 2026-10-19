@@ -126,6 +126,45 @@ fn ink_never_lands_past_the_bounds_plus_reach() {
     }
 }
 
+const NORMAL_AS_COLOR: &str = "float4 shade(Mark m) { return float4(m.normal * .5 + .5, 0, cover(m.edge, m)); }\n";
+
+/// The normal `m.normal` encoded at pixel `(x, y)`, each component in -1..1.
+fn normal_at(png: &[u8], x: i32, y: i32) -> [f32; 2] {
+    let p = pixel(png, x, y);
+    assert_eq!(p[3], 255, "({x}, {y}) is inside the shape: {p:?}");
+    [p[0], p[1]].map(|c| c as f32 / 255.0 * 2.0 - 1.0)
+}
+
+fn assert_normal(png: &[u8], at: (i32, i32), want: [f32; 2]) {
+    let got = normal_at(png, at.0, at.1);
+    assert!((got[0] - want[0]).abs() < 0.1 && (got[1] - want[1]).abs() < 0.1, "normal at {at:?}: {got:?}, want {want:?}");
+}
+
+#[test]
+fn the_normal_points_out_of_a_fill_and_is_zero_on_its_medial_axis() {
+    let node = brushed("a", Path::circle((40.5, 40.5), 28.0, None), Paint::Solid(red()), vec![mark(stage(NORMAL_AS_COLOR, &[], &[], 1), 0.0)]);
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_normal(&png, (15, 40), [-1.0, 0.0]);
+    assert_normal(&png, (65, 40), [1.0, 0.0]);
+    assert_normal(&png, (40, 15), [0.0, -1.0]);
+    assert_normal(&png, (40, 65), [0.0, 1.0]);
+    let r = std::f32::consts::FRAC_1_SQRT_2;
+    assert_normal(&png, (22, 22), [-r, -r]);
+    assert_normal(&png, (40, 40), [0.0, 0.0]);
+}
+
+#[test]
+fn the_normal_is_in_the_local_frame_of_a_rotated_node() {
+    let rect = skia_safe::Rect::from_xywh(20.0, 30.0, 40.0, 20.0);
+    let mut node = brushed("a", Path::rect(rect, None), Paint::Solid(red()), vec![mark(stage(NORMAL_AS_COLOR, &[], &[], 1), 0.0)]);
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0));
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_normal(&png, (40, 22), [-1.0, 0.0]);
+    assert_normal(&png, (48, 40), [0.0, -1.0]);
+    assert_normal(&png, (40, 58), [1.0, 0.0]);
+    assert_normal(&png, (32, 40), [0.0, 1.0]);
+}
+
 #[test]
 fn gpu_brush_render_is_close_to_cpu_and_repeatable() {
     if !gpu_available() {

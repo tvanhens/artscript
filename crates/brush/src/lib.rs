@@ -65,7 +65,7 @@ uniform float2 u_dito;
 struct Mark {
     float2 p; float2 dev; float u; float s; float v; float d; float len; float width;
     float pressure; float angle; float tilt; float velocity;
-    float edge; float2 uv; float seed; float4 paint; float px;
+    float edge; float2 normal; float2 uv; float seed; float4 paint; float px;
 };
 
 "#,
@@ -171,7 +171,7 @@ half4 u_finish(Mark m, float2 c) {
 const AREA_MAIN: &str = r#"
 half4 main(float2 c) {
     float2 p = (u_dtl * float3(c, 1)).xy;
-    float e = u_sdf.eval(c - u_sdfo).r;
+    float4 e = u_sdf.eval(c - u_sdfo);
     Mark m;
     m.dev = c; m.p = p;
     float2 q0 = p - u_frame.xy;
@@ -179,7 +179,7 @@ half4 main(float2 c) {
     m.uv = r; m.s = r.x + u_frame.z * .5; m.d = r.y;
     m.len = u_frame.z; m.width = u_frame.w; m.u = m.s / m.len; m.v = r.y / (m.width * .5);
     m.pressure = 1; m.angle = u_dir.x; m.tilt = 0; m.velocity = 1;
-    m.edge = e * u_px;
+    m.edge = e.r * u_px; m.normal = e.gb;
     return u_finish(m, c);
 }
 "#;
@@ -204,6 +204,7 @@ half4 main(float2 c) {
     m.pressure = ch.x; m.angle = ch.y; m.tilt = ch.z; m.velocity = ch.w;
     float over = u_rib.y > 0.5 ? 0 : (m.s < 0 ? m.s : max(m.s - m.len, 0));
     m.edge = hw - length(float2(over, m.d));
+    m.normal = float2(0);
     m.uv = float2(m.s, m.d);
     return u_finish(m, c);
 }
@@ -217,7 +218,7 @@ pub const S_CHUNK: f32 = 32.0;
 /// names every one.
 pub const MARK_FIELDS: &[&str] = &[
     "p", "dev", "u", "s", "v", "d", "len", "width", "pressure", "angle", "tilt", "velocity",
-    "edge", "uv", "seed", "paint", "px",
+    "edge", "normal", "uv", "seed", "paint", "px",
 ];
 
 /// Functions an author body may call. Same docs test.
