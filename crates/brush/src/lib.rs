@@ -57,6 +57,7 @@ uniform float4 u_frame;
 uniform float3 u_dir;
 uniform shader u_field;
 uniform shader u_chan;
+uniform shader u_norm;
 uniform float2 u_fieldo;
 uniform float2 u_rib;
 uniform float u_s0;
@@ -188,9 +189,10 @@ half4 main(float2 c) {
 /// pixel: arc length `s` to the spine in two half-float channels (whole chunks of [`S_CHUNK`]
 /// device pixels past `u_s0` chunks, then the rest), the signed offset `d` across it, and the
 /// half width there, all in device pixels. A negative rest marks a pixel past the ribbon's reach.
-/// `u_chan` holds pressure, angle, tilt and velocity at the same texel. `u_rib` is the contour's
-/// length in local units and 1 when it is closed. Past the end of an open contour `s` keeps
-/// running, so `edge` rounds the cap.
+/// `u_chan` holds pressure, angle, tilt and velocity at the same texel, and `u_norm` the unit
+/// direction in local units from the spine to the texel, which is the normal of the edge on a
+/// stroke whatever its taper. `u_rib` is the contour's length in local units and 1 when it is
+/// closed. Past the end of an open contour `s` keeps running, so `edge` rounds the cap.
 const RIBBON_MAIN: &str = r#"
 half4 main(float2 c) {
     float4 g = u_field.eval(c - u_fieldo);
@@ -204,7 +206,7 @@ half4 main(float2 c) {
     m.pressure = ch.x; m.angle = ch.y; m.tilt = ch.z; m.velocity = ch.w;
     float over = u_rib.y > 0.5 ? 0 : (m.s < 0 ? m.s : max(m.s - m.len, 0));
     m.edge = hw - length(float2(over, m.d));
-    m.normal = float2(0);
+    m.normal = u_norm.eval(c - u_fieldo).xy;
     m.uv = float2(m.s, m.d);
     return u_finish(m, c);
 }

@@ -41,7 +41,7 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `p` | the pixel in the node's local units | the same |
 | `dev` | the pixel in device pixels | the same |
 | `edge` | signed distance to the geometry's edge in local units, positive inside | the half width at `s` minus the distance to the spine, positive inside; past an open end it rounds the cap |
-| `normal` | the unit vector out of the shape at the nearest edge, in the node's local frame: the gradient of `-m.edge` with respect to `m.p`. It is `float2(0)` where the edge has no single direction, such as on a medial axis | `float2(0)` |
+| `normal` | the unit vector out of the shape at the nearest edge, in the node's local frame: the gradient of `-m.edge` with respect to `m.p`. It is `float2(0)` where the edge has no single direction, such as on a medial axis | the unit vector from the nearest point of the spine to the pixel, in the node's local frame, so it points out of the stroke. A taper's slope does not tilt it. It is `float2(0)` on the spine and past `reach:` |
 | `uv` | `p` relative to the geometry's center, rotated so x runs along `dir` | `(s, d)` |
 | `s`, `u` | distance along `dir` from the near edge of the rotated bounds, in units and as 0..1 | arc length along the spine to that point, in units and as 0..1 of `len`; past an open end it keeps running below 0 or above `len` |
 | `d`, `v` | offset across `dir` from the center, in units and as -1..1 | offset across the spine, positive on the right of travel, in units and as -1..1 of the half width |
