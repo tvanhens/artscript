@@ -6203,5 +6203,32 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
     assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
 }
 
+#[test]
+fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
+    let brush = ("lib/brushes.art", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
+    let stamp = ("lib/garden.art", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
+    let blot = ("lib/d.art", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
+    let none: &[(&str, &str)] = &[];
+    let cases = [
+        ("circle rand(4 8 seed:\"a\") name:n", "a string", none),
+        ("circle pick([4 8] seed:foo) name:n", "a word", none),
+        ("rect 20x20 fill:simplex(16 seed:\"a\") -> [#000000 #ffffff] name:n", "a string", none),
+        ("blob 20 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 jitter:1.5,60 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 name:n\n  fx grain .3 seed:\"a\"", "a string", none),
+        ("use brushes { dry }\nrect 20x20 fill:#ff0000 brush:dry seed:\"a\" name:n", "a string", &[brush]),
+        ("use garden { dots }\ncurve 0,9 30,9 stroke:#000000,2 stamp:dots seed:\"a\" name:n", "a string", &[stamp]),
+        ("use d { blot }\nblot seed:\"a\" name:n", "a string", &[blot]),
+    ];
+    for (body, kind, libs) in cases {
+        let ev = run_with(&format!("@target t.png 40x40\n{body}\n"), libs);
+        let line = 2 + body.lines().count() as u32 - 1;
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, format!("`seed:` takes a number, got {kind}"), "{body}: {d}");
+        assert_eq!(d.span.line, line, "{body}: {d}");
+        assert_eq!(ev.diagnostics.len(), 1, "{body}: {}", show(&ev.diagnostics));
+    }
+}
+
 mod brush;
 mod stamp;
