@@ -115,8 +115,6 @@ layer legs_mid
   fx outline 5 color:p.ink
 
 layer head rot:8 pivot:480,640
-  blob 62 at:470,628 seed:2 wobble:.3 fill:p.flesh.2 brush:sculpt(hi:p.flesh.4 scale:.5) name:cheek
-    fx outline 6 color:p.ink
   curve 70,600 150,640 300,652 470,625 505,700 430,795 285,825 150,785 85,700 closed fill:p.bone.1 brush:sculpt(hi:p.bone.4 lo:p.flesh.0 scale:.8 glossk:.15 depth:.6) name:jaw
     each k, ck in [150,700 230,770 380,750 440,700]
       curve 0,0 rand(6 14),rand(8 16) rand(4 20),rand(18 34) at:ck stroke:p.flesh.0,[1 3.5 1] a:.6 blur:.8 name:crack
