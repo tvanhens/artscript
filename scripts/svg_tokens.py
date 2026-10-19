@@ -1,4 +1,4 @@
-"""Token counts of each chibi entry file against the SVG it builds, for the README table.
+"""Token counts of each chibi entry file against the SVG it builds.
 
     uv run --with tiktoken python scripts/svg_tokens.py
 """
