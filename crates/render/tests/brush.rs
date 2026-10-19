@@ -6,9 +6,9 @@ mod common;
 use std::sync::Arc;
 
 use artscript_brush::{MainKind, Program, UniformKind, UniformValue};
-use artscript_ir::{AreaMark, Fill, NodeKind, Paint, Path, Point, Stage, Stop};
+use artscript_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, Sides, Stage, Stop};
 use artscript_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
-use common::{color, pixel, red, scene, solid, stamp, with_stamps};
+use common::{color, effect, pixel, red, scene, solid, stamp, with_stamps};
 
 fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
@@ -290,4 +290,53 @@ fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
     let svg = render_svg(&scene(80.0, 80.0, vec![host]), artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
+}
+
+fn outlined(mut node: artscript_ir::Node, width: f32) -> artscript_ir::Node {
+    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL }));
+    node
+}
+
+#[test]
+fn fx_outline_follows_the_coverage_a_brushed_fill_leaves() {
+    let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]), 1.0);
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40)[3], 0, "the middle of the 4 px gap shows nothing, not the ring's ink");
+    assert_eq!(pixel(&png, 38, 40), [0, 0, 0, 255], "the ring runs along the gap's edge");
+    assert_eq!(pixel(&png, 30, 40), [255, 0, 0, 255], "covered fill stays the fill");
+    assert_eq!(pixel(&png, 19, 40), [0, 0, 0, 255], "the ring still runs around the geometry");
+    let faint = pixel(&png, 52, 40);
+    assert!(faint[3].abs_diff(102) <= 2, "40% coverage is below one half, so the ring leaves it: {faint:?}");
+}
+
+#[test]
+fn fx_outline_follows_a_brushed_fill_past_its_geometry_by_its_reach() {
+    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 6, m)); }\n";
+    let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), 8.0)]), 2.0);
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 15, 40), [255, 0, 0, 255], "ink 5 px past the geometry is the fill");
+    assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 255], "the ring sits past the reach, not at the geometry");
+    assert_eq!(pixel(&png, 11, 40)[3], 0);
+}
+
+#[test]
+fn fx_outline_on_an_unbrushed_fill_traces_its_geometry() {
+    let png = render_png(&scene(80.0, 80.0, vec![outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0)]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255]);
+    assert_eq!(pixel(&png, 17, 40), [0, 0, 0, 255]);
+    assert_eq!(pixel(&png, 15, 40)[3], 0);
+}
+
+#[test]
+fn fx_outline_over_a_brushed_fill_is_raster_only() {
+    let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]), 3.0);
+    let mut host = outlined(solid("h", Path::rect(SQUARE, None), red()), 3.0);
+    with_stamps(&mut host, vec![stamp("h.dots.0", artscript_ir::Matrix::translate((30.0, 25.0)), vec![node.clone()])], vec![]);
+    let scene = scene(80.0, 80.0, vec![node, host]);
+    let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
+    assert_eq!(census, ["a fx outline brush", "a brush fill", "h fx outline brush", "a fx outline brush", "a brush fill"]);
+    assert!(matches!(render_svg(&scene, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(artscript_render::RenderError::NotVector(_))));
+    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 2, "{svg}");
+    assert!(!svg.contains("-outline"), "the ring is in the tile, not a path: {svg}");
 }

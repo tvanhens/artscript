@@ -382,24 +382,52 @@ fn expect_failure_is_warning_c0201() {
     );
 }
 
-#[test]
-fn importing_an_entry_file_is_e0201() {
-    let p = project(&[
-        ("art/a.art", "@target a.png 10x10\nuse art/b\nrect 1x1\n"),
-        ("art/b.art", "@target b.png 10x10\nrect 1x1\n"),
-    ]);
+fn evaluate_entry(files: &[(&str, &str)], source: &str) -> Evaluation {
+    let p = project(files);
     let plan = plan(&p);
-    let job = plan.jobs.iter().find(|j| j.source == "art/a.art").unwrap();
-    let ev = evaluate(&p, job);
-    assert_eq!(
-        ev.diagnostics
-            .iter()
-            .map(|d| d.code.as_str())
-            .collect::<Vec<_>>(),
-        ["E0201"],
-        "{}",
-        show(&ev.diagnostics)
+    let job = plan.jobs.iter().find(|j| j.source == source).unwrap();
+    evaluate(&p, job)
+}
+
+#[test]
+fn use_of_an_entry_file_imports_its_defs_and_skips_its_drawing() {
+    let ev = evaluate_entry(
+        &[
+            ("art/a.art", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
+            (
+                "art/b.art",
+                "@target b.png 10x10\ndef rock\n  rect 1x1 name:stone\nrect 2x2 name:own\n",
+            ),
+        ],
+        "art/a.art",
     );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    assert_eq!(paths(&ev.scene.unwrap()), ["r", "r.stone"]);
+}
+
+#[test]
+fn a_def_that_reads_a_skipped_let_of_an_entry_file_is_e0201() {
+    let ev = evaluate_entry(
+        &[
+            ("art/a.art", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
+            (
+                "art/b.art",
+                "@target b.png 10x10\nlet mode = big\ndef rock\n  if mode == big\n    rect 1x1\nrock name:own\n",
+            ),
+        ],
+        "art/a.art",
+    );
+    let d = ev
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0201")
+        .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
+    assert_eq!((d.file.as_str(), d.span.line), ("art/b.art", 4));
+    let own = evaluate_entry(
+        &[("art/b.art", "@target b.png 10x10\nlet mode = big\ndef rock\n  if mode == big\n    rect 1x1\nrock name:own\n")],
+        "art/b.art",
+    );
+    assert!(own.diagnostics.is_empty(), "{}", show(&own.diagnostics));
 }
 
 #[test]

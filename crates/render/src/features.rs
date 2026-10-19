@@ -3,6 +3,7 @@
 use artscript_ir::{Blend, EffectInput, EffectOp, MaskSource, Node, NodeKind, Paint, Scene};
 
 use crate::Unsupported;
+use crate::effects::fill_shows;
 
 pub fn raster_only_features(scene: &Scene) -> Vec<Unsupported> {
     let mut out = Vec::new();
@@ -75,6 +76,26 @@ fn node_features(node: &Node, out: &mut Vec<Unsupported>) {
             push(out, node, "fx node");
         }
     }
+    let outlined = node.effects.iter().any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0));
+    if outlined && traces_a_brushed_fill(node) {
+        push(out, node, "fx outline brush");
+    }
+}
+
+/// Whether the silhouette `fx outline` traces under `node` holds a brushed fill, whose ring
+/// follows the brush's coverage. Walks what `effects::gather` walks.
+fn traces_a_brushed_fill(node: &Node) -> bool {
+    let own = match &node.kind {
+        NodeKind::Shape(shape) => {
+            shape.coverage_clip().is_some()
+                || shape.stamps.iter().any(traces_a_brushed_fill)
+                || (!fill_shows(shape) && shape.children.iter().any(traces_a_brushed_fill))
+        }
+        NodeKind::Group { children, .. } => children.iter().any(traces_a_brushed_fill),
+    };
+    own || node.mask.as_ref().is_some_and(|mask| {
+        !mask.invert && matches!(&mask.source, MaskSource::Nodes(nodes) if nodes.iter().any(traces_a_brushed_fill))
+    })
 }
 
 /// What only the shape's own fill and stroke need.

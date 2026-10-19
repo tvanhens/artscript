@@ -525,7 +525,7 @@ fn draw_shape(
                     dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
                 canvas.draw_path(&shape.geometry, &paint);
             } else {
-                crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin)?;
+                crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin, crate::mark::Ink::Paint)?;
             }
         }
         if let Some(stroke) = &shape.stroke {
