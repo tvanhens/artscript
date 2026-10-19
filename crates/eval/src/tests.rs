@@ -6052,6 +6052,20 @@ fn explain_lists_an_outline_mask_and_its_nodes() {
     assert!(text.contains("\n  keep  shape"), "{text}");
 }
 
+#[test]
+fn a_def_fx_outline_mask_names_and_numbers_its_nodes() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0 name:keep\nbadge at:30,50 name:b\n",
+    );
+    let MaskSource::Nodes(n) = &outline_mask(&s, "b").unwrap().source else {
+        panic!("outline mask")
+    };
+    let paths: Vec<&str> = n.iter().map(|n| n.path.as_str()).collect();
+    assert_eq!(paths, ["b.fx~1.mask~1.rect~1", "b.fx~1.mask~1.rect~2", "b.keep"]);
+    assert_ne!(at(&n[0]), at(&n[1]));
+}
+
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
     match shape(s, path).fill.as_ref().map(|f| &f.paint) {
         Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
