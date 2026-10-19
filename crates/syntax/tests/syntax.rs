@@ -924,6 +924,42 @@ fn fx_under_an_if_inside_a_draw_or_def_parses_and_formats_in_place() {
 }
 
 #[test]
+fn fx_outline_takes_a_mask_line_and_formats_it_in_place() {
+    let src = "circle 10 name:c\n  fx outline 4 feather:2\n    mask\n      subtract\n        copy @c\n        rect 4x4\n  fx glow 3\nrect 8x8\n  fx outline 2\n    mask simplex(8) > .5\ndef d\n  circle 4\n  if on\n    fx outline 2\n      mask @m\n";
+    let file = must_parse(src);
+    let Item::Scene(first) = &file.items[0] else {
+        panic!("{file:?}")
+    };
+    let SceneKind::Draw(circle) = &first.kind else {
+        panic!("{file:?}")
+    };
+    let fx: Vec<_> = circle.body.fx().collect();
+    assert_eq!(fx.len(), 2);
+    let outline = fx[0].mask.as_ref().expect("outline mask");
+    assert_eq!(outline.span, Span { line: 3, col: 5 });
+    assert!(matches!(&outline.mask, Mask::Block(b) if b.len() == 1));
+    assert!(fx[1].mask.is_none());
+    assert!(circle.body.mask().is_none(), "the mask belongs to the fx line, not the draw");
+    assert_eq!(format_source(src).unwrap(), src);
+}
+
+#[test]
+fn only_fx_outline_takes_one_mask_line() {
+    let blur = one_error("circle 10\n  fx blur 2\n    mask @m\n");
+    assert_eq!(blur.message, "`fx blur` takes no mask");
+    assert_eq!(blur.span, Span { line: 3, col: 5 });
+    let twice = one_error("circle 10\n  fx outline 2\n    mask @a\n    mask @b\n");
+    assert_eq!(twice.message, "an `fx` line takes one mask");
+    assert_eq!(twice.span, Span { line: 4, col: 5 });
+    let shape = one_error("circle 10\n  fx outline 2\n    circle 3\n");
+    assert_eq!(shape.message, "only `mask` goes under an `fx` line");
+    assert_eq!(shape.span, Span { line: 3, col: 5 });
+    let finish = one_error("finish ink\n  fx outline 2\n    mask @m\n");
+    assert_eq!(finish.message, "a finish line takes no mask");
+    assert_eq!(finish.span, Span { line: 3, col: 5 });
+}
+
+#[test]
 fn glued_mask_value_is_an_error_that_names_both_fixes() {
     let e = one_error("rect 4x4\n  mask:simplex(30) > .5\n");
     assert_eq!(e.message, "`mask:` must end the line");
