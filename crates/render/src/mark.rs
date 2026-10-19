@@ -135,7 +135,7 @@ pub(crate) fn draw_ribbon(
                 img.to_raw_shader((TileMode::Clamp, TileMode::Clamp), nearest(), None)
                     .ok_or_else(|| RenderError::Skia("ribbon field shader".into()))
             };
-            let (field_shader, chan_shader) = (texels(&field.field)?, texels(&field.chan)?);
+            let (field_shader, chan_shader, norm_shader) = (texels(&field.field)?, texels(&field.chan)?, texels(&field.norm)?);
             let shader = frame.chain(
                 &stages,
                 &stroke.paint,
@@ -149,6 +149,7 @@ pub(crate) fn draw_ribbon(
                 &|name| match name {
                     "u_field" => Some(field_shader.clone()),
                     "u_chan" => Some(chan_shader.clone()),
+                    "u_norm" => Some(norm_shader.clone()),
                     _ => None,
                 },
             )?;
@@ -224,7 +225,7 @@ impl Frame {
                 .iter()
                 .map(|c| match c.name() {
                     "u_prev" => Ok(prev.clone().into()),
-                    name @ ("u_sdf" | "u_field" | "u_chan") => {
+                    name @ ("u_sdf" | "u_field" | "u_chan" | "u_norm") => {
                         Ok(child(name).unwrap_or_else(|| shaders::color(skia_safe::Color::TRANSPARENT)).into())
                     }
                     other => Err(internal(origin, format!("program declares an unknown child `{other}`"))),

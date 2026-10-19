@@ -406,6 +406,7 @@ fn malformed_declarations_are_e0363_at_their_key() {
     let cases = [
         ("brush b strength:.5\n", 1, "no `sksl` block"),
         ("brush b edge:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `edge`"),
+        ("brush b normal:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `normal`"),
         ("brush b u_x:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `u_x`"),
         ("brush b word:left\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "must default to a number, color or vector"),
         ("brush b strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { float u_k = 1; return m.paint; }\n  \"\"\"\n", 3, "`u_k` is reserved"),

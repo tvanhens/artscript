@@ -193,6 +193,40 @@ fn gpu_output_is_within_a_few_levels_of_cpu_and_repeatable() {
     assert!(worst <= 16, "worst channel difference {worst}");
 }
 
+const NORMAL_AS_COLOR: &str = "float4 shade(Mark m) { return float4(m.normal * .5 + .5, 0, cover(m.edge, m)); }\n";
+
+fn assert_normal(png: &[u8], at: (i32, i32), want: [f32; 2]) {
+    let p = pixel(png, at.0, at.1);
+    assert_eq!(p[3], 255, "({}, {}) is inside the stroke: {p:?}", at.0, at.1);
+    let got = [p[0], p[1]].map(|c| c as f32 / 255.0 * 2.0 - 1.0);
+    assert!((got[0] - want[0]).abs() < 0.1 && (got[1] - want[1]).abs() < 0.1, "normal at {at:?}: {got:?}, want {want:?}");
+}
+
+#[test]
+fn the_normal_points_away_from_the_spine_whatever_the_taper() {
+    for hw_end in [6.0, 10.0] {
+        let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, hw_end, 1.0, 0.0, 0.0)];
+        let node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
+        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        assert_normal(&png, (40, 36), [0.0, -1.0]);
+        assert_normal(&png, (40, 45), [0.0, 1.0]);
+        assert_normal(&png, (72, 40), [1.0, 0.0]);
+        assert_normal(&png, (7, 40), [-1.0, 0.0]);
+        assert_normal(&png, (40, 40), [0.0, 0.0]);
+    }
+}
+
+#[test]
+fn the_normal_is_in_the_local_frame_of_a_rotated_stroke() {
+    let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, 6.0, 1.0, 0.0, 0.0)];
+    let mut node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0));
+    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    assert_normal(&png, (43, 40), [0.0, -1.0]);
+    assert_normal(&png, (36, 40), [0.0, 1.0]);
+    assert_normal(&png, (39, 73), [1.0, 0.0]);
+}
+
 #[test]
 fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
     let mut b = skia_safe::PathBuilder::new();

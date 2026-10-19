@@ -41,6 +41,7 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `p` | the pixel in the node's local units | the same |
 | `dev` | the pixel in device pixels | the same |
 | `edge` | signed distance to the geometry's edge in local units, positive inside | the half width at `s` minus the distance to the spine, positive inside; past an open end it rounds the cap |
+| `normal` | the unit vector out of the shape at the nearest edge, in the node's local frame: the gradient of `-m.edge` with respect to `m.p`. It is `float2(0)` where the edge has no single direction, such as on a medial axis | the unit vector from the nearest point of the spine to the pixel, in the node's local frame, so it points out of the stroke. A taper's slope does not tilt it. It is `float2(0)` on the spine and past `reach:` |
 | `uv` | `p` relative to the geometry's center, rotated so x runs along `dir` | `(s, d)` |
 | `s`, `u` | distance along `dir` from the near edge of the rotated bounds, in units and as 0..1 | arc length along the spine to that point, in units and as 0..1 of `len`; past an open end it keeps running below 0 or above `len` |
 | `d`, `v` | offset across `dir` from the center, in units and as -1..1 | offset across the spine, positive on the right of travel, in units and as -1..1 of the half width |
@@ -49,6 +50,22 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `seed` | the stage's seed, 0..255 | the same |
 | `paint` | the straight rgba the pixel would have had: the fill at that pixel for the first stage, the previous stage's result after that | the same, from the stroke's paint |
 | `px` | local units per device pixel | the same |
+
+`normal` and `edge` together shade a form. This brush lights a bevel from the upper left. It mixes the paint toward white where the edge faces `toward` and toward black where it faces away, within `depth` units of the edge:
+
+```
+brush bevel toward:-1,-1 depth:7 strength:.7
+  sksl """
+  float4 shade(Mark m) {
+    float k = dot(m.normal, normalize(toward));
+    float band = 1 - smoothstep(0, depth, m.edge);
+    float3 tint = k > 0 ? float3(1) : float3(0);
+    return float4(mix(m.paint.rgb, tint, abs(k) * band * strength), cover(m.edge, m));
+  }
+  """
+```
+
+`normal` is in the node's local frame, as `p` is, so `toward` turns with a rotated node. On a fill it comes from the same device-pixel field as `edge`, so it follows the pixel grid: a straight edge is exact, and a curve is as smooth as its raster. A pixel on a medial axis gets `float2(0)`.
 
 Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(p, octaves)`, `rot(p, deg)`, `seeded(m)` (a per-stage offset to add to a noise position), `cover(d, m)` (signed distance in local units to an antialiased coverage, one pixel wide). The rest of SkSL is available: `mix`, `smoothstep`, `floor`, `fract`, and so on.
 
@@ -70,7 +87,7 @@ Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(
 
 ## Strokes
 
-A brushed stroke is a ribbon. The shape's geometry is the spine, and every device pixel within the half width plus `reach:` of it takes one point of the spine: `m.s` is the arc length there, `m.d` the signed offset, `m.edge` the half width minus the distance. Where the spine crosses or doubles back on itself, the segment whose ink covers the pixel deepest wins: the one with the largest half width minus distance, the nearer one on a tie, then the earlier one. So the ribbon reads as one stroke and not as layers, and a thin tail that passes near a wide stem never carves it. At constant width this is the nearest segment. A ribbon has round caps and round joins, and the brush shapes its ends. `cap:` or `join:` on the node's own line, where that node's stroke is brushed, is E0362. An inherited `cap:` or `join:` does nothing there, and a stroke of one width with no brush and no `taper:` keeps both.
+A brushed stroke is a ribbon. The shape's geometry is the spine, and every device pixel within the half width plus `reach:` of it takes one point of the spine: `m.s` is the arc length there, `m.d` the signed offset, `m.edge` the half width minus the distance, `m.normal` the unit direction from the spine to the pixel. Where the spine crosses or doubles back on itself, the segment whose ink covers the pixel deepest wins: the one with the largest half width minus distance, the nearer one on a tie, then the earlier one. So the ribbon reads as one stroke and not as layers, and a thin tail that passes near a wide stem never carves it. At constant width this is the nearest segment. A ribbon has round caps and round joins, and the brush shapes its ends. `cap:` or `join:` on the node's own line, where that node's stroke is brushed, is E0362. An inherited `cap:` or `join:` does nothing there, and a stroke of one width with no brush and no `taper:` keeps both.
 
 - Width: `stroke:p.ink,6` is a 6-unit ribbon. `stroke:p.ink,[2 8 3]` and `taper:.3` set the half width along the spine exactly as they shape an unbrushed tapered stroke, but the stroke stays a ribbon: the brush sees the true `s` and `d` along the spine, where an unbrushed tapered stroke fills its outline.
 - Contours: a path with several contours gives one ribbon per contour, each with its own `len`, drawn in path order. Each contour is its own pen stroke, so `taper:` thins the start and end of every contour over its own length. A closed contour wraps: `s` runs from 0 at the contour's start around to `len`, there is no cap, and the seam sits at the start, so a brush that rags its ends, such as `bristle`, rags the seam.

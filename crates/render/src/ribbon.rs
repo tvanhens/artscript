@@ -1,8 +1,8 @@
-//! The `(s, d)` field of one ribbon contour over a device-pixel grid, as two F16 images a brush
+//! The `(s, d)` field of one ribbon contour over a device-pixel grid, as three F16 images a brush
 //! shader samples. The spine is flattened in local space to a device tolerance, each segment is
 //! binned by the cells within the ribbon's reach, and every device pixel takes the segment that
-//! covers it deepest: its arc length, its signed offset, the half width there and the channels
-//! there. CPU only, so both backends read the same texels. Cost follows the pixels within reach,
+//! covers it deepest: its arc length, its signed offset, the half width there, the channels
+//! there and the direction away from the spine. CPU only, so both backends read the same texels. Cost follows the pixels within reach,
 //! not the pixels times the segments.
 
 use std::collections::HashMap;
@@ -75,11 +75,13 @@ impl Spec<'_> {
 /// rect.top + j)`. `field` holds `s` in whole chunks of [`S_CHUNK`] device pixels counted from
 /// `s0` chunks, the rest of `s`, the signed offset `d` and the half width, all in device pixels;
 /// a negative rest marks a pixel past the ribbon's reach. `chan` holds pressure, angle, tilt and
-/// velocity.
+/// velocity. `norm` holds the unit vector from the nearest point of the spine to the texel in
+/// local units, in its first two channels, and zero past the reach or on the spine.
 #[derive(Clone)]
 pub(crate) struct Field {
     pub field: Image,
     pub chan: Image,
+    pub norm: Image,
     /// The rect's least whole chunk of `s`. Each strip counts from its own, so a half float's
     /// exact integers cover the strip's range of `s` and not the whole stroke's length.
     pub s0: f32,
@@ -238,14 +240,15 @@ impl Spine {
     /// segment within the reach offers its nearest point, and the one with the largest half
     /// width there minus the distance wins, so a thin part of the spine never carves a wide part
     /// it passes near. Ties go to the nearer point, then the earlier segment; at constant width
-    /// that is the nearest segment. `None` past the reach.
-    fn nearest(&self, q: Point) -> Option<(f32, f32)> {
+    /// that is the nearest segment. The third value is the unit vector from that point to `q`, or
+    /// zero when `q` is on it. `None` past the reach.
+    fn nearest(&self, q: Point) -> Option<(f32, f32, [f32; 2])> {
         let cx = ((q.x - self.grid_origin.x) / self.cell).floor() as i32;
         let cy = ((q.y - self.grid_origin.y) / self.cell).floor() as i32;
         if cx < 0 || cy < 0 || cx >= self.grid_w || cy >= self.grid_h {
             return None;
         }
-        let mut best: Option<(f32, f32, f32, f32)> = None;
+        let mut best: Option<(f32, f32, f32, f32, [f32; 2])> = None;
         let last = self.segs.len() - 1;
         let closed = self.contour.closed;
         for &i in &self.bins[(cy * self.grid_w + cx) as usize] {
@@ -267,12 +270,17 @@ impl Spine {
                 (seg.s0 + t / seg.len * (seg.s1 - seg.s0), dist.copysign(across))
             };
             let depth = self.half_width(s) - dist;
-            if best.is_some_and(|(b_depth, b_dist, _, _)| depth < b_depth || (depth == b_depth && dist >= b_dist)) {
+            if best.is_some_and(|(b_depth, b_dist, ..)| depth < b_depth || (depth == b_depth && dist >= b_dist)) {
                 continue;
             }
-            best = Some((depth, dist, s, d));
+            let away = if dist > 0.0 {
+                [(r.x - seg.dir.x * t) / dist, (r.y - seg.dir.y * t) / dist]
+            } else {
+                [0.0, 0.0]
+            };
+            best = Some((depth, dist, s, d, away));
         }
-        best.map(|(_, _, s, d)| (s, d))
+        best.map(|(_, _, s, d, away)| (s, d, away))
     }
 }
 
@@ -333,7 +341,7 @@ const MAX_CHUNKS: f32 = 2048.0;
 
 fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Field, RenderError> {
     let (w, h) = (rect.width().max(1) as usize, rect.height().max(1) as usize);
-    let samples: Vec<Option<(f32, f32)>> = (0..h)
+    let samples: Vec<Option<(f32, f32, [f32; 2])>> = (0..h)
         .flat_map(|j| (0..w).map(move |i| (i, j)))
         .map(|(i, j)| {
             let dev = Point::new(rect.left as f32 + i as f32 + 0.5, rect.top as f32 + j as f32 + 0.5);
@@ -341,7 +349,7 @@ fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Fi
         })
         .collect();
     let px = spine.px;
-    let chunks = || samples.iter().flatten().map(|(s, _)| split_s(s / px).0);
+    let chunks = || samples.iter().flatten().map(|(s, ..)| split_s(s / px).0);
     let s0 = chunks().fold(f32::INFINITY, f32::min);
     let s0 = if s0.is_finite() { s0 } else { 0.0 };
     if chunks().any(|hi| hi - s0 >= MAX_CHUNKS) {
@@ -355,11 +363,13 @@ fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Fi
     }
     let mut field = Vec::with_capacity(w * h * 8);
     let mut chan = Vec::with_capacity(w * h * 8);
+    let mut norm = Vec::with_capacity(w * h * 8);
     let contour = spec.contour;
     for sample in samples {
-        let Some((s, d)) = sample else {
+        let Some((s, d, away)) = sample else {
             field.extend([0.0, -1.0, 0.0, 0.0].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
             chan.extend([0u8; 8]);
+            norm.extend([0u8; 8]);
             continue;
         };
         let on = s.clamp(0.0, contour.len);
@@ -369,12 +379,13 @@ fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Fi
         let (hi, lo) = split_s(s / px);
         field.extend([hi - s0, lo, d / px, hw / px].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
         chan.extend([k.pressure, k.angle, k.tilt, k.velocity].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
+        norm.extend([away[0], away[1], 0.0, 0.0].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
     }
     let info = ImageInfo::new(ISize::new(w as i32, h as i32), ColorType::RGBAF16, AlphaType::Unpremul, None);
     let image = |bytes: &[u8]| {
         images::raster_from_data(&info, Data::new_copy(bytes), w * 8).ok_or_else(|| RenderError::Skia("ribbon field image".into()))
     };
-    Ok(Field { field: image(&field)?, chan: image(&chan)?, s0 })
+    Ok(Field { field: image(&field)?, chan: image(&chan)?, norm: image(&norm)?, s0 })
 }
 
 #[cfg(test)]
@@ -393,6 +404,7 @@ mod tests {
         s0: f32,
         field: Vec<u8>,
         chan: Vec<u8>,
+        norm: Vec<u8>,
     }
 
     impl Texels {
@@ -401,9 +413,11 @@ mod tests {
             let info = ImageInfo::new(ISize::new(w as i32, h as i32), ColorType::RGBAF16, AlphaType::Unpremul, None);
             let mut field = vec![0u8; w * h * 8];
             let mut chan = vec![0u8; w * h * 8];
+            let mut norm = vec![0u8; w * h * 8];
             assert!(f.field.read_pixels(&info, &mut field, w * 8, (0, 0), skia_safe::image::CachingHint::Disallow));
             assert!(f.chan.read_pixels(&info, &mut chan, w * 8, (0, 0), skia_safe::image::CachingHint::Disallow));
-            Texels { w, s0: f.s0, field, chan }
+            assert!(f.norm.read_pixels(&info, &mut norm, w * 8, (0, 0), skia_safe::image::CachingHint::Disallow));
+            Texels { w, s0: f.s0, field, chan, norm }
         }
 
         fn at(&self, buf: &[u8], x: usize, y: usize) -> [f32; 4] {
@@ -415,6 +429,12 @@ mod tests {
         fn sd(&self, x: usize, y: usize) -> Option<(f32, f32, f32)> {
             let [hi, lo, d, hw] = self.at(&self.field, x, y);
             (lo >= 0.0).then_some(((hi + self.s0) * S_CHUNK + lo, d, hw))
+        }
+
+        /// The unit direction away from the spine at texel `(x, y)`.
+        fn away(&self, x: usize, y: usize) -> [f32; 2] {
+            let [nx, ny, ..] = self.at(&self.norm, x, y);
+            [nx, ny]
         }
 
         /// Pressure, angle, tilt and velocity at texel `(x, y)`.
@@ -498,5 +518,24 @@ mod tests {
         assert!((s - 329.5).abs() < 0.05, "half a unit left of the left edge, 9.83 units up it: s {s}");
         assert!((d - -1.5).abs() < 1e-3, "left on screen of an upward edge is its right-hand side: d {d}");
         assert!(t.sd(90, 60).is_none(), "the rect's middle is past reach");
+    }
+
+    #[test]
+    fn the_normal_points_away_from_the_spine_and_round_an_open_end() {
+        let mut b = PathBuilder::new();
+        b.move_to((10.0, 20.5));
+        b.line_to((50.0, 20.5));
+        let path = b.detach();
+        let rect = IRect::from_ltrb(0, 0, 60, 40);
+        let f = field_of(&path, Matrix::new_identity(), &contour(40.0, false, 4.0), 0.0, rect);
+        let t = Texels::read(&f, rect);
+        assert_eq!(t.away(30, 17), [0.0, -1.0], "above the spine");
+        assert_eq!(t.away(30, 23), [0.0, 1.0], "below it");
+        assert_eq!(t.away(7, 20), [-1.0, 0.0], "before the start");
+        assert_eq!(t.away(53, 20), [1.0, 0.0], "past the end");
+        let [nx, ny] = t.away(8, 17);
+        let len = 1.5f32.hypot(3.0);
+        assert!((nx + 1.5 / len).abs() < 2e-3 && (ny + 3.0 / len).abs() < 2e-3, "round the cap, from its center: {nx} {ny}");
+        assert_eq!(t.away(0, 0), [0.0, 0.0], "past the reach");
     }
 }
