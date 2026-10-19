@@ -2,10 +2,11 @@
 //! drawn into a layer. A soft clip draws into layers that start from the canvas below, so its
 //! children still blend with it. Effects see the clipped and masked content.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
+use artscript_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -16,7 +17,7 @@ use crate::gpu::{self, Backend};
 use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
-use crate::paint::{blend_mode, color4, content_paint};
+use crate::paint::{blend_mode, color4, content_paint, dithered};
 
 pub struct SceneIndex<'a> {
     nodes: HashMap<&'a str, &'a Node>,
@@ -262,7 +263,6 @@ pub fn draw_node(
             let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_dither(true);
             paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
             paint.set_blend_mode(blend_mode(node.blend));
             if let Some(filter) = filter {
@@ -290,7 +290,7 @@ fn paint_layer_steps(
     mut steps: Vec<effects::LayerStep>,
 ) -> Result<(), RenderError> {
     let Some(bounds) = canvas.device_clip_bounds().and_then(|clip| match reach {
-        Some(reach) => IRect::intersect(&clip, &dither_aligned(clip, reach)),
+        Some(reach) => IRect::intersect(&clip, &reach),
         None => Some(clip),
     }) else {
         return Ok(());
@@ -324,7 +324,6 @@ fn paint_layer_steps(
     canvas.reset_matrix();
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
-    paint.set_dither(true);
     paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
     paint.set_blend_mode(blend_mode(node.blend));
     canvas.draw_image(
@@ -385,13 +384,6 @@ fn path_extent(node: &Node) -> Option<Rect> {
             a.join(b);
             a
         })
-}
-
-/// Moves `reach`'s top-left corner out to a whole period of Skia's 8x8 ordered dither from the
-/// clip's corner, so a layer dithers its pixels as a layer over the whole clip would.
-fn dither_aligned(clip: IRect, reach: IRect) -> IRect {
-    let snap = |from: i32, to: i32| from + (to - from).max(0) / 8 * 8;
-    IRect::new(snap(clip.left, reach.left), snap(clip.top, reach.top), reach.right, reach.bottom)
 }
 
 fn rasterize_layer(
@@ -525,7 +517,8 @@ fn draw_shape(
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
             if fill.marks.is_empty() {
-                let paint = content_paint(&fill.paint, shape.blur, None)?;
+                let paint =
+                    dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
                 canvas.draw_path(&shape.geometry, &paint);
             } else {
                 crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin)?;
@@ -534,7 +527,10 @@ fn draw_shape(
         if let Some(stroke) = &shape.stroke {
             match &stroke.ribbon {
                 None => {
-                    let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
+                    let paint = dithered(
+                        content_paint(&stroke.paint, shape.blur, Some(stroke))?,
+                        &canvas.local_to_device_as_3x3(),
+                    )?;
                     canvas.draw_path(&shape.geometry, &paint);
                 }
                 Some(ribbon) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
@@ -548,19 +544,44 @@ fn draw_shape(
     }
 
     // The layer keeps the stamps' and children's blend modes off the pixels below the shape. The
-    // clip is the geometry, not the painted alpha, so a fill:none or translucent shape still
-    // shows the children. Stamps are not clipped: a leaf spills past its stem.
+    // clip is never the painted alpha, so a fill:none or translucent shape still shows the
+    // children. Stamps are not clipped: a leaf spills past its stem.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
     for stamp in &shape.stamps {
         draw_node(canvas, stamp, ctx, world)?;
     }
-    canvas.clip_path(&shape.clip(), ClipOp::Intersect, true);
-    for child in &shape.children {
-        draw_node(canvas, child, ctx, world)?;
+    let draw_children = || {
+        for child in &shape.children {
+            draw_node(canvas, child, ctx, world)?;
+        }
+        Ok(())
+    };
+    match child_clip(shape) {
+        ChildClip::Path(path) => {
+            canvas.clip_path(&path, ClipOp::Intersect, true);
+            draw_children()?;
+        }
+        ChildClip::Coverage(fill) => {
+            crate::mark::with_coverage(canvas, &shape.geometry, fill, ctx, origin, draw_children)?;
+        }
     }
     canvas.restore();
     Ok(())
+}
+
+enum ChildClip<'a> {
+    Path(Cow<'a, Path>),
+    /// The coverage a brushed fill leaves: the stage coverages without the paint's alpha, so a
+    /// translucent shape keeps its children opaque.
+    Coverage(&'a Fill),
+}
+
+fn child_clip(shape: &Shape) -> ChildClip<'_> {
+    match shape.coverage_clip() {
+        Some(fill) => ChildClip::Coverage(fill),
+        None => ChildClip::Path(shape.clip()),
+    }
 }
 
 fn apply_clip_mask(canvas: &Canvas, clip: &Clip) -> Result<(), RenderError> {

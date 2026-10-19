@@ -17,8 +17,32 @@ use std::sync::Arc;
 
 use skia_safe::RuntimeEffect;
 
+/// The exact lattice hash: `hcore` takes an integer point and returns 0..1, bit-identical on
+/// CPU and GPU. Render dithers content paints with it, so both dithers share one hash.
+macro_rules! hash_sksl {
+    () => {
+        r#"// Exact hashes: the input is quantized to 1/16 and every intermediate is an integer below
+// 2.62e6 (1e5 in mod289). A remainder by multiplying with a rounded reciprocal plus half a step stays exact
+// in that range under any rounding mode or FMA, and costs no divide or branch.
+float modh(float x) { return x - 1613 * floor(x * 0.000619962802 + 0.000309981401); }
+float3 mod289(float3 x) { return x - 289 * floor(x * 0.00346020761 + 0.00173010381); }
+float hcore(float2 q) {
+    float a = modh(q.x); float b = modh(q.y);
+    float t = modh(a * 1597 + b);
+    t = modh(t * t + a + 11);
+    t = modh(t * t + b + 7);
+    t = modh(t * t + a * 3 + 1);
+    return t / 1613;
+}
+"#
+    };
+}
+
+pub const HASH: &str = hash_sksl!();
+
 /// Uniforms the runtime binds, `struct Mark`, and the helpers. Author bodies follow this text.
-const PRELUDE: &str = r#"
+const PRELUDE: &str = concat!(
+    r#"
 uniform shader u_prev;
 uniform shader u_sdf;
 uniform float3x3 u_dtl;
@@ -36,6 +60,7 @@ uniform shader u_chan;
 uniform float2 u_fieldo;
 uniform float2 u_rib;
 uniform float u_s0;
+uniform float2 u_dito;
 
 struct Mark {
     float2 p; float2 dev; float u; float s; float v; float d; float len; float width;
@@ -43,20 +68,9 @@ struct Mark {
     float edge; float2 uv; float seed; float4 paint; float px;
 };
 
-// Exact hashes: the input is quantized to 1/16 and every intermediate is an integer below
-// 2.62e6 (1e5 in mod289). A remainder by multiplying with a rounded reciprocal plus half a step stays exact
-// in that range under any rounding mode or FMA, and costs no divide or branch.
-float modh(float x) { return x - 1613 * floor(x * 0.000619962802 + 0.000309981401); }
-float3 mod289(float3 x) { return x - 289 * floor(x * 0.00346020761 + 0.00173010381); }
-float hcore(float2 q) {
-    float a = modh(q.x); float b = modh(q.y);
-    float t = modh(a * 1597 + b);
-    t = modh(t * t + a + 11);
-    t = modh(t * t + b + 7);
-    t = modh(t * t + a * 3 + 1);
-    return t / 1613;
-}
-float hash12(float2 p) { return hcore(floor(p * 16 + 0.5)); }
+"#,
+    hash_sksl!(),
+    r#"float hash12(float2 p) { return hcore(floor(p * 16 + 0.5)); }
 float2 hash22(float2 p) {
     float2 q = floor(p * 16 + 0.5);
     return float2(hcore(q), hcore(q + float2(1373, 2741)));
@@ -122,7 +136,8 @@ float2 rot(float2 p, float deg) {
 float2 seeded(Mark m) { return u_seedo; }
 // Signed distance (local units, + inside) to coverage, antialiased over one pixel.
 float cover(float d, Mark m) { return saturate(d / m.px + 0.5); }
-"#;
+"#
+);
 
 /// The tail every main ends in, after the author's body so it can call `shade`. `u_base` set
 /// reads the base paint (or the previous stage) from `u_prev`, snapped to 8-bit levels first so a
@@ -141,7 +156,8 @@ half4 u_finish(Mark m, float2 c) {
     float3 rgb = o.rgb;
     if (u_last > 0.5) {
         // Exact per-pixel dither: Skia's CPU and GPU dithers differ, this one is bit-identical.
-        rgb += (hcore(floor(c)) - 0.5) / 255;
+        // It is anchored at `u_dito`, the device pixel of local (0,0), so a copy dithers alike.
+        rgb += (hcore(floor(c) - u_dito) - 0.5) / 255;
     }
     // Snap to 8-bit levels so the GPU's half-float color path cannot round across a tie.
     float4 lv = floor(float4(saturate(rgb) * k, k) * 255 + 0.5);
