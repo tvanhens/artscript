@@ -2,7 +2,7 @@
 
 Structure a piece:
 
-- One entry file per piece, under `art/<category>/<name>.art`. Put every output of the piece in its `@target` lines: `@target props/lamp.png 512x512` and `@target props/lamp.svg 512x512`.
+- One entry file per piece, under `art/<category>/<name>.art`. Put every output of the piece in its `@target` lines: `@target props/lamp.png 512x512` and `@target props/lamp.svg 512x512`. A scene that places the piece imports its defs with `use art/props/lamp`.
 - Declare a `palette <name>` with named `ramp`s at the top, and paint with `<name>.<ramp>`, `shade(c k)`, and `line(c)`. `p` is the manifest's default palette, never the one in your file, unless the target or an instance writes `palette:elite`, which rebinds `p` under it. Do not write raw hex colors in draws. A ramp gives you the shadow, light, and line colors.
 - Put each part in a `layer` named for what it is (`ground_shadow`, `body`, `face`, `details`), drawn back to front. A layer name and every `name:` in the file share one namespace, so a layer that holds `name:cap` needs another name, such as `cap_layer`.
 - Give the important shapes a `name:`. A name makes the part addressable for `copy @x`, `inside @x`, checks, and later edits.
