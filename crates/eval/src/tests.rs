@@ -4056,7 +4056,7 @@ fn at_takes_an_anchor_through_an_instance() {
 fn a_reference_to_a_later_sibling_resolves_and_paints_at_its_own_line() {
     let s = scene(concat!(
         "@target t.png 100x100\n",
-        "circle 2 at:@body.neck name:a\n",
+        "circle 2 at:@neck name:a\n",
         "group name:body at:30,20\n",
         "  rect 10x10\n",
         "  anchor neck 5,7\n",
@@ -4068,7 +4068,7 @@ fn a_reference_to_a_later_sibling_resolves_and_paints_at_its_own_line() {
     let s = scene(concat!(
         "@target t.png 100x100\n",
         "def rig\n",
-        "  circle 2 at:@body.neck name:dot\n",
+        "  circle 2 at:@neck name:dot\n",
         "  group name:body at:30,20\n",
         "    rect 10x10\n",
         "    anchor neck 5,7\n",
@@ -4081,8 +4081,8 @@ fn a_reference_to_a_later_sibling_resolves_and_paints_at_its_own_line() {
 fn a_chain_of_later_sibling_references_resolves() {
     let s = scene(concat!(
         "@target t.png 100x100\n",
-        "circle 2 at:@arm.hand name:palm\n",
-        "group name:arm at:@body.shoulder\n",
+        "circle 2 at:@hand name:palm\n",
+        "group name:arm at:@shoulder\n",
         "  rect 4x4\n",
         "  anchor hand 3,0\n",
         "group name:body at:30,20\n",
@@ -4101,7 +4101,7 @@ fn a_statement_that_waits_for_a_later_sibling_sees_only_the_lets_above_it() {
     let s = scene(concat!(
         "@target t.png 100x100\n",
         "let r = 2\n",
-        "circle r at:@body.neck name:a\n",
+        "circle r at:@neck name:a\n",
         "let r = 6\n",
         "circle r at:10,10 name:b\n",
         "group name:body at:30,20\n",
@@ -4118,10 +4118,10 @@ fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
     let ev = run_with(
         concat!(
             "@target t.png 100x100\n",
-            "group name:a at:@b.tip\n",
+            "group name:a at:@top\n",
             "  rect 10x10\n",
             "  anchor tip 5,0\n",
-            "group name:b at:@a.top\n",
+            "group name:b at:@tip\n",
             "  rect 10x10\n",
             "  anchor top 0,-5\n",
         ),
@@ -4140,15 +4140,41 @@ fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
 }
 
 #[test]
+fn a_hop_through_a_later_sibling_group_in_a_cycle_is_the_hop_error() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+            "group name:b at:@top\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    let d = errors[0];
+    assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
+    assert!(d.message.contains("hops through `b`"), "{d}");
+    assert_eq!(d.fix.as_deref(), Some("write @tip"), "{d}");
+}
+
+#[test]
 fn a_statement_that_waits_on_a_cycle_does_not_take_the_cycle_error() {
     let ev = run_with(
         concat!(
             "@target t.png 100x100\n",
-            "circle 2 at:@a.tip name:c\n",
-            "group name:a at:@b.tip\n",
+            "circle 2 at:@tip name:c\n",
+            "group name:a at:@top\n",
             "  rect 10x10\n",
             "  anchor tip 5,0\n",
-            "group name:b at:@a.top\n",
+            "group name:b at:@tip\n",
             "  rect 10x10\n",
             "  anchor top 0,-5\n",
         ),
