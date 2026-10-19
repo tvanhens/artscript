@@ -1387,3 +1387,41 @@ fn a_stamp_body_takes_what_a_def_body_takes() {
     assert!(messages.iter().any(|m| m.contains("a `stamp` body cannot hold a patch")), "{messages:?}");
     assert_eq!(errs.len(), 3, "{messages:?}");
 }
+
+#[test]
+fn a_def_alias_fixes_arguments_on_a_target_and_round_trips() {
+    let src = "def arm_l = hero_arm -1 tone:p.red.2 scale:-1,1\n";
+    let file = must_parse(src);
+    let DeclKind::Alias {
+        name,
+        target,
+        args,
+        named,
+    } = decl(&file)
+    else {
+        panic!("{file:?}");
+    };
+    assert_eq!((name.as_str(), target.as_str()), ("arm_l", "hero_arm"));
+    assert_eq!(args, &[neg(num(1.0))]);
+    assert_eq!(named.iter().map(|n| n.key.as_str()).collect::<Vec<_>>(), ["tone", "scale"]);
+    assert_eq!(format_source(src).unwrap(), src);
+    round_trip_source(src);
+    round_trip_source("def  arm_l   =  hero_arm   tone:-1\n");
+    let e = one_error("def arm_l = \n");
+    assert!(e.message.contains("expected a name"), "{e:?}");
+}
+
+#[test]
+fn a_def_alias_takes_no_block_and_fixes_no_name() {
+    let errs = errors("def arm_l = hero_arm tone:-1\n  circle 4\n");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert_eq!((errs[0].code.as_str(), errs[0].span.line), ("E0101", 2));
+    assert_eq!(errs[0].message, "a def alias has no body");
+    assert_eq!(
+        errs[0].fix.as_deref(),
+        Some("dedent the block, or write `def arm_l` with parameters and this body")
+    );
+    let e = one_error("def arm_l = hero_arm name:arm\n");
+    assert_eq!(e.message, "a def alias cannot fix `name:`");
+    assert_eq!(e.fix.as_deref(), Some("write `name:` on the instance"));
+}

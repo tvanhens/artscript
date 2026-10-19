@@ -108,6 +108,13 @@ pub enum DeclKind {
         params: Vec<Named>,
         body: Vec<DefItem>,
     },
+    /// `def arm_l = hero_arm tone:-1`: the def `target` with those arguments fixed. No body.
+    Alias {
+        name: String,
+        target: String,
+        args: Vec<Expr>,
+        named: Vec<Named>,
+    },
     /// `rule icon_grid subject:@self size:64` + body of checks.
     Rule {
         name: String,
