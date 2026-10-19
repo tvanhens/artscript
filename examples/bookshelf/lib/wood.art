@@ -1,0 +1,15 @@
+# Sawn wood: growth rings warped by slow noise, fine fibre streaks and open pores, all along `dir`.
+brush grain strength:1 ring:.06 dir:0
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float2 q = m.uv;
+    float warp = (fbm(float2(q.x / 260, q.y / 50) + o, 4) - .5) * 40;
+    float r = sin((q.y + warp) * ring * 6.2831);
+    float band = smoothstep(-.2, 1, r);
+    float fibre = fbm(float2(q.x / 70, q.y / 1.1) + o * 2, 3) - .5;
+    float pore = smoothstep(.72, .9, fbm(float2(q.x / 6, q.y / .7) + o * 3, 2));
+    float k = 1 - strength * (.07 * band + .16 * fibre + .06 * pore);
+    return float4(m.paint.rgb * k, cover(m.edge, m));
+  }
+  """

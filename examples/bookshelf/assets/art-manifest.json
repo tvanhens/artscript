@@ -1,0 +1,44 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "c65b621d69cbd4c5",
+      "line": 1,
+      "matrix": {},
+      "path": "bookcase.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/bookcase.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a1dfee4623ee0a03",
+      "line": 1,
+      "matrix": {},
+      "path": "narnia.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/narnia.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "3ccce085ce96da85",
+      "line": 2,
+      "matrix": {},
+      "path": "narnia_onion.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/narnia.art",
+      "status": "pass",
+      "target": "onion"
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,32 @@
+# Surface brushes for printed paperback covers and paper.
+
+# Coated cloth-grain cover stock. `dir:90` runs the frame down the spine, so `m.v` is the
+# position across it: the spine bows toward the light on the left and rolls off at both edges.
+brush cover strength:1 grain:.07 weave:.11 roll:.22 lean:-.35
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float v = m.v;
+    float bow = 1 - roll * pow(abs(v - lean * .4), 2.2) + .05 * (1 - abs(v - lean));
+    float2 q = m.p * 1.9;
+    float tex = sin(q.x * 2.1 + q.y * 1.3) * sin(q.y * 2.3 - q.x * 1.1);
+    float n = fbm(m.p / 2.2 + o, 3) - .5;
+    float big = vnoise(m.p / 60 + o) - .5;
+    float3 c = m.paint.rgb * (bow + strength * (weave * tex + grain * n * 2 + .08 * big));
+    return float4(c, cover(m.edge, m));
+  }
+  """
+
+# Scuffed print edges: specks of the white board show through near the outline.
+brush wear strength:.6 scale:1 paper:#efe9df
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float near = 1 - smoothstep(0, 5 * scale, m.edge);
+    float n = vnoise(m.p / (1.3 * scale) + o) * .6 + vnoise(m.p / (5 * scale) + o) * .4;
+    float speck = smoothstep(.7, .78, n + near * .3) * near * near * min(1, strength * 1.6);
+    float scatter = smoothstep(.985, .995, hash12(floor(m.p * 1.2) + o)) * .5 * strength;
+    float3 c = mix(m.paint.rgb, paper.rgb, clamp(speck + scatter, 0, 1));
+    return float4(c, cover(m.edge, m));
+  }
+  """

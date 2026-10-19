@@ -1,0 +1,63 @@
+@target bookcase.png 1600x1100 bg:#1b0f08
+
+use books { book }
+use wood { grain }
+
+let photo = "ref/narnia.jpg"
+
+palette case
+  color oak #8a5a2e
+  color oak_dark #4a2c14
+  color back #5c3a1e
+  color shade #070405
+  color warm #ffd9a0
+  color ink #1a1210
+  color gold #d8b46a
+  color type #efe6cf
+
+let cloth = [sample(photo 226,450 r:3) sample(photo 372,450 r:3) sample(photo 531,450 r:3) sample(photo 675,450 r:3) sample(photo 809,450 r:3) sample(photo 951,450 r:3) #6b1e1e #1d2b44 #c9b48a #2a2a2a #7a6a3a #3d5a4a #8c5a2b #e8dcc0 #4a2340 #b08a3e]
+let titles = ["MOBY-DICK" "MIDDLEMARCH" "BLEAK HOUSE" "EMMA" "DRACULA" "WALDEN" "DUBLINERS" "JANE EYRE" "PERSUASION" "THE ILIAD" "FRANKENSTEIN" "WAR AND PEACE" "BEOWULF" "LEAVES OF GRASS" "THE IDIOT" "CANDIDE" "HARD TIMES" "SILAS MARNER" "KIM" "NOSTROMO" "LORD JIM" "THE TIME MACHINE" "WUTHERING HEIGHTS" "DON QUIXOTE" "PARADISE LOST" "THE ODYSSEY" "ULYSSES" "LITTLE WOMEN"]
+let authors = ["MELVILLE" "ELIOT" "DICKENS" "AUSTEN" "STOKER" "THOREAU" "JOYCE" "BRONTË" "AUSTEN" "HOMER" "SHELLEY" "TOLSTOY" "ANON." "WHITMAN" "DOSTOEVSKY" "VOLTAIRE" "DICKENS" "ELIOT" "KIPLING" "CONRAD" "CONRAD" "WELLS" "BRONTË" "CERVANTES" "MILTON" "HOMER" "JOYCE" "ALCOTT"]
+
+let floors = [372 712 1052]
+let left = 70
+let n = 27
+let thick = [44 36 52 30]
+let ends = [1330 1240 1530]
+let stack = [[44 300 9 "BLEAK HOUSE" "DICKENS" 0] [36 270 13 "EMMA" "AUSTEN" 14] [52 284 0 "WAR AND PEACE" "TOLSTOY" 6] [30 240 4 "CANDIDE" "VOLTAIRE" 22]]
+
+layer carcass
+  rect 1600x1100 at:800,550 fill:case.back brush:grain(dir:0 strength:.8) name:back_panel
+  each r, y in floors
+    rect 1460x300 at:800,y-150 fill:grad(down fade(case.shade .75) fade(case.shade .2),.3 fade(case.shade 0),.6 fade(case.shade .25)) name:bay_light
+
+layer shelves
+  each r, y in floors
+    let stop = ends.{r}
+    let ws = [each i in 0..n -> rand(30 64)]
+    let xs = [each i in 0..n -> left+sum([each j in 0..i -> ws.{j}+2])+ws.{i}/2]
+    let last = max([each i in 0..n -> if xs.{i}+ws.{i}/2 < stop then xs.{i}+ws.{i}/2 else 0])
+    each i in 0..n
+      let pick = mod(i*5+r*9 len(titles))
+      let k = mod(i*5+r*3 len(cloth))
+      if xs.{i}+ws.{i}/2 < stop
+        book ws.{i} rand(215 290) tone:cloth.{k} ink:if k == 8 or k == 13 or k == 15 then case.ink else if mod(i 4) == 1 then case.gold else case.type title:titles.{pick} author:authors.{pick} bands:mod(i+r 3) == 0 label:mod(i+r 5) == 2 at:xs.{i},y name:vol
+    if r == 0
+      book 46 262 tone:cloth.6 title:"NORTH AND SOUTH" author:"GASKELL" bands:true pivot:-23,0 rot:-16 at:last-6+262*.2756+23,y name:leaner
+      book 38 236 tone:cloth.12 title:"EVELINA" author:"BURNEY" ink:case.ink at:1480,y name:straggler
+    if r == 1
+      each s, v in stack
+        book v.0 v.1 tone:cloth.{v.2} title:v.3 author:v.4 ink:if v.2 == 13 then case.ink else case.gold bands:true rot:-90 at:last+30+v.1+v.5,y-v.0/2-sum([each j in 0..s -> thick.{j}]) name:flat
+layer boards
+  each r, y in floors
+    rect 1600x34 at:800,y+17 fill:grad(down case.oak case.oak_dark) brush:grain(dir:0) name:board
+      rect 1600x3 at:0,-15.5 fill:case.warm a:.35 name:lip
+    rect 1460x26 at:800,y-13 fill:grad(down fade(case.shade 0) fade(case.shade .55)) name:contact
+  rect 70x1100 at:35,550 fill:grad(right case.oak_dark case.oak case.oak_dark) brush:grain(dir:90) name:upright_l
+  rect 70x1100 at:1565,550 fill:grad(right case.oak_dark case.oak case.oak_dark) brush:grain(dir:90) name:upright_r
+  rect 1600x40 at:800,20 fill:grad(down case.oak_dark case.oak) brush:grain(dir:0) name:crown
+
+layer light
+  rect 1600x1100 at:800,550 fill:radial(fade(case.warm .2) fade(case.warm 0),.45 fade(case.shade .7) at:.32,.2 r:1250) name:key
+  rect 1600x1100 at:800,550 fill:grad(down fade(case.shade 0),.5 fade(case.shade .35)) name:floor_falloff
+  fx grain .035 scale:1.1

@@ -1,0 +1,93 @@
+@target narnia.png 1280x853 viewport bg:#663713
+@target narnia_onion.png 1280x853 viewport bg:#663713 as:onion
+
+use paper { cover wear }
+use std/brushes { chip }
+
+let photo = "ref/narnia.jpg"
+
+palette shelf
+  color wall_lit #c09458
+  color wall #6e3c17
+  color wall_dark #3a1d0a
+  color steel #55524a
+  color gap #0b0509
+  color paper #efe9df
+  color page #c9c2b2
+  color type #efe6cf
+  color stack_page #cabacc
+  color stack_a #6a3a2a
+  color stack_b #7a3129
+  color stack_c #66532f
+  color stack_d #754b22
+  color cream #5a3a22
+  color ink #0e0b10
+  color gloss #3a4448
+  color foil #989b9a
+
+def spine w:100 top:100 probe:0 edge_probe:0 edge:0 side:0 title:-30,480 lewis:30,480 label:845 tsize:44 lsize:40
+  let tone = grad(down sample(photo probe,150 r:3) sample(photo probe,300 r:3) sample(photo probe,450 r:3) sample(photo probe,600 r:3) sample(photo probe,740 r:3))
+  let edge_tone = grad(down sample(photo edge_probe,200 r:1) sample(photo edge_probe,450 r:1) sample(photo edge_probe,700 r:1))
+  let h = 900-top
+  let mid = top+h/2
+  rect side,h at:-w/2-side/2,mid fill:shelf.gap name:side_face
+  rect w,h at:0,mid r:3,3,0,0 fill:tone brush:[cover(dir:90) wear] name:face
+    rect w,2.5 at:0,-h/2+1 fill:shelf.paper a:.75 jitter:.6,7 name:cap_edge
+    each k in 0..2
+      rect 1.4,h at:rand(-w*.4 w*.4),0 fill:shelf.paper a:rand(.06 .16) blur:1.2 name:crease
+    group fill:shelf.type name:type brush:chip(strength:.25 scale:.35)
+      text "THE CHRONICLES OF NARNIA" size:tsize font:"Times New Roman" rot:90 at:title.x,title.y-mid name:title
+      text "C. S. LEWIS" size:lsize font:"Times New Roman" track:4 rot:90 at:lewis.x,lewis.y-mid name:author
+      group at:(title.x+lewis.x)/2,lewis.y-mid name:rule
+        rect 1.6x150 at:0,-6 name:stem
+        poly 4 r:5 at:0,0 name:lozenge
+        circle 1.6 at:0,-88 name:dot_top
+        circle 1.6 at:0,88 name:dot_bottom
+      text "BOOK" size:24 font:"Times New Roman" track:2 at:0,label-mid name:label
+      rect w-20,1.4 at:0,label-mid-24 name:label_rule
+  rect edge,h at:w/2+edge/2,mid+2 fill:edge_tone brush:wear name:pages
+
+layer wall
+  rect 1280x853 at:640,426 fill:grad(down sample(photo 640,6 r:5),0 sample(photo 640,30 r:5),.035 sample(photo 640,60 r:5),.07 sample(photo 640,85 r:5),.1 sample(photo 60,240 r:6),.3 shelf.wall_dark,1) name:back_panel
+  rect 1280x853 at:640,426 fill:grad(right sample(photo 20,40 r:6) sample(photo 450,40 r:6) sample(photo 1000,30 r:6)) blend:soft_light a:.6 name:panel_falloff
+  ellipse 230,170 at:70,215 fill:radial(sample(photo 60,200 r:8) fade(sample(photo 60,200 r:8) 0)) name:lamp_glow
+  rect 74x270 at:165,125 fill:grad(right sample(photo 128,120 r:4) sample(photo 150,120 r:4) sample(photo 170,120 r:4) sample(photo 195,120 r:4)) a:.9 blur:6 name:bracket
+  fx blur 4
+
+layer stack
+  rect 190x136 at:85,333 fill:grad(right sample(photo 4,300 r:4) sample(photo 30,300 r:4) sample(photo 60,300 r:4) sample(photo 100,300 r:4) sample(photo 140,300 r:4) sample(photo 176,300 r:4)) brush:cover name:stack_1
+    rect 190x20 at:0,-58 fill:grad(right sample(photo 4,274 r:4) sample(photo 30,274 r:4) sample(photo 60,274 r:4) sample(photo 100,274 r:4) sample(photo 140,274 r:4) sample(photo 176,274 r:4)) blur:3
+  rect 190x138 at:85,479 fill:grad(right sample(photo 4,470 r:4) sample(photo 30,470 r:4) sample(photo 60,470 r:4) sample(photo 100,470 r:4) sample(photo 140,470 r:4) sample(photo 176,470 r:4)) brush:cover name:stack_2
+  rect 190x184 at:85,652 fill:grad(right sample(photo 4,650 r:4) sample(photo 30,650 r:4) sample(photo 60,650 r:4) sample(photo 100,650 r:4) sample(photo 140,650 r:4) sample(photo 176,650 r:4)) brush:cover name:stack_3
+  rect 190x100 at:85,804 fill:grad(right sample(photo 4,800 r:4) sample(photo 30,800 r:4) sample(photo 60,800 r:4) sample(photo 100,800 r:4) sample(photo 140,800 r:4) sample(photo 176,800 r:4)) brush:cover name:stack_4
+  fx blur 4
+
+layer back_right
+  rect 270x880 at:1150,420 fill:grad(right sample(photo 1030,60 r:6) sample(photo 1080,60 r:6) sample(photo 1130,60 r:6) sample(photo 1180,60 r:6) sample(photo 1230,60 r:6) sample(photo 1275,60 r:6)) name:cream_book
+    rect 270x200 at:0,-80 fill:grad(right sample(photo 1030,230 r:6) sample(photo 1080,230 r:6) sample(photo 1130,230 r:6) sample(photo 1180,230 r:6) sample(photo 1230,230 r:6) sample(photo 1275,230 r:6)) blur:40
+    rect 40x600 at:115,250 fill:grad(right sample(photo 1250,500 r:3) sample(photo 1260,500 r:3) sample(photo 1270,500 r:3) sample(photo 1278,500 r:3)) blur:4
+  fx blur 3
+
+layer gaps
+  rect 860x780 at:600,480 fill:grad(down fade(shelf.gap 0),0 fade(shelf.gap .9),.03 shelf.gap,.12) name:shadow_well
+
+layer spines
+  fx grain .035 scale:1.2
+  spine 97 top:108 edge:15 probe:226 edge_probe:290 title:-29,477 lewis:32,483 tsize:43.5 lsize:38.5 label:837 at:234,0 name:green
+  spine 110 top:108 edge:13 probe:372 edge_probe:426 title:-29,478 lewis:29,475 tsize:44.5 lsize:38.5 label:851 at:365,0 name:purple
+  spine 126 top:105 edge:8 probe:531 edge_probe:592 title:-34,478 lewis:27,475 tsize:44.5 lsize:38.5 label:851 at:525,0 name:orange
+  spine 110 top:96 edge:12 probe:675 edge_probe:728 title:-32,431 lewis:28,422 tsize:43 lsize:39.5 label:813 at:667,0 name:blue
+  spine 116 top:88 edge:6 side:12 probe:809 edge_probe:876 title:-26,469 lewis:34,475 tsize:43 lsize:38.5 label:851 at:815,0 name:red
+  spine 122 top:92 edge:0 side:13 probe:951 edge_probe:1017 title:-24,472 lewis:35,478 tsize:43 lsize:39.5 label:853 at:954,0 name:teal
+
+layer front_right
+  rect 222x620 at:1134,567 r:12,12,0,0 fill:grad(right sample(photo 1030,380 r:3) sample(photo 1060,380 r:3) sample(photo 1090,380 r:3) sample(photo 1110,380 r:3) sample(photo 1130,380 r:3) sample(photo 1160,380 r:3) sample(photo 1190,380 r:3) sample(photo 1220,380 r:3) sample(photo 1243,380 r:3)) name:peretti
+    ellipse 14,240 at:-22,-70 fill:sample(photo 1112,420 r:3) a:.7 blur:10 name:sheen
+    rect 222x620 fill:grad(down fade(shelf.ink 0),0 fade(shelf.ink 0),.25 fade(shelf.ink .85),.75) name:falloff
+    group fill:shelf.foil
+      text "FRANK" size:76 font:"Baskerville" track:28 rot:90 at:49,94 name:frank
+      text "PERETTI" size:76 font:"Baskerville" track:28 rot:90 at:-20,116 name:peretti_name
+
+if target == onion
+  layer reference
+    rect 1280x853 at:640,426 fill:image(photo) a:.5
