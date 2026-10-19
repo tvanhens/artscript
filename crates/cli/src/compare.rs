@@ -245,15 +245,12 @@ fn is_named(path: &str) -> bool {
     path.rsplit('.').find(|seg| !seg.chars().all(|c| c.is_ascii_digit())).is_some_and(|seg| !seg.contains('~'))
 }
 
-/// Every named node with its device-space box.
+/// Every innermost named node with its device-space box. A layer or an instance whose box holds
+/// named parts is left out: its box covers its parts, so it would outrank the part to edit.
 fn named_boxes(scene: &Scene, scale: f32) -> Vec<(String, Rect)> {
     fn walk(n: &Node, parent: &Matrix, out: &mut Vec<(String, Rect)>) {
         let world = *parent * n.transform;
-        if is_named(&n.path)
-            && let Some(local) = n.local_bounds()
-        {
-            out.push((n.path.clone(), world.map_rect(local).0));
-        }
+        let before = out.len();
         if let NodeKind::Shape(s) = &n.kind {
             for c in &s.stamps {
                 walk(c, &world, out);
@@ -264,6 +261,12 @@ fn named_boxes(scene: &Scene, scale: f32) -> Vec<(String, Rect)> {
             NodeKind::Group { .. } => 0,
         }) {
             walk(c, &world, out);
+        }
+        if is_named(&n.path)
+            && out.len() == before
+            && let Some(local) = n.local_bounds()
+        {
+            out.push((n.path.clone(), world.map_rect(local).0));
         }
     }
     let mut out = Vec::new();
