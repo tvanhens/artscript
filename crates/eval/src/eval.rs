@@ -839,7 +839,8 @@ fn blend_of(w: &str) -> Option<Blend> {
     })
 }
 
-/// The first shape color under a node, used for effect defaults.
+/// The first shape color under a node, used for effect defaults. A shape with no paint of its
+/// own, such as a dotted line, takes its stamps' color.
 pub(crate) fn first_fill(n: &Node) -> Option<Rgba> {
     match &n.kind {
         NodeKind::Shape(s) => s
@@ -847,7 +848,8 @@ pub(crate) fn first_fill(n: &Node) -> Option<Rgba> {
             .as_ref()
             .map(|f| &f.paint)
             .or(s.stroke.as_ref().map(|st| &st.paint))
-            .map(key_color),
+            .map(key_color)
+            .or_else(|| s.stamps.iter().find_map(first_fill)),
         NodeKind::Group { children, .. } => children.iter().find_map(first_fill),
     }
 }

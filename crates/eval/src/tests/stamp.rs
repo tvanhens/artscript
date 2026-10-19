@@ -379,3 +379,13 @@ curve 0,30 60,30 stamp:looped name:b
     assert_eq!(got, [("E0365".to_string(), 3), ("E0365".into(), 6), ("E0365".into(), 9)], "{}", show(&ds));
     assert!(ds[0].message.contains("`pressure`"), "{}", ds[0]);
 }
+
+#[test]
+fn an_unpainted_host_gives_its_effects_the_stamps_color() {
+    let s = ok("@target t.png 256x256\nuse garden { dots }\ncurve 20,128 236,128 stamp:dots(tint:#cc2222 r:4) name:d\n  fx glow 6\n");
+    let text = explain(&s, &BTreeSet::new());
+    let line = text.lines().find(|l| l.starts_with("d  ")).unwrap();
+    let group = ok("@target t.png 256x256\ngroup name:g\n  circle 4 at:40,60 fill:#cc2222 name:c\n  fx glow 6\n");
+    let glow = explain(&group, &BTreeSet::new()).lines().find(|l| l.starts_with("g  ")).unwrap().split("[fx glow 6 ").nth(1).unwrap()[..7].to_string();
+    assert!(line.contains(&format!("[fx glow 6 {glow}]")), "the dots color the glow as a group of them does: {line} vs {glow}");
+}
