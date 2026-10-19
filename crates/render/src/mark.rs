@@ -7,8 +7,7 @@
 
 use artscript_brush::Seeds;
 use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage, Stroke};
-use skia_safe::canvas::SaveLayerRec;
-use skia_safe::{BlendMode, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders};
+use skia_safe::{Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut, RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders};
 
 use crate::RenderError;
 use crate::draw::DrawCtx;
@@ -30,12 +29,15 @@ pub(crate) fn draw_area(
     ctx: &DrawCtx<'_>,
     origin: &str,
 ) -> Result<(), RenderError> {
-    paint_area(canvas, geometry, fill, ctx, origin, Ink::Paint)
+    let Some(frame) = Frame::of(canvas) else { return Ok(()) };
+    if let Some((dev, shader)) = area_shader(&frame, geometry, fill, ctx, origin, Ink::Paint)? {
+        frame.draw(canvas, dev, shader);
+    }
+    Ok(())
 }
 
-/// Runs `children` clipped to the coverage the fill's brush leaves. The coverage is composited
-/// over the whole children layer, so what the brush leaves transparent clears the children, and
-/// the layer is bounded by the rect the fill draws over.
+/// Runs `children` clipped to the coverage the fill's brush leaves. The clip is a clip shader,
+/// not a layer, so the children still blend with the fill and with what is below it.
 pub(crate) fn with_coverage(
     canvas: &Canvas,
     geometry: &Path,
@@ -45,46 +47,37 @@ pub(crate) fn with_coverage(
     children: impl FnOnce() -> Result<(), RenderError>,
 ) -> Result<(), RenderError> {
     let Some(frame) = Frame::of(canvas) else { return Ok(()) };
+    let Some((dev, shader)) = area_shader(&frame, geometry, fill, ctx, origin, Ink::Coverage)? else {
+        return Ok(());
+    };
     let ltd = canvas.local_to_device();
     canvas.save();
     canvas.reset_matrix();
-    canvas.clip_irect(area_rect(&frame, geometry, fill), ClipOp::Intersect);
+    canvas.clip_irect(dev, ClipOp::Intersect);
+    canvas.clip_shader(shader, ClipOp::Intersect);
     canvas.set_matrix(&ltd);
-    canvas.save_layer(&SaveLayerRec::default());
-    let drawn = children().and_then(|()| {
-        let mut keep = Paint::default();
-        keep.set_blend_mode(BlendMode::DstIn);
-        canvas.save_layer(&SaveLayerRec::default().paint(&keep));
-        let covered = paint_area(canvas, geometry, fill, ctx, origin, Ink::Coverage);
-        canvas.restore();
-        covered
-    });
-    canvas.restore();
+    let drawn = children();
     canvas.restore();
     drawn
 }
 
-fn area_rect(frame: &Frame, geometry: &Path, fill: &Fill) -> IRect {
-    let reach = fill.reach();
-    let local = geometry.compute_tight_bounds().with_outset((reach, reach));
-    frame.ltd.map_rect(local).0.round_out()
-}
-
-fn paint_area(
-    canvas: &Canvas,
+/// The fill's chain and the device rect it covers, or `None` when that rect is clipped away.
+fn area_shader(
+    frame: &Frame,
     geometry: &Path,
     fill: &Fill,
     ctx: &DrawCtx<'_>,
     origin: &str,
     ink: Ink,
-) -> Result<(), RenderError> {
-    let Some(frame) = Frame::of(canvas) else { return Ok(()) };
-    let rounded = area_rect(&frame, geometry, fill);
+) -> Result<Option<(IRect, Shader)>, RenderError> {
+    let reach = fill.reach();
+    let local = geometry.compute_tight_bounds().with_outset((reach, reach));
+    let rounded: IRect = frame.ltd.map_rect(local).0.round_out();
     // The field keeps a 2 px margin past the drawn area, so `edge` at its border is measured, not clamped.
     let field_rect = rounded.with_outset((2, 2));
-    let Some(dev) = IRect::intersect(&frame.clip, &rounded) else { return Ok(()) };
+    let Some(dev) = IRect::intersect(&frame.clip, &rounded) else { return Ok(None) };
     if dev.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let sdf = ctx
         .sdf
@@ -106,8 +99,7 @@ fn paint_area(
         },
         &|name| (name == "u_sdf").then(|| sdf.clone()),
     )?;
-    frame.draw(canvas, dev, shader);
-    Ok(())
+    Ok(Some((dev, shader)))
 }
 
 /// Each contour of the geometry is its own ribbon, built and drawn in strips of [`STRIP_ROWS`]

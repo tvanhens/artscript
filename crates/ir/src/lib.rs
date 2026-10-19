@@ -460,6 +460,12 @@ impl Shape {
         }
     }
 
+    /// The brushed fill whose coverage clips the children, or `None` when they clip to
+    /// [`Shape::clip`].
+    pub fn coverage_clip(&self) -> Option<&Fill> {
+        self.fill.as_ref().filter(|f| !f.marks.is_empty())
+    }
+
     /// Local units the brush marks may paint past the fill's geometry or the ribbon's edge. 0
     /// without marks.
     pub fn mark_reach(&self) -> f32 {

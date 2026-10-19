@@ -583,9 +583,9 @@ enum ChildClip<'a> {
 }
 
 fn child_clip(shape: &Shape) -> ChildClip<'_> {
-    match &shape.fill {
-        Some(fill) if !fill.marks.is_empty() => ChildClip::Coverage(fill),
-        _ => ChildClip::Path(shape.clip()),
+    match shape.coverage_clip() {
+        Some(fill) => ChildClip::Coverage(fill),
+        None => ChildClip::Path(shape.clip()),
     }
 }
 
