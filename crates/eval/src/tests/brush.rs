@@ -208,7 +208,7 @@ fn channels_sit_on_the_knots_or_spread_evenly_and_velocity_follows_knot_spacing(
 #[test]
 fn a_channel_key_without_a_brushed_stroke_is_e0362_at_the_key_and_an_inherited_one_does_nothing() {
     let d = first("@target t.png 100x100\nrect 40x40 at:50,50 fill:#ff0000 pressure:[.2 1] name:a\n", &[], "E0362");
-    assert!(d.message.contains("`pressure:` has no effect without a brushed stroke"), "{d}");
+    assert!(d.message.contains("`pressure:` has no effect because nothing on this node reads it"), "{d}");
     assert_eq!(col(&d), (2, 34), "{d}");
     let d = first("@target t.png 100x100\ncurve 0,0 50,20 90,0 stroke:#000000,2 tilt:.5 name:a\n", &[], "E0362");
     assert!(d.message.contains("`tilt:`"), "{d}");

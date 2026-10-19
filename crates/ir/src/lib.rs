@@ -679,7 +679,11 @@ fn shape_bounds(s: &Shape) -> Option<Rect> {
         r.outset((reach, reach));
     }
     let own = if r.is_empty() && s.geometry.is_empty() { None } else { Some(r) };
-    join(own, union_bounds(&s.stamps))
+    // Skia's `join` drops an empty rect, and an unstroked line is one, so cover both by hand.
+    match (own, union_bounds(&s.stamps)) {
+        (Some(a), Some(b)) => Some(Rect::new(a.left.min(b.left), a.top.min(b.top), a.right.max(b.right), a.bottom.max(b.bottom))),
+        (a, b) => a.or(b),
+    }
 }
 
 /// Geometry joined with the outline its stroke fills, at Skia's default miter limit as render

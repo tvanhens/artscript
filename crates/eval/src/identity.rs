@@ -985,7 +985,7 @@ impl ModuleIds {
         );
         ordinals(&file, &top, &mut anon, &mut tags);
         for d in parsed.decls() {
-            if let DeclKind::Def { name, body, .. } = &d.kind {
+            if let DeclKind::Def { name, body, .. } | DeclKind::Stamp { name, body, .. } = &d.kind {
                 let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
                 let r = declare(
                     &file,

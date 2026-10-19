@@ -24,7 +24,7 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
     })
 }
 
-fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
+pub(crate) fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
         Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
@@ -343,6 +343,22 @@ pub fn unknown_target(
         });
     }
     out
+}
+
+/// Every identifier, function and verb a def or stamp body mentions, anywhere in it.
+pub(crate) fn body_idents(body: &[DefItem]) -> BTreeSet<String> {
+    let mut exprs = Vec::new();
+    let mut scenes = Vec::new();
+    body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut exprs));
+    for s in body.iter().filter_map(DefItem::scene) {
+        walk_scene(s, &mut |c| {
+            scene_line_and_direct_fx_mask_patch_exprs(c, &mut exprs);
+            scenes.push(c);
+        });
+    }
+    let mut out = HashSet::new();
+    idents(exprs, &scenes, &mut out);
+    out.into_iter().collect()
 }
 
 fn idents(exprs: Exprs<'_>, scenes: &[&Scene], out: &mut HashSet<String>) {
@@ -694,20 +710,22 @@ pub fn hidden_child(
                 }
             }
             let world = parent * n.transform;
-            let clip = match &n.kind {
-                NodeKind::Shape(s) => {
-                    let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
-                    self.clips.push((r, n.path.as_str()));
-                    true
+            let NodeKind::Shape(s) = &n.kind else {
+                for c in n.descendants() {
+                    self.node(c, world, site);
                 }
-                NodeKind::Group { .. } => false,
+                return;
             };
-            for c in n.descendants() {
+            // Stamps are the shape's ink and spill past it; only the children are clipped.
+            for c in &s.stamps {
                 self.node(c, world, site);
             }
-            if clip {
-                self.clips.pop();
+            let r = world.map_rect(s.geometry.compute_tight_bounds()).0;
+            self.clips.push((r, n.path.as_str()));
+            for c in &s.children {
+                self.node(c, world, site);
             }
+            self.clips.pop();
         }
     }
     let mut paths = HashMap::new();

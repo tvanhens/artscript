@@ -12,7 +12,7 @@ use artscript_brush::{
 };
 use artscript_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
 use artscript_syntax::ast::{Expr, Named, SkslBlock, Span};
-use skia_safe::ContourMeasureIter;
+use skia_safe::{ContourMeasure, ContourMeasureIter};
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
 use crate::geom::P;
@@ -679,49 +679,104 @@ fn velocity(spans: &[Run<'_>]) -> Vec<Line> {
         .collect()
 }
 
-/// The ribbon a brushed stroke along `path` becomes. `knots` holds the authored points of each
-/// contour in path order: a curve's points, or a path's on-curve vertices. `widths` and each
-/// channel list sit on the knots when they have one value per knot and spread evenly otherwise.
-pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), ch: &Channels, marks: Vec<RibbonMark>) -> Ribbon {
-    let measured: Vec<(f64, bool)> = ContourMeasureIter::new(path, false, None)
-        .map(|m| (f64::from(m.length()), m.is_closed()))
-        .collect();
-    let aligned = knots.len() == measured.len();
-    let mut start = 0.0;
-    let spans: Vec<Run<'_>> = measured
-        .iter()
-        .enumerate()
-        .map(|(i, &(len, closed))| {
-            let sp = Run { start, len, closed, knots: if aligned { &knots[i] } else { &[] } };
-            start += len;
-            sp
-        })
-        .collect();
-    let width = lines(widths, 1.0, &spans);
-    let channel = |key: &str, default: f64| lines(ch.get(key).unwrap_or(&[]), default, &spans);
-    let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
-    let velocity = velocity(&spans);
-    let contours = spans
-        .iter()
-        .enumerate()
-        .map(|(i, sp)| {
-            let all = [&width[i], &pressure[i], &angle[i], &tilt[i], &velocity[i]];
-            let mut at: Vec<f64> = all.iter().flat_map(|c| c.at.iter().copied()).chain([0.0, sp.len]).collect();
-            at.sort_by(f64::total_cmp);
-            at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-            let knots = at
-                .iter()
-                .map(|&s| s.clamp(0.0, sp.len))
-                .map(|s| Knot {
-                    s: s as f32,
-                    half_width: (width[i].at(s) / 2.0) as f32,
-                    pressure: pressure[i].at(s) as f32,
-                    angle: angle[i].at(s) as f32,
-                    tilt: tilt[i].at(s) as f32,
-                    velocity: velocity[i].at(s) as f32,
-                })
-                .collect();
-            RibbonContour { len: sp.len as f32, closed: sp.closed, knots }
+/// The spine of a stamped or brushed stroke: the geometry's contours with their measured lengths
+/// and the channel lines placed on them. `knots` holds the authored points of each contour in
+/// path order: a curve's points, or a path's on-curve vertices. `widths` and each channel list
+/// sit on the knots when they have one value per knot and spread evenly otherwise. Built once
+/// per node; the ribbon and the stamp placer both read it, so channel placement has one owner.
+pub struct Spine<'a> {
+    measures: Vec<ContourMeasure>,
+    runs: Vec<Run<'a>>,
+    width: Vec<Line>,
+    pressure: Vec<Line>,
+    angle: Vec<Line>,
+    tilt: Vec<Line>,
+    velocity: Vec<Line>,
+}
+
+impl<'a> Spine<'a> {
+    pub fn new(path: &Path, knots: &'a [Vec<P>], widths: &[f64], ch: &Channels) -> Spine<'a> {
+        let measures: Vec<ContourMeasure> = ContourMeasureIter::new(path, false, None).collect();
+        let aligned = knots.len() == measures.len();
+        let mut start = 0.0;
+        let runs: Vec<Run<'a>> = measures
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let len = f64::from(m.length());
+                let sp = Run { start, len, closed: m.is_closed(), knots: if aligned { &knots[i] } else { &[] } };
+                start += len;
+                sp
+            })
+            .collect();
+        let channel = |key: &str, default: f64| lines(ch.get(key).unwrap_or(&[]), default, &runs);
+        let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
+        Spine {
+            width: lines(widths, 1.0, &runs),
+            pressure,
+            angle,
+            tilt,
+            velocity: velocity(&runs),
+            measures,
+            runs,
+        }
+    }
+
+    /// Contours with a length. Skia drops a zero-length contour, so a dot has none.
+    pub fn contours(&self) -> usize {
+        self.runs.len()
+    }
+
+    pub fn len(&self, contour: usize) -> f64 {
+        self.runs[contour].len
+    }
+
+    pub fn closed(&self, contour: usize) -> bool {
+        self.runs[contour].closed
+    }
+
+    /// The channels at arc length `s` of `contour`. `half_width` is before the taper.
+    pub fn at(&self, contour: usize, s: f64) -> Knot {
+        let i = contour;
+        Knot {
+            s: s as f32,
+            half_width: (self.width[i].at(s) / 2.0) as f32,
+            pressure: self.pressure[i].at(s) as f32,
+            angle: self.angle[i].at(s) as f32,
+            tilt: self.tilt[i].at(s) as f32,
+            velocity: self.velocity[i].at(s) as f32,
+        }
+    }
+
+    /// The point at arc length `s` of `contour` and the tangent there, in degrees of the
+    /// geometry's frame (y down, 0 along +x).
+    pub fn pos_tan(&self, contour: usize, s: f64) -> (P, f64) {
+        let s = s.clamp(0.0, self.runs[contour].len) as f32;
+        let (p, t) = self.measures[contour].pos_tan(s).unwrap_or_default();
+        ((f64::from(p.x), f64::from(p.y)), f64::from(t.y).atan2(f64::from(t.x)).to_degrees())
+    }
+
+    /// Every arc length at which a channel line of `contour` bends, with 0 and `len`, rising
+    /// and without near duplicates.
+    fn bends(&self, contour: usize) -> Vec<f64> {
+        let i = contour;
+        let all = [&self.width[i], &self.pressure[i], &self.angle[i], &self.tilt[i], &self.velocity[i]];
+        let len = self.runs[i].len;
+        let mut at: Vec<f64> = all.iter().flat_map(|c| c.at.iter().copied()).chain([0.0, len]).collect();
+        at.sort_by(f64::total_cmp);
+        at.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+        at.iter().map(|&s| s.clamp(0.0, len)).collect()
+    }
+}
+
+/// The ribbon a brushed stroke along `spine` becomes: one contour of knots per contour of the
+/// spine, with a knot wherever a channel line bends.
+pub fn ribbon(spine: &Spine<'_>, taper: (f64, f64), marks: Vec<RibbonMark>) -> Ribbon {
+    let contours = (0..spine.contours())
+        .map(|i| RibbonContour {
+            len: spine.len(i) as f32,
+            closed: spine.closed(i),
+            knots: spine.bends(i).into_iter().map(|s| spine.at(i, s)).collect(),
         })
         .collect();
     Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32], ink: None }

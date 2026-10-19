@@ -6204,3 +6204,4 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
 }
 
 mod brush;
+mod stamp;
