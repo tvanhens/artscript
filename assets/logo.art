@@ -1,12 +1,13 @@
-@target logo-dark.png 920x740 bg:#0d1312 as:dark
-@target logo-paper.png 920x740 bg:#f4f2ec as:paper
+@target logo-dark.png 920x740 as:dark
+@target logo-paper.png 920x740 as:paper
 @target logo-mono.png 920x740 as:mono
 @target avatar-dark.png 512x512 bg:#0d1312 as:avatar_dark
 @target avatar-paper.png 512x512 bg:#f4f2ec as:avatar_paper
 @target avatar-mono.png 512x512 as:avatar_mono
 
 # The artscript logo: a pebble with a coral corner mark above its right shoulder, over the
-# lowercase wordmark. The `logo` targets draw the lockup. The `avatar` targets draw the mark alone.
+# lowercase wordmark. The `logo` targets draw the lockup with no background, for a page in that
+# theme. The `avatar` targets draw the mark alone on a tile.
 
 palette brand
   color ink #0d1312
