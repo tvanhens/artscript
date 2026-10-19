@@ -80,6 +80,25 @@ const MEASURES: &[&str] = &[
 const NODE_KEYS: &[&str] = &[
     "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
 ];
+
+/// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
+/// shapes, so `fill:` and `blur:` have no single shape to land on; the fix names what recolors or
+/// blurs the whole instance.
+fn no_parameter(target: &str, def: &str, key: &str, params: &[impl AsRef<str>]) -> Fail {
+    let params: Vec<&str> = params.iter().map(AsRef::as_ref).collect();
+    let mut f = fail("E0321", format!("`{target}` has no parameter `{key}`"));
+    if !params.is_empty() {
+        f = f.note(format!("parameters: {}", params.join(", ")));
+    }
+    match key {
+        "fill" | "stroke" => f.fix(format!(
+            "recolor the instance with `palette:`, or give `{def}` a color parameter"
+        )),
+        "blur" => f.fix("blur the instance with an `fx blur N` line under it"),
+        _ => f.fix("use one of the listed parameters"),
+    }
+}
+
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 const PAINT_KEYS: &[&str] = &[
@@ -2506,11 +2525,7 @@ impl<'a> Evaluator<'a> {
                 && n.key != "palette"
                 && !NODE_KEYS.contains(&n.key.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{target}` has no parameter `{}`", n.key))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(target, &comp.name, &n.key, &open));
             }
             own.push(Fixed {
                 key: n.key.clone(),
@@ -2558,11 +2573,7 @@ impl<'a> Evaluator<'a> {
                 && k != "palette"
                 && !NODE_KEYS.contains(&k.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", alias.name))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&alias.name, &alias.comp.name, k, &open));
             }
         }
         let pos = std::mem::take(&mut a.pos);
@@ -3556,11 +3567,7 @@ impl<'a> Evaluator<'a> {
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", comp.name))
-                        .note(format!("parameters: {}", param_names.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&comp.name, &comp.name, k, &param_names));
             }
         }
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
