@@ -8,17 +8,43 @@ use artscript_ir::{Effect, EffectInput, EffectOp, Point, Sides};
 use artscript_syntax::ast::{Expr, FxLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
-use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, unknown_key};
 use crate::identity::{self, Key};
 use crate::scope::{FinishDef, Module};
 use crate::value::{Value, num};
 
-const EFFECTS: &[&str] = &["blur", "shadow", "inner", "glow", "rim", "adjust", "outline", "grain", "merge"];
+/// Each built-in effect and the keys it reads, beside `of:` and `as:`.
+const EFFECTS: &[(&str, &[&str])] = &[
+    ("blur", &["blur"]),
+    ("shadow", &["blur", "color", "a"]),
+    ("inner", &["blur", "color", "a"]),
+    ("glow", &["strength", "color", "a"]),
+    ("rim", &["dir", "color", "a"]),
+    ("adjust", &["hue", "sat", "light"]),
+    ("outline", &["sides", "color", "a"]),
+    ("grain", &["scale", "seed"]),
+    ("merge", &["a"]),
+];
 /// Parsed but not implemented in v0.1.
 const PHASE2: &[&str] = &["bevel", "displace", "halftone", "posterize"];
 
+fn effect_keys(op: &str) -> Option<&'static [&'static str]> {
+    EFFECTS.iter().find(|(name, _)| *name == op).map(|(_, keys)| *keys)
+}
+
 fn is_effect_name(s: &str) -> bool {
-    EFFECTS.contains(&s) || PHASE2.contains(&s)
+    effect_keys(s).is_some() || PHASE2.contains(&s)
+}
+
+/// One E0321 for each key on `line` that its effect does not read. `extra` are the keys the
+/// line's place allows beside the effect's own.
+fn unknown_keys(line: &FxLine, extra: &[&'static str]) -> Vec<Fail> {
+    let Some(own) = effect_keys(&line.op) else {
+        return Vec::new();
+    };
+    let keys: Vec<&str> = own.iter().chain(extra).copied().collect();
+    let verb = format!("fx {}", line.op);
+    line.named.iter().filter(|n| !keys.contains(&n.key.as_str())).map(|n| unknown_key(&verb, &keys, &n.key)).collect()
 }
 
 const SIDE_WORDS: [&str; 4] = ["top", "right", "bottom", "left"];
@@ -52,7 +78,8 @@ fn sides(named: &[Named]) -> R<Sides> {
 }
 
 fn effects_note() -> String {
-    format!("effects: {}", EFFECTS.join(" "))
+    let names: Vec<&str> = EFFECTS.iter().map(|(name, _)| *name).collect();
+    format!("effects: {}", names.join(" "))
 }
 
 fn phase2(op: &str) -> Fail {
@@ -65,7 +92,7 @@ fn check_finish_line(module: &Module, finish: &str, line: &FxLine) -> R<()> {
     if PHASE2.contains(&op) {
         return Err(phase2(op));
     }
-    if !EFFECTS.contains(&op) {
+    if effect_keys(op).is_none() {
         let f = fail("E0338", format!("`fx {op}` in a finish must be a built-in effect")).note(effects_note());
         return Err(if module.finishes.borrow().contains_key(op) || op == finish {
             f.note(format!("`{op}` is a finish, and finishes do not nest")).fix(format!("write `fx {op}` under the node beside `fx {finish}`"))
@@ -99,10 +126,15 @@ impl Evaluator<'_> {
             let finish = if is_effect_name(op) { None } else { site.scope.module.finishes.borrow().get(op).cloned() };
             match finish {
                 Some(def) => self.expand(&def, site, &file, fill, key, &mut out),
-                None => match self.builtin(site.line, site.scope, &file, fill, key) {
-                    Ok(e) => out.push(e),
-                    Err(e) => self.report(e, &file, site.line.span, &path),
-                },
+                None => {
+                    for f in unknown_keys(site.line, &["of", "as"]) {
+                        self.report(f, &file, site.line.span, &path);
+                    }
+                    match self.builtin(site.line, site.scope, &file, fill, key) {
+                        Ok(e) => out.push(e),
+                        Err(e) => self.report(e, &file, site.line.span, &path),
+                    }
+                }
             }
         }
         out
@@ -165,7 +197,12 @@ impl Evaluator<'_> {
         let mut lines = Vec::new();
         for line in body {
             match check_finish_line(module, name, line) {
-                Ok(()) => lines.push(line.clone()),
+                Ok(()) => {
+                    for f in unknown_keys(line, &[]) {
+                        self.report(f, &module.path, line.span, "");
+                    }
+                    lines.push(line.clone());
+                }
                 Err(f) => self.report(f, &module.path, line.span, ""),
             }
         }
