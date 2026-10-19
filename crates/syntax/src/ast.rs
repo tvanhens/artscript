@@ -321,12 +321,34 @@ pub enum Mask {
 }
 
 /// `fx rim 4 dir:1,1 color:p.rim a:.5 as:soft`. `as:` and `of:` stay in `named`.
-/// The name is a built-in effect, or a finish.
+/// The name is a built-in effect, or a finish. Only `fx outline` takes a `mask` line
+/// indented under it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fx {
     pub op: String,
     pub args: Vec<Expr>,
     pub named: Vec<Named>,
+    pub span: Span,
+    pub mask: Option<MaskLine>,
+}
+
+impl Fx {
+    /// The scenes of a `mask` block under the line. Empty for no mask or a `mask <value>`.
+    pub fn mask_block(&self) -> &[Scene] {
+        match &self.mask {
+            Some(MaskLine {
+                mask: Mask::Block(body),
+                ..
+            }) => body,
+            _ => &[],
+        }
+    }
+}
+
+/// A `mask` line with its own span, as written under an `fx` line.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MaskLine {
+    pub mask: Mask,
     pub span: Span,
 }
 

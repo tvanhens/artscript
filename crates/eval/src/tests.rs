@@ -5955,6 +5955,155 @@ fn outline_sides_rejects_what_is_not_a_side_word() {
     }
 }
 
+fn outline_mask<'a>(s: &'a Scene, path: &str) -> Option<&'a artscript_ir::Mask> {
+    node(s, path)
+        .effects
+        .iter()
+        .find_map(|e| match &e.op {
+            EffectOp::Outline { mask, .. } => Some(mask.as_deref()),
+            _ => None,
+        })
+        .expect("outline")
+}
+
+#[test]
+fn fx_outline_takes_a_mask_written_like_a_node_mask_with_feather_on_the_mask() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\ncircle 8 name:m\nrect 20x20 name:bare\n  fx outline 3\nrect 20x20 name:block\n  fx glow 2\n  fx outline 3 feather:2\n    mask\n      rect 4x4\n      circle 2\nrect 20x20 name:value\n  fx outline 3\n    mask @m\nrect 20x20 name:field\n  fx outline 3\n    mask simplex(8) > .5\n",
+    );
+    assert!(outline_mask(&s, "bare").is_none());
+    let block = outline_mask(&s, "block").unwrap();
+    assert_eq!(block.feather, 2.0);
+    assert!(!block.invert && !block.luminance);
+    match &block.source {
+        MaskSource::Nodes(n) => {
+            assert_eq!(n.len(), 2);
+            assert_eq!(n[0].path, "block.fx~2.mask~1.rect~1");
+        }
+        other => panic!("{other:?}"),
+    }
+    let value = outline_mask(&s, "value").unwrap();
+    assert_eq!(value.feather, 0.0);
+    assert!(matches!(&value.source, MaskSource::Nodes(n) if n.len() == 1));
+    let field = outline_mask(&s, "field").unwrap();
+    assert!(
+        matches!(&field.source, MaskSource::Field { threshold: Some(t), .. } if (t - 0.5).abs() < 1e-6)
+    );
+}
+
+#[test]
+fn an_outline_mask_sits_in_the_node_frame_like_its_node_mask() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\nrect 20x20 at:50,50 rot:30 name:c\n  mask\n    circle 4\n  fx outline 3\n    mask\n      circle 4\n",
+    );
+    let c = node(&s, "c");
+    let MaskSource::Nodes(own) = &c.mask.as_ref().unwrap().source else {
+        panic!("node mask")
+    };
+    let MaskSource::Nodes(ring) = &outline_mask(&s, "c").unwrap().source else {
+        panic!("outline mask")
+    };
+    assert_eq!(own[0].bounds(), ring[0].bounds());
+    assert_eq!(own[0].transform, ring[0].transform);
+}
+
+#[test]
+fn feather_on_fx_outline_needs_a_mask() {
+    let ev = run_with("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 feather:2\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 3, "{d}");
+    assert!(d.message.contains("feather"), "{d}");
+    let ev = run_with("@target t.png 100x100\nrect 20x20 name:c\n  fx glow 3 feather:2\n", &[]);
+    assert_eq!(diag(&ev, "E0321").span.line, 3);
+}
+
+#[test]
+fn a_bad_outline_mask_is_reported_at_the_mask_line() {
+    let ev = run_with("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3\n    mask 4\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 4, "{d}");
+    assert!(outline_mask(ev.scene.as_ref().unwrap(), "c").is_none());
+}
+
+#[test]
+fn an_outline_field_mask_seeds_from_its_own_site() {
+    use artscript_ir::{Field, MaskSource};
+    let src = "@target t.png 100x100\nrect 20x20 name:a\n  rect 2x2\n  fx outline 3\n    mask simplex(8) > .5\nrect 20x20 name:b\n  fx outline 3\n    mask simplex(8) > .5\n";
+    let seed = |s: &Scene, p: &str| match &outline_mask(s, p).unwrap().source {
+        MaskSource::Field { field: Field::Noise { seed, .. }, .. } => *seed,
+        other => panic!("{other:?}"),
+    };
+    let once = scene(src);
+    let twice = scene(src);
+    assert_eq!(seed(&once, "a"), seed(&twice, "a"));
+    assert_ne!(seed(&once, "a"), seed(&once, "b"));
+}
+
+#[test]
+fn explain_lists_an_outline_mask_and_its_nodes() {
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 8 name:body\n  fx outline 2 feather:3\n    mask\n      circle 3 name:keep\n",
+        &[],
+    );
+    let text = crate::explain(ev.scene.as_ref().unwrap(), &ev.seeded);
+    assert!(text.contains("[fx outline 2 #201802 mask feather:3]"), "{text}");
+    assert!(text.contains("\n  keep  shape"), "{text}");
+}
+
+#[test]
+fn a_def_fx_outline_mask_names_and_numbers_its_nodes() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0 name:keep\nbadge at:30,50 name:b\n",
+    );
+    let MaskSource::Nodes(n) = &outline_mask(&s, "b").unwrap().source else {
+        panic!("outline mask")
+    };
+    let paths: Vec<&str> = n.iter().map(|n| n.path.as_str()).collect();
+    assert_eq!(paths, ["b.fx~1.mask~1.rect~1", "b.fx~1.mask~1.rect~2", "b.keep"]);
+    assert_ne!(at(&n[0]), at(&n[1]));
+}
+
+#[test]
+fn an_fx_line_is_numbered_by_its_source_position_whatever_an_earlier_branch_does() {
+    use artscript_ir::MaskSource;
+    let src = |guard: &str| {
+        format!(
+            "@target t.png 100x100\ncircle 20 at:50,50 name:c\n  if {guard}\n    fx glow 2\n  fx outline 3\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n"
+        )
+    };
+    let rect = |s: &Scene| match &outline_mask(s, "c").unwrap().source {
+        MaskSource::Nodes(n) => (n[0].path.clone(), at(&n[0])),
+        other => panic!("{other:?}"),
+    };
+    let taken = scene(&src("true"));
+    let skipped = scene(&src("false"));
+    assert_eq!(rect(&taken).0, "c.fx~2.mask~1.rect~1");
+    assert_eq!(rect(&taken), rect(&skipped));
+}
+
+#[test]
+fn a_call_block_fx_line_counts_after_the_def_s_own_lines() {
+    use artscript_ir::MaskSource;
+    let s = scene(
+        "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4\nbadge at:30,50 name:b\n  fx outline 3\n    mask\n      circle 2\n",
+    );
+    let masks: Vec<String> = node(&s, "b")
+        .effects
+        .iter()
+        .filter_map(|e| match &e.op {
+            EffectOp::Outline { mask: Some(m), .. } => match &m.source {
+                MaskSource::Nodes(n) => Some(n[0].path.clone()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .collect();
+    assert_eq!(masks, ["b.fx~1.mask~1.rect~1", "b.fx~2.mask~1.circle~1"]);
+}
+
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
     match shape(s, path).fill.as_ref().map(|f| &f.paint) {
         Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,

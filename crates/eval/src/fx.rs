@@ -4,8 +4,8 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Point, Sides};
-use artscript_syntax::ast::{Expr, FxLine, Named, Span};
+use artscript_ir::{Effect, EffectInput, EffectOp, Matrix, Point, Rect, Sides};
+use artscript_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, unknown_key};
@@ -21,7 +21,7 @@ const EFFECTS: &[(&str, &[&str])] = &[
     ("glow", &["strength", "color", "a"]),
     ("rim", &["dir", "color", "a"]),
     ("adjust", &["hue", "sat", "light"]),
-    ("outline", &["sides", "color", "a"]),
+    ("outline", &["sides", "color", "a", "feather"]),
     ("grain", &["scale", "seed"]),
     ("merge", &["a"]),
 ];
@@ -107,10 +107,15 @@ fn check_finish_line(module: &Module, finish: &str, line: &FxLine) -> R<()> {
     Ok(())
 }
 
-/// One `fx` line as written under a node, with the scope it was written in.
+/// One `fx` line as written under a node, with the scope it was written in. `ordinal` is the
+/// line's number among every `fx` line its owner has, from `fx_ordinals`. `frame` and `world`
+/// are the node's, where a mask under the line evaluates, as the node's own mask does.
 pub(crate) struct FxSite<'s> {
     pub line: &'s FxLine,
     pub scope: &'s Scope,
+    pub ordinal: u32,
+    pub frame: Rect,
+    pub world: Matrix,
 }
 
 impl Evaluator<'_> {
@@ -130,14 +135,34 @@ impl Evaluator<'_> {
                     for f in unknown_keys(site.line, &["of", "as"]) {
                         self.report(f, &file, site.line.span, &path);
                     }
-                    match self.builtin(site.line, site.scope, &file, fill, key) {
-                        Ok(e) => out.push(e),
-                        Err(e) => self.report(e, &file, site.line.span, &path),
+                    let mut effect = match self.builtin(site.line, site.scope, &file, fill, key) {
+                        Ok(e) => e,
+                        Err(e) => {
+                            self.report(e, &file, site.line.span, &path);
+                            continue;
+                        }
+                    };
+                    if let (Some(line), EffectOp::Outline { mask, .. }) = (&site.line.mask, &mut effect.op) {
+                        match self.outline_mask(line, site, &file, &key.fx_mask(site.ordinal)) {
+                            Ok(m) => *mask = m.map(Box::new),
+                            Err(e) => self.report(e, &file, line.span, &path),
+                        }
                     }
+                    out.push(effect);
                 }
             }
         }
         out
+    }
+
+    /// The mask under an `fx outline` line, in the node's frame like its node mask, with the
+    /// line's `feather:` on it. Its fields seed from the mask's own key, so the ring breaks up
+    /// the same way on every build and differently from any other mask.
+    fn outline_mask(&mut self, line: &MaskLine, site: &FxSite<'_>, file: &str, mask_key: &Key) -> R<Option<artscript_ir::Mask>> {
+        let feather = self.eval_args(&[], &site.line.named, site.scope, 0)?.num("feather").unwrap_or(0.0) as f32;
+        self.begin_seed(file, mask_key.clone());
+        let origin = format!("{file}:{}:{}", line.span.line, line.span.col);
+        self.lower_mask(&line.mask, feather, site.scope, site.frame, site.world, mask_key, &origin)
     }
 
     /// The finish's lines, in order, evaluated in its module with its params bound. The params'
@@ -277,7 +302,13 @@ impl Evaluator<'_> {
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)? },
+            "outline" => {
+                if line.mask.is_none() && a.get("feather").is_some() {
+                    return Err(fail("E0320", "`feather:` on `fx outline` softens the edge of its mask, and this line has none")
+                        .fix("indent a `mask` line under the `fx outline` line, or remove `feather:`"));
+                }
+                EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)?, mask: None }
+            }
             "grain" => {
                 let explicit = a.seed()?;
                 EffectOp::Grain {

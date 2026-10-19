@@ -481,6 +481,38 @@ pub(crate) fn in_source_order<'a>(
     all
 }
 
+/// The number of every `fx` line a draw, def, or call block owns, by the line's span: its
+/// direct lines and those under its `if` arms, taken or not, counted from 1 in source order.
+/// A mask under the line keys on this number, so a branch skipped this frame moves no other
+/// line's mask.
+pub(crate) fn fx_ordinals<'a>(
+    direct: impl Iterator<Item = &'a ast::Fx>,
+    scenes: impl Iterator<Item = &'a Scene>,
+) -> BTreeMap<Span, u32> {
+    fn under_ifs<'a>(scenes: impl Iterator<Item = &'a Scene>, out: &mut Vec<Span>) {
+        for s in scenes {
+            match &s.kind {
+                SceneKind::If {
+                    then, otherwise, ..
+                } => {
+                    under_ifs(then.iter(), out);
+                    under_ifs(otherwise.iter(), out);
+                }
+                SceneKind::Fx(f) => out.push(f.span),
+                _ => {}
+            }
+        }
+    }
+    let mut spans: Vec<Span> = direct.map(|f| f.span).collect();
+    under_ifs(scenes, &mut spans);
+    spans.sort();
+    spans
+        .into_iter()
+        .enumerate()
+        .map(|(i, span)| (span, i as u32 + 1))
+        .collect()
+}
+
 fn holds_play(scenes: &[Scene]) -> bool {
     scenes.iter().any(|st| match &st.kind {
         SceneKind::Play { name, .. } => name.is_some(),
@@ -2289,9 +2321,10 @@ impl<'a> Evaluator<'a> {
             self.report_operand_fx(&of, &branch_fx, sc);
         }
         let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
+        let ordinals = fx_ordinals(body.fx(), body.scenes());
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope })
+            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
@@ -2587,14 +2620,34 @@ impl<'a> Evaluator<'a> {
         key: &Key,
     ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
-        let mask_key = key.mask();
+        if let Some(mask) = mask {
+            let origin = node.origin.clone();
+            node.mask = self
+                .lower_mask(mask, feather, sc, frame, world, &key.mask(), &origin)?
+                .map(Box::new);
+        }
+        Ok(())
+    }
+
+    /// A `mask` line's source, evaluated in the masked node's frame, or `None` for `mask none`.
+    /// `mask_key` names its nodes and `origin` is the line they are reported at.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lower_mask(
+        &mut self,
+        mask: &ast::Mask,
+        feather: f32,
+        sc: &Scope,
+        frame: Rect,
+        world: Matrix,
+        mask_key: &Key,
+        origin: &str,
+    ) -> R<Option<Mask>> {
         let source = match mask {
-            None => None,
-            Some(ast::Mask::Block(body)) => {
+            ast::Mask::Block(body) => {
                 let mut inner = sc.child(mask_key.clone(), frame, world);
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
-            Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
+            ast::Mask::Value(e) => match self.expr(e, sc)? {
                 Value::None => None,
                 Value::Ref(r) => {
                     self.outside_copy(&r, sc)?;
@@ -2617,7 +2670,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let n = new_node(
                         mask_key.to_string(),
-                        node.origin.clone(),
+                        origin.to_string(),
                         Matrix::new_identity(),
                         NodeKind::Shape(Box::new(shape)),
                     );
@@ -2643,15 +2696,12 @@ impl<'a> Evaluator<'a> {
                 }
             },
         };
-        if let Some(source) = source {
-            node.mask = Some(Box::new(Mask {
-                source,
-                luminance: false,
-                feather,
-                invert: false,
-            }));
-        }
-        Ok(())
+        Ok(source.map(|source| Mask {
+            source,
+            luminance: false,
+            feather,
+            invert: false,
+        }))
     }
 
     pub(crate) fn target_palette(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
@@ -3689,11 +3739,15 @@ impl<'a> Evaluator<'a> {
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &call_fx, sc);
         }
-        let mut lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
-        lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
-        let sites: Vec<FxSite> = lines
+        let def_lines = in_source_order(comp.body.iter().filter_map(DefItem::fx), &def_fx, &fx_scope);
+        let call_lines = in_source_order(block.fx(), &call_fx, &call_sc);
+        let def_ordinals = fx_ordinals(comp.body.iter().filter_map(DefItem::fx), comp.body.iter().filter_map(DefItem::scene));
+        let call_ordinals = fx_ordinals(block.fx(), block.scenes());
+        let sites: Vec<FxSite> = def_lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope })
+            .map(|l| (l, def_ordinals[&l.0.span]))
+            .chain(call_lines.iter().map(|l| (l, def_ordinals.len() as u32 + call_ordinals[&l.0.span])))
+            .map(|((line, scope), ordinal)| FxSite { line, scope, ordinal, frame: call_sc.frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
@@ -4236,6 +4290,7 @@ impl<'a> Evaluator<'a> {
 
     fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
         let mut inner = sc.child(key.clone(), sc.frame, sc.world);
+        let ordinals = fx_ordinals(draw.body.fx(), draw.body.scenes());
         for item in draw.body.items() {
             match item {
                 DrawItem::Scene(st) => {
@@ -4247,6 +4302,10 @@ impl<'a> Evaluator<'a> {
                 } => {
                     let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
                     self.collect_surface(body, &mut mask_sc, false);
+                }
+                DrawItem::Fx(f) if !f.mask_block().is_empty() => {
+                    let mut mask_sc = sc.child(key.fx_mask(ordinals[&f.span]), sc.frame, sc.world);
+                    self.collect_surface(f.mask_block(), &mut mask_sc, false);
                 }
                 _ => {}
             }
@@ -5637,6 +5696,7 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                             mask: ast::Mask::Block(body),
                             ..
                         } => body.as_slice(),
+                        DrawItem::Fx(f) => f.mask_block(),
                         _ => continue,
                     };
                     if let Some(draw) = find_draw(nested, span) {
@@ -5644,10 +5704,12 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                     }
                 }
             }
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => {
+                if let Some(draw) = find_draw(f.mask_block(), span) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
     None
@@ -5682,6 +5744,7 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
                         mask: ast::Mask::Block(body),
                         ..
                     } => body.as_slice(),
+                    DrawItem::Fx(f) => f.mask_block(),
                     _ => continue,
                 };
                 if let Some(found) = slot_fallback_in(nested, span) {
@@ -5690,10 +5753,8 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
             }
             None
         }
-        SceneKind::Let { .. }
-        | SceneKind::Check { .. }
-        | SceneKind::Play { .. }
-        | SceneKind::Fx(_) => None,
+        SceneKind::Fx(f) => slot_fallback_in(f.mask_block(), span),
+        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
     }
 }
 
