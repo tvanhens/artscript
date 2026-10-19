@@ -118,8 +118,13 @@ fn cache_key(project: &Project, job: &TargetJob, backend: Backend) -> String {
     for dep in dependencies(project, &job.source) {
         buf.extend_from_slice(dep.as_bytes());
         buf.push(0);
-        buf.extend_from_slice(project.source(&dep).map(str::as_bytes).unwrap_or_default());
+        let src = project.source(&dep).unwrap_or_default();
+        buf.extend_from_slice(src.as_bytes());
         buf.push(0);
+        for image in image_refs(src) {
+            buf.extend_from_slice(&fs::read(project.root.join(image)).unwrap_or_default());
+            buf.push(0);
+        }
     }
     buf.extend_from_slice(project.manifest_src.as_bytes());
     buf.push(0);
@@ -129,6 +134,14 @@ fn cache_key(project: &Project, job: &TargetJob, backend: Backend) -> String {
     buf.push(0);
     buf.extend_from_slice(job.key().as_bytes());
     hex(&buf)
+}
+
+/// The string literals in `src` that name a PNG or JPEG, so a changed picture rebuilds its targets.
+fn image_refs(src: &str) -> impl Iterator<Item = &str> {
+    src.split('"').skip(1).step_by(2).filter(|s| {
+        let s = s.to_ascii_lowercase();
+        [".png", ".jpg", ".jpeg"].iter().any(|ext| s.ends_with(ext))
+    })
 }
 
 /// The crate version stays put while the renderer changes, so outputs are keyed on the executable itself.

@@ -5,8 +5,8 @@ use skia_safe::gradient::{self, Colors, Gradient, Interpolation};
 use skia_safe::paint::{Cap as SkCap, Join as SkJoin, Style};
 use skia_safe::runtime_effect::ChildPtr;
 use skia_safe::{
-    BlendMode, BlurStyle, Color4f, Data, MaskFilter, Matrix, Paint, PathEffect, Point, RuntimeEffect,
-    Shader, TileMode,
+    BlendMode, BlurStyle, Color4f, Data, FilterMode, Image, MaskFilter, Matrix, MipmapMode, Paint, PathEffect,
+    Point, Rect, RuntimeEffect, SamplingOptions, Shader, TileMode,
 };
 
 use crate::field::{FieldUse, field_shader};
@@ -108,6 +108,9 @@ pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Resul
         IrPaint::Field { field, stops } => {
             paint.set_shader(field_shader(field, FieldUse::Stops(stops))?);
         }
+        IrPaint::Image { image, rect } => {
+            paint.set_shader(image_shader(image, *rect)?);
+        }
     }
     if let Some(stroke) = stroke {
         paint.set_style(Style::Stroke);
@@ -192,6 +195,18 @@ pub fn mat9(m: &Matrix) -> [f32; 9] {
         m.skew_x(), m.scale_y(), m.persp_y(),
         m.translate_x(), m.translate_y(), m[8],
     ]
+}
+
+/// The picture mapped onto `rect`, edge pixels repeating outside it. Trilinear sampling keeps a
+/// photo smooth when it is drawn smaller than it was decoded.
+fn image_shader(image: &Image, rect: Rect) -> Result<Shader, RenderError> {
+    let (w, h) = (image.width() as f32, image.height() as f32);
+    let mut local = Matrix::translate((rect.left, rect.top));
+    local.pre_scale((rect.width() / w, rect.height() / h), None);
+    let sampling = SamplingOptions::new(FilterMode::Linear, MipmapMode::Linear);
+    image
+        .to_shader((TileMode::Clamp, TileMode::Clamp), sampling, &local)
+        .ok_or_else(|| RenderError::Skia("image shader".into()))
 }
 
 fn stops_linear(stops: &[Stop], from: Point, to: Point) -> Result<Shader, RenderError> {

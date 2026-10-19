@@ -761,7 +761,7 @@ pub(crate) fn sample(paint: &Paint, p: P) -> Option<Rgba> {
             let deg = d.y.atan2(d.x).to_degrees() - start_deg;
             at(stops, deg.rem_euclid(360.0) / 360.0)
         }
-        Paint::Field { .. } => None,
+        Paint::Field { .. } | Paint::Image { .. } => None,
     }
 }
 

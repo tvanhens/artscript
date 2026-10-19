@@ -11,6 +11,7 @@ mod explain;
 mod fx;
 mod geom;
 mod identity;
+mod image;
 mod key;
 mod lints;
 mod motion;

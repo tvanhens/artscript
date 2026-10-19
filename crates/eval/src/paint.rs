@@ -6,6 +6,7 @@ use std::rc::Rc;
 use artscript_ir::{Paint, Point, Rect, Stop};
 
 use crate::color::{Rgba, densify};
+use crate::image::{Fit, ImagePaint};
 use crate::value::Value;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -90,8 +91,22 @@ pub fn to_paint(v: &Value, bounds: Rect) -> Option<Paint> {
             let spec = [(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }, None), (Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }, None)];
             Paint::Field { field: (**field).clone(), stops: stops(&spec) }
         }
+        Value::Image(p) => Paint::Image { image: p.decoded.image.clone(), rect: image_rect(p, bounds) },
         other => Paint::Solid(other.color()?.rgba.to_ir()),
     })
+}
+
+/// Where the whole picture lands: the bounds, or the smallest centered rect of the picture's
+/// aspect that covers them.
+fn image_rect(p: &ImagePaint, b: Rect) -> Rect {
+    match p.fit {
+        Fit::Stretch => b,
+        Fit::Cover => {
+            let (iw, ih) = (p.decoded.width as f32, p.decoded.height as f32);
+            let s = (b.width() / iw).max(b.height() / ih);
+            Rect::from_xywh(b.center_x() - iw * s / 2.0, b.center_y() - ih * s / 2.0, iw * s, ih * s)
+        }
+    }
 }
 
 /// The color effects derive their defaults from: the first solid color or first gradient stop.
@@ -102,6 +117,7 @@ pub fn key_color(p: &Paint) -> Rgba {
         | Paint::Radial { stops, .. }
         | Paint::Conic { stops, .. }
         | Paint::Field { stops, .. } => stops.first().map(|s| s.color).unwrap_or(Rgba::GRAY.to_ir()),
+        Paint::Image { .. } => Rgba::GRAY.to_ir(),
     };
     Rgba::from_ir(c)
 }

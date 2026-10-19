@@ -18,6 +18,7 @@ fn paint(p: &Paint) -> String {
         Paint::Radial { stops, radius, .. } => format!("radial({} r:{})", ends(stops), num(*radius as f64)),
         Paint::Conic { stops, .. } => format!("conic({})", ends(stops)),
         Paint::Field { stops, .. } => format!("field({})", ends(stops)),
+        Paint::Image { image, .. } => format!("image({}x{})", image.width(), image.height()),
     }
 }
 

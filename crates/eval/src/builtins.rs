@@ -6,6 +6,7 @@ use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use artscript_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
+use crate::image::{self, Fit, ImagePaint};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
@@ -286,6 +287,24 @@ impl Evaluator<'_> {
                 let start = get("from").and_then(|v| v.num()).unwrap_or(0.0);
                 gradient(GradKind::Conic { at, start }, self.stops(&a)?)
             }
+            "image" => {
+                let path = match a.first() {
+                    Some(Value::Str(s)) => s.as_str(),
+                    _ => {
+                        return Err(fail("E0320", format!("`{func}` needs the picture's path as a string"))
+                            .fix(format!("write `{func}(\"ref/photo.jpg\")`")));
+                    }
+                };
+                let decoded = image::load(&self.project.root, path).map_err(|m| {
+                    fail("E0320", m).note("image paths are relative to the folder with artscript.toml")
+                })?;
+                let fit = match get("fit").as_ref().map(|v| v.word()) {
+                    None | Some(Some("stretch")) => Fit::Stretch,
+                    Some(Some("cover")) => Fit::Cover,
+                    Some(_) => return Err(fail("E0320", "`fit:` on `image` is `stretch` or `cover`").fix("write `image(\"ref/photo.jpg\" fit:cover)`")),
+                };
+                Value::Image(ImagePaint { decoded, fit })
+            }
             "simplex" | "perlin" | "worley" | "value" => {
                 let kind = match func {
                     "simplex" => NoiseKind::Simplex,
@@ -362,6 +381,7 @@ impl Evaluator<'_> {
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
+                    .note("pictures: image")
                     .note("lists: concat")
                     .fix("check the spelling"));
             }
