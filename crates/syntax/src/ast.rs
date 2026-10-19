@@ -121,6 +121,12 @@ pub enum DeclKind {
         params: Vec<Named>,
         body: Vec<Scene>,
     },
+    /// `fn solid(c r) = map.{r}.{c} == 1`: positional parameters and one expression. No body.
+    Fn {
+        name: String,
+        params: Vec<String>,
+        body: Expr,
+    },
     /// `light sun dir:-1,-1.5`. Parsed, not implemented in v0.1.
     Light { name: String, named: Vec<Named> },
     /// `brush dry strength:.5 dir:0` + one `sksl """..."""` child. A head key in the placement

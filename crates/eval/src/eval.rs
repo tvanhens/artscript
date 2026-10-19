@@ -31,7 +31,7 @@ use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AliasDef, AnimDef, Component, Extent, Fixed, Module, Palette, Record, RefVal, RowRecord, RuleDef,
+    AliasDef, AnimDef, Component, Extent, Fixed, FnDef, Module, Palette, Record, RefVal, RowRecord, RuleDef,
     StyleDef, ref_from,
 };
 use crate::seed::Rng;
@@ -81,6 +81,25 @@ const MEASURES: &[&str] = &[
 const NODE_KEYS: &[&str] = &[
     "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
 ];
+
+/// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
+/// shapes, so `fill:` and `blur:` have no single shape to land on; the fix names what recolors or
+/// blurs the whole instance.
+fn no_parameter(target: &str, def: &str, key: &str, params: &[impl AsRef<str>]) -> Fail {
+    let params: Vec<&str> = params.iter().map(AsRef::as_ref).collect();
+    let mut f = fail("E0321", format!("`{target}` has no parameter `{key}`"));
+    if !params.is_empty() {
+        f = f.note(format!("parameters: {}", params.join(", ")));
+    }
+    match key {
+        "fill" | "stroke" => f.fix(format!(
+            "recolor the instance with `palette:`, or give `{def}` a color parameter"
+        )),
+        "blur" => f.fix("blur the instance with an `fx blur N` line under it"),
+        _ => f.fix("use one of the listed parameters"),
+    }
+}
+
 const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
 
 const PAINT_KEYS: &[&str] = &[
@@ -389,6 +408,7 @@ pub(crate) struct Evaluator<'a> {
     seed_count: u64,
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
+    pub(crate) active_fns: Vec<Rc<FnDef>>,
     patch_order: u32,
     unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
@@ -975,6 +995,7 @@ impl<'a> Evaluator<'a> {
             seed_count: 0,
             style_hits: Vec::new(),
             accept_family: false,
+            active_fns: Vec::new(),
             patch_order: 0,
             unstable_calls: BTreeSet::new(),
             time: job.frame_t,
@@ -1137,6 +1158,7 @@ impl<'a> Evaluator<'a> {
             }
         }
         self.declare_aliases(&module, &parsed);
+        self.check_fn_cycles(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
         let aliases: BTreeMap<String, String> = module
@@ -1184,7 +1206,7 @@ impl<'a> Evaluator<'a> {
                     "E0204",
                     "a library may only hold declarations at its top level",
                 )
-                .note("allowed: use, palette, style, finish, def, rule, let, anim")
+                .note("allowed: use, palette, style, finish, def, rule, fn, let, anim")
                 .fix("wrap the drawing in a `def` and place it from an entry file"));
             }
         };
@@ -1277,6 +1299,11 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
+            DeclKind::Fn { name, params, body } => self
+                .declare_fn(module, name, params, body, decl.span)
+                .inspect_err(|_| {
+                    module.lost.borrow_mut().insert(name.clone());
+                }),
             DeclKind::Anim {
                 name,
                 dur,
@@ -2597,11 +2624,7 @@ impl<'a> Evaluator<'a> {
                 && n.key != "palette"
                 && !NODE_KEYS.contains(&n.key.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{target}` has no parameter `{}`", n.key))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(target, &comp.name, &n.key, &open));
             }
             own.push(Fixed {
                 key: n.key.clone(),
@@ -2649,11 +2672,7 @@ impl<'a> Evaluator<'a> {
                 && k != "palette"
                 && !NODE_KEYS.contains(&k.as_str())
             {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", alias.name))
-                        .note(format!("parameters: {}", open.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&alias.name, &alias.comp.name, k, &open));
             }
         }
         let pos = std::mem::take(&mut a.pos);
@@ -3643,11 +3662,7 @@ impl<'a> Evaluator<'a> {
             } else if NODE_KEYS.contains(&k.as_str()) {
                 node_args.named.push((k.clone(), v.clone()));
             } else {
-                return Err(
-                    fail("E0321", format!("`{}` has no parameter `{k}`", comp.name))
-                        .note(format!("parameters: {}", param_names.join(", ")))
-                        .fix("use one of the listed parameters"),
-                );
+                return Err(no_parameter(&comp.name, &comp.name, k, &param_names));
             }
         }
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
