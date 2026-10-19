@@ -79,7 +79,7 @@ const MEASURES: &[&str] = &[
 const NODE_KEYS: &[&str] = &[
     "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
 ];
-const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob"];
+const CENTERED: &[&str] = &["rect", "circle", "ellipse", "poly", "star", "blob", "text"];
 
 const PAINT_KEYS: &[&str] = &[
     "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp",
@@ -102,6 +102,7 @@ impl Builtin {
             "poly" => (1, &["r", "round", "jitter", "seed"]),
             "star" => (1, &["r", "inner", "round", "jitter", "seed"]),
             "blob" => (1, &["points", "wobble", "jitter", "seed"]),
+            "text" => (1, &["size", "font", "weight", "italic", "track", "jitter", "seed"]),
             "curve" => (usize::MAX, &["tension", "round", "jitter", "seed"]),
             "subtract" | "union" | "intersect" | "xor" => (0, &["jitter", "seed"]),
             "repeat" => (1, &["step"]),
@@ -1898,7 +1899,7 @@ impl<'a> Evaluator<'a> {
                 return Err(Fail::reported());
             }
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
-                .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
+                .note("shapes: rect circle ellipse poly star curve path blob text copy subtract union intersect xor")
                 .note("structure: layer group inside outside mirror repeat grid anchor slot");
             let comps: Vec<String> = sc
                 .module
@@ -1930,6 +1931,7 @@ impl<'a> Evaluator<'a> {
             .skip(skip)
             .filter(|e| {
                 !(matches!(ident_of(e), Some("closed"))
+                    || (verb == "text" && matches!(ident_of(e), Some("italic")))
                     || (verb == "mirror" && matches!(ident_of(e), Some("x" | "y"))))
             })
             .cloned()
@@ -1977,6 +1979,9 @@ impl<'a> Evaluator<'a> {
         let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
+        if verb == "text" && flag("italic") {
+            a.named.push(("italic".into(), Value::Bool(true)));
+        }
         let centered = CENTERED.contains(&verb);
         let group_like = matches!(
             verb,
@@ -2736,6 +2741,42 @@ impl<'a> Evaluator<'a> {
                     Vec::new(),
                     true,
                 )
+            }
+            "text" => {
+                let s = match first {
+                    Some(Value::Str(s)) => s,
+                    _ => return Err(need("a string", "text \"HELLO\" size:24")),
+                };
+                let weight = match a.get("weight") {
+                    None => 400,
+                    Some(v) => match (v.word(), v.num()) {
+                        (Some("normal"), _) => 400,
+                        (Some("bold"), _) => 700,
+                        (_, Some(n)) if (100.0..=900.0).contains(&n) => n.round() as i32,
+                        _ => {
+                            return Err(fail("E0320", "`weight:` is `normal`, `bold` or a number from 100 to 900")
+                                .fix("write `weight:bold` or `weight:600`"));
+                        }
+                    },
+                };
+                let italic = match a.get("italic") {
+                    None => false,
+                    Some(Value::Bool(b)) => *b,
+                    Some(_) => return Err(fail("E0320", "`italic:` is true or false").fix("write `italic` or `italic:true`")),
+                };
+                let family = match a.get("font") {
+                    None => "Georgia",
+                    Some(Value::Str(f)) => f.as_str(),
+                    Some(_) => return Err(fail("E0320", "`font:` is a family name string").fix("write `font:\"Times New Roman\"`")),
+                };
+                let style = geom::TextStyle {
+                    size: a.num("size").unwrap_or(16.0) as f32,
+                    family,
+                    weight,
+                    italic,
+                    track: a.num("track").unwrap_or(0.0) as f32,
+                };
+                (geom::text(s, &style), Vec::new(), true)
             }
             _ => unreachable!("primitive {verb}"),
         })

@@ -99,6 +99,7 @@ fn paint_feature(node: &Node, paint: &Paint, fill: bool, out: &mut Vec<Unsupport
     match paint {
         Paint::Field { .. } => push(out, node, if fill { "field fill" } else { "field stroke" }),
         Paint::Conic { .. } => push(out, node, if fill { "conic fill" } else { "conic stroke" }),
+        Paint::Image { .. } => push(out, node, if fill { "image fill" } else { "image stroke" }),
         _ => {}
     }
 }

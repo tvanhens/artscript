@@ -5,7 +5,8 @@
 use std::f64::consts::PI;
 
 use skia_safe::path::Verb;
-use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
+use skia_safe::font_style::{Slant, Width};
+use skia_safe::{Font, FontHinting, FontMgr, FontStyle, PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
 
 use artscript_ir::{Path, Point, Rect, Ribbon, taper_ramp};
 
@@ -242,6 +243,52 @@ pub fn wobble(path: &Path, amount: f64, rng: &mut Rng, wavelength: f64) -> Path 
 }
 
 /// Organic closed shape: `points` radii scaled by `1 + wobble*u`, angles jittered.
+/// How `text` is set.
+pub struct TextStyle<'a> {
+    pub size: f32,
+    pub family: &'a str,
+    pub weight: i32,
+    pub italic: bool,
+    /// Extra advance after every glyph but the last, in canvas units.
+    pub track: f32,
+}
+
+thread_local! {
+    static FONTS: FontMgr = FontMgr::new();
+}
+
+/// The glyph outlines of `text` on one line, centered on the origin: horizontally on the advance
+/// width, vertically on the cap-height box. Glyphs advance by their width with no kerning. A
+/// family the system lacks falls back to the default typeface.
+pub fn text(text: &str, style: &TextStyle) -> Path {
+    let slant = if style.italic { Slant::Italic } else { Slant::Upright };
+    let font_style = FontStyle::new(style.weight.into(), Width::NORMAL, slant);
+    let typeface = FONTS
+        .with(|m| m.match_family_style(style.family, font_style).or_else(|| m.legacy_make_typeface(None, font_style)));
+    let Some(typeface) = typeface else {
+        return Path::default();
+    };
+    let mut font = Font::from_typeface(typeface, style.size);
+    font.set_hinting(FontHinting::None).set_subpixel(true).set_linear_metrics(true);
+    let glyphs = font.text_to_glyphs_vec(text);
+    let mut widths = vec![0.0_f32; glyphs.len()];
+    font.get_widths(&glyphs, &mut widths);
+    let total = widths.iter().sum::<f32>() + style.track * glyphs.len().saturating_sub(1) as f32;
+    let cap = match font.metrics().1.cap_height {
+        c if c > 0.0 => c,
+        _ => style.size * 0.7,
+    };
+    let mut b = PathBuilder::new();
+    let mut x = -total / 2.0;
+    for (glyph, advance) in glyphs.iter().zip(&widths) {
+        if let Some(outline) = font.get_path(*glyph) {
+            b.add_path_with_offset(&outline, (x, cap / 2.0), None);
+        }
+        x += advance + style.track;
+    }
+    b.detach()
+}
+
 pub fn blob(r: f64, points: usize, wobble: f64, rng: &mut Rng) -> Path {
     let n = points.max(3);
     let step = 2.0 * PI / n as f64;

@@ -958,6 +958,7 @@ fn clip_region(path: &Path, clip: &Clip) -> Option<Path> {
 fn coverage(paint: &IrPaint) -> Option<Coverage> {
     let (least, most) = match paint {
         IrPaint::Solid(c) => (c.a, c.a),
+        IrPaint::Image { image, .. } => (if image.is_opaque() { 1.0 } else { 0.0 }, 1.0),
         IrPaint::Linear { stops, .. }
         | IrPaint::Radial { stops, .. }
         | IrPaint::Conic { stops, .. }

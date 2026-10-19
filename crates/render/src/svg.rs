@@ -549,7 +549,7 @@ impl Writer {
                 self.stops(stops);
                 self.defs.push_str("    </radialGradient>\n");
             }
-            Paint::Solid(_) | Paint::Conic { .. } | Paint::Field { .. } => {}
+            Paint::Solid(_) | Paint::Conic { .. } | Paint::Field { .. } | Paint::Image { .. } => {}
         }
     }
 

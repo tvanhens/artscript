@@ -44,7 +44,7 @@ fn phrase(v: &Value) -> String {
         Value::Percent(_) => "a percent".into(),
         Value::Ramp(_) => "a ramp".into(),
         Value::Gradient(_) => "a gradient".into(),
-        Value::FieldPaint(..) => "a paint".into(),
+        Value::FieldPaint(..) | Value::Image(_) => "a paint".into(),
         Value::Field(_) | Value::FieldMask(..) => "a field".into(),
         Value::Str(_) => "a string".into(),
         Value::Ref(_) => "a node reference".into(),

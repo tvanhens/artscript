@@ -300,6 +300,9 @@ pub enum Paint {
     Conic { center: Point, start_deg: f32, stops: Vec<Stop> },
     /// A scalar field mapped through `stops` (field value 0..1 = stop position).
     Field { field: Field, stops: Vec<Stop> },
+    /// A decoded picture stretched over `rect`, in the node's local coordinates. Outside `rect`
+    /// the picture's edge pixels repeat.
+    Image { image: skia_safe::Image, rect: Rect },
 }
 
 #[derive(Clone, Debug)]

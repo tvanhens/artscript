@@ -65,6 +65,7 @@ fn paint_bytes(paint: &Paint) -> u64 {
             vec_bytes(stops, |_| 0)
         }
         Paint::Field { field, stops } => field_bytes(field) + vec_bytes(stops, |_| 0),
+        Paint::Image { image, .. } => image.width() as u64 * image.height() as u64 * 4,
     }
 }
 

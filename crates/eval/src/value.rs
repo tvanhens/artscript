@@ -9,6 +9,7 @@ use crate::brush::BrushVal;
 use crate::stamp::StampVal;
 use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
+use crate::image::ImagePaint;
 use crate::paint::GradSpec;
 use crate::range::Range;
 use crate::scope::{Component, Module, Palette, RefVal, RuleDef};
@@ -64,6 +65,8 @@ pub enum Value {
     Palette(Rc<Palette>),
     Gradient(Rc<GradSpec>),
     Field(Rc<Field>),
+    /// `image("path")`, a picture usable as a fill or stroke.
+    Image(ImagePaint),
     /// `field > t`, a thresholded field usable as a mask.
     FieldMask(Rc<Field>, f64),
     /// `field -> ramp`, a field mapped through colors.
@@ -143,7 +146,7 @@ impl Value {
             Value::Vec2(..) | Value::Size(..) => Kind::Vector,
             Value::Tuple(xs) if xs.iter().all(|x| x.kind() == Kind::Number) => Kind::Vector,
             Value::Tuple(_) => Kind::List,
-            Value::Color(_) | Value::Ramp(_) | Value::Gradient(_) | Value::FieldPaint(..) => Kind::Color,
+            Value::Color(_) | Value::Ramp(_) | Value::Gradient(_) | Value::FieldPaint(..) | Value::Image(_) => Kind::Color,
             Value::Palette(_) => Kind::Palette,
             Value::Field(_) | Value::FieldMask(..) => Kind::Field,
             Value::Range(..) => Kind::Range,
@@ -303,6 +306,7 @@ impl Value {
             Value::Ramp(r) => format!("ramp {}", r.base_color().to_hex()),
             Value::Palette(p) => format!("palette {}", p.name),
             Value::Gradient(_) => "gradient".into(),
+            Value::Image(p) => format!("image {}x{}", p.decoded.width, p.decoded.height),
             Value::Field(_) | Value::FieldMask(..) | Value::FieldPaint(..) => "field".into(),
             Value::Range(r) => r.to_string(),
             Value::Str(s) => format!("{s:?}"),
