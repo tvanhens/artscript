@@ -4028,6 +4028,136 @@ fn at_takes_an_anchor_through_an_instance() {
 }
 
 #[test]
+fn a_reference_to_a_later_sibling_resolves_and_paints_at_its_own_line() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "circle 2 at:@body.neck name:a\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor neck 5,7\n",
+    ));
+    near(at(node(&s, "a")), (35.0, 27.0));
+    let order = paths(&s);
+    assert!(order[0] == "a" && order[1] == "body", "{order:?}");
+
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "def rig\n",
+        "  circle 2 at:@body.neck name:dot\n",
+        "  group name:body at:30,20\n",
+        "    rect 10x10\n",
+        "    anchor neck 5,7\n",
+        "rig name:r\n",
+    ));
+    near(at(node(&s, "r.dot")), (35.0, 27.0));
+}
+
+#[test]
+fn a_chain_of_later_sibling_references_resolves() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "circle 2 at:@arm.hand name:palm\n",
+        "group name:arm at:@body.shoulder\n",
+        "  rect 4x4\n",
+        "  anchor hand 3,0\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor shoulder -5,0\n",
+    ));
+    near(at(node(&s, "arm")), (25.0, 20.0));
+    near(at(node(&s, "palm")), (28.0, 20.0));
+    let order = paths(&s);
+    let pos = |p: &str| order.iter().position(|x| x == p).unwrap();
+    assert!(pos("palm") < pos("arm") && pos("arm") < pos("body"), "{order:?}");
+}
+
+#[test]
+fn a_statement_that_waits_for_a_later_sibling_sees_only_the_lets_above_it() {
+    let s = scene(concat!(
+        "@target t.png 100x100\n",
+        "let r = 2\n",
+        "circle r at:@body.neck name:a\n",
+        "let r = 6\n",
+        "circle r at:10,10 name:b\n",
+        "group name:body at:30,20\n",
+        "  rect 10x10\n",
+        "  anchor neck r,0\n",
+    ));
+    assert_box(&s, "a", 4.0, 4.0);
+    assert_box(&s, "b", 12.0, 12.0);
+    near(at(node(&s, "a")), (36.0, 20.0));
+}
+
+#[test]
+fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group name:b at:@a.top\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    let d = errors[0];
+    assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
+    assert!(d.message.contains("before `b` is drawn"), "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
+}
+
+#[test]
+fn a_statement_that_waits_on_a_cycle_does_not_take_the_cycle_error() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "circle 2 at:@a.tip name:c\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group name:b at:@a.top\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!((errors[0].code.as_str(), errors[0].span.line), ("E0350", 3), "{}", errors[0]);
+}
+
+#[test]
+fn a_reference_to_a_name_in_an_untaken_arm_is_still_not_drawn() {
+    let ev = run_with(
+        "@target t.png 40x40\ncopy @mark\nif 1 == 2\n  circle 4 name:mark\n",
+        &[],
+    );
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.span.line, 2, "{d}");
+    assert!(d.message.contains("and not drawn"), "{d}");
+}
+
+#[test]
+fn a_file_play_guard_may_read_a_later_sibling() {
+    let s = scene(
+        "@target t.png 40x40\nanim bob dur:1s\n  .marker at:10,0\nif @marker\n  play bob\ncircle 4 name:marker\n",
+    );
+    near(at(node(&s, "marker")), (30.0, 20.0));
+}
+
+#[test]
 fn an_anim_offset_adds_to_an_anchor_rest_at() {
     let s = scene(concat!(
         "@target t.png 100x100 t:.5s\n",

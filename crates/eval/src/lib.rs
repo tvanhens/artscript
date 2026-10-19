@@ -14,6 +14,7 @@ mod identity;
 mod key;
 mod lints;
 mod motion;
+mod order;
 mod paint;
 pub mod project;
 mod range;

@@ -110,7 +110,7 @@ fn all_scenes<'a>(items: impl IntoIterator<Item = &'a Item>, f: &mut impl FnMut(
     }
 }
 
-type Exprs<'a> = Vec<(&'a Expr, Span)>;
+pub(crate) type Exprs<'a> = Vec<(&'a Expr, Span)>;
 
 fn named<'a>(ns: &'a [Named], out: &mut Exprs<'a>) {
     ns.iter().for_each(|n| out.push((&n.value, n.span)));
@@ -121,7 +121,7 @@ fn fx_exprs<'a>(fx: &'a Fx, out: &mut Exprs<'a>) {
     named(&fx.named, out);
 }
 
-fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
+pub(crate) fn scene_line_and_direct_fx_mask_patch_exprs<'a>(s: &'a Scene, out: &mut Exprs<'a>) {
     match &s.kind {
         SceneKind::Let { value, .. } => out.push((value, s.span)),
         SceneKind::Check {
