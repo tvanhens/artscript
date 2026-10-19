@@ -293,7 +293,7 @@ fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
 }
 
 fn outlined(mut node: artscript_ir::Node, width: f32) -> artscript_ir::Node {
-    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL }));
+    node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None }));
     node
 }
 
