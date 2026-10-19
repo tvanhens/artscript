@@ -72,13 +72,17 @@ impl Spec<'_> {
 }
 
 /// The field over one device rect: texel `(i, j)` describes device pixel `(rect.left + i,
-/// rect.top + j)`. `field` holds `s` in whole chunks of [`S_CHUNK`] device pixels, the rest of
-/// `s`, the signed offset `d` and the half width, all in device pixels; a negative rest marks a
-/// pixel past the ribbon's reach. `chan` holds pressure, angle, tilt and velocity.
+/// rect.top + j)`. `field` holds `s` in whole chunks of [`S_CHUNK`] device pixels counted from
+/// `s0` chunks, the rest of `s`, the signed offset `d` and the half width, all in device pixels;
+/// a negative rest marks a pixel past the ribbon's reach. `chan` holds pressure, angle, tilt and
+/// velocity.
 #[derive(Clone)]
 pub(crate) struct Field {
     pub field: Image,
     pub chan: Image,
+    /// The rect's least whole chunk of `s`. Each strip counts from its own, so a half float's
+    /// exact integers cover the strip's range of `s` and not the whole stroke's length.
+    pub s0: f32,
 }
 
 #[derive(Default)]
@@ -87,12 +91,12 @@ pub(crate) struct FieldMemo {
 }
 
 impl FieldMemo {
-    pub(crate) fn get(&mut self, spine: &Spine, rect: IRect, spec: &Spec<'_>) -> Result<Field, RenderError> {
+    pub(crate) fn get(&mut self, spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Field, RenderError> {
         let key = FieldKey::new(&spine.path, &spine.ltd, rect, spec);
         if let Some(f) = self.fields.get(&key) {
             return Ok(f.clone());
         }
-        let f = build(spine, rect, spec)?;
+        let f = build(spine, rect, spec, origin)?;
         self.fields.insert(key, f.clone());
         Ok(f)
     }
@@ -324,35 +328,53 @@ pub(crate) fn split_s(s_px: f32) -> (f32, f32) {
     (hi, s_px - hi * S_CHUNK)
 }
 
-fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>) -> Result<Field, RenderError> {
+/// The most whole chunks a half float holds exactly.
+const MAX_CHUNKS: f32 = 2048.0;
+
+fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>, origin: &str) -> Result<Field, RenderError> {
     let (w, h) = (rect.width().max(1) as usize, rect.height().max(1) as usize);
+    let samples: Vec<Option<(f32, f32)>> = (0..h)
+        .flat_map(|j| (0..w).map(move |i| (i, j)))
+        .map(|(i, j)| {
+            let dev = Point::new(rect.left as f32 + i as f32 + 0.5, rect.top as f32 + j as f32 + 0.5);
+            spine.nearest(spine.dtl.map_point(dev))
+        })
+        .collect();
+    let px = spine.px;
+    let chunks = || samples.iter().flatten().map(|(s, _)| split_s(s / px).0);
+    let s0 = chunks().fold(f32::INFINITY, f32::min);
+    let s0 = if s0.is_finite() { s0 } else { 0.0 };
+    if chunks().any(|hi| hi - s0 >= MAX_CHUNKS) {
+        return Err(RenderError::AtNode {
+            origin: origin.to_string(),
+            message: format!(
+                "a brushed stroke passes through one {STRIP_ROWS}-row strip over more than {} device px of its length, more than the ribbon field encodes",
+                MAX_CHUNKS * S_CHUNK
+            ),
+        });
+    }
     let mut field = Vec::with_capacity(w * h * 8);
     let mut chan = Vec::with_capacity(w * h * 8);
     let contour = spec.contour;
-    let px = spine.px;
-    for j in 0..h {
-        for i in 0..w {
-            let dev = Point::new(rect.left as f32 + i as f32 + 0.5, rect.top as f32 + j as f32 + 0.5);
-            let q = spine.dtl.map_point(dev);
-            let Some((s, d)) = spine.nearest(q) else {
-                field.extend([0.0, -1.0, 0.0, 0.0].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
-                chan.extend([0u8; 8]);
-                continue;
-            };
-            let on = s.clamp(0.0, contour.len);
-            let k: Knot = contour.at(on);
-            let ramp = taper_ramp(f64::from(on / contour.len.max(1e-9)), (f64::from(spec.taper[0]), f64::from(spec.taper[1])));
-            let hw = k.half_width * ramp as f32;
-            let (hi, lo) = split_s(s / px);
-            field.extend([hi, lo, d / px, hw / px].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
-            chan.extend([k.pressure, k.angle, k.tilt, k.velocity].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
-        }
+    for sample in samples {
+        let Some((s, d)) = sample else {
+            field.extend([0.0, -1.0, 0.0, 0.0].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
+            chan.extend([0u8; 8]);
+            continue;
+        };
+        let on = s.clamp(0.0, contour.len);
+        let k: Knot = contour.at(on);
+        let ramp = taper_ramp(f64::from(on / contour.len.max(1e-9)), (f64::from(spec.taper[0]), f64::from(spec.taper[1])));
+        let hw = k.half_width * ramp as f32;
+        let (hi, lo) = split_s(s / px);
+        field.extend([hi - s0, lo, d / px, hw / px].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
+        chan.extend([k.pressure, k.angle, k.tilt, k.velocity].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
     }
     let info = ImageInfo::new(ISize::new(w as i32, h as i32), ColorType::RGBAF16, AlphaType::Unpremul, None);
     let image = |bytes: &[u8]| {
         images::raster_from_data(&info, Data::new_copy(bytes), w * 8).ok_or_else(|| RenderError::Skia("ribbon field image".into()))
     };
-    Ok(Field { field: image(&field)?, chan: image(&chan)? })
+    Ok(Field { field: image(&field)?, chan: image(&chan)?, s0 })
 }
 
 #[cfg(test)]
@@ -368,6 +390,7 @@ mod tests {
 
     struct Texels {
         w: usize,
+        s0: f32,
         field: Vec<u8>,
         chan: Vec<u8>,
     }
@@ -380,7 +403,7 @@ mod tests {
             let mut chan = vec![0u8; w * h * 8];
             assert!(f.field.read_pixels(&info, &mut field, w * 8, (0, 0), skia_safe::image::CachingHint::Disallow));
             assert!(f.chan.read_pixels(&info, &mut chan, w * 8, (0, 0), skia_safe::image::CachingHint::Disallow));
-            Texels { w, field, chan }
+            Texels { w, s0: f.s0, field, chan }
         }
 
         fn at(&self, buf: &[u8], x: usize, y: usize) -> [f32; 4] {
@@ -391,7 +414,7 @@ mod tests {
         /// `(s, d, hw)` in device pixels at texel `(x, y)`, or `None` past the reach.
         fn sd(&self, x: usize, y: usize) -> Option<(f32, f32, f32)> {
             let [hi, lo, d, hw] = self.at(&self.field, x, y);
-            (lo >= 0.0).then_some((hi * S_CHUNK + lo, d, hw))
+            (lo >= 0.0).then_some(((hi + self.s0) * S_CHUNK + lo, d, hw))
         }
 
         /// Pressure, angle, tilt and velocity at texel `(x, y)`.
@@ -404,7 +427,7 @@ mod tests {
         let spec = Spec { index: 0, contour, taper: [0.0, 0.0], reach };
         let px = 1.0 / ltd.scale_x();
         let spine = Spine::new(path, &ltd, px, &spec, rect).expect("spine");
-        build(&spine, rect, &spec).unwrap()
+        build(&spine, rect, &spec, "test").unwrap()
     }
 
     #[test]

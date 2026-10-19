@@ -82,7 +82,7 @@ pub(crate) fn draw_ribbon(
             let strip = IRect::from_ltrb(dev.left, top, dev.right, (top + STRIP_ROWS).min(dev.bottom));
             top += STRIP_ROWS;
             let Some(rect) = spine.live_rect(strip) else { continue };
-            let field = ctx.ribbons.borrow_mut().get(&spine, rect, &spec)?;
+            let field = ctx.ribbons.borrow_mut().get(&spine, rect, &spec, origin)?;
             let texels = |img: &skia_safe::Image| {
                 img.to_raw_shader((TileMode::Clamp, TileMode::Clamp), nearest(), None)
                     .ok_or_else(|| RenderError::Skia("ribbon field shader".into()))
@@ -94,7 +94,8 @@ pub(crate) fn draw_ribbon(
                 origin,
                 &|u, _| {
                     u.set(origin, "u_fieldo", &[rect.left as f32, rect.top as f32])?;
-                    u.set(origin, "u_rib", &[contour.len, if contour.closed { 1.0 } else { 0.0 }])
+                    u.set(origin, "u_rib", &[contour.len, if contour.closed { 1.0 } else { 0.0 }])?;
+                    u.set(origin, "u_s0", &[field.s0])
                 },
                 &|name| match name {
                     "u_field" => Some(field_shader.clone()),

@@ -35,6 +35,7 @@ uniform shader u_field;
 uniform shader u_chan;
 uniform float2 u_fieldo;
 uniform float2 u_rib;
+uniform float u_s0;
 
 struct Mark {
     float2 p; float2 dev; float u; float s; float v; float d; float len; float width;
@@ -168,8 +169,8 @@ half4 main(float2 c) {
 "#;
 
 /// The frame around a ribbon body. `u_field` is a device-aligned field, one texel per device
-/// pixel: arc length `s` to the nearest point of the spine in two half-float channels (whole
-/// chunks of [`S_CHUNK`] device pixels, then the rest), the signed offset `d` across it, and the
+/// pixel: arc length `s` to the spine in two half-float channels (whole chunks of [`S_CHUNK`]
+/// device pixels past `u_s0` chunks, then the rest), the signed offset `d` across it, and the
 /// half width there, all in device pixels. A negative rest marks a pixel past the ribbon's reach.
 /// `u_chan` holds pressure, angle, tilt and velocity at the same texel. `u_rib` is the contour's
 /// length in local units and 1 when it is closed. Past the end of an open contour `s` keeps
@@ -181,7 +182,7 @@ half4 main(float2 c) {
     float4 ch = u_chan.eval(c - u_fieldo);
     Mark m;
     m.dev = c; m.p = (u_dtl * float3(c, 1)).xy;
-    m.s = (g.r * 32 + g.g) * u_px; m.d = g.b * u_px;
+    m.s = ((g.r + u_s0) * 32 + g.g) * u_px; m.d = g.b * u_px;
     float hw = max(g.a * u_px, 1e-6);
     m.len = u_rib.x; m.u = m.s / m.len; m.width = 2 * hw; m.v = m.d / hw;
     m.pressure = ch.x; m.angle = ch.y; m.tilt = ch.z; m.velocity = ch.w;

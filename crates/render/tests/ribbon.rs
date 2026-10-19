@@ -208,3 +208,32 @@ fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
     assert_eq!(pixel(&png, 100, 17)[3], 0, "12.5 px above the wide leg");
     assert_eq!(pixel(&png, 100, 43)[3], 0, "12.5 px below the wide leg");
 }
+
+#[test]
+fn s_stays_exact_80000_px_along_a_stroke() {
+    let body = "float4 shade(Mark m) { return float4(fract(m.s / 128), 0, 0, cover(m.edge, m)); }\n";
+    let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(80128.0, 3.0, 1.0, 0.0, 0.0)];
+    let node = ribbon(line(-80000.0, 20.0, 128.0), 80128.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
+    let png = render_png(&scene(128.0, 40.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    for x in 0..127 {
+        let want = (x as f32 + 0.5) / 128.0 * 255.0;
+        let got = pixel(&png, x, 20)[0];
+        assert!((got as f32 - want).abs() <= 1.5, "x {x}: s is 80000 + {x}.5, so red is {want}: got {got}");
+    }
+}
+
+#[test]
+fn a_strip_that_holds_more_length_than_the_field_encodes_is_an_error() {
+    let mut b = skia_safe::PathBuilder::new();
+    b.move_to((4.0, 20.0));
+    for i in 0..600 {
+        b.line_to((if i % 2 == 0 { 124.0 } else { 4.0 }, 20.0 + (i % 7) as f32));
+    }
+    let path = b.detach();
+    let len = skia_safe::ContourMeasureIter::new(&path, false, None).next().unwrap().length();
+    let knots = vec![knot(0.0, 1.0, 1.0, 0.0, 0.0), knot(len, 1.0, 1.0, 0.0, 0.0)];
+    let node = ribbon(path, len, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let err = render_png(&scene(128.0, 40.0, vec![node]), 1.0, Backend::Cpu).unwrap_err();
+    let message = format!("{err:?}");
+    assert!(message.contains("more than the ribbon field encodes"), "{message}");
+}
