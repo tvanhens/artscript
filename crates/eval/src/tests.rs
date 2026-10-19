@@ -6151,6 +6151,15 @@ fn an_index_that_is_not_a_name_or_a_number_is_e0320() {
 }
 
 #[test]
+fn a_vector_answers_0_and_1_as_x_and_y() {
+    let s = scene("@target t.png 60x60\nlet v = 10,20\ncircle 4 at:v.0,v.1 name:dot\n");
+    assert_eq!(at(node(&s, "dot")), (10.0, 20.0));
+    let ev = run_with("@target t.png 60x60\nlet v = 10,20\ncircle 4 at:v.2,0\n", &[]);
+    let d = diag(&ev, "E0350");
+    assert_eq!(d.message, "a vector has no member `2`");
+}
+
+#[test]
 fn an_unbound_name_in_an_index_is_the_member_name() {
     let ev = run_with("@target t.png 40x40\nlet tones = [1 2 3]\ncircle tones.{nope}\n", &[]);
     let d = diag(&ev, "E0350");
