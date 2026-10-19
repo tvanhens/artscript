@@ -255,9 +255,13 @@ pub fn edge(path: &Path, seam: f64, from: f64, to: f64) -> Path {
         return b.detach();
     }
     let span = if to > from { to - from } else { to - from + 1.0 };
-    let start = (seam + from).rem_euclid(1.0) * total;
-    let end = start + span * total;
-    let ranges = if end <= total { vec![(start, end)] } else { vec![(start, total), (0.0, end - total)] };
+    let start = (seam + from).rem_euclid(1.0);
+    let end = start + span;
+    let ranges = if end <= 1.0 + 1e-9 {
+        vec![(start * total, end.min(1.0) * total)]
+    } else {
+        vec![(start * total, total), (0.0, (end - 1.0) * total)]
+    };
     let lone_loop = measures.len() == 1 && measures[0].is_closed();
     for (i, &(lo, hi)) in ranges.iter().enumerate() {
         let mut offset = 0.0;
