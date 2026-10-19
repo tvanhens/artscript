@@ -79,7 +79,7 @@ pub struct Scene {
 pub struct Node {
     /// Stable dotted path, e.g. `hero.body.arm_r`. Unnamed nodes get `<verb><index>`.
     pub path: String,
-    /// Source location `file:line` for diagnostics and `explain`.
+    /// Source location `file:line:col` for diagnostics and `explain`.
     pub origin: String,
     /// Local to parent.
     pub transform: Matrix,
