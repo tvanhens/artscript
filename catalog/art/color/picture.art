@@ -1,0 +1,15 @@
+# Picture paints and the eyedropper on paper. pictures/quad.png is a 32x16 picture: its left half is
+# red #e0574f over green #5fb05a, its right half is blue #4f7fe0 over gold #e8b33a.
+# Cell 1 (left): a 48x48 square with fill:image, stretched, so each quadrant is a 24x24 square: red
+# top-left, blue top-right, green bottom-left, gold bottom-right.
+# Cell 2 (middle): the same square with fit:cover. The picture keeps its 2:1 aspect and is cropped about
+# its center, so the left half of the square is red over green and the right half is blue over gold, each
+# block 24 wide and 24 tall.
+# Cell 3 (right): a circle of radius 24 filled with sample at picture pixel 24,4, solid blue #4f7fe0.
+@target color/picture.png 192x80
+
+let pic = "pictures/quad.png"
+
+rect 48x48 at:40,40 fill:image(pic) name:stretch
+rect 48x48 at:96,40 fill:image(pic fit:cover) name:cover
+circle 24 at:152,40 fill:sample(pic 24,4 r:1) name:eyedrop

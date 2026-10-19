@@ -196,7 +196,7 @@ fn catalog_matches_its_goldens() {
 
     let work = std::env::temp_dir().join(format!("artscript-catalog-{}", std::process::id()));
     let _ = fs::remove_dir_all(&work);
-    for part in ["art", "lib"] {
+    for part in ["art", "lib", "pictures"] {
         copy_dir(&root.join(part), &work.join(part));
     }
     fs::copy(root.join("artscript.toml"), work.join("artscript.toml")).unwrap();
