@@ -30,7 +30,7 @@ use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AliasDef, AnimDef, Component, Extent, Fixed, Module, Palette, Record, RefVal, RowRecord, RuleDef,
+    AliasDef, AnimDef, Component, Extent, Fixed, FnDef, Module, Palette, Record, RefVal, RowRecord, RuleDef,
     StyleDef, ref_from,
 };
 use crate::seed::Rng;
@@ -388,6 +388,7 @@ pub(crate) struct Evaluator<'a> {
     seed_count: u64,
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
+    pub(crate) active_fns: Vec<Rc<FnDef>>,
     patch_order: u32,
     unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
@@ -968,6 +969,7 @@ impl<'a> Evaluator<'a> {
             seed_count: 0,
             style_hits: Vec::new(),
             accept_family: false,
+            active_fns: Vec::new(),
             patch_order: 0,
             unstable_calls: BTreeSet::new(),
             time: job.frame_t,

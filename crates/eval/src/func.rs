@@ -107,12 +107,20 @@ impl Evaluator<'_> {
         for (p, e) in f.params.iter().zip(args) {
             env.push((p.clone(), self.expr(e, sc)?));
         }
+        if let Some(at) = self.active_fns.iter().position(|a| Rc::ptr_eq(a, f)) {
+            let shown: Vec<&str> = self.active_fns[at..].iter().map(|a| a.name.as_str()).chain([f.name.as_str()]).collect();
+            return Err(fail("E0325", format!("fn `{}` calls itself", f.name))
+                .note(format!("through {}", shown.join(" -> ")))
+                .fix("a fn cannot recurse; write the repetition as `each` or `repeat` at the call site"));
+        }
         let mut fsc = sc.clone();
         fsc.module = module;
         fsc.env = env;
         fsc.typed_params = Rc::default();
-        self.expr(&f.body, &fsc)
-            .map_err(|e| e.note(format!("in fn `{}` ({}:{})", f.name, f.module, f.span.line)))
+        self.active_fns.push(f.clone());
+        let v = self.expr(&f.body, &fsc);
+        self.active_fns.pop();
+        v.map_err(|e| e.note(format!("in fn `{}` ({}:{})", f.name, f.module, f.span.line)))
     }
 }
 

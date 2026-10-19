@@ -6975,6 +6975,19 @@ fn a_fn_body_cannot_read_a_ref_or_draw_a_random_value() {
 }
 
 #[test]
+fn a_fn_reached_through_a_parameter_or_a_let_cannot_call_itself() {
+    for src in [
+        "@target t.png 100x100\nfn f(g) = g(g)\ncircle f(f)\n",
+        "@target t.png 100x100\nfn f(x) = g(x)\nlet g = f\ncircle f(1)\n",
+    ] {
+        let ev = run_with(src, &[]);
+        assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+        let d = diag(&ev, "E0325");
+        assert_eq!(d.message, "fn `f` calls itself");
+    }
+}
+
+#[test]
 fn a_fn_cannot_call_itself_directly_or_through_another_fn() {
     let ev = run_with(
         "@target t.png 100x100\nfn down(n) = if n > 0 then down(n - 1) else 0\nfn ping(n) = pong(n)\nfn pong(n) = ping(n)\nfn fine(n) = n\ncircle down(3) at:ping(1),fine(2) name:c\n",
