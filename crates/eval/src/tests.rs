@@ -6452,6 +6452,40 @@ fn an_alias_instance_draws_the_same_as_the_direct_call() {
 }
 
 #[test]
+fn an_unnamed_alias_instance_keys_and_seeds_as_the_direct_call() {
+    let via_alias = scene_with(
+        "@target t.png 100x100\ndef pebble r:4 tone:#3366cc\n  circle r+rand(0 9) fill:tone\ndef red = pebble tone:#ff0000\nred at:50,50\npebble at:20,20\n",
+        &[],
+    );
+    let direct = scene_with(
+        "@target t.png 100x100\ndef pebble r:4 tone:#3366cc\n  circle r+rand(0 9) fill:tone\npebble tone:#ff0000 at:50,50\npebble at:20,20\n",
+        &[],
+    );
+    let widths = |s: &Scene| -> Vec<(String, f32)> {
+        paths(s)
+            .into_iter()
+            .map(|p| (p.clone(), node(s, &p).bounds().unwrap().width()))
+            .collect()
+    };
+    assert_eq!(widths(&via_alias).len(), 4, "{:?}", paths(&via_alias));
+    assert_eq!(widths(&via_alias), widths(&direct));
+}
+
+#[test]
+fn a_library_let_sees_an_alias_declared_above_it() {
+    let lib = (
+        "lib/rig.art",
+        "use arm\ndef arm_r = hero_arm tone:#00ff00\nlet arm = arm_r\ndef rig\n  arm name:near\n",
+    );
+    let s = scene_with(
+        "@target t.png 100x100\nuse rig\nrig at:50,50 name:r\n",
+        &[lib, ("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(fill_hex(node(&s, "r.near.bone")), "#00ff00");
+    near(at(node(&s, "r.near.hand")), (10.0, 0.0));
+}
+
+#[test]
 fn an_alias_chains_through_aliases_and_imports_and_may_precede_its_target() {
     let big = ("lib/big.art", "use arm\ndef arm_big = arm_l len:40\n");
     let s = scene_with(
@@ -6487,7 +6521,8 @@ fn an_alias_reports_its_own_mistakes_at_the_alias_line() {
         "@target t.png 100x100\ndef a = b\ndef b = a\npalette q\n  color ink #000000\ndef c = q\ndef d = nothing\n",
         &[],
     );
-    let ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0323").collect();
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0323").collect();
+    ds.sort_by_key(|d| d.span.line);
     assert_eq!(ds.len(), 2, "{}", show(&ev.diagnostics));
     assert_eq!(ds[0].message, "`a` is an alias of itself");
     assert_eq!(ds[0].notes, ["through a -> b -> a"]);

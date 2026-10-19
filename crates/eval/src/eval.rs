@@ -1060,7 +1060,16 @@ impl<'a> Evaluator<'a> {
         self.declare_aliases(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
-        let ids = ModuleIds::build(file, &parsed, &components, &mut id_diags);
+        let aliases: BTreeMap<String, String> = module
+            .globals
+            .borrow()
+            .iter()
+            .filter_map(|(name, v)| match v {
+                Value::Alias(a) => Some((name.clone(), a.comp.name.clone())),
+                _ => None,
+            })
+            .collect();
+        let ids = ModuleIds::build(file, &parsed, &components, &aliases, &mut id_diags);
         self.diags.extend(id_diags);
         self.ids.insert(file.to_string(), Rc::new(ids));
         self.loading.pop();
@@ -1156,7 +1165,16 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Component(Rc::new(comp)));
                 Ok(())
             }
-            DeclKind::Alias { .. } => Ok(()),
+            DeclKind::Alias { name, target, .. } => {
+                if module.global(target).is_none() {
+                    return Ok(());
+                }
+                let mut done = BTreeSet::new();
+                self.bind_alias(module, &[], decl, &mut Vec::new(), &mut done)
+                    .inspect_err(|_| {
+                        module.lost.borrow_mut().insert(name.clone());
+                    })
+            }
             DeclKind::Rule { name, params, body } => {
                 let rule = RuleDef {
                     name: name.clone(),
@@ -2301,16 +2319,28 @@ impl<'a> Evaluator<'a> {
         ) || identity::calls_def(verb)
     }
 
-    /// Binds every `def NAME = target …` of the module. It runs after the module's other
-    /// declarations, so an alias may name a def declared below it, and it follows a chain of
-    /// aliases to the def with a body.
+    /// Binds each `def NAME = target …` that `declare` left unbound because its target is
+    /// declared below it, following a chain of aliases to the def with a body.
     fn declare_aliases(&mut self, module: &Rc<Module>, parsed: &File) {
         let decls: Vec<&Decl> = parsed
             .decls()
             .filter(|d| matches!(d.kind, DeclKind::Alias { .. }))
             .collect();
-        let mut done = BTreeSet::new();
+        let mut done: BTreeSet<Span> = decls
+            .iter()
+            .filter(|d| match &d.kind {
+                DeclKind::Alias { name, .. } => {
+                    module.lost(name)
+                        || matches!(module.global(name), Some(Value::Alias(a)) if a.span == d.span)
+                }
+                _ => false,
+            })
+            .map(|d| d.span)
+            .collect();
         for d in &decls {
+            if done.contains(&d.span) {
+                continue;
+            }
             let mut chain = Vec::new();
             if let Err(f) = self.bind_alias(module, &decls, d, &mut chain, &mut done) {
                 self.alias_failed(module, d, f);

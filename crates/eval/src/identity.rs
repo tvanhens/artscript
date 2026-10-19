@@ -855,19 +855,31 @@ impl Declarer<'_> {
 pub fn ordinals(
     file: &Rc<str>,
     block: &[&Scene],
+    aliases: &BTreeMap<String, String>,
     out: &mut BTreeMap<Span, Anon>,
     tags: &mut BTreeMap<Span, Rc<str>>,
 ) {
     let mut children = Vec::new();
-    count(file, block, &mut BTreeMap::new(), out, tags, &mut children);
+    count(
+        file,
+        block,
+        aliases,
+        &mut BTreeMap::new(),
+        out,
+        tags,
+        &mut children,
+    );
     for c in children {
-        ordinals(file, &c, out, tags);
+        ordinals(file, &c, aliases, out, tags);
     }
 }
 
+/// An unnamed alias instance counts under the def it aliases, so it keys and seeds as the
+/// direct call of that def would.
 fn count<'s>(
     file: &Rc<str>,
     stmts: &[&'s Scene],
+    aliases: &BTreeMap<String, String>,
     counts: &mut BTreeMap<String, u32>,
     out: &mut BTreeMap<Span, Anon>,
     tags: &mut BTreeMap<Span, Rc<str>>,
@@ -895,6 +907,7 @@ fn count<'s>(
                 count(
                     file,
                     &then.iter().collect::<Vec<_>>(),
+                    aliases,
                     counts,
                     out,
                     tags,
@@ -903,6 +916,7 @@ fn count<'s>(
                 count(
                     file,
                     &otherwise.iter().collect::<Vec<_>>(),
+                    aliases,
                     counts,
                     out,
                     tags,
@@ -913,6 +927,7 @@ fn count<'s>(
                 count(
                     file,
                     &body.iter().collect::<Vec<_>>(),
+                    aliases,
                     counts,
                     out,
                     tags,
@@ -921,12 +936,13 @@ fn count<'s>(
             }
             SceneKind::Slot { fallback, .. } => children.push(fallback.iter().collect()),
             SceneKind::Draw(d) => {
-                let n = counts.entry(d.verb.clone()).or_insert(0);
+                let verb = aliases.get(&d.verb).unwrap_or(&d.verb);
+                let n = counts.entry(verb.clone()).or_insert(0);
                 *n += 1;
                 out.insert(
                     s.span,
                     Anon {
-                        verb: d.verb.as_str().into(),
+                        verb: verb.as_str().into(),
                         ordinal: *n,
                         site: Site {
                             file: file.clone(),
@@ -967,6 +983,7 @@ impl ModuleIds {
         path: &str,
         parsed: &File,
         components: &BTreeSet<String>,
+        aliases: &BTreeMap<String, String>,
         out: &mut Vec<Diagnostic>,
     ) -> ModuleIds {
         let file: Rc<str> = path.into();
@@ -983,7 +1000,7 @@ impl ModuleIds {
             &mut regions,
             out,
         );
-        ordinals(&file, &top, &mut anon, &mut tags);
+        ordinals(&file, &top, aliases, &mut anon, &mut tags);
         for d in parsed.decls() {
             if let DeclKind::Def { name, body, .. } | DeclKind::Stamp { name, body, .. } = &d.kind {
                 let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
@@ -997,7 +1014,7 @@ impl ModuleIds {
                     out,
                 );
                 regions.insert(d.span, Rc::new(r));
-                ordinals(&file, &stmts, &mut anon, &mut tags);
+                ordinals(&file, &stmts, aliases, &mut anon, &mut tags);
             }
         }
         ModuleIds {
@@ -1892,7 +1909,13 @@ mod tests {
     fn ids(src: &str) -> (ModuleIds, Vec<Diagnostic>) {
         let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut out = Vec::new();
-        let ids = ModuleIds::build("art/t.art", &parsed, &BTreeSet::new(), &mut out);
+        let ids = ModuleIds::build(
+            "art/t.art",
+            &parsed,
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+            &mut out,
+        );
         (ids, out)
     }
 
@@ -1953,7 +1976,13 @@ mod tests {
         let src = "@target t.png 40x40\ndef circle\n  slot hole\n    rect 4 name:gem\ncircle name:c\n  hole:\n    rect 4 name:gem\n";
         let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut bare_out = Vec::new();
-        let bare = ModuleIds::build("art/t.art", &parsed, &BTreeSet::new(), &mut bare_out);
+        let bare = ModuleIds::build(
+            "art/t.art",
+            &parsed,
+            &BTreeSet::new(),
+            &BTreeMap::new(),
+            &mut bare_out,
+        );
         let bare_id = bare.file().lookup("c")[0];
         assert!(!bare.file().decl(bare_id).kind.opens_scope());
         assert!(bare.region(Span { line: 6, col: 3 }).is_none());
@@ -1961,7 +1990,13 @@ mod tests {
         let mut out = Vec::new();
         let mut components = BTreeSet::new();
         components.insert("circle".to_string());
-        let ids = ModuleIds::build("art/t.art", &parsed, &components, &mut out);
+        let ids = ModuleIds::build(
+            "art/t.art",
+            &parsed,
+            &components,
+            &BTreeMap::new(),
+            &mut out,
+        );
         assert!(out.is_empty(), "{out:?}");
         let id = ids.file().lookup("c")[0];
         assert!(ids.file().decl(id).kind.opens_scope());
