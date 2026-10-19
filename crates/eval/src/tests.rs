@@ -766,6 +766,19 @@ fn jitter_is_amplitude_and_wavelength() {
 }
 
 #[test]
+fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
+    let s = scene(
+        "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
+    );
+    let ink = &shape(&s, "a").geometry;
+    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
+    assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
+    assert!(inside(64.0, 33.0) && !inside(64.0, 35.0), "the first side runs from 2 to 14");
+    assert!(!inside(64.0, 64.0), "the ink is a ring");
+}
+
+#[test]
 fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
     let unit = png(
         "@target t.png 200x120\ngroup scale:50 at:100,60\n  curve -1,0 0,-.5 1,0 stroke:#000,[.05 .1 .05] taper:.3\n",
