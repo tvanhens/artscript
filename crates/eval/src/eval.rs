@@ -1143,7 +1143,7 @@ impl<'a> Evaluator<'a> {
                     "E0204",
                     "a library may only hold declarations at its top level",
                 )
-                .note("allowed: use, palette, style, finish, def, rule, let, anim")
+                .note("allowed: use, palette, style, finish, def, rule, fn, let, anim")
                 .fix("wrap the drawing in a `def` and place it from an entry file"));
             }
         };
