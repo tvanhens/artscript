@@ -1228,6 +1228,11 @@ impl<'a> Evaluator<'a> {
                             }
                         }
                     } else {
+                        if let Some(Err(m)) = p.value.one_of_words() {
+                            module.lost.borrow_mut().insert(name.clone());
+                            return Err(fail("E0320", m)
+                                .fix(format!("write `{}:one_of(a b c)`", p.key)));
+                        }
                         ps.push(p.clone());
                     }
                 }
@@ -3483,13 +3488,10 @@ impl<'a> Evaluator<'a> {
 
     /// A parameter's default and, for `one_of(...)`, the words it may take. A default that
     /// fails to evaluate stays an `Err` the binding reports only when no argument replaces it.
-    fn param_default(&mut self, p: &Named, dsc: &Scope) -> R<(R<Value>, Option<Vec<String>>)> {
+    fn param_default(&mut self, p: &Named, dsc: &Scope) -> (R<Value>, Option<Vec<String>>) {
         match p.value.one_of_words() {
-            None => Ok((self.expr(&p.value, dsc), None)),
-            Some(Ok(words)) => Ok((Ok(Value::Ident(words[0].clone())), Some(words))),
-            Some(Err(m)) => {
-                Err(fail("E0320", m).fix(format!("write `{}:one_of(a b c)`", p.key)))
-            }
+            Some(Ok(words)) => (Ok(Value::Ident(words[0].clone())), Some(words)),
+            _ => (self.expr(&p.value, dsc), None),
         }
     }
 
@@ -3508,7 +3510,7 @@ impl<'a> Evaluator<'a> {
         for p in params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
-            let (default, words) = self.param_default(p, &dsc)?;
+            let (default, words) = self.param_default(p, &dsc);
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
                     check_param(owner, p, &default, words.as_deref(), v)?;
@@ -3605,7 +3607,7 @@ impl<'a> Evaluator<'a> {
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
-            let (default, words) = self.param_default(p, &dsc)?;
+            let (default, words) = self.param_default(p, &dsc);
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
             if let Ok(d @ (Value::Brush(_) | Value::Stamp(_))) = &default {
                 typed_params.push((env.len(), d.clone()));

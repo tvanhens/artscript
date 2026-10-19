@@ -6940,16 +6940,27 @@ fn a_plain_word_default_still_accepts_any_word() {
 }
 
 #[test]
-fn a_malformed_one_of_is_an_error_even_when_the_call_passes_a_word() {
+fn a_malformed_one_of_is_one_error_at_the_def() {
     for decl in ["one_of()", "one_of(1 2)", "one_of(a b c:1)"] {
         let ev = run_with(
-            &format!("@target t.png 16x16\ndef tile kind:{decl}\n  circle 2\ntile kind:a\n"),
+            &format!("@target t.png 16x16\ndef tile kind:{decl}\n  circle 2\ntile kind:a\ntile kind:b\n"),
             &[],
         );
         let es = errors(&ev);
         assert_eq!(es.len(), 1, "{decl}: {}", show(&ev.diagnostics));
         assert!(es[0].message.contains("one_of"), "{}", es[0].message);
+        assert_eq!(es[0].span.line, 2, "{decl}: {}", show(&ev.diagnostics));
     }
+}
+
+#[test]
+fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
+    let lib = ("lib/tiles.art", "def tile kind:one_of(1 2)\n  circle 2\n");
+    let ev = run_with("@target t.png 16x16\nuse tiles\ncircle 2\n", &[lib]);
+    let es = errors(&ev);
+    assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
+    assert!(es[0].file.ends_with("tiles.art"), "{}", show(&ev.diagnostics));
+    assert_eq!(es[0].span.line, 1, "{}", show(&ev.diagnostics));
 }
 
 #[test]
