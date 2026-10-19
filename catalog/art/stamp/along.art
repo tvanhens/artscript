@@ -1,0 +1,37 @@
+# Stamps along a path, 256x256 on paper, four rows.
+# Row 1 (y 20 to 44): a dotted line from x 16 to 240 that rises at x 80 and dips at x 160, made of
+# ink dots 3 px wide, 6 px apart, with no line under them.
+# Row 2 (y 56 to 120): a vine, a 3 px green stroke from 16,110 up to 70,70, down to 140,100 and up
+# to 240,60, with lighter green leaves on alternate sides of it. Pressure runs .9 .6 .7 .3 along
+# the four points, so the leaves are large and far apart at the left end, smaller and closer at
+# the right end, and each leaf leans away from the stem by 15 to 40 degrees.
+# Row 3 left (x 24 to 96, y 154 to 226): an unfilled 2 px ink circle of radius 36 at 60,190 with
+# two sets on it: 19 red dots 12 px apart around the whole circle at one even pitch, with no doubled dot and no
+# gap where the circle closes at its right, and 13 blue 1 px ticks 10 px long across the ink line
+# at their own even pitch.
+# Row 3 right (x 120 to 240, y 150 to 212): a ridge from 120,210 to 240,194 with no line of its
+# own, holding green grass tufts every 9 px. Each tuft is three thin tapered blades that stand
+# upright, lean by a random -10 to 10 degrees, and vary in height from 7 to 13 px; their blades
+# are dry-brushed, so they break into streaks. A solid green hill fills the area below the ridge
+# down to y 240, and the tufts stand on it.
+# The .svg target uses profile:svg: the dots, leaves, circle, and ticks stay vector paths, and only
+# each tuft's brushed blades are baked to raster tiles, so the image matches the PNG.
+@target stamp/along.png 256x256
+@target stamp/along.svg 256x256 profile:svg
+
+use std/brushes { dry }
+use std/stamps { dots ticks leaves }
+
+def tuft h:10 tint:p.green.1
+  each k in 0..3
+    curve 0,0 (k-1)*2,-h*.6 (k-1)*4,-h stroke:tint,1.2 taper:0,.9 brush:dry(strength:.3) name:blade
+
+# Upright tufts with a random lean: the frame follows the tangent, so rot:-tangent stands them up.
+stamp tufts spacing:9 h:10
+  tuft h*(.7+.6*rand(0 1)) at:0,rand(-1 1) rot:-tangent+rand(-10 10) name:tuft
+
+curve 16,36 80,20 160,44 240,28 stamp:dots(tint:p.ink) name:dotted
+curve 16,110 70,70 140,100 240,60 stroke:p.green.1,3 pressure:[.9 .6 .7 .3] stamp:leaves(tint:p.green.3) name:vine
+circle 36 at:60,190 fill:none stroke:p.ink,2 stamp:[dots(spacing:12 tint:p.red.2) ticks(spacing:17 reach:5 tint:p.blue.2)] name:wreath
+curve 120,210 160,196 200,206 240,194 240,240 120,240 closed fill:p.green.2 name:hill
+curve 120,210 160,196 200,206 240,194 stamp:tufts name:ridge
