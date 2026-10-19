@@ -143,6 +143,24 @@ pub struct Component {
     pub span: Span,
 }
 
+/// `def arm_l = hero_arm tone:-1`: `comp` with `fixed` arguments. An instance of the alias is an
+/// instance of `comp`, so it has `comp`'s anchors, parts, slots, and seeds.
+pub struct AliasDef {
+    pub name: String,
+    pub comp: Rc<Component>,
+    /// Every argument fixed along the alias chain, the innermost alias's first.
+    pub fixed: Vec<Fixed>,
+    pub module: String,
+    pub span: Span,
+}
+
+pub struct Fixed {
+    pub key: String,
+    pub value: Expr,
+    /// The module whose names `value` resolves in: the one that declared the alias fixing it.
+    pub module: String,
+}
+
 pub struct RuleDef {
     pub name: String,
     pub params: Vec<Named>,

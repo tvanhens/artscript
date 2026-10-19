@@ -10,7 +10,7 @@ use artscript_ir::{
     Point, Rect, Shape, Stroke,
 };
 use artscript_syntax::ast::{
-    self, BinOp, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
+    self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
     SceneKind, Span, Swatch, SwatchKind, UnOp,
 };
 use artscript_syntax::{Diagnostic, format_expr};
@@ -30,7 +30,8 @@ use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
-    AnimDef, Component, Extent, Module, Palette, Record, RefVal, RowRecord, RuleDef, StyleDef, ref_from,
+    AliasDef, AnimDef, Component, Extent, Fixed, Module, Palette, Record, RefVal, RowRecord, RuleDef,
+    StyleDef, ref_from,
 };
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
@@ -355,6 +356,12 @@ impl Args {
     fn word(&self, k: &str) -> Option<String> {
         self.get(k).and_then(|v| v.word().map(str::to_string))
     }
+}
+
+/// What a component verb instances: the def with a body, and the alias the verb named, if any.
+struct Callee {
+    comp: Rc<Component>,
+    alias: Option<Rc<AliasDef>>,
 }
 
 pub(crate) struct Evaluator<'a> {
@@ -1050,6 +1057,7 @@ impl<'a> Evaluator<'a> {
                 self.report(f, file, item.span(), "");
             }
         }
+        self.declare_aliases(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
         let ids = ModuleIds::build(file, &parsed, &components, &mut id_diags);
@@ -1901,14 +1909,7 @@ impl<'a> Evaluator<'a> {
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
                 .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
                 .note("structure: layer group inside outside mirror repeat grid anchor slot");
-            let comps: Vec<String> = sc
-                .module
-                .globals
-                .borrow()
-                .iter()
-                .filter(|(_, v)| matches!(v, Value::Component(_)))
-                .map(|(k, _)| k.clone())
-                .collect();
+            let comps: Vec<String> = component_names(&sc.module).into_iter().collect();
             if !comps.is_empty() {
                 f = f.note(format!("components in scope: {}", comps.join(", ")));
             }
@@ -1924,7 +1925,8 @@ impl<'a> Evaluator<'a> {
         let positional_name = matches!(verb, "layer" | "group")
             .then(|| args.first().and_then(ident_of).map(str::to_string))
             .flatten();
-        let comp = comp.flatten();
+        let callee = comp.flatten();
+        let comp = callee.as_ref().map(|c| c.comp.clone());
         let skip = usize::from(positional_name.is_some());
         let pos_exprs: Vec<Expr> = args
             .iter()
@@ -1978,6 +1980,9 @@ impl<'a> Evaluator<'a> {
         let raw_flags: Vec<String> = args.iter().filter_map(ident_of).map(str::to_string).collect();
         let flag = |f: &str| raw_flags.iter().any(|x| x == f);
         let mut a = self.eval_args(&pos_exprs, named, sc, 0)?;
+        if let Some(alias) = callee.as_ref().and_then(|c| c.alias.as_ref()) {
+            self.fix_args(alias, &mut a, sc)?;
+        }
         let centered = CENTERED.contains(&verb);
         let group_like = matches!(
             verb,
@@ -2275,9 +2280,14 @@ impl<'a> Evaluator<'a> {
             .or_else(|| sc.module.global(name))
     }
 
-    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Rc<Component>>> {
+    /// `Some(None)` when the verb is bound to `none`, so the line draws nothing.
+    fn component_for(&self, verb: &str, sc: &Scope) -> Option<Option<Callee>> {
         match self.binding(verb, sc)? {
-            Value::Component(c) => Some(Some(c)),
+            Value::Component(comp) => Some(Some(Callee { comp, alias: None })),
+            Value::Alias(a) => Some(Some(Callee {
+                comp: a.comp.clone(),
+                alias: Some(a),
+            })),
             Value::None => Some(None),
             _ => None,
         }
@@ -2285,7 +2295,240 @@ impl<'a> Evaluator<'a> {
 
     /// A bound component is a call even when its name is also a built-in shape.
     fn verb_is_call(&self, verb: &str, sc: &Scope) -> bool {
-        matches!(self.binding(verb, sc), Some(Value::Component(_))) || identity::calls_def(verb)
+        matches!(
+            self.binding(verb, sc),
+            Some(Value::Component(_) | Value::Alias(_))
+        ) || identity::calls_def(verb)
+    }
+
+    /// Binds every `def NAME = target …` of the module. It runs after the module's other
+    /// declarations, so an alias may name a def declared below it, and it follows a chain of
+    /// aliases to the def with a body.
+    fn declare_aliases(&mut self, module: &Rc<Module>, parsed: &File) {
+        let decls: Vec<&Decl> = parsed
+            .decls()
+            .filter(|d| matches!(d.kind, DeclKind::Alias { .. }))
+            .collect();
+        let mut done = BTreeSet::new();
+        for d in &decls {
+            let mut chain = Vec::new();
+            if let Err(f) = self.bind_alias(module, &decls, d, &mut chain, &mut done) {
+                self.alias_failed(module, d, f);
+            }
+        }
+    }
+
+    /// Reports the failure at the alias's own line. Its uses then stay quiet, as a failed
+    /// `let`'s do.
+    fn alias_failed(&mut self, module: &Module, decl: &Decl, f: Fail) {
+        if let DeclKind::Alias { name, .. } = &decl.kind {
+            module.lost.borrow_mut().insert(name.clone());
+        }
+        self.report(f, &module.path, decl.span, "");
+    }
+
+    fn bind_alias(
+        &mut self,
+        module: &Rc<Module>,
+        decls: &[&Decl],
+        decl: &Decl,
+        chain: &mut Vec<String>,
+        done: &mut BTreeSet<Span>,
+    ) -> R<()> {
+        let DeclKind::Alias {
+            name,
+            target,
+            args,
+            named,
+        } = &decl.kind
+        else {
+            return Ok(());
+        };
+        if chain.iter().any(|n| n == name) {
+            chain.push(name.clone());
+            return Err(fail("E0323", format!("`{name}` is an alias of itself"))
+                .note(format!("through {}", chain.join(" -> ")))
+                .fix("name a def with a body"));
+        }
+        if !done.insert(decl.span) {
+            return Ok(());
+        }
+        chain.push(name.clone());
+        if module.global(target).is_none()
+            && let Some(inner) = decls
+                .iter()
+                .find(|d| matches!(&d.kind, DeclKind::Alias { name: n, .. } if n == target))
+            && let Err(f) = self.bind_alias(module, decls, inner, chain, done)
+        {
+            self.alias_failed(module, inner, f);
+            return Err(Fail::reported());
+        }
+        let (comp, mut fixed) = match module.global(target) {
+            Some(Value::Component(c)) => (c, Vec::new()),
+            Some(Value::Alias(a)) => (
+                a.comp.clone(),
+                a.fixed
+                    .iter()
+                    .map(|f| Fixed {
+                        key: f.key.clone(),
+                        value: f.value.clone(),
+                        module: f.module.clone(),
+                    })
+                    .collect(),
+            ),
+            Some(other) => {
+                return Err(fail(
+                    "E0323",
+                    format!("`{target}` is {}, not a def", other.kind()),
+                )
+                .fix("alias a def"));
+            }
+            None if module.lost(target) => return Err(Fail::reported()),
+            None => {
+                return Err(
+                    fail("E0301", format!("unknown def `{target}`")).fix(format!(
+                        "check the spelling, or `use` the library that defines `{target}`"
+                    )),
+                );
+            }
+        };
+        let is_fixed = |k: &str| fixed.iter().any(|f| f.key == k);
+        let open: Vec<String> = comp
+            .params
+            .iter()
+            .map(|p| p.key.clone())
+            .filter(|k| !is_fixed(k))
+            .collect();
+        if args.len() > open.len() {
+            return Err(fail(
+                "E0321",
+                format!("`{target}` takes {} positional argument(s)", open.len()),
+            )
+            .fix("pass the rest as key:value"));
+        }
+        let mut own: Vec<Fixed> = args
+            .iter()
+            .zip(&open)
+            .map(|(value, key)| Fixed {
+                key: key.clone(),
+                value: value.clone(),
+                module: module.path.clone(),
+            })
+            .collect();
+        for n in named {
+            if is_fixed(&n.key) || own.iter().any(|f| f.key == n.key) {
+                return Err(
+                    fail("E0321", format!("`{target}` fixes `{}`", n.key)).fix(format!(
+                        "drop `{}:`, or alias `{}` directly",
+                        n.key, comp.name
+                    )),
+                );
+            }
+            if !open.contains(&n.key)
+                && n.key != "seed"
+                && n.key != "palette"
+                && !NODE_KEYS.contains(&n.key.as_str())
+            {
+                return Err(
+                    fail("E0321", format!("`{target}` has no parameter `{}`", n.key))
+                        .note(format!("parameters: {}", open.join(", ")))
+                        .fix("use one of the listed parameters"),
+                );
+            }
+            own.push(Fixed {
+                key: n.key.clone(),
+                value: n.value.clone(),
+                module: module.path.clone(),
+            });
+        }
+        fixed.extend(own);
+        module.define(
+            name,
+            Value::Alias(Rc::new(AliasDef {
+                name: name.clone(),
+                comp,
+                fixed,
+                module: module.path.clone(),
+                span: decl.span,
+            })),
+        );
+        Ok(())
+    }
+
+    /// Merges the arguments `alias` fixed into a call on it. The call's positionals fill the
+    /// parameters the alias leaves open, in the def's order. A fixed argument is evaluated in
+    /// the module that fixed it, with the instance's palette as `p`.
+    fn fix_args(&mut self, alias: &AliasDef, a: &mut Args, sc: &Scope) -> R<()> {
+        let is_fixed = |k: &str| alias.fixed.iter().any(|f| f.key == k);
+        let open: Vec<&str> = alias
+            .comp
+            .params
+            .iter()
+            .map(|p| p.key.as_str())
+            .filter(|k| !is_fixed(k))
+            .collect();
+        for (k, _) in &a.named {
+            if is_fixed(k) {
+                return Err(
+                    fail("E0321", format!("`{}` fixes `{k}`", alias.name)).fix(format!(
+                        "drop `{k}:`, or instance `{}` directly",
+                        alias.comp.name
+                    )),
+                );
+            }
+            if !open.contains(&k.as_str())
+                && k != "seed"
+                && k != "palette"
+                && !NODE_KEYS.contains(&k.as_str())
+            {
+                return Err(
+                    fail("E0321", format!("`{}` has no parameter `{k}`", alias.name))
+                        .note(format!("parameters: {}", open.join(", ")))
+                        .fix("use one of the listed parameters"),
+                );
+            }
+        }
+        let pos = std::mem::take(&mut a.pos);
+        if pos.len() > open.len() {
+            return Err(fail(
+                "E0321",
+                format!(
+                    "`{}` takes {} positional argument(s)",
+                    alias.name,
+                    open.len()
+                ),
+            )
+            .fix("pass the rest as key:value"));
+        }
+        for (key, v) in open.iter().zip(pos) {
+            a.named.push((key.to_string(), v));
+        }
+        let mut palette = a.get("palette").cloned().or_else(|| sc.palette.clone());
+        let fixed_palette = alias.fixed.iter().position(|f| f.key == "palette");
+        let order = fixed_palette
+            .into_iter()
+            .chain((0..alias.fixed.len()).filter(|&i| Some(i) != fixed_palette));
+        for i in order {
+            let f = &alias.fixed[i];
+            let module = self
+                .modules
+                .get(&f.module)
+                .cloned()
+                .ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", f.module)))?;
+            let mut fsc = self.module_scope(&module);
+            fsc.palette = palette.clone();
+            let v = self.expr(&f.value, &fsc).map_err(|e| {
+                e.note(format!(
+                    "in `{}:` fixed by `{}` ({}:{})",
+                    f.key, alias.name, alias.module, alias.span.line
+                ))
+            })?;
+            if f.key == "palette" && a.get("palette").is_none() {
+                palette = Some(v.clone());
+            }
+            a.named.push((f.key.clone(), v));
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3596,6 +3839,7 @@ impl<'a> Evaluator<'a> {
                 let module = self.modules.get(&*decl.site.file)?;
                 let comp = match module.global(verb)? {
                     Value::Component(c) => c,
+                    Value::Alias(a) => a.comp.clone(),
                     _ => return None,
                 };
                 let ids = self.ids.get(&comp.module)?.clone();
@@ -5362,7 +5606,7 @@ fn component_names(module: &Module) -> BTreeSet<String> {
         .globals
         .borrow()
         .iter()
-        .filter(|(_, v)| matches!(v, Value::Component(_)))
+        .filter(|(_, v)| matches!(v, Value::Component(_) | Value::Alias(_)))
         .map(|(name, _)| name.clone())
         .collect()
 }

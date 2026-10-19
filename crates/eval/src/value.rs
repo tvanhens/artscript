@@ -11,7 +11,7 @@ use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
 use crate::range::Range;
-use crate::scope::{Component, Module, Palette, RefVal, RuleDef};
+use crate::scope::{AliasDef, Component, Module, Palette, RefVal, RuleDef};
 
 /// One coordinate: canvas units or a percent of the current frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,6 +73,8 @@ pub enum Value {
     Str(String),
     Ident(String),
     Component(Rc<Component>),
+    /// A def alias. Its kind is `Component`, so it goes wherever a component goes.
+    Alias(Rc<AliasDef>),
     Module(Rc<Module>),
     Ref(Rc<RefVal>),
     Rule(Rc<RuleDef>),
@@ -150,7 +152,7 @@ impl Value {
             Value::List(_) => Kind::List,
             Value::Str(_) => Kind::Str,
             Value::Ident(_) => Kind::Word,
-            Value::Component(_) => Kind::Component,
+            Value::Component(_) | Value::Alias(_) => Kind::Component,
             Value::Module(_) => Kind::Module,
             Value::Ref(_) => Kind::Ref,
             Value::Rule(_) => Kind::Rule,
@@ -308,6 +310,7 @@ impl Value {
             Value::Str(s) => format!("{s:?}"),
             Value::Ident(s) => s.clone(),
             Value::Component(c) => c.name.clone(),
+            Value::Alias(a) => a.name.clone(),
             Value::Module(m) => m.path.clone(),
             Value::Ref(r) => format!("@{}", r.label),
             Value::Rule(r) => r.name.clone(),
@@ -432,6 +435,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::None, Value::None) => true,
         (Value::Color(x), Value::Color(y)) => x.rgba == y.rgba,
         (Value::Component(x), Value::Component(y)) => Rc::ptr_eq(x, y),
+        (Value::Alias(x), Value::Alias(y)) => Rc::ptr_eq(x, y),
         (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Stamp(x), Value::Stamp(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,
