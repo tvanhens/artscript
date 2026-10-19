@@ -30,7 +30,7 @@ fn effect(e: &Effect) -> String {
         EffectOp::Glow { radius, color, strength } => format!("glow {} {} strength:{}", num(*radius as f64), color.hex(), num(*strength as f64)),
         EffectOp::Rim { width, color, .. } => format!("rim {} {}", num(*width as f64), color.hex()),
         EffectOp::Adjust { hue, sat, light } => format!("adjust {} {} {}", num(*hue as f64), num(*sat as f64), num(*light as f64)),
-        EffectOp::Outline { width, color, sides, mask } => {
+        EffectOp::Outline { width, color, sides, mask, brush } => {
             let kept: Vec<&str> = [(sides.top, "top"), (sides.right, "right"), (sides.bottom, "bottom"), (sides.left, "left")]
                 .into_iter()
                 .filter_map(|(on, word)| on.then_some(word))
@@ -41,7 +41,8 @@ fn effect(e: &Effect) -> String {
                 Some(m) if m.feather > 0.0 => format!(" mask feather:{}", num(m.feather as f64)),
                 Some(_) => " mask".to_string(),
             };
-            format!("outline {} {}{only}{masked}", num(*width as f64), color.hex())
+            let brushed = if brush.is_empty() { "" } else { " brush" };
+            format!("outline {} {}{only}{masked}{brushed}", num(*width as f64), color.hex())
         }
         EffectOp::Grain { strength, .. } => format!("grain {}", num(*strength as f64)),
         EffectOp::Merge { inputs, .. } => format!("merge ({})", inputs.len()),
