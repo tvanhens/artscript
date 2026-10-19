@@ -4102,6 +4102,30 @@ fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
 }
 
 #[test]
+fn a_statement_that_waits_on_a_cycle_does_not_take_the_cycle_error() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "circle 2 at:@a.tip name:c\n",
+            "group name:a at:@b.tip\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group name:b at:@a.top\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!((errors[0].code.as_str(), errors[0].span.line), ("E0350", 3), "{}", errors[0]);
+}
+
+#[test]
 fn a_reference_to_a_name_in_an_untaken_arm_is_still_not_drawn() {
     let ev = run_with(
         "@target t.png 40x40\ncopy @mark\nif 1 == 2\n  circle 4 name:mark\n",
