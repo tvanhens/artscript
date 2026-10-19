@@ -2,10 +2,11 @@
 //! drawn into a layer. A soft clip draws into layers that start from the canvas below, so its
 //! children still blend with it. Effects see the clipped and masked content.
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use artscript_ir::{Blend, Clip, Mask, MaskSource, Matrix, Node, NodeKind, Scene, Shape};
+use artscript_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -543,19 +544,44 @@ fn draw_shape(
     }
 
     // The layer keeps the stamps' and children's blend modes off the pixels below the shape. The
-    // clip is the geometry, not the painted alpha, so a fill:none or translucent shape still
-    // shows the children. Stamps are not clipped: a leaf spills past its stem.
+    // clip is never the painted alpha, so a fill:none or translucent shape still shows the
+    // children. Stamps are not clipped: a leaf spills past its stem.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
     for stamp in &shape.stamps {
         draw_node(canvas, stamp, ctx, world)?;
     }
-    canvas.clip_path(&shape.clip(), ClipOp::Intersect, true);
-    for child in &shape.children {
-        draw_node(canvas, child, ctx, world)?;
+    let draw_children = || {
+        for child in &shape.children {
+            draw_node(canvas, child, ctx, world)?;
+        }
+        Ok(())
+    };
+    match child_clip(shape) {
+        ChildClip::Path(path) => {
+            canvas.clip_path(&path, ClipOp::Intersect, true);
+            draw_children()?;
+        }
+        ChildClip::Coverage(fill) => {
+            crate::mark::with_coverage(canvas, &shape.geometry, fill, ctx, origin, draw_children)?;
+        }
     }
     canvas.restore();
     Ok(())
+}
+
+enum ChildClip<'a> {
+    Path(Cow<'a, Path>),
+    /// The coverage a brushed fill leaves: the stage coverages without the paint's alpha, so a
+    /// translucent shape keeps its children opaque.
+    Coverage(&'a Fill),
+}
+
+fn child_clip(shape: &Shape) -> ChildClip<'_> {
+    match shape.coverage_clip() {
+        Some(fill) => ChildClip::Coverage(fill),
+        None => ChildClip::Path(shape.clip()),
+    }
 }
 
 fn apply_clip_mask(canvas: &Canvas, clip: &Clip) -> Result<(), RenderError> {

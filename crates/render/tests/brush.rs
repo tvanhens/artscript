@@ -187,3 +187,68 @@ fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_ove
     let (host_at, image_at, stamp_at) = (svg.find("<g id=\"line\"").unwrap(), svg.find("<image").unwrap(), svg.find("<g id=\"line.dots.0.c\"").unwrap());
     assert!(host_at < image_at && image_at < stamp_at, "the tile sits in the host and the stamp draws over it: {svg}");
 }
+
+/// A brush that leaves a gap at x 38..42 and 40% coverage at x 50..54.
+const GAPPED: &str = "float4 shade(Mark m) {\n  float k = (m.p.x >= 38 && m.p.x < 42) ? 0 : ((m.p.x >= 50 && m.p.x < 54) ? .4 : 1);\n  return float4(m.paint.rgb, cover(m.edge, m) * k);\n}\n";
+
+fn with_child(mut parent: artscript_ir::Node, child: artscript_ir::Node) -> artscript_ir::Node {
+    if let NodeKind::Shape(shape) = &mut parent.kind {
+        shape.children.push(child);
+    }
+    parent
+}
+
+fn band() -> artscript_ir::Node {
+    solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(0, 0, 255, 255))
+}
+
+#[test]
+fn children_of_a_brushed_fill_clip_to_its_coverage_not_its_geometry() {
+    let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 30, 40), [0, 0, 255, 255], "the child shows over covered fill");
+    assert_eq!(pixel(&png, 40, 40)[3], 0, "the child does not fill the gap the brush leaves");
+    assert_eq!(pixel(&png, 15, 40)[3], 0, "the child does not spill past the geometry");
+    let partial = pixel(&png, 52, 40);
+    assert!(
+        partial[3].abs_diff(163) <= 2 && partial[0].abs_diff(95) <= 2 && partial[2].abs_diff(160) <= 2,
+        "40% blue child over 40% red fill is 64% alpha, 60% of it the fill's red lost to the child: {partial:?}"
+    );
+}
+
+#[test]
+fn a_translucent_brushed_fill_keeps_its_children_opaque() {
+    let faint = Paint::Solid(color(255, 0, 0, 51));
+    let parent = brushed("a", Path::rect(SQUARE, None), faint, vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 30, 40), [0, 0, 255, 255], "paint alpha does not dim the child");
+    assert_eq!(pixel(&png, 40, 40)[3], 0);
+}
+
+#[test]
+fn children_of_an_unbrushed_fill_still_clip_to_its_geometry() {
+    let parent = with_child(solid("a", Path::rect(SQUARE, None), red()), band());
+    let png = render_png(&scene(80.0, 80.0, vec![parent]), 1.0, Backend::Cpu).unwrap();
+    assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
+    assert_eq!(pixel(&png, 15, 40)[3], 0);
+}
+
+#[test]
+fn children_of_a_brushed_fill_still_blend_with_it() {
+    let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let mut gray = solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(128, 128, 128, 255));
+    gray.blend = artscript_ir::Blend::Multiply;
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, gray)]), 1.0, Backend::Cpu).unwrap();
+    let px = pixel(&png, 30, 40);
+    assert!(px[0].abs_diff(128) <= 2 && px[1] <= 2 && px[2] <= 2 && px[3] == 255, "gray multiplied over red is dark red: {px:?}");
+}
+
+#[test]
+fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
+    let mut host = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let plain = solid("a.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
+    with_stamps(&mut host, vec![stamp("a.dots.0", artscript_ir::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
+    let svg = render_svg(&scene(80.0, 80.0, vec![host]), artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 1, "{svg}");
+    assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
+}
