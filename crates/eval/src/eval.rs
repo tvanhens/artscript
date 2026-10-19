@@ -741,6 +741,39 @@ fn size_box(w: f64, h: f64) -> Rect {
     Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
 }
 
+fn check_param(
+    owner: &str,
+    p: &Named,
+    default: &R<Value>,
+    words: Option<&[String]>,
+    given: &Value,
+) -> R<()> {
+    if let Some(words) = words {
+        if matches!(given, Value::Ident(w) if words.contains(w)) {
+            return Ok(());
+        }
+        let list = words.join(", ");
+        return Err(fail(
+            "E0320",
+            format!("`{}` of `{owner}` is one of {list}, got {}", p.key, given.show()),
+        )
+        .fix(format!("write `{}:{}` or another of {list}", p.key, words[0])));
+    }
+    match default {
+        Ok(d) if !d.accepts(given) => Err(fail(
+            "E0320",
+            format!(
+                "`{}` of `{owner}` expects {}, got {}",
+                p.key,
+                d.kind(),
+                given.kind()
+            ),
+        )
+        .fix(param_fix(&p.key, d, given))),
+        _ => Ok(()),
+    }
+}
+
 fn param_fix(key: &str, default: &Value, given: &Value) -> String {
     match (default, given) {
         (Value::Module(_), Value::Palette(p)) => format!(
@@ -3448,6 +3481,18 @@ impl<'a> Evaluator<'a> {
         ))
     }
 
+    /// A parameter's default and, for `one_of(...)`, the words it may take. A default that
+    /// fails to evaluate stays an `Err` the binding reports only when no argument replaces it.
+    fn param_default(&mut self, p: &Named, dsc: &Scope) -> R<(R<Value>, Option<Vec<String>>)> {
+        match p.value.one_of_words() {
+            None => Ok((self.expr(&p.value, dsc), None)),
+            Some(Ok(words)) => Ok((Ok(Value::Ident(words[0].clone())), Some(words))),
+            Some(Err(m)) => {
+                Err(fail("E0320", m).fix(format!("write `{}:one_of(a b c)`", p.key)))
+            }
+        }
+    }
+
     pub(crate) fn bind_params(
         &mut self,
         owner: &str,
@@ -3463,23 +3508,10 @@ impl<'a> Evaluator<'a> {
         for p in params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
-            let default = self.expr(&p.value, &dsc);
+            let (default, words) = self.param_default(p, &dsc)?;
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
-                    if let Ok(d) = &default
-                        && !d.accepts(v)
-                    {
-                        return Err(fail(
-                            "E0320",
-                            format!(
-                                "`{}` of `{owner}` expects {}, got {}",
-                                p.key,
-                                d.kind(),
-                                v.kind()
-                            ),
-                        )
-                        .fix(param_fix(&p.key, d, v)));
-                    }
+                    check_param(owner, p, &default, words.as_deref(), v)?;
                     v.clone()
                 }
                 None => default.map_err(|f| {
@@ -3573,28 +3605,14 @@ impl<'a> Evaluator<'a> {
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
-            let default = self.expr(&p.value, &dsc);
+            let (default, words) = self.param_default(p, &dsc)?;
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
             if let Ok(d @ (Value::Brush(_) | Value::Stamp(_))) = &default {
                 typed_params.push((env.len(), d.clone()));
             }
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => {
-                    if let Ok(d) = &default
-                        && !d.accepts(v)
-                    {
-                        return Err(fail(
-                            "E0320",
-                            format!(
-                                "`{}` of `{}` expects {}, got {}",
-                                p.key,
-                                comp.name,
-                                d.kind(),
-                                v.kind()
-                            ),
-                        )
-                        .fix(param_fix(&p.key, d, v)));
-                    }
+                    check_param(&comp.name, p, &default, words.as_deref(), v)?;
                     v.clone()
                 }
                 None => default.map_err(|f| {
