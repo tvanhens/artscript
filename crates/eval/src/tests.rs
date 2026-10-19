@@ -6578,3 +6578,20 @@ fn edge_errors_name_what_it_needs() {
 
 mod brush;
 mod stamp;
+
+#[test]
+fn edge_to_the_end_of_an_open_curve_is_one_piece() {
+    for k in 0..20 {
+        let mut src = format!("@target t.png 100x100\ncurve 0,0 30,40 70,10 {},90 name:c\n", 60 + k);
+        for i in 1..100 {
+            src.push_str(&format!("edge @c from:.{i:02} name:e{i}\n"));
+        }
+        let s = scene(&src);
+        for i in 1..100 {
+            let moves = skia_safe::path::Iter::new(&shape(&s, &format!("e{i}")).geometry, false)
+                .filter(|(verb, _)| *verb == skia_safe::path::Verb::Move)
+                .count();
+            assert_eq!(moves, 1, "curve {k}, from:.{i:02}");
+        }
+    }
+}
