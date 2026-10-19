@@ -1,6 +1,6 @@
 # Stamps along a path, 256x256 on paper, four rows.
 # Row 1 (y 20 to 44): a dotted line from x 16 to 240 that rises at x 80 and dips at x 160, made of
-# ink dots 3 px wide, 6 px apart, with no line under them.
+# ink dots 4 px wide, 6 px apart, with no line under them.
 # Row 2 (y 56 to 120): a vine, a 3 px green stroke from 16,110 up to 70,70, down to 140,100 and up
 # to 240,60, with lighter green leaves on alternate sides of it, drawn over the stem. The stem is
 # brushed with bristle: solid from the left end to the dip near 140,100, then broken into thin
