@@ -10,7 +10,7 @@ stamp clump spacing:7 r:9 tone:p.moss.2
       circle r*.35 at:0-r*.2,0-r*.3 fill:shade(tone 2) a:.55 blur:2
 
 stamp strands spacing:6 h:20
-  curve 0,0 rand(-3 3),0-h*.45 rand(-8 8),0-h*(.5+.7*rand(0 1)) stroke:pick([p.moss.1 p.moss.2 p.moss.3 p.moss.4]),3.5 taper:0,1 rot:-tangent+rand(-30 30) name:strand
+  curve 0,0 rand(-3 3),0-h*.45 rand(-8 8),0-h*(.5+.7*rand(0 1)) stroke:pick([p.moss.1 p.moss.2 p.moss.3 p.moss.4]),3.5 taper:0,1 at:0,4 rot:-tangent*.35+rand(-25 25) name:strand
 
 layer ground_shadow
   ellipse 380,50 at:540,885 fill:p.ink a:.6 blur:26
@@ -84,7 +84,7 @@ layer body
   each k, sp in [418,330,-48 525,262,-26 640,240,-4 752,262,18 846,330,42 900,430,64]
     fang 42+mod(k 2)*18 14+mod(k 2)*3 lean:-6 at:sp.0,sp.1 rot:sp.2 tone:p.bone.2 name:spine
       fx outline 5 color:p.ink
-  curve 390,340 470,290 560,260 640,248 720,256 800,294 856,354 896,430 fill:none stamp:strands name:moss_line
+  curve 404,346 470,294 560,264 640,252 720,260 798,298 848,350 878,404 fill:none stamp:strands name:moss_line
   each k, mu in [575,252 612,246 785,274]
     ellipse 14,5 at:mu+(0,2) fill:p.ink a:.5 blur:3 name:shroom_shadow
     group at:mu name:shroom
@@ -109,6 +109,7 @@ layer collar_layer
         circle 1.5 at:1,1.2 fill:p.shell.5 a:.5 blur:1
     curve 486,404 550,380 612,386 634,420 fill:none stamp:clump(r:8) name:collar_moss
     fx outline 6 color:p.ink
+  curve 494,404 548,384 606,390 628,422 fill:none stamp:strands name:collar_grass
 
 layer legs_mid
   leg 505,680 455,775 470,872 w:36 tone:p.leg.5 bend:10 spur:0 name:leg_n0
