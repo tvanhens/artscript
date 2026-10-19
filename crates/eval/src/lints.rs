@@ -701,7 +701,7 @@ pub fn hidden_child(
                 }
                 NodeKind::Group { .. } => false,
             };
-            for c in n.children() {
+            for c in n.descendants() {
                 self.node(c, world, site);
             }
             if clip {
@@ -768,14 +768,20 @@ pub fn hidden_child(
 /// them for effects that read another node.
 fn index<'n>(nodes: &'n [Node], parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
     for n in nodes {
-        out.insert(n.path.as_str(), (n, parent));
-        let world = parent * n.transform;
-        if let Some(mask) = &n.mask
-            && let MaskSource::Nodes(inner) = &mask.source
-        {
-            index(inner, world, out);
-        }
-        index(n.children(), world, out);
+        index_node(n, parent, out);
+    }
+}
+
+fn index_node<'n>(n: &'n Node, parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
+    out.insert(n.path.as_str(), (n, parent));
+    let world = parent * n.transform;
+    if let Some(mask) = &n.mask
+        && let MaskSource::Nodes(inner) = &mask.source
+    {
+        index(inner, world, out);
+    }
+    for c in n.descendants() {
+        index_node(c, world, out);
     }
 }
 

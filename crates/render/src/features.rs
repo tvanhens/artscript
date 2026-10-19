@@ -12,13 +12,19 @@ pub fn raster_only_features(scene: &Scene) -> Vec<Unsupported> {
 
 fn walk(nodes: &[Node], out: &mut Vec<Unsupported>) {
     for node in nodes {
-        features_of(node, out);
-        if let Some(mask) = &node.mask
-            && let MaskSource::Nodes(inner) = &mask.source
-        {
-            walk(inner, out);
-        }
-        walk(node.children(), out);
+        visit(node, out);
+    }
+}
+
+fn visit(node: &Node, out: &mut Vec<Unsupported>) {
+    features_of(node, out);
+    if let Some(mask) = &node.mask
+        && let MaskSource::Nodes(inner) = &mask.source
+    {
+        walk(inner, out);
+    }
+    for child in node.descendants() {
+        visit(child, out);
     }
 }
 

@@ -2296,6 +2296,7 @@ impl<'a> Evaluator<'a> {
                         ))),
                         stroke: None,
                         blur: 0.0,
+                        stamps: vec![],
                         children: vec![],
                     };
                     let n = new_node(
@@ -2907,6 +2908,7 @@ impl<'a> Evaluator<'a> {
                 fill,
                 stroke: None,
                 blur,
+                stamps: vec![],
                 children: vec![],
             });
         };
@@ -2944,6 +2946,7 @@ impl<'a> Evaluator<'a> {
                     ribbon: Some(ribbon),
                 }),
                 blur,
+                stamps: vec![],
                 children: vec![],
             });
         }
@@ -2970,6 +2973,7 @@ impl<'a> Evaluator<'a> {
                 fill: Some(IrFill::plain(paint)),
                 stroke: None,
                 blur,
+                stamps: vec![],
                 children: vec![],
             });
         }
@@ -3007,6 +3011,7 @@ impl<'a> Evaluator<'a> {
                 ribbon: None,
             }),
             blur,
+            stamps: vec![],
             children: vec![],
         })
     }

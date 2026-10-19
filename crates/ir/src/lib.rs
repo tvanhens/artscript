@@ -107,9 +107,15 @@ pub struct Shape {
     pub stroke: Option<Stroke>,
     /// Gaussian sigma that softens the shape's own edge (Skia mask-filter blur). 0 = crisp.
     pub blur: f32,
+    /// Drawn after the shape's own paint and before `children`, in the shape's local frame and
+    /// not clipped to the geometry. Each is an isolated group placed at a point of the
+    /// geometry's contours with x along the direction of travel. Stamps are the node's ink
+    /// (effects, mask, opacity, blend and `fx outline` cover them) and not its geometry
+    /// (children, `inside`, `copy`, booleans and anchors see the spine as before).
+    pub stamps: Vec<Node>,
     /// Drawn after the shape, clipped to [`Shape::clip`] whatever the shape's fill or alpha (the
-    /// "clip by nesting" rule). The shape and its children form one isolated group, so a
-    /// child's blend mode never reaches content below the shape.
+    /// "clip by nesting" rule). The shape, its stamps and its children form one isolated group,
+    /// so a child's blend mode never reaches content below the shape.
     pub children: Vec<Node>,
 }
 
@@ -463,11 +469,15 @@ impl Shape {
 }
 
 impl Node {
-    pub fn children(&self) -> &[Node] {
-        match &self.kind {
-            NodeKind::Group { children, .. } => children,
-            NodeKind::Shape(s) => &s.children,
-        }
+    /// Every node directly under this one, in draw order: a shape's stamps, then its children,
+    /// or a group's children. Every walker over the tree reads this. Only a renderer tells a
+    /// shape's stamps and children apart, through [`Shape`]'s own fields, because only it clips.
+    pub fn descendants(&self) -> impl Iterator<Item = &Node> + '_ {
+        let (first, then): (&[Node], &[Node]) = match &self.kind {
+            NodeKind::Group { children, .. } => (children, &[]),
+            NodeKind::Shape(s) => (&s.stamps, &s.children),
+        };
+        first.iter().chain(then)
     }
 
     /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the
@@ -476,8 +486,9 @@ impl Node {
         self.local_bounds().map(|local| self.transform.map_rect(local).0)
     }
 
-    /// Visual bounds in this node's own coordinates: geometry plus half the stroke width,
-    /// union of children for groups, cut to [`Node::kept_bounds`]. Effects are ignored.
+    /// Visual bounds in this node's own coordinates: geometry plus half the stroke width and
+    /// the stamps, union of children for groups, cut to [`Node::kept_bounds`]. Effects are
+    /// ignored.
     pub fn local_bounds(&self) -> Option<Rect> {
         let local = match &self.kind {
             NodeKind::Shape(s) => shape_bounds(s),
@@ -490,13 +501,8 @@ impl Node {
     /// and square caps count.
     fn local_ink(&self) -> Option<Rect> {
         let local = match &self.kind {
-            NodeKind::Shape(s) => shape_ink(s),
-            NodeKind::Group { children, .. } => join_all(
-                children
-                    .iter()
-                    .map(|c| Some(c.transform.map_rect(c.local_ink()?).0))
-                    .collect::<Vec<_>>(),
-            ),
+            NodeKind::Shape(s) => join(shape_ink(s), union_ink(&s.stamps)),
+            NodeKind::Group { children, .. } => union_ink(children),
         }?;
         self.cut_to_kept(local)
     }
@@ -548,14 +554,15 @@ impl Node {
         find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
         visiting: &mut Vec<String>,
     ) -> Option<Rect> {
+        let outer_of = |nodes: &[Node], visiting: &mut Vec<String>| {
+            join_all(nodes.iter().map(|c| c.outer(world, find, visiting)).collect::<Vec<_>>())
+        };
         let content = match &self.kind {
-            NodeKind::Shape(s) => grow(shape_ink(s), blur_reach(s.blur, 1.0)),
-            NodeKind::Group { children, .. } => join_all(
-                children
-                    .iter()
-                    .map(|c| c.outer(world, find, visiting))
-                    .collect::<Vec<_>>(),
+            NodeKind::Shape(s) => join(
+                grow(shape_ink(s), blur_reach(s.blur, 1.0)),
+                outer_of(&s.stamps, visiting),
             ),
+            NodeKind::Group { children, .. } => outer_of(children, visiting),
         };
         let mut source = content.and_then(|r| self.cut_to_kept(r));
         let mut current = source;
@@ -650,7 +657,18 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Geometry plus half the stroke width, plus what the brush marks may paint past it.
+/// Each node's [`Node::local_ink`] through its transform, joined.
+fn union_ink(nodes: &[Node]) -> Option<Rect> {
+    join_all(
+        nodes
+            .iter()
+            .map(|c| Some(c.transform.map_rect(c.local_ink()?).0))
+            .collect::<Vec<_>>(),
+    )
+}
+
+/// Geometry plus half the stroke width, plus what the brush marks may paint past it, joined
+/// with the stamps' bounds.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
     if let Some(st) = &s.stroke {
@@ -660,11 +678,8 @@ fn shape_bounds(s: &Shape) -> Option<Rect> {
     if reach > 0.0 {
         r.outset((reach, reach));
     }
-    if r.is_empty() && s.geometry.is_empty() {
-        None
-    } else {
-        Some(r)
-    }
+    let own = if r.is_empty() && s.geometry.is_empty() { None } else { Some(r) };
+    join(own, union_bounds(&s.stamps))
 }
 
 /// Geometry joined with the outline its stroke fills, at Skia's default miter limit as render
@@ -796,7 +811,48 @@ fn join_all(rects: impl IntoIterator<Item = Option<Rect>>) -> Option<Rect> {
 
 #[cfg(test)]
 mod tests {
-    use super::blur_reach;
+    use super::*;
+
+    fn shape_node(path: &str, geometry: Path, stamps: Vec<Node>) -> Node {
+        Node {
+            path: path.into(),
+            origin: String::new(),
+            transform: Matrix::new_identity(),
+            opacity: 1.0,
+            blend: Blend::Normal,
+            clip: None,
+            mask: None,
+            effects: Vec::new(),
+            kind: NodeKind::Shape(Box::new(Shape {
+                geometry,
+                fill: Some(Fill::plain(Paint::Solid(Color::TRANSPARENT))),
+                stroke: None,
+                blur: 0.0,
+                stamps,
+                children: Vec::new(),
+            })),
+        }
+    }
+
+    #[test]
+    fn a_shape_s_bounds_and_outer_bounds_grow_through_its_stamps() {
+        let mut leaf = shape_node("vine.leaves.0", Path::rect(Rect::from_xywh(-4.0, -4.0, 8.0, 8.0), None), Vec::new());
+        leaf.transform = Matrix::translate((100.0, 0.0));
+        leaf.effects.push(Effect {
+            op: EffectOp::Glow { radius: 2.0, color: Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }, strength: 1.0 },
+            input: EffectInput::Previous,
+            name: None,
+        });
+        let host = shape_node("vine", Path::rect(Rect::from_xywh(0.0, 0.0, 50.0, 10.0), None), vec![leaf]);
+        let b = host.bounds().unwrap();
+        assert_eq!((b.left, b.top, b.right, b.bottom), (0.0, -4.0, 104.0, 10.0));
+        let outer = host.outer_bounds(&Matrix::new_identity(), &|_| None).unwrap();
+        let reach = blur_reach(2.0, 1.0).unwrap();
+        assert!((outer.right - (104.0 + reach)).abs() < 1e-4, "{outer:?}");
+        assert!((outer.top - (-4.0 - reach)).abs() < 1e-4, "{outer:?}");
+        let paths: Vec<&str> = host.descendants().map(|n| n.path.as_str()).collect();
+        assert_eq!(paths, ["vine.leaves.0"]);
+    }
 
     #[test]
     fn blur_reach_matches_the_gaussian_quantile() {

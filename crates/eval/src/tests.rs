@@ -39,10 +39,12 @@ fn show(ds: &[Diagnostic]) -> String {
 }
 
 fn walk<'a>(nodes: &'a [Node], out: &mut Vec<&'a Node>) {
-    for n in nodes {
-        out.push(n);
-        walk(n.children(), out);
-    }
+    nodes.iter().for_each(|n| walk_node(n, out));
+}
+
+fn walk_node<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
+    out.push(n);
+    n.descendants().for_each(|c| walk_node(c, out));
 }
 
 fn paths(s: &Scene) -> Vec<String> {
@@ -3552,15 +3554,17 @@ fn a_let_above_each_over_pick_does_not_rename_a_node() {
 }
 
 fn walk_deep<'a>(nodes: &'a [Node], out: &mut Vec<&'a Node>) {
-    for n in nodes {
-        out.push(n);
-        if let Some(mask) = &n.mask
-            && let artscript_ir::MaskSource::Nodes(inner) = &mask.source
-        {
-            walk_deep(inner, out);
-        }
-        walk_deep(n.children(), out);
+    nodes.iter().for_each(|n| walk_deep_node(n, out));
+}
+
+fn walk_deep_node<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
+    out.push(n);
+    if let Some(mask) = &n.mask
+        && let artscript_ir::MaskSource::Nodes(inner) = &mask.source
+    {
+        walk_deep(inner, out);
     }
+    n.descendants().for_each(|c| walk_deep_node(c, out));
 }
 
 fn node_print(n: &Node) -> String {

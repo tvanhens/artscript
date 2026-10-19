@@ -315,7 +315,7 @@ fn collect_strokes(n: &Node, out: &mut Vec<f64>) {
     {
         out.push((st.width as f64 * 100.0).round() / 100.0);
     }
-    for c in n.children() {
+    for c in n.descendants() {
         collect_strokes(c, out);
     }
 }

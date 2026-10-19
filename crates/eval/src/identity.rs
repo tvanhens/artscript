@@ -366,7 +366,7 @@ pub fn reflect(node: &mut artscript_ir::Node) {
         ns.iter_mut().for_each(reflect);
     }
     match &mut node.kind {
-        artscript_ir::NodeKind::Shape(s) => s.children.iter_mut().for_each(reflect),
+        artscript_ir::NodeKind::Shape(s) => s.stamps.iter_mut().chain(&mut s.children).for_each(reflect),
         artscript_ir::NodeKind::Group { children, .. } => children.iter_mut().for_each(reflect),
     }
 }

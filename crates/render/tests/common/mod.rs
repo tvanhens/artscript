@@ -22,6 +22,7 @@ pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {
             fill: Some(artscript_ir::Fill::plain(Paint::Solid(fill))),
             stroke: None,
             blur: 0.0,
+            stamps: vec![],
             children: vec![],
         })),
     }

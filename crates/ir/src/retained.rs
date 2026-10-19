@@ -33,6 +33,7 @@ fn shape_bytes(shape: &Shape) -> u64 {
     path_bytes(&shape.geometry)
         + shape.fill.as_ref().map(fill_bytes).unwrap_or(0)
         + shape.stroke.as_ref().map(stroke_bytes).unwrap_or(0)
+        + vec_bytes(&shape.stamps, node_bytes)
         + vec_bytes(&shape.children, node_bytes)
 }
 

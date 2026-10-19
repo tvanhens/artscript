@@ -35,15 +35,21 @@ impl<'a> SceneIndex<'a> {
 
     fn walk(&mut self, nodes: &'a [Node], parent_world: Matrix) {
         for node in nodes {
-            self.nodes.insert(node.path.as_str(), node);
-            self.parents.insert(node.path.as_str(), parent_world);
-            let world = parent_world * node.transform;
-            if let Some(mask) = &node.mask
-                && let MaskSource::Nodes(inner) = &mask.source
-            {
-                self.walk(inner, world);
-            }
-            self.walk(node.children(), world);
+            self.visit(node, parent_world);
+        }
+    }
+
+    fn visit(&mut self, node: &'a Node, parent_world: Matrix) {
+        self.nodes.insert(node.path.as_str(), node);
+        self.parents.insert(node.path.as_str(), parent_world);
+        let world = parent_world * node.transform;
+        if let Some(mask) = &node.mask
+            && let MaskSource::Nodes(inner) = &mask.source
+        {
+            self.walk(inner, world);
+        }
+        for child in node.descendants() {
+            self.visit(child, world);
         }
     }
 
@@ -343,8 +349,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
         Some(MaskSource::Nodes(nodes)) => &nodes[..],
         _ => &[],
     };
-    node.children()
-        .iter()
+    node.descendants()
         .chain(masks)
         .filter_map(|child| Some(child.transform.map_rect(path_extent(child)?).0))
         .chain(own)
@@ -510,14 +515,18 @@ fn draw_shape(
         Ok(())
     };
 
-    if shape.children.is_empty() {
+    if shape.children.is_empty() && shape.stamps.is_empty() {
         return paint_shape(canvas);
     }
 
-    // The layer keeps children's blend modes off the pixels below the shape. The clip is the
-    // geometry, not the painted alpha, so a fill:none or translucent shape still shows them.
+    // The layer keeps the stamps' and children's blend modes off the pixels below the shape. The
+    // clip is the geometry, not the painted alpha, so a fill:none or translucent shape still
+    // shows the children. Stamps are not clipped: a leaf spills past its stem.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
+    for stamp in &shape.stamps {
+        draw_node(canvas, stamp, ctx, world)?;
+    }
     canvas.clip_path(&shape.clip(), ClipOp::Intersect, true);
     for child in &shape.children {
         draw_node(canvas, child, ctx, world)?;
@@ -651,7 +660,7 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
             }
         }
     }
-    for child in node.children() {
+    for child in node.descendants() {
         pad = pad.max(visual_pad(child));
     }
     pad

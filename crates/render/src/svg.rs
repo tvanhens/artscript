@@ -408,6 +408,9 @@ impl Writer {
             self.body.push_str(")\"");
         }
         self.body.push_str("/>\n");
+        for stamp in &shape.stamps {
+            self.node(scene, stamp, bake_scale, depth, &Pushed::default())?;
+        }
         if !shape.children.is_empty() {
             let cid = format!("{id}-nest");
             self.clip_path_def(&cid, &shape.geometry);
@@ -542,7 +545,7 @@ impl Writer {
         if let Some(mode) = css_blend(node.blend) {
             parts.push(format!("mix-blend-mode:{mode}"));
         }
-        let nests = matches!(&node.kind, NodeKind::Shape(shape) if !shape.children.is_empty());
+        let nests = matches!(&node.kind, NodeKind::Shape(shape) if !shape.children.is_empty() || !shape.stamps.is_empty());
         if nests || matches!(node.kind, NodeKind::Group { isolate: true, .. }) {
             parts.push("isolation:isolate".into());
         }
@@ -843,8 +846,7 @@ fn pushes_clip(node: &Node, soft_above: bool) -> bool {
         && node.effects.is_empty()
         && !(soft_here && soft_above)
         && node
-            .children()
-            .iter()
+            .descendants()
             .any(|child| child.blend != Blend::Normal || pushes_clip(child, soft_above || soft_here))
 }
 
@@ -884,7 +886,7 @@ fn stroke_overshoot(node: &Node) -> f32 {
         Some(MaskSource::Nodes(nodes)) => nodes.as_slice(),
         _ => &[],
     };
-    node.children().iter().chain(masks).map(stroke_overshoot).fold(own, f32::max)
+    node.descendants().chain(masks).map(stroke_overshoot).fold(own, f32::max)
 }
 
 fn clip_region(clip: &Clip) -> Result<Path, RenderError> {
