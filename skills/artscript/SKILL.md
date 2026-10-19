@@ -13,7 +13,7 @@ artscript is a declarative language for procedural art. You write `.art` files. 
 2. Run `artscript docs <topic> [topic...]` once per session, naming every topic the task touches. Include `craft` when you draw a new piece or add a part. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
    - `targets` @target keys, entry files and libraries, use, the manifest palette p
    - `values` the values table, expressions, operators, functions
-   - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients
+   - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients, image paints, sample
    - `shapes` the shape table, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush, stamp, pressure, angle, tilt)
    - `structure` layer and group, clipping by nesting, inside/outside, mask, fx, finish
    - `fields` noise fields, fbm, ridged, field fills and masks, seeds
