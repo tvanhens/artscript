@@ -6,7 +6,7 @@ fn art_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.unwrap().path();
         if path.is_dir() {
             art_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "art") {
+        } else if path.extension().is_some_and(|e| e == "ramo") {
             out.push(path);
         }
     }
@@ -21,14 +21,14 @@ fn every_example_parses_and_formats_idempotently() {
     let mut failures = Vec::new();
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
-        match artscript_syntax::format_source(&src) {
+        match ramose_syntax::format_source(&src) {
             Err(diags) => failures.push(format!(
                 "{}:\n{}",
                 f.display(),
                 diags.iter().map(|d| d.to_string()).collect::<Vec<_>>().join("\n")
             )),
             Ok(once) => {
-                let twice = artscript_syntax::format_source(&once).unwrap();
+                let twice = ramose_syntax::format_source(&once).unwrap();
                 if once != twice {
                     failures.push(format!("{}: fmt not idempotent", f.display()));
                 }

@@ -9,7 +9,7 @@
       "path": "avatar-dark.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "avatar_dark"
     },
@@ -22,7 +22,7 @@
       "path": "avatar-mono.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "avatar_mono"
     },
@@ -35,7 +35,7 @@
       "path": "avatar-paper.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "avatar_paper"
     },
@@ -48,7 +48,7 @@
       "path": "logo-dark.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "dark"
     },
@@ -61,7 +61,7 @@
       "path": "logo-mono.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "mono"
     },
@@ -74,7 +74,7 @@
       "path": "logo-paper.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "logo.art",
+      "source": "logo.ramo",
       "status": "pass",
       "target": "paper"
     }

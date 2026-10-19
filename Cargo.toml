@@ -11,11 +11,11 @@ license = "BUSL-1.1"
 skia-safe = "0.153"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-artscript-syntax = { path = "crates/syntax" }
-artscript-ir = { path = "crates/ir" }
-artscript-brush = { path = "crates/brush" }
-artscript-render = { path = "crates/render" }
-artscript-eval = { path = "crates/eval" }
+ramose-syntax = { path = "crates/syntax" }
+ramose-ir = { path = "crates/ir" }
+ramose-brush = { path = "crates/brush" }
+ramose-render = { path = "crates/render" }
+ramose-eval = { path = "crates/eval" }
 
 [profile.dev.package."*"]
 opt-level = 2

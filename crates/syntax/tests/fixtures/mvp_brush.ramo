@@ -1,4 +1,4 @@
-# lib/brushes/scuff.art
+# lib/brushes/scuff.ramo
 brush scuff strength:.5 scale:1 tint:p.ink reach:3
   sksl """
   float4 shade(Mark m) {

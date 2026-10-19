@@ -4,7 +4,7 @@ License text copyright (c) 2017 MariaDB Corporation Ab, All Rights Reserved.
 Parameters
 
 Licensor:             Tyler van Hensbergen
-Licensed Work:        artscript
+Licensed Work:        ramose
                       The Licensed Work is (c) 2026 Tyler van Hensbergen.
 Additional Use Grant: You may make production use of the Licensed Work,
                       provided that you do not offer the Licensed Work to
@@ -24,7 +24,7 @@ Additional Use Grant: You may make production use of the Licensed Work,
                       a hosted or API asset-generation service, a game
                       engine, asset editor, or design tool that includes the
                       Licensed Work, and an AI agent or assistant product
-                      that writes, edits, checks, or builds artscript source
+                      that writes, edits, checks, or builds ramose source
                       for its users with the Licensed Work.
 
                       These uses are not a Platform:
@@ -33,7 +33,7 @@ Additional Use Grant: You may make production use of the Licensed Work,
                           projects, including on internal build servers;
                       (b) a game or app that runs the Licensed Work only to
                           draw its own assets and gives its users no way to
-                          supply their own artscript source.
+                          supply their own ramose source.
 
                       To include the Licensed Work in a Platform, you must
                       obtain a commercial license from the Licensor. Contact

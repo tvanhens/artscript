@@ -1,25 +1,25 @@
-//! `artscript build`: evaluate and render targets in parallel, keep the incremental cache, write
+//! `ramose build`: evaluate and render targets in parallel, keep the incremental cache, write
 //! `art-manifest.json`, and delete outputs a previous build listed but this one no longer makes.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use artscript_eval::{
+use ramose_eval::{
     BackendChoice, Format, OutputSpec, Project, Rig, TargetJob, dependencies, evaluate_outputs,
     fnv1a, plan,
 };
-use artscript_ir::Scene;
-use artscript_render::Backend;
-use artscript_syntax::ast::Span;
-use artscript_syntax::{Diagnostic, Severity};
+use ramose_ir::Scene;
+use ramose_render::Backend;
+use ramose_syntax::ast::Span;
+use ramose_syntax::{Diagnostic, Severity};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value as Json, json};
 
 use crate::{Selector, exit_code, report, unmatched};
 
 pub const MANIFEST_FILE: &str = "art-manifest.json";
-const CACHE_DIR: &str = ".artscript/cache";
+const CACHE_DIR: &str = ".ramose/cache";
 
 #[derive(Default)]
 pub struct Options {
@@ -138,7 +138,7 @@ fn renderer_id() -> &'static str {
         std::env::current_exe()
             .and_then(fs::read)
             .map(|bytes| hex(&bytes))
-            .unwrap_or_else(|_| artscript_eval::VERSION.to_string())
+            .unwrap_or_else(|_| ramose_eval::VERSION.to_string())
     })
 }
 
@@ -171,10 +171,10 @@ fn cache_hit(project: &Project, out_dir: &Path, job: &TargetJob, key: &str) -> O
     })
 }
 
-fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic {
+fn render_error(job: &TargetJob, e: ramose_render::RenderError) -> Diagnostic {
     let span = job.span;
     match e {
-        artscript_render::RenderError::NotVector(list) => {
+        ramose_render::RenderError::NotVector(list) => {
             let mut d = Diagnostic::error(
                 "E0209",
                 span,
@@ -186,22 +186,22 @@ fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic
             }
             d.with_fix("use `profile:svg` to bake those parts into embedded PNG tiles, or remove the raster-only features")
         }
-        artscript_render::RenderError::Skia(msg) => {
+        ramose_render::RenderError::Skia(msg) => {
             Diagnostic::error("E0400", span, format!("render failed: {msg}")).in_file(&job.source)
         }
-        artscript_render::RenderError::AtNode { origin, message } => {
-            let (file, span) = artscript_ir::parse_origin(&origin)
+        ramose_render::RenderError::AtNode { origin, message } => {
+            let (file, span) = ramose_ir::parse_origin(&origin)
                 .map(|(f, line, col)| (f.to_string(), Span { line, col }))
                 .unwrap_or((job.source.clone(), Span { line: span.line, col: 1 }));
             Diagnostic::error("E0400", span, format!("render failed: {message}")).in_file(file)
         }
-        artscript_render::RenderError::TransparentGif => {
+        ramose_render::RenderError::TransparentGif => {
             Diagnostic::error("E0206", span, "a gif needs an opaque `bg:`")
                 .in_file(&job.source)
                 .with_fix("set `bg:` to an opaque color; transparent gifs come later")
         }
-        artscript_render::RenderError::GifTooLarge => {
-            let mib = artscript_render::RASTER_BUDGET / (1024 * 1024);
+        ramose_render::RenderError::GifTooLarge => {
+            let mib = ramose_render::RASTER_BUDGET / (1024 * 1024);
             Diagnostic::error(
                 "E0206",
                 span,
@@ -235,10 +235,10 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
             }
         }
         let render = |out: &OutputSpec, scene: &Scene| match out.format {
-            Format::Png => artscript_render::render_png(scene, out.scale, backend),
-            Format::Svg => artscript_render::render_svg(scene, job.profile, job.bake_scale, backend)
+            Format::Png => ramose_render::render_png(scene, out.scale, backend),
+            Format::Svg => ramose_render::render_svg(scene, job.profile, job.bake_scale, backend)
                 .map(String::into_bytes),
-            Format::Gif => Err(artscript_render::RenderError::Skia(
+            Format::Gif => Err(ramose_render::RenderError::Skia(
                 "gif is rendered through sample".into(),
             )),
         };
@@ -307,7 +307,7 @@ fn run_gif(
     key: String,
     backend: Backend,
 ) -> Outcome {
-    use artscript_eval::{frame_delays, sample_outputs};
+    use ramose_eval::{frame_delays, sample_outputs};
     let mut sampled = sample_outputs(project, job);
     let mut diagnostics = std::mem::take(&mut sampled.diagnostics);
     let mut outputs = Vec::new();
@@ -326,10 +326,10 @@ fn run_gif(
                 continue;
             }
             let scenes: Vec<_> = sample.frames.iter().map(|f| &f.scene).collect();
-            let bytes = artscript_render::render_gif(&scenes, out.scale, &delays, sample.loops, backend);
+            let bytes = ramose_render::render_gif(&scenes, out.scale, &delays, sample.loops, backend);
             let bytes = match bytes {
                 Ok(b) => b,
-                Err(artscript_render::RenderError::TransparentGif) => {
+                Err(ramose_render::RenderError::TransparentGif) => {
                     diagnostics.push(
                         Diagnostic::error("E0206", job.span, "a gif needs an opaque `bg:`")
                             .in_file(&job.source)
@@ -468,7 +468,7 @@ fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
 pub fn build(project: &Project, opts: &Options) -> u8 {
     let plan = plan(project);
     let choice = opts.backend.unwrap_or(project.manifest.backend);
-    let Some(backend) = resolve_backend(choice, artscript_render::gpu_available()) else {
+    let Some(backend) = resolve_backend(choice, ramose_render::gpu_available()) else {
         let mut diagnostics = plan.diagnostics;
         diagnostics.push(
             Diagnostic::error(
@@ -476,7 +476,7 @@ pub fn build(project: &Project, opts: &Options) -> u8 {
                 Span::default(),
                 "the gpu backend is not available on this machine",
             )
-            .with_fix("use `--backend auto` or `--backend cpu`, or set `[build] backend` in artscript.toml"),
+            .with_fix("use `--backend auto` or `--backend cpu`, or set `[build] backend` in ramose.toml"),
         );
         return report(diagnostics, opts.allow_warnings, false);
     };
@@ -592,15 +592,15 @@ mod tests {
     fn a_render_error_at_a_node_points_at_its_file_line_and_column() {
         let project = Project::from_sources(
             "[project]\nout = \"out\"\n",
-            [("art/t.art".to_string(), "@target t.png 8x8\n".to_string())].into(),
+            [("art/t.ramo".to_string(), "@target t.png 8x8\n".to_string())].into(),
         )
         .unwrap();
-        let job = &artscript_eval::plan(&project).jobs[0];
-        let e = artscript_render::RenderError::AtNode {
-            origin: "lib/a.art:12:5".to_string(),
+        let job = &ramose_eval::plan(&project).jobs[0];
+        let e = ramose_render::RenderError::AtNode {
+            origin: "lib/a.ramo:12:5".to_string(),
             message: "too long".to_string(),
         };
         let d = render_error(job, e);
-        assert_eq!((d.file.as_str(), d.span.line, d.span.col), ("lib/a.art", 12, 5));
+        assert_eq!((d.file.as_str(), d.span.line, d.span.col), ("lib/a.ramo", 12, 5));
     }
 }

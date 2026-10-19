@@ -7,7 +7,7 @@ mod words;
 
 pub use diag::{Diagnostic, Severity};
 
-/// Parses one `.art` source. Returns every syntax error found, not just the first.
+/// Parses one `.ramo` source. Returns every syntax error found, not just the first.
 pub fn parse(src: &str) -> Result<ast::File, Vec<Diagnostic>> {
     parse::parse_file(src)
 }

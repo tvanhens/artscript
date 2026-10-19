@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use artscript_ir::{
+use ramose_ir::{
     Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Knot, Mask, MaskSource, Node, NodeKind,
     Paint as IrPaint, Path, Ribbon, RibbonContour, RibbonMark, Shape, Sides, Stroke, ribbon_reach,
 };

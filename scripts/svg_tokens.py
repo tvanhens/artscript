@@ -22,7 +22,7 @@ def count(text: str) -> int:
 EMBEDDED = re.compile(r'data:image/[^"]+')
 
 rows = []
-for art in sorted((PROJECT / "art").rglob("*.art")):
+for art in sorted((PROJECT / "art").rglob("*.ramo")):
     rel = art.relative_to(PROJECT / "art").with_suffix("")
     svg = PROJECT / "assets" / rel.with_suffix(".svg")
     rows.append((str(rel), count(art.read_text()), count(EMBEDDED.sub("", svg.read_text()))))

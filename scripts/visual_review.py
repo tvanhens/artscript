@@ -106,9 +106,9 @@ def git(*args):
 
 
 def fixture_for(golden):
-    """The longest `catalog/art/<x>.art` whose `<x>` starts the golden's path, which the visual test enforces."""
+    """The longest `catalog/art/<x>.ramo` whose `<x>` starts the golden's path, which the visual test enforces."""
     output = golden[len(GOLDEN) :]
-    arts = [a for a in Path("catalog/art").rglob("*.art") if output.startswith(str(a.relative_to("catalog/art").with_suffix("")))]
+    arts = [a for a in Path("catalog/art").rglob("*.ramo") if output.startswith(str(a.relative_to("catalog/art").with_suffix("")))]
     return str(max(arts, key=lambda a: len(str(a)))) if arts else "(no fixture)"
 
 

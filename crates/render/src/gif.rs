@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::{Condvar, Mutex};
 
-use artscript_ir::Scene;
+use ramose_ir::Scene;
 use gif::{Encoder, Frame, Repeat};
 
 use crate::Backend;
@@ -128,7 +128,7 @@ fn opaque(px: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use artscript_ir::{Color, Scene};
+    use ramose_ir::{Color, Scene};
 
     use super::*;
 

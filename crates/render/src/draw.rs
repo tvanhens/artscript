@@ -6,7 +6,7 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use artscript_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
+use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -103,7 +103,7 @@ pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
+    let (w, h) = ramose_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
@@ -123,7 +123,7 @@ pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, 
     if !(scale.is_finite() && scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let (w, h) = artscript_ir::pixel_size(scene.width, scene.height, scale);
+    let (w, h) = ramose_ir::pixel_size(scene.width, scene.height, scale);
     let mut surface =
         gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
@@ -701,12 +701,12 @@ pub(crate) fn visual_pad(node: &Node) -> f32 {
     let mut pad = 0.0_f32;
     for effect in &node.effects {
         let extra = match &effect.op {
-            artscript_ir::EffectOp::Blur { sigma } => *sigma * 3.0,
-            artscript_ir::EffectOp::Shadow { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur * 3.0,
-            artscript_ir::EffectOp::Glow { radius, .. } => *radius * 3.0,
-            artscript_ir::EffectOp::Outline { width, brush, .. } => *width + artscript_ir::ribbon_reach(brush) + 2.0,
-            artscript_ir::EffectOp::Inner { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur,
-            artscript_ir::EffectOp::Rim { width, .. } => *width + 2.0,
+            ramose_ir::EffectOp::Blur { sigma } => *sigma * 3.0,
+            ramose_ir::EffectOp::Shadow { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur * 3.0,
+            ramose_ir::EffectOp::Glow { radius, .. } => *radius * 3.0,
+            ramose_ir::EffectOp::Outline { width, brush, .. } => *width + ramose_ir::ribbon_reach(brush) + 2.0,
+            ramose_ir::EffectOp::Inner { dx, dy, blur, .. } => dx.abs() + dy.abs() + blur,
+            ramose_ir::EffectOp::Rim { width, .. } => *width + 2.0,
             _ => 0.0,
         };
         pad = pad.max(extra);

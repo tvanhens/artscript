@@ -1,14 +1,14 @@
-//! `artscript explain`: the evaluated node tree with paths, canvas bounds and resolved paint.
+//! `ramose explain`: the evaluated node tree with paths, canvas bounds and resolved paint.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use artscript_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Rect, Scene};
+use ramose_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Rect, Scene};
 
 use crate::value::num;
 
 fn paint(p: &Paint) -> String {
-    let ends = |stops: &[artscript_ir::Stop]| match (stops.first(), stops.last()) {
+    let ends = |stops: &[ramose_ir::Stop]| match (stops.first(), stops.last()) {
         (Some(a), Some(b)) => format!("{}..{}", a.color.hex(), b.color.hex()),
         _ => String::new(),
     };
@@ -145,7 +145,7 @@ fn fold(set: &[Node], world: Matrix, depth: usize, seeded: &BTreeSet<String>, ou
     let pad = "  ".repeat(depth);
     let index = |n: &Node| n.path.rsplit_once('.').map_or("", |(_, i)| i).to_string();
     let _ = write!(out, "{pad}{}.{}..{}  stamp x{}", set_of(&first.path), index(first), index(last), set.len());
-    if let Some(b) = artscript_ir::union_bounds(set) {
+    if let Some(b) = ramose_ir::union_bounds(set) {
         let _ = write!(out, "  {}", bounds_text(world.map_rect(b).0));
     }
     let _ = writeln!(out, "  ({})", first.origin);

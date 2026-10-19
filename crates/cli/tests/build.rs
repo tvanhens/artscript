@@ -19,10 +19,10 @@ fn copy_dir(from: &Path, to: &Path) {
 
 fn fixture(tag: &str, art: &[&str]) -> PathBuf {
     let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/chibi");
-    let dir = std::env::temp_dir().join(format!("artscript-cli-{tag}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     copy_dir(&src.join("lib"), &dir.join("lib"));
-    fs::copy(src.join("artscript.toml"), dir.join("artscript.toml")).unwrap();
+    fs::copy(src.join("ramose.toml"), dir.join("ramose.toml")).unwrap();
     fs::create_dir_all(dir.join("art")).unwrap();
     for file in art {
         let dest = dir.join("art").join(file);
@@ -32,8 +32,8 @@ fn fixture(tag: &str, art: &[&str]) -> PathBuf {
     dir
 }
 
-fn artscript(dir: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_artscript"))
+fn ramose(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ramose"))
         .args(args)
         .current_dir(dir)
         .output()
@@ -54,17 +54,17 @@ fn manifest(dir: &Path) -> serde_json::Value {
 }
 
 fn fnv_hex(bytes: &[u8]) -> String {
-    format!("{:016x}", artscript_eval::fnv1a(bytes))
+    format!("{:016x}", ramose_eval::fnv1a(bytes))
 }
 
 #[test]
 fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
-    let dir = fixture("build", &["produce/momo_peach.art"]);
+    let dir = fixture("build", &["produce/momo_peach.ramo"]);
     let png = dir.join("assets/produce/momo_peach.png");
     let svg = dir.join("assets/produce/momo_peach.svg");
 
     let only = ["build", "--only", "produce/momo_peach.*"];
-    let first = artscript(&dir, &only);
+    let first = ramose(&dir, &only);
     assert_eq!(first.status.code(), Some(0), "{}", text(&first));
     assert!(!text(&first).contains("L0101"), "{}", text(&first));
     let (png_bytes, svg_bytes) = (fs::read(&png).unwrap(), fs::read(&svg).unwrap());
@@ -96,7 +96,7 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
     let manifest_bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
 
     let started = std::time::Instant::now();
-    let second = artscript(&dir, &only);
+    let second = ramose(&dir, &only);
     assert_eq!(second.status.code(), Some(0), "{}", text(&second));
     assert!(
         started.elapsed().as_secs_f32() < 2.0,
@@ -110,14 +110,14 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
         manifest_bytes
     );
 
-    let art = dir.join("art/produce/momo_peach.art");
+    let art = dir.join("art/produce/momo_peach.ramo");
     let src = fs::read_to_string(&art).unwrap();
     fs::write(
         &art,
         src.replace("@target produce/momo_peach.svg 1024x1024\n", ""),
     )
     .unwrap();
-    let third = artscript(&dir, &only);
+    let third = ramose(&dir, &only);
     assert_eq!(third.status.code(), Some(0), "{}", text(&third));
     assert!(!svg.exists(), "stale svg survived");
     assert!(text(&third).contains("removed stale produce/momo_peach.svg"));
@@ -134,15 +134,15 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
 
 #[test]
 fn check_json_reports_failed_asserts_with_exit_2() {
-    let dir = fixture("check", &["produce/momo_peach.art"]);
-    let art = dir.join("art/produce/momo_peach.art");
+    let dir = fixture("check", &["produce/momo_peach.ramo"]);
+    let art = dir.join("art/produce/momo_peach.ramo");
     let src = fs::read_to_string(&art).unwrap();
     fs::write(
         &art,
         src.replace("name:eye_r", "name:eye_r rot:0 at:550,640"),
     )
     .unwrap();
-    let out = artscript(&dir, &["check", "--json"]);
+    let out = ramose(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let diags = json["diagnostics"].as_array().unwrap();
@@ -150,7 +150,7 @@ fn check_json_reports_failed_asserts_with_exit_2() {
         .iter()
         .find(|d| d["code"] == "C0101")
         .unwrap_or_else(|| panic!("{json}"));
-    assert_eq!(level["file"], "art/produce/momo_peach.art");
+    assert_eq!(level["file"], "art/produce/momo_peach.ramo");
     assert_eq!(level["severity"], "error");
     assert_eq!(level["message"], "assert level(@eye_l @eye_r) tol:.5");
     assert!(
@@ -165,16 +165,16 @@ fn check_json_reports_failed_asserts_with_exit_2() {
 
 #[test]
 fn gif_frames_match_the_sampled_palette() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gif-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gif-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gif\"\nout = \"assets\"\nlib = []\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/orb.art"),
+        dir.join("art/orb.ramo"),
         "@target orb_{c}.gif 96x96 bg:#f1ede4 fps:24 each c:[spin pulse] clip:c
 
 palette p
@@ -198,26 +198,26 @@ if clip == pulse
 ",
     )
     .unwrap();
-    let built = artscript(&dir, &["build", "--backend", "cpu"]);
+    let built = ramose(&dir, &["build", "--backend", "cpu"]);
     assert_eq!(built.status.code(), Some(0), "{}", text(&built));
-    let project = artscript_eval::load(&dir).unwrap();
-    let plan = artscript_eval::plan(&project);
+    let project = ramose_eval::load(&dir).unwrap();
+    let plan = ramose_eval::plan(&project);
     let jobs: Vec<_> = plan
         .jobs
         .iter()
         .filter(|j| {
             j.outputs
                 .iter()
-                .any(|o| o.format == artscript_eval::Format::Gif)
+                .any(|o| o.format == ramose_eval::Format::Gif)
         })
         .collect();
     assert_eq!(jobs.len(), 2, "spin and pulse");
     for job in jobs {
-        let sampled = artscript_eval::sample(&project, job);
+        let sampled = ramose_eval::sample(&project, job);
         let bad: Vec<_> = sampled
             .diagnostics
             .iter()
-            .filter(|d| d.severity == artscript_syntax::Severity::Error)
+            .filter(|d| d.severity == ramose_syntax::Severity::Error)
             .map(|d| d.code.clone())
             .collect();
         assert!(bad.is_empty(), "{bad:?} {}", job.outputs[0].path);
@@ -236,10 +236,10 @@ if clip == pulse
         let mut rasters = Vec::with_capacity(sampled.frames.len());
         for frame in &sampled.frames {
             let (w, h, px) =
-                artscript_render::render_rgba(
+                ramose_render::render_rgba(
                 &frame.scene,
                 job.outputs[0].scale,
-                artscript_render::Backend::Cpu,
+                ramose_render::Backend::Cpu,
             )
             .unwrap();
             assert_eq!((w, h), (96, 96));
@@ -247,7 +247,7 @@ if clip == pulse
         }
         let flat: Vec<u8> = rasters.iter().flatten().copied().collect();
         let nq = color_quant::NeuQuant::new(10, 256, &flat);
-        let delays = artscript_eval::frame_delays(sampled.frames.len(), sampled.dur).unwrap();
+        let delays = ramose_eval::frame_delays(sampled.frames.len(), sampled.dur).unwrap();
         let mut seen = 0usize;
         while let Some(frame) = reader.read_next_frame().unwrap() {
             assert_eq!(
@@ -276,20 +276,20 @@ if clip == pulse
 
 #[test]
 fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-centi-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-centi-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"centi\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
@@ -304,16 +304,16 @@ fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
 
 #[test]
 fn a_gif_writes_one_file_per_scale() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifscale-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifscale-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifscale\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target dot.gif 64x64 scale:.5,1 bg:#ffffff fps:2 dur:1s\ncircle 8*scale at:32,32\n",
     )
     .unwrap();
@@ -323,7 +323,7 @@ fn a_gif_writes_one_file_per_scale() {
         (le(6), le(8))
     };
     for _ in 0..2 {
-        let out = artscript(&dir, &["build", "--backend", "cpu"]);
+        let out = ramose(&dir, &["build", "--backend", "cpu"]);
         assert_eq!(out.status.code(), Some(0), "{}", text(&out));
         assert_eq!(size("dot@0.5x.gif"), (32, 32));
         assert_eq!(size("dot.gif"), (64, 64));
@@ -343,20 +343,20 @@ fn a_gif_writes_one_file_per_scale() {
 
 #[test]
 fn a_gif_frame_longer_than_the_field_is_e0206() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-long-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-long-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"long\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target tiny.gif 8x8 bg:#ffffff fps:.001 dur:700s\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
@@ -371,20 +371,20 @@ fn a_gif_frame_longer_than_the_field_is_e0206() {
 
 #[test]
 fn check_samples_a_gif_so_a_later_assert_fails() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifcheck-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifcheck-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifcheck\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target still.png 16x16\n@target clip.gif 16x16 bg:#ffffff fps:2 dur:1s\ncircle 4\nassert t < .5\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let err = text(&out);
     assert!(err.contains("C0101"), "{err}");
@@ -393,20 +393,20 @@ fn check_samples_a_gif_so_a_later_assert_fails() {
 
 #[test]
 fn check_reports_a_gif_build_would_refuse() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-giftime-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-giftime-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"giftime\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
@@ -414,11 +414,11 @@ fn check_reports_a_gif_build_would_refuse() {
         "{err}"
     );
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target tiny.gif 8x8 bg:#ffffff\n",
     )
     .unwrap();
-    let bare = artscript(&dir, &["check"]);
+    let bare = ramose(&dir, &["check"]);
     assert_eq!(bare.status.code(), Some(1), "{}", text(&bare));
     assert!(
         text(&bare).contains("clip has no duration"),
@@ -431,27 +431,27 @@ fn check_reports_a_gif_build_would_refuse() {
 #[test]
 fn the_sample_raster_cap_matches_the_encoder() {
     assert_eq!(
-        artscript_eval::GIF_CLIP_BUDGET,
-        artscript_render::RASTER_BUDGET
+        ramose_eval::GIF_CLIP_BUDGET,
+        ramose_render::RASTER_BUDGET
     );
 }
 
 #[test]
 fn check_reports_a_gif_wider_than_65535px() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifwide-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifwide-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifwide\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target wide.gif 70000x1 bg:#ffffff dur:1s fps:1\ncircle 1\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(
         text(&out).contains("a gif is larger than 65535px"),
@@ -463,20 +463,20 @@ fn check_reports_a_gif_wider_than_65535px() {
 
 #[test]
 fn check_reports_a_gif_that_would_retain_too_many_scenes() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifscene-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifscene-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifscene\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target heavy.gif 8x8 bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(
         text(&out).contains("a gif retains more than 256MiB"),
@@ -488,20 +488,20 @@ fn check_reports_a_gif_that_would_retain_too_many_scenes() {
 
 #[test]
 fn check_reports_a_gif_raster_over_the_budget() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifraster-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifraster-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifraster\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target huge.gif 4096x4096 bg:#ffffff dur:1s fps:5\ncircle 1\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(
         text(&out).contains("a gif raster is larger than 256MiB"),
@@ -513,20 +513,20 @@ fn check_reports_a_gif_raster_over_the_budget() {
 
 #[test]
 fn check_reports_a_gif_without_an_opaque_background() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifbg-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifbg-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"gifbg\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/main.art"),
+        dir.join("art/main.ramo"),
         "@target tiny.gif 8x8 dur:1s fps:2\ncircle 1\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(
         text(&out).contains("a gif needs an opaque `bg:`"),
@@ -538,42 +538,42 @@ fn check_reports_a_gif_without_an_opaque_background() {
 
 #[test]
 fn backend_flag_is_validated_and_switching_backends_rebuilds() {
-    let dir = fixture("backend", &["produce/momo_peach.art"]);
-    let bad = artscript(&dir, &["build", "--backend", "metal"]);
+    let dir = fixture("backend", &["produce/momo_peach.ramo"]);
+    let bad = ramose(&dir, &["build", "--backend", "metal"]);
     assert_eq!(bad.status.code(), Some(1), "{}", text(&bad));
     assert!(text(&bad).contains("backend `metal`"), "{}", text(&bad));
-    let missing = artscript(&dir, &["build", "--backend"]);
+    let missing = ramose(&dir, &["build", "--backend"]);
     assert_eq!(missing.status.code(), Some(1), "{}", text(&missing));
 
     let only = ["build", "--only", "produce/momo_peach.*"];
-    let cpu = artscript(&dir, &[&only[..], &["--backend", "cpu"]].concat());
+    let cpu = ramose(&dir, &[&only[..], &["--backend", "cpu"]].concat());
     assert!(cpu.status.success(), "{}", text(&cpu));
     let png = dir.join("assets/produce/momo_peach.png");
     let cpu_bytes = fs::read(&png).unwrap();
-    let again = artscript(&dir, &[&only[..], &["--backend=cpu"]].concat());
+    let again = ramose(&dir, &[&only[..], &["--backend=cpu"]].concat());
     assert!(again.status.success(), "{}", text(&again));
     assert_eq!(fs::read(&png).unwrap(), cpu_bytes);
 
-    if artscript_render::gpu_available() {
-        let gpu = artscript(&dir, &[&only[..], &["--backend", "gpu"]].concat());
+    if ramose_render::gpu_available() {
+        let gpu = ramose(&dir, &[&only[..], &["--backend", "gpu"]].concat());
         assert!(gpu.status.success(), "{}", text(&gpu));
-        let project = artscript_eval::load(&dir).unwrap();
-        let plan = artscript_eval::plan(&project);
-        let job = plan.jobs.iter().find(|j| j.source.ends_with("momo_peach.art")).unwrap();
-        let scene = artscript_eval::evaluate(&project, job).scene.unwrap();
-        let want = artscript_render::render_png(&scene, 1.0, artscript_render::Backend::Gpu).unwrap();
+        let project = ramose_eval::load(&dir).unwrap();
+        let plan = ramose_eval::plan(&project);
+        let job = plan.jobs.iter().find(|j| j.source.ends_with("momo_peach.ramo")).unwrap();
+        let scene = ramose_eval::evaluate(&project, job).scene.unwrap();
+        let want = ramose_render::render_png(&scene, 1.0, ramose_render::Backend::Gpu).unwrap();
         assert_eq!(fs::read(&png).unwrap(), want, "a backend switch must re-render on the gpu");
     }
 }
 
 #[test]
 fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
-    if artscript_render::gpu_available() {
+    if ramose_render::gpu_available() {
         return;
     }
     let dir = fixture("nogpu", &[]);
-    fs::write(dir.join("art/broken.art"), "@target broken.png 64x64 scale:-1\n").unwrap();
-    let out = artscript(&dir, &["build", "--backend", "gpu"]);
+    fs::write(dir.join("art/broken.ramo"), "@target broken.png 64x64 scale:-1\n").unwrap();
+    let out = ramose(&dir, &["build", "--backend", "gpu"]);
     let report = text(&out);
     assert_ne!(out.status.code(), Some(0), "{report}");
     assert!(report.contains("E0400"), "{report}");
@@ -585,16 +585,16 @@ fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
 fn a_file_with_only_unknown_directives_is_e0208() {
     let dir = fixture("unknown-directive", &[]);
     fs::write(
-        dir.join("art/broken.art"),
+        dir.join("art/broken.ramo"),
         "@taget broken.png 64x64\nrect 0 0 10 10\n",
     )
     .unwrap();
-    fs::write(dir.join("lib/bogus.art"), "@bogus\n").unwrap();
+    fs::write(dir.join("lib/bogus.ramo"), "@bogus\n").unwrap();
     for cmd in ["check", "build"] {
-        let out = artscript(&dir, &[cmd]);
+        let out = ramose(&dir, &[cmd]);
         let err = text(&out);
         assert_eq!(out.status.code(), Some(1), "{cmd}: {err}");
-        for (file, name) in [("art/broken.art", "@taget"), ("lib/bogus.art", "@bogus")] {
+        for (file, name) in [("art/broken.ramo", "@taget"), ("lib/bogus.ramo", "@bogus")] {
             let line = format!("error[E0208] {file}:1:1");
             assert_eq!(err.matches(&line).count(), 1, "{cmd}: {err}");
             assert!(
@@ -615,8 +615,8 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
         "@target taper.png 256x256",
         "@target taper.png 256x256 scale:1,2",
     ] {
-        fs::write(dir.join("art/taper.art"), format!("{target}\n{curve}")).unwrap();
-        let out = artscript(&dir, &["build", "--backend", "cpu"]);
+        fs::write(dir.join("art/taper.ramo"), format!("{target}\n{curve}")).unwrap();
+        let out = ramose(&dir, &["build", "--backend", "cpu"]);
         assert!(out.status.success(), "{target}: {}", text(&out));
         builds.push(fs::read(dir.join("assets/taper.png")).unwrap());
     }
@@ -631,11 +631,11 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
 fn a_tapered_stroke_draws_over_the_fill() {
     let dir = fixture("taper-fill", &[]);
     fs::write(
-        dir.join("art/t.art"),
+        dir.join("art/t.ramo"),
         "@target t.png 96x96\nblob 30 at:48,48 fill:#d8a840 stroke:#202030,[2 8 2] name:a\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["build", "--backend", "cpu", "--allow-warnings"]);
+    let out = ramose(&dir, &["build", "--backend", "cpu", "--allow-warnings"]);
     assert!(out.status.success(), "{}", text(&out));
     let mut decoder = png::Decoder::new(std::io::Cursor::new(fs::read(dir.join("assets/t.png")).unwrap()));
     decoder.set_transformations(png::Transformations::normalize_to_color8() | png::Transformations::ALPHA);
@@ -652,7 +652,7 @@ fn a_tapered_stroke_draws_over_the_fill() {
 
 #[test]
 fn a_bad_target_profile_is_e0206_on_every_format() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-profile-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-profile-{}", std::process::id()));
     let cases = [
         ("broken.png", "bogus", "unknown profile `bogus`"),
         ("broken.gif", "bogus", "unknown profile `bogus`"),
@@ -665,16 +665,16 @@ fn a_bad_target_profile_is_e0206_on_every_format() {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("art")).unwrap();
         fs::write(
-            dir.join("artscript.toml"),
+            dir.join("ramose.toml"),
             "[project]\nname = \"profile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
         )
         .unwrap();
         fs::write(
-            dir.join("art/main.art"),
+            dir.join("art/main.ramo"),
             format!("@target {path} 8x8 bg:#ffffff dur:1s profile:{profile}\nrect 4x4\n"),
         )
         .unwrap();
-        let out = artscript(&dir, &["build"]);
+        let out = ramose(&dir, &["build"]);
         let err = text(&out);
         assert_eq!(out.status.code(), Some(1), "{path} profile:{profile}: {err}");
         assert!(err.contains("E0206") && err.contains(message), "{path} profile:{profile}: {err}");
@@ -685,17 +685,17 @@ fn a_bad_target_profile_is_e0206_on_every_format() {
 
 #[test]
 fn a_manifest_profile_still_applies_to_raster_targets() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-mprofile-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-mprofile-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"mprofile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = \"vector\"\n",
     )
     .unwrap();
-    fs::write(dir.join("art/a.art"), "@target ok.png 8x8\nrect 4x4\n").unwrap();
-    fs::write(dir.join("art/b.art"), "@target ok.svg 8x8\nrect 4x4\n").unwrap();
-    let out = artscript(&dir, &["build"]);
+    fs::write(dir.join("art/a.ramo"), "@target ok.png 8x8\nrect 4x4\n").unwrap();
+    fs::write(dir.join("art/b.ramo"), "@target ok.svg 8x8\nrect 4x4\n").unwrap();
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert!(dir.join("assets/ok.png").exists() && dir.join("assets/ok.svg").exists());
     let _ = fs::remove_dir_all(&dir);
@@ -703,24 +703,24 @@ fn a_manifest_profile_still_applies_to_raster_targets() {
 
 #[test]
 fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-badmprofile-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-badmprofile-{}", std::process::id()));
     for (value, shown) in [("\"bogus\"", "\"bogus\""), ("3", "3")] {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("art")).unwrap();
         fs::write(
-            dir.join("artscript.toml"),
+            dir.join("ramose.toml"),
             format!("[project]\nname = \"m\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = {value}\n"),
         )
         .unwrap();
-        fs::write(dir.join("art/a.art"), "@target a.png 8x8\nrect 4x4\n").unwrap();
-        fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect 4x4\n").unwrap();
-        let out = artscript(&dir, &["build"]);
+        fs::write(dir.join("art/a.ramo"), "@target a.png 8x8\nrect 4x4\n").unwrap();
+        fs::write(dir.join("art/b.ramo"), "@target b.png 8x8\nrect 4x4\n").unwrap();
+        let out = ramose(&dir, &["build"]);
         let err = text(&out);
         assert_eq!(out.status.code(), Some(1), "{err}");
         assert_eq!(err.matches("error[").count(), 1, "{err}");
         assert!(
             err.contains("E0200")
-                && err.contains("artscript.toml:8:11")
+                && err.contains("ramose.toml:8:11")
                 && err.contains(&format!("[defaults] profile {shown} is not one of")),
             "{err}"
         );
@@ -730,44 +730,44 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
 
 #[test]
 fn an_error_on_every_gif_frame_prints_once_with_the_png_targets() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-gifonce-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-gifonce-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"g\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/x.art"),
+        dir.join("art/x.ramo"),
         "@target a.png 32x32\n@target b.png 32x32\n@target c.gif 32x32 bg:#000000 dur:1s fps:2\n\npalette k\n  color red #ff0000\n\ngroup name:g\n  anchor j 0,0\n  group name:h\n    anchor j 0,0\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     let err = text(&out);
     assert_eq!(out.status.code(), Some(1), "{err}");
-    assert_eq!(err.matches("error[E0333] art/x.art:11:5").count(), 1, "{err}");
+    assert_eq!(err.matches("error[E0333] art/x.ramo:11:5").count(), 1, "{err}");
     assert!(!err.contains("first at") && !err.contains("worst at"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-only-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-only-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"o\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
     for (file, out) in [("tiles/x/a", "a"), ("tiles/x/b", "b"), ("props/x/c", "c")] {
         fs::create_dir_all(dir.join("art").join(file).parent().unwrap()).unwrap();
-        fs::write(dir.join(format!("art/{file}.art")), format!("@target {out}.png 8x8\nrect 4x4\n")).unwrap();
+        fs::write(dir.join(format!("art/{file}.ramo")), format!("@target {out}.png 8x8\nrect 4x4\n")).unwrap();
     }
     let built = |args: &[&str]| -> (Option<i32>, String, Vec<String>) {
         let _ = fs::remove_dir_all(dir.join("assets"));
-        let out = artscript(&dir, &[&["build"], args].concat());
+        let out = ramose(&dir, &[&["build"], args].concat());
         let mut pngs: Vec<String> = fs::read_dir(dir.join("assets"))
             .into_iter()
             .flatten()
@@ -780,13 +780,13 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     };
     let all = vec!["a.png".to_string(), "b.png".into(), "c.png".into()];
 
-    let (code, err, pngs) = built(&["--only", "art/tiles/x/*.art", "--only=art/props/x/*.art"]);
+    let (code, err, pngs) = built(&["--only", "art/tiles/x/*.ramo", "--only=art/props/x/*.ramo"]);
     assert_eq!((code, &pngs), (Some(0), &all), "{err}");
-    let (code, err, pngs) = built(&["--only", "art/{tiles,props}/x/*.art"]);
+    let (code, err, pngs) = built(&["--only", "art/{tiles,props}/x/*.ramo"]);
     assert_eq!((code, &pngs), (Some(0), &all), "{err}");
 
-    for glob in ["art/tiles/*", "art/nope.art"] {
-        let (code, err, pngs) = built(&["--only", "art/props/x/c.art", "--only", glob]);
+    for glob in ["art/tiles/*", "art/nope.ramo"] {
+        let (code, err, pngs) = built(&["--only", "art/props/x/c.ramo", "--only", glob]);
         assert_eq!(code, Some(1), "{err}");
         assert!(err.contains(&format!("`--only '{glob}'` matches no target")), "{err}");
         assert_eq!(err.matches("error[").count(), 1, "{err}");
@@ -796,8 +796,8 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     assert_eq!(code, Some(1), "{err}");
     assert!(err.contains("`{` without `}` in glob `art/{tiles`"), "{err}");
 
-    fs::write(dir.join("art/props/x/c.art"), "@target c.png 8x8\nrect (\n").unwrap();
-    let (code, err, _) = built(&["--only", "art/props/x/c.art"]);
+    fs::write(dir.join("art/props/x/c.ramo"), "@target c.png 8x8\nrect (\n").unwrap();
+    let (code, err, _) = built(&["--only", "art/props/x/c.ramo"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(!err.contains("matches no target"), "{err}");
     let _ = fs::remove_dir_all(&dir);
@@ -805,117 +805,117 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
 
 #[test]
 fn check_limits_itself_to_the_selected_entries_and_their_libraries() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-checksel-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-checksel-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art/sub")).unwrap();
     fs::create_dir_all(dir.join("lib/kit")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"sel\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
-    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect 8x8\n").unwrap();
     fs::write(
-        dir.join("art/a.art"),
+        dir.join("art/a.ramo"),
         "@target a.png 8x8\nuse kit/cell { cell }\n\ncell at:4,4\n",
     )
     .unwrap();
-    fs::write(dir.join("art/b.art"), "@target b.png 8x8\nrect (\n").unwrap();
+    fs::write(dir.join("art/b.ramo"), "@target b.png 8x8\nrect (\n").unwrap();
     fs::write(
-        dir.join("art/c.art"),
+        dir.join("art/c.ramo"),
         "@target c.png 8x8\nrect 4x4\nassert false\n",
     )
     .unwrap();
     let check = |args: &[&str]| {
-        let out = artscript(&dir, &[&["check"], args].concat());
+        let out = ramose(&dir, &[&["check"], args].concat());
         (out.status.code(), text(&out))
     };
 
     let (code, err) = check(&[]);
     assert_eq!(code, Some(1), "{err}");
-    assert!(err.contains("art/b.art"), "{err}");
+    assert!(err.contains("art/b.ramo"), "{err}");
 
     for args in [
-        &["art/a.art"][..],
+        &["art/a.ramo"][..],
         &["--only", "art/a*"],
-        &["--only=art/a.art"],
+        &["--only=art/a.ramo"],
         &["--only", "a.png"],
     ] {
         let (code, err) = check(args);
         assert_eq!(code, Some(0), "{args:?}: {err}");
         assert!(
-            !err.contains("art/b.art") && !err.contains("art/c.art"),
+            !err.contains("art/b.ramo") && !err.contains("art/c.ramo"),
             "{args:?}: {err}"
         );
     }
-    let out = artscript(&dir.join("art/sub"), &["check", "../a.art"]);
+    let out = ramose(&dir.join("art/sub"), &["check", "../a.ramo"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 
-    let (code, err) = check(&["art/b.art"]);
+    let (code, err) = check(&["art/b.ramo"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(
-        err.contains("art/b.art") && !err.contains("matches no target"),
+        err.contains("art/b.ramo") && !err.contains("matches no target"),
         "{err}"
     );
-    let (code, err) = check(&["art/c.art"]);
+    let (code, err) = check(&["art/c.ramo"]);
     assert_eq!(code, Some(2), "{err}");
-    let (code, err) = check(&["art/a.art", "art/c.art"]);
+    let (code, err) = check(&["art/a.ramo", "art/c.ramo"]);
     assert_eq!(code, Some(2), "{err}");
 
     let (code, err) = check(&["--only", "art/zzz/*"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(
-        err.contains("`--only 'art/zzz/*'` matches no target") && !err.contains("art/b.art"),
+        err.contains("`--only 'art/zzz/*'` matches no target") && !err.contains("art/b.ramo"),
         "{err}"
     );
-    let (code, err) = check(&["art/a.art", "--only", "art/zzz/*"]);
+    let (code, err) = check(&["art/a.ramo", "--only", "art/zzz/*"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(err.contains("matches no target"), "{err}");
 
-    let (code, err) = check(&["nope.art"]);
+    let (code, err) = check(&["nope.ramo"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(
-        err.contains("cannot read `nope.art`") && err.contains("usage:"),
+        err.contains("cannot read `nope.ramo`") && err.contains("usage:"),
         "{err}"
     );
     let (code, err) = check(&["--bogus"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(err.contains("unknown flag `--bogus`"), "{err}");
 
-    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect (\n").unwrap();
-    let (code, err) = check(&["art/a.art"]);
+    fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect (\n").unwrap();
+    let (code, err) = check(&["art/a.ramo"]);
     assert_eq!(code, Some(1), "{err}");
-    assert!(err.contains("lib/kit/cell.art"), "{err}");
-    let (code, err) = check(&["art/c.art"]);
+    assert!(err.contains("lib/kit/cell.ramo"), "{err}");
+    let (code, err) = check(&["art/c.ramo"]);
     assert_eq!(code, Some(2), "{err}");
-    assert!(!err.contains("lib/kit/cell.art"), "{err}");
+    assert!(!err.contains("lib/kit/cell.ramo"), "{err}");
 
-    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 8x8\n").unwrap();
-    fs::write(dir.join("art/n.art"), "rect 4x4\n").unwrap();
-    let (code, err) = check(&["art/n.art"]);
+    fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect 8x8\n").unwrap();
+    fs::write(dir.join("art/n.ramo"), "rect 4x4\n").unwrap();
+    let (code, err) = check(&["art/n.ramo"]);
     assert_eq!(code, Some(1), "{err}");
-    assert!(err.contains("`art/n.art` has no @target"), "{err}");
+    assert!(err.contains("`art/n.ramo` has no @target"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn a_library_diagnostic_names_each_target_that_reached_it() {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-libsite-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-libsite-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::create_dir_all(dir.join("lib/kit")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"libsite\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
-    fs::write(dir.join("lib/kit/cell.art"), "def cell\n  rect 80x20 fill:#88ccff name:wide\n").unwrap();
+    fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect 80x20 fill:#88ccff name:wide\n").unwrap();
     let body = "use kit/cell { cell }\n\ncell at:32,32 name:tile\n";
-    fs::write(dir.join("art/a.art"), format!("@target a.png 64x64\n{body}")).unwrap();
-    fs::write(dir.join("art/b.art"), format!("@target b.png 64x64\n{body}")).unwrap();
-    fs::write(dir.join("art/c.art"), format!("@target c_{{k}}.png 64x64 each k:[x y]\n{body}")).unwrap();
+    fs::write(dir.join("art/a.ramo"), format!("@target a.png 64x64\n{body}")).unwrap();
+    fs::write(dir.join("art/b.ramo"), format!("@target b.png 64x64\n{body}")).unwrap();
+    fs::write(dir.join("art/c.ramo"), format!("@target c_{{k}}.png 64x64 each k:[x y]\n{body}")).unwrap();
 
-    let out = artscript(&dir, &["check", "--json"]);
+    let out = ramose(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(3), "{}", text(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let diags = json["diagnostics"].as_array().unwrap();
@@ -923,7 +923,7 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
         .iter()
         .filter(|d| d["code"] == "L0102")
         .map(|d| {
-            assert_eq!(d["file"], "lib/kit/cell.art", "{d}");
+            assert_eq!(d["file"], "lib/kit/cell.ramo", "{d}");
             let notes = d["notes"].as_array().unwrap();
             let site = notes
                 .iter()
@@ -935,18 +935,18 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
         .collect();
     sites.sort();
     let want = [
-        (r#"["a.png"]"#, "in art/a.art:4"),
-        (r#"["b.png"]"#, "in art/b.art:4"),
-        (r#"["c_x.png","c_y.png"]"#, "in art/c.art:4"),
+        (r#"["a.png"]"#, "in art/a.ramo:4"),
+        (r#"["b.png"]"#, "in art/b.ramo:4"),
+        (r#"["c_x.png","c_y.png"]"#, "in art/c.ramo:4"),
     ]
     .map(|(t, s)| (t.to_string(), s.to_string()));
     assert_eq!(sites, want, "{json}");
     let raw: Vec<_> = diags.iter().filter(|d| d["code"] == "L0101").collect();
     assert_eq!(raw.len(), 1, "a library's own text is reported once: {json}");
 
-    let plain = text(&artscript(&dir, &["check"]));
+    let plain = text(&ramose(&dir, &["check"]));
     assert_eq!(plain.matches("warning[L0102]").count(), 3, "{plain}");
-    assert!(plain.contains("in art/a.art:4"), "{plain}");
+    assert!(plain.contains("in art/a.ramo:4"), "{plain}");
     assert!(plain.contains("in 2 targets: c_x.png, c_y.png"), "{plain}");
     let _ = fs::remove_dir_all(&dir);
 }
@@ -955,9 +955,9 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
 fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
     let dir = fixture("fx-cut", &[]);
     let art = "@target t.png 64x64\nrect 10x20 at:32,55 fill:p.rim name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:p.rim name:bar\n  fx glow 12\nassert inside(@bar canvas margin:3)\n";
-    fs::write(dir.join("art/t.art"), art).unwrap();
+    fs::write(dir.join("art/t.ramo"), art).unwrap();
 
-    let out = artscript(&dir, &["check", "--json"]);
+    let out = ramose(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(3), "{}", text(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let cut: Vec<(String, u64)> = json["diagnostics"]
@@ -979,11 +979,11 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
     );
 
     fs::write(
-        dir.join("art/t.art"),
+        dir.join("art/t.ramo"),
         art.replace("inside(@bar canvas margin:3)", "inside(@bar.outer canvas)"),
     )
     .unwrap();
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let _ = fs::remove_dir_all(&dir);
 }
@@ -993,11 +993,11 @@ fn a_viewport_target_skips_the_off_canvas_lint() {
     let dir = fixture("viewport", &[]);
     let body = "rect 40x20 at:60,32 fill:p.rim\n";
     fs::write(
-        dir.join("art/t.art"),
+        dir.join("art/t.ramo"),
         format!("@target a.png 64x64\n@target b.png 64x64 viewport\n{body}"),
     )
     .unwrap();
-    let out = artscript(&dir, &["check", "--json"]);
+    let out = ramose(&dir, &["check", "--json"]);
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let cut: Vec<&serde_json::Value> = json["diagnostics"]
         .as_array()
@@ -1014,11 +1014,11 @@ fn a_viewport_target_skips_the_off_canvas_lint() {
 fn a_diagnostic_several_targets_raise_alike_prints_once_with_its_targets() {
     let dir = fixture("across-targets", &[]);
     fs::write(
-        dir.join("art/t.art"),
+        dir.join("art/t.ramo"),
         "@target a.png 64x64\n@target b.png 64x64\n@target c_{k}.png 64x64 each k:[x y]\nrect 40x20 at:60,32 fill:p.rim name:wide\n",
     )
     .unwrap();
-    let out = artscript(&dir, &["check", "--json"]);
+    let out = ramose(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(3), "{}", text(&out));
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let cut: Vec<&serde_json::Value> = json["diagnostics"]
@@ -1030,7 +1030,7 @@ fn a_diagnostic_several_targets_raise_alike_prints_once_with_its_targets() {
     assert_eq!(cut.len(), 1, "{json}");
     assert_eq!(cut[0]["targets"], serde_json::json!(["a.png", "b.png", "c_x.png", "c_y.png"]), "{json}");
 
-    let plain = text(&artscript(&dir, &["check"]));
+    let plain = text(&ramose(&dir, &["check"]));
     assert_eq!(plain.matches("warning[L0102]").count(), 1, "{plain}");
     assert!(plain.contains("in 4 targets: a.png, b.png, c_x.png, … (+1)"), "{plain}");
     let _ = fs::remove_dir_all(&dir);
@@ -1046,8 +1046,8 @@ fn an_unknown_target_word_or_key_is_an_error() {
             "unknown target key `viewport`",
         ),
     ] {
-        fs::write(dir.join("art/t.art"), format!("{line}\nrect 4x4 at:8,8\n")).unwrap();
-        let out = artscript(&dir, &["check"]);
+        fs::write(dir.join("art/t.ramo"), format!("{line}\nrect 4x4 at:8,8\n")).unwrap();
+        let out = ramose(&dir, &["check"]);
         assert_eq!(out.status.code(), Some(1), "{}", text(&out));
         let err = text(&out);
         assert!(err.contains("E0206") && err.contains(what), "{err}");
@@ -1059,16 +1059,16 @@ fn an_unknown_target_word_or_key_is_an_error() {
 fn a_word_outside_one_of_fails_check_at_the_call() {
     let dir = fixture("one-of", &[]);
     let def = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2\n";
-    fs::write(dir.join("art/t.art"), format!("{def}tile kind:flor_top\n")).unwrap();
-    let out = artscript(&dir, &["check"]);
+    fs::write(dir.join("art/t.ramo"), format!("{def}tile kind:flor_top\n")).unwrap();
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
-        err.contains("E0320") && err.contains("t.art:5") && err.contains("floor_top, fill, fill_b"),
+        err.contains("E0320") && err.contains("t.ramo:5") && err.contains("floor_top, fill, fill_b"),
         "{err}"
     );
-    fs::write(dir.join("art/t.art"), format!("{def}tile kind:fill_b\n")).unwrap();
-    let out = artscript(&dir, &["check"]);
+    fs::write(dir.join("art/t.ramo"), format!("{def}tile kind:fill_b\n")).unwrap();
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let _ = fs::remove_dir_all(&dir);
 }
@@ -1077,9 +1077,9 @@ fn a_word_outside_one_of_fails_check_at_the_call() {
 fn a_closed_output_pipe_keeps_the_exit_code() {
     let dir = fixture("closed-pipe", &[]);
     let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
-    fs::write(dir.join("art/t.art"), format!("@target t.png 64x64\n{art}")).unwrap();
+    fs::write(dir.join("art/t.ramo"), format!("@target t.png 64x64\n{art}")).unwrap();
     for args in [&["build"][..], &["check"], &["check", "--json"]] {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_artscript"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_ramose"))
             .args(args)
             .current_dir(&dir)
             .stdout(std::process::Stdio::piped())
@@ -1099,24 +1099,24 @@ fn init_names_the_project_after_its_folder() {
     let dir = std::env::temp_dir().join(&folder);
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
-    let out = artscript(&dir, &["init"]);
+    let out = ramose(&dir, &["init"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
-    let manifest = artscript_eval::Manifest::parse(&fs::read_to_string(dir.join("artscript.toml")).unwrap()).unwrap();
+    let manifest = ramose_eval::Manifest::parse(&fs::read_to_string(dir.join("ramose.toml")).unwrap()).unwrap();
     assert_eq!(manifest.name, folder);
-    let out = artscript(&dir, &["check"]);
+    let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
 }
 
 fn rig_project(tag: &str, art: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("artscript-cli-{tag}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-cli-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"rig\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
-    fs::write(dir.join("art/main.art"), art).unwrap();
+    fs::write(dir.join("art/main.ramo"), art).unwrap();
     dir
 }
 
@@ -1139,7 +1139,7 @@ fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
          def doll\n  circle 8\n  anchor neck 0,-10\n  anchor _hidden 3,3\n\n\
          doll at:30,40 name:body\n",
     );
-    let first = artscript(&dir, &["build"]);
+    let first = ramose(&dir, &["build"]);
     assert_eq!(first.status.code(), Some(0), "{}", text(&first));
     let one = entry(&dir, "x.png");
     assert_eq!(one["pivot"], serde_json::json!([30, 30]));
@@ -1152,7 +1152,7 @@ fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
     assert_eq!(svg["anchors"], one["anchors"]);
 
     let bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
-    let second = artscript(&dir, &["build"]);
+    let second = ramose(&dir, &["build"]);
     assert_eq!(second.status.code(), Some(0), "{}", text(&second));
     assert_eq!(fs::read(dir.join("assets/art-manifest.json")).unwrap(), bytes);
     let _ = fs::remove_dir_all(&dir);
@@ -1164,7 +1164,7 @@ fn a_target_without_pivot_writes_null_and_a_gif_writes_neither_key() {
         "rig-none",
         "@target a.png 8x8\n@target b.gif 8x8 bg:#ffffff dur:1s\nrect 4x4\n",
     );
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     let png = entry(&dir, "a.png");
     assert_eq!(png["pivot"], serde_json::Value::Null);
@@ -1193,7 +1193,7 @@ fn a_pivot_that_is_not_a_point_is_e0206() {
     for (i, (art, message)) in cases.into_iter().enumerate() {
         let dir = rig_project(&format!("rig-bad{i}"), art);
         for cmd in ["check", "build"] {
-            let out = artscript(&dir, &[cmd]);
+            let out = ramose(&dir, &[cmd]);
             let err = text(&out);
             assert_eq!(out.status.code(), Some(1), "{cmd} {art}: {err}");
             assert!(err.contains("E0206") && err.contains(message), "{cmd} {art}: {err}");
@@ -1214,7 +1214,7 @@ fn size_placeholders_name_the_files_a_build_writes() {
         "sized",
         "@target icon_{w}.png 32x20 scale:.5,1,2\n@target vec_{w}x{h}_{scale}.svg 32x20 scale:2\nrect 4x4\n",
     );
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     for (name, size) in [("icon_16.png", (16, 10)), ("icon_32.png", (32, 20)), ("icon_64.png", (64, 40))] {
         assert_eq!(png_size(&dir.join("assets").join(name)), size, "{name}");
@@ -1238,7 +1238,7 @@ fn a_diagnostic_that_only_one_scale_raises_is_reported() {
         "@target x.png 8x8 scale:1,2\nrect 4x4\nexpect scale in 0..1.5 \"small scale only\"\nexpect 5 in 0..1 \"every scale\"\n",
     );
     for cmd in ["check", "build"] {
-        let out = artscript(&dir, &[cmd]);
+        let out = ramose(&dir, &[cmd]);
         let err = text(&out);
         assert_eq!(err.matches("2 is outside 0..1.5").count(), 1, "{cmd}: {err}");
         assert_eq!(err.matches("5 is outside 0..1\n").count(), 1, "{cmd}: {err}");
@@ -1252,7 +1252,7 @@ fn a_compile_error_only_one_scale_raises_stops_the_build() {
         "scale-error",
         "@target x.png 8x8 scale:1,2\nrect 4x4\nif scale > 1\n  circle bogus\n",
     );
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(!dir.join("assets/x.png").exists() && !dir.join("assets/x@2x.png").exists());
     let _ = fs::remove_dir_all(&dir);
@@ -1266,12 +1266,12 @@ fn each_outputs_anchors_come_from_its_own_scene() {
          def doll\n  circle 8\n  anchor hip 0,10*scale\n\n\
          doll at:30,40 name:body\n",
     );
-    let out = artscript(&dir, &["build"]);
+    let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert_eq!(entry(&dir, "x.png")["anchors"], serde_json::json!({ "body.hip": [30, 50] }));
     assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
     assert_eq!(entry(&dir, "x@2x.png")["pivot"], serde_json::json!([60, 120]));
-    let again = artscript(&dir, &["build"]);
+    let again = ramose(&dir, &["build"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again));
     assert_eq!(entry(&dir, "x@2x.png")["anchors"], serde_json::json!({ "body.hip": [60, 120] }));
     let _ = fs::remove_dir_all(&dir);
@@ -1280,16 +1280,16 @@ fn each_outputs_anchors_come_from_its_own_scene() {
 #[test]
 fn build_only_keeps_outputs_of_unselected_targets_in_a_rebuilt_file() {
     let dir = fixture("only-sibling", &[]);
-    let art = dir.join("art/x.art");
+    let art = dir.join("art/x.ramo");
     let src = "@target a.png 32x32 as:a\n@target b.png 32x32 as:b\n\npalette k\n  color red #ff0000\n\ncircle 10 at:16,16 fill:k.red\n";
     fs::write(&art, src).unwrap();
-    let full = artscript(&dir, &["build"]);
+    let full = ramose(&dir, &["build"]);
     assert_eq!(full.status.code(), Some(0), "{}", text(&full));
     let b = dir.join("assets/b.png");
     let b_bytes = fs::read(&b).unwrap();
 
     fs::write(&art, src.replace("circle 10", "circle 12")).unwrap();
-    let only = artscript(&dir, &["build", "--only", "a.png"]);
+    let only = ramose(&dir, &["build", "--only", "a.png"]);
     assert_eq!(only.status.code(), Some(0), "{}", text(&only));
     assert!(!text(&only).contains("removed stale"), "{}", text(&only));
     assert_eq!(fs::read(&b).unwrap(), b_bytes, "b.png changed");

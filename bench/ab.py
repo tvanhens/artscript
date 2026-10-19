@@ -3,10 +3,10 @@
 # ///
 """Run artbench N times for each arm and compare the arms with bootstrap confidence intervals.
 
-    uv run bench/ab.py --arm base=../base:../base/target/release/artscript --arm new=.:target/release/artscript -n 5
+    uv run bench/ab.py --arm base=../base:../base/target/release/ramose --arm new=.:target/release/ramose -n 5
     uv run bench/ab.py --report bench/ab-out        # re-aggregate an earlier run
 
-An arm is NAME=ROOT:BINARY. ROOT is a checkout whose skills/artscript is under test, and BINARY is the artscript it runs.
+An arm is NAME=ROOT:BINARY. ROOT is a checkout whose skills/ramose is under test, and BINARY is the ramose it runs.
 Every arm must carry the same bench/artbench.py, so only the skill and the binary differ.
 """
 
@@ -42,7 +42,7 @@ STEP_METRICS = (
 def run_one(name: str, root: Path, binary: Path, out: Path, model: str) -> None:
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "artbench.log").open("w")
-    cmd = ["uv", "run", str(root / "bench/artbench.py"), "--artscript", str(binary), "--out", str(out / "run"), "--model", model]
+    cmd = ["uv", "run", str(root / "bench/artbench.py"), "--ramose", str(binary), "--out", str(out / "run"), "--model", model]
     subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT)
     print(f"done {name} {out.name}", file=sys.stderr, flush=True)
 

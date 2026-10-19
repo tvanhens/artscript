@@ -1,25 +1,25 @@
-//! The project: `artscript.toml` and every `.art` source under the root. This is the only module
+//! The project: `ramose.toml` and every `.ramo` source under the root. This is the only module
 //! in the evaluator that touches the filesystem; everything downstream works on [`Project`].
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::Span;
+use ramose_syntax::Diagnostic;
+use ramose_syntax::ast::Span;
 
-pub const MANIFEST: &str = "artscript.toml";
+pub const MANIFEST: &str = "ramose.toml";
 
 /// The bundled standard library, by `use` path. `use std/brushes` reads this table and never a
 /// file, so a project cannot shadow it and `fmt` and the lints never see it.
 pub const STD: &[(&str, &str)] = &[
-    ("std/brushes", include_str!("../std/brushes.art")),
-    ("std/stamps", include_str!("../std/stamps.art")),
+    ("std/brushes", include_str!("../std/brushes.ramo")),
+    ("std/stamps", include_str!("../std/stamps.ramo")),
 ];
 
 /// The project-relative name a bundled library is known by in diagnostics and dependencies.
 pub fn std_file(path: &str) -> String {
-    format!("{path}.art")
+    format!("{path}.ramo")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,7 +113,7 @@ impl Manifest {
         let bad_at = |offset: usize, msg: String| {
             Diagnostic::error("E0200", span_at(src, offset), msg)
                 .in_file(MANIFEST)
-                .with_fix("see `artscript init` for a valid manifest")
+                .with_fix("see `ramose init` for a valid manifest")
         };
         let ManifestDoc { project, defaults, lint: levels, build } = toml::from_str(src).map_err(|e: toml::de::Error| {
             bad_at(e.span().map_or(0, |r| r.start), format!("invalid manifest: {}", e.message().trim().replace('\n', "; ")))
@@ -225,7 +225,7 @@ impl Manifest {
         self.lib.iter().find_map(|root| {
             let root = root.trim_end_matches('/');
             file.strip_prefix(&format!("{root}/"))
-                .and_then(|rest| rest.strip_suffix(".art"))
+                .and_then(|rest| rest.strip_suffix(".ramo"))
                 .map(str::to_string)
         })
     }
@@ -265,7 +265,7 @@ impl Project {
                 format!("`{f}` would shadow the bundled `std/` library"),
             )
             .in_file(f)
-            .with_fix("move it out of a folder named `std`; `artscript std <name>` prints a bundled file to fork")),
+            .with_fix("move it out of a folder named `std`; `ramose std <name>` prints a bundled file to fork")),
             None => Ok(self),
         }
     }
@@ -276,7 +276,7 @@ impl Project {
                 let msg = format!("[defaults] palette `{pal}` is in no lib root ({})", self.manifest.lib.join(", "));
                 Err(Diagnostic::error("E0200", self.manifest.palette_span, msg)
                     .in_file(MANIFEST)
-                    .with_fix(format!("add `{pal}.art` under a lib root, or remove the palette key")))
+                    .with_fix(format!("add `{pal}.ramo` under a lib root, or remove the palette key")))
             }
             _ => Ok(self),
         }
@@ -289,12 +289,12 @@ impl Project {
             return STD.iter().any(|(p, _)| *p == path).then(|| std_file(path));
         }
         self.manifest.lib.iter().find_map(|root| {
-            let file = format!("{}/{path}.art", root.trim_end_matches('/'));
+            let file = format!("{}/{path}.ramo", root.trim_end_matches('/'));
             self.files.contains_key(&file).then_some(file)
         })
     }
 
-    /// The text of a project file or a bundled library. The one reader of `.art` source for
+    /// The text of a project file or a bundled library. The one reader of `.ramo` source for
     /// evaluation, dependencies and cache keys. `fmt` and `plan` keep iterating `files`.
     pub fn source(&self, file: &str) -> Option<&str> {
         if let Some(src) = self.files.get(file) {
@@ -322,7 +322,7 @@ pub fn find_root(start: &Path) -> Option<PathBuf> {
     start.ancestors().find(|d| d.join(MANIFEST).is_file()).map(Path::to_path_buf)
 }
 
-/// Reads the manifest and every `.art` file under `root`, skipping hidden directories, the output
+/// Reads the manifest and every `.ramo` file under `root`, skipping hidden directories, the output
 /// directory and simple `.gitignore` entries.
 pub fn load(root: &Path) -> Result<Project, Diagnostic> {
     let manifest_src = fs::read_to_string(root.join(MANIFEST)).map_err(|e| {
@@ -346,7 +346,7 @@ pub fn load(root: &Path) -> Result<Project, Diagnostic> {
                 if rel != out_dir && name != "target" {
                     stack.push(path);
                 }
-            } else if name.ends_with(".art")
+            } else if name.ends_with(".ramo")
                 && let Ok(src) = fs::read_to_string(&path)
             {
                 files.insert(rel, src);

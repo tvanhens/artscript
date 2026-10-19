@@ -2,12 +2,12 @@
 
 use std::collections::BTreeMap;
 
-use artscript_eval::{
+use ramose_eval::{
     Evaluation, Format, Project, Sample, TargetJob, dependencies, evaluate, explain, frame_delays, plan, sample,
 };
-use artscript_ir::Profile;
-use artscript_render::{Backend, raster_only_features, render_gif, render_png, render_svg};
-use artscript_syntax::{Diagnostic, Severity};
+use ramose_ir::Profile;
+use ramose_render::{Backend, raster_only_features, render_gif, render_png, render_svg};
+use ramose_syntax::{Diagnostic, Severity};
 
 pub mod generator;
 
@@ -29,28 +29,28 @@ off-canvas = "warn"
 "#;
 
 const LIBS: &[(&str, &str)] = &[
-    ("lib/face/parts.art", include_str!("../../examples/chibi/lib/face/parts.art")),
-    ("lib/shade/cel.art", include_str!("../../examples/chibi/lib/shade/cel.art")),
-    ("lib/palette/house.art", include_str!("../../examples/chibi/lib/palette/house.art")),
+    ("lib/face/parts.ramo", include_str!("../../examples/chibi/lib/face/parts.ramo")),
+    ("lib/shade/cel.ramo", include_str!("../../examples/chibi/lib/shade/cel.ramo")),
+    ("lib/palette/house.ramo", include_str!("../../examples/chibi/lib/palette/house.ramo")),
 ];
 
 pub const MAX_FRAMES: f64 = 6.0;
 
 pub const MAX_SIDE: f32 = 48.0;
 
-/// Decodes an eval or render input: the entry file `art/t.art`, then NUL-separated files that each
-/// start with their project path on the first line. A file named `artscript.toml` replaces
+/// Decodes an eval or render input: the entry file `art/t.ramo`, then NUL-separated files that each
+/// start with their project path on the first line. A file named `ramose.toml` replaces
 /// [`MANIFEST`]. `None` when that manifest does not parse.
 pub fn project(data: &[u8]) -> Option<Project> {
     let text = String::from_utf8_lossy(data);
     let mut parts = text.split('\0');
     let mut files: BTreeMap<String, String> =
         LIBS.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-    files.insert("art/t.art".into(), parts.next().unwrap_or_default().to_string());
+    files.insert("art/t.ramo".into(), parts.next().unwrap_or_default().to_string());
     let mut manifest = MANIFEST.to_string();
     for part in parts {
         let (path, src) = part.split_once('\n').unwrap_or((part, ""));
-        if path == artscript_eval::project::MANIFEST {
+        if path == ramose_eval::project::MANIFEST {
             manifest = src.to_string();
         } else {
             files.insert(path.to_string(), src.to_string());
@@ -59,7 +59,7 @@ pub fn project(data: &[u8]) -> Option<Project> {
     Project::from_sources(&manifest, files).ok()
 }
 
-pub fn ast_ignoring_spans(file: &artscript_syntax::ast::File) -> String {
+pub fn ast_ignoring_spans(file: &ramose_syntax::ast::File) -> String {
     let mut file = file.clone();
     for d in &mut file.directives {
         d.named.sort_by(|a, b| a.key.cmp(&b.key));
@@ -77,15 +77,15 @@ pub fn ast_ignoring_spans(file: &artscript_syntax::ast::File) -> String {
 }
 
 pub fn exercise_format(src: &str) {
-    let Ok(file) = artscript_syntax::parse(src) else { return };
-    let once = artscript_syntax::format(&file);
-    let reparsed = artscript_syntax::parse(&once)
+    let Ok(file) = ramose_syntax::parse(src) else { return };
+    let once = ramose_syntax::format(&file);
+    let reparsed = ramose_syntax::parse(&once)
         .unwrap_or_else(|e| panic!("formatted output does not parse: {e:?}\n{once}"));
     assert_eq!(ast_ignoring_spans(&file), ast_ignoring_spans(&reparsed), "format changed the program:\n{once}");
-    assert_eq!(once, artscript_syntax::format(&reparsed), "format is not a fixed point");
+    assert_eq!(once, ramose_syntax::format(&reparsed), "format is not a fixed point");
 
-    let kept = artscript_syntax::format_source(src).expect("source parsed once already");
-    let again = artscript_syntax::format_source(&kept)
+    let kept = ramose_syntax::format_source(src).expect("source parsed once already");
+    let again = ramose_syntax::format_source(&kept)
         .unwrap_or_else(|e| panic!("format_source output does not parse: {e:?}\n{kept}"));
     assert_eq!(kept, again, "format_source is not a fixed point");
 }
@@ -95,7 +95,7 @@ pub fn check_locations(project: &Project, diags: &[Diagnostic]) {
         let _ = d.to_string();
         let Some(src) = project.files.get(&d.file) else {
             assert!(
-                d.file == artscript_eval::project::MANIFEST,
+                d.file == ramose_eval::project::MANIFEST,
                 "diagnostic in unknown file {:?}: {d:?}",
                 d.file
             );
@@ -143,7 +143,7 @@ pub fn jobs(project: &Project) -> Vec<TargetJob> {
 
 /// The scene's `Debug` text without the fields Skia fills in lazily: a path's per-process
 /// generation counter and a matrix's cached type mask, which `explain` and the renderer read.
-pub fn fingerprint(scene: &Option<artscript_ir::Scene>) -> String {
+pub fn fingerprint(scene: &Option<ramose_ir::Scene>) -> String {
     let mut text = format!("{scene:?}");
     for field in ["generation_id: ", "type_mask: "] {
         let mut out = String::with_capacity(text.len());
@@ -159,7 +159,7 @@ pub fn fingerprint(scene: &Option<artscript_ir::Scene>) -> String {
 }
 
 pub fn exercise_eval(p: &Project) {
-    let _ = dependencies(p, "art/t.art");
+    let _ = dependencies(p, "art/t.ramo");
     for (i, job) in jobs(p).iter().take(3).enumerate() {
         let ev = evaluate(p, job);
         check_locations(p, &ev.diagnostics);
@@ -200,7 +200,7 @@ pub fn exercise_render(p: &Project) {
         assert_eq!(gif(&s), gif(&sample(p, &clip)), "gif bytes differ between renders");
         return;
     }
-    let render = |scene: &artscript_ir::Scene| {
+    let render = |scene: &ramose_ir::Scene| {
         let png = render_png(scene, scale, Backend::Cpu).ok();
         (png, [Profile::Vector, Profile::Svg].map(|profile| render_svg(scene, profile, scale, Backend::Cpu).ok()))
     };

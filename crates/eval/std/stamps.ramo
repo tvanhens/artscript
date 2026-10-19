@@ -1,8 +1,8 @@
-# std/stamps: the house stamps. Every built-in is `.art` code. `artscript std stamps`
+# std/stamps: the house stamps. Every built-in is `.ramo` code. `ramose std stamps`
 # prints this file so you can copy it into lib/ and fork it.
 # A stamp block is drawn once per placement, in a frame on the spine: x along the travel, y to
 # the right. It reads i s u len width tangent pressure angle tilt velocity paint.
-# See `artscript docs stamps`.
+# See `ramose docs stamps`.
 
 # A dotted line. `tint:none` takes the host's paint at each dot.
 stamp dots r:2 spacing:6 tint:none

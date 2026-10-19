@@ -1,7 +1,7 @@
 //! Field trees compiled to one SkSL shader. Noise is in the node's local canvas units.
 //! The scalar result is mapped through stops by sampling a 256-wide ramp, or emitted as coverage.
 
-use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind, Stop};
+use ramose_ir::{Field, FieldFn, FieldOp, NoiseKind, Stop};
 use skia_safe::{
     Color4f, Data, Paint, Rect, RuntimeEffect, SamplingOptions, Shader, TileMode, surfaces,
 };

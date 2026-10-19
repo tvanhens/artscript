@@ -1,7 +1,7 @@
 //! Evaluator behaviour tests over in-memory projects.
 
-use artscript_ir::{Blend, EffectOp, Node, NodeKind, Paint, Scene};
-use artscript_syntax::Diagnostic;
+use ramose_ir::{Blend, EffectOp, Node, NodeKind, Paint, Scene};
+use ramose_syntax::Diagnostic;
 
 use crate::{Evaluation, Project, evaluate, plan};
 
@@ -15,9 +15,9 @@ fn project(files: &[(&str, &str)]) -> Project {
     Project::from_sources(MANIFEST, files).unwrap()
 }
 
-/// Evaluates the first target of `art/t.art` alongside `libs`.
+/// Evaluates the first target of `art/t.ramo` alongside `libs`.
 fn run_with(src: &str, libs: &[(&str, &str)]) -> Evaluation {
-    let mut files = vec![("art/t.art", src)];
+    let mut files = vec![("art/t.ramo", src)];
     files.extend_from_slice(libs);
     let p = project(&files);
     let plan = plan(&p);
@@ -118,12 +118,12 @@ fn shape_name_is_registered_before_its_children_so_copy_can_reach_it() {
 #[test]
 fn patches_rotate_hide_and_reach_nested_params() {
     let lib = (
-        "lib/face.art",
+        "lib/face.ramo",
         "use eye\ndef face\n  eye 8 at:-10,0 name:a\n  eye 8 at:10,0 name:c\n  rect 40x2 at:0,10 name:mouth\n",
     );
     let ev = run_with(
         "@target t.png 100x100\nuse face\nface at:50,50 name:f\n  .a rot:-20\n  .mouth off\n  .c.pupil fill:#ff0000\n  .a iris:#00ff00\n",
-        &[lib, ("lib/eye.art", EYE_LIB)],
+        &[lib, ("lib/eye.ramo", EYE_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
@@ -135,10 +135,10 @@ fn patches_rotate_hide_and_reach_nested_params() {
     assert_eq!(fill_hex(node(&s, "f.a.pupil")), "#00ff00");
     assert_eq!(fill_hex(node(&s, "f.c.white")), "#ffffff");
 
-    let head = ("lib/head.art", "use face\ndef head\n  face name:f\n");
+    let head = ("lib/head.ramo", "use face\ndef head\n  face name:f\n");
     let ev = run_with(
         "@target t.png 100x100\nuse head\nhead name:head\n  .f.c iris:#0000ff\n",
-        &[head, lib, ("lib/eye.art", EYE_LIB)],
+        &[head, lib, ("lib/eye.ramo", EYE_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
@@ -150,7 +150,7 @@ fn patches_rotate_hide_and_reach_nested_params() {
 fn unmatched_patch_is_e0340_listing_parts() {
     let ev = run_with(
         "@target t.png 100x100\nuse eye\neye\n  .iris off\n",
-        &[("lib/eye.art", EYE_LIB)],
+        &[("lib/eye.ramo", EYE_LIB)],
     );
     let d = ev
         .diagnostics
@@ -172,7 +172,7 @@ fn z_behind_moves_a_node_first() {
 fn slot_content_resolves_host_parts_and_needs_checks_them() {
     let ok = run_with(
         "@target t.png 100x100\nuse eye\neye 10 at:50,50 name:eye\n  lashes:\n    lash\n",
-        &[("lib/eye.art", EYE_LIB)],
+        &[("lib/eye.ramo", EYE_LIB)],
     );
     assert!(ok.diagnostics.is_empty(), "{}", show(&ok.diagnostics));
     assert!(
@@ -187,7 +187,7 @@ fn slot_content_resolves_host_parts_and_needs_checks_them() {
         "def blank\n  circle 4 name:ball\n  slot top\n\ndef lash needs:@white\n  curve 0,0 4,-4\n";
     let ev = run_with(
         "@target t.png 100x100\nuse b\nblank\n  top:\n    lash\n",
-        &[("lib/b.art", lib)],
+        &[("lib/b.ramo", lib)],
     );
     let d = ev
         .diagnostics
@@ -329,7 +329,7 @@ fn level_failure_is_c0101_with_measurements_and_a_fix() {
     let d = &ev.diagnostics[0];
     assert_eq!(
         d.to_string(),
-        "error[C0101] art/t.art:4:1  [t.png]\n  assert level(@eye_l @eye_r) tol:.5\n  eye_l.cy = 40   eye_r.cy = 43   difference 3 > tol 0.5\n  fix: set .eye_r at:70,40"
+        "error[C0101] art/t.ramo:4:1  [t.png]\n  assert level(@eye_l @eye_r) tol:.5\n  eye_l.cy = 40   eye_r.cy = 43   difference 3 > tol 0.5\n  fix: set .eye_r at:70,40"
     );
 }
 
@@ -342,7 +342,7 @@ fn expect_failure_is_warning_c0201() {
     let d = &ev.diagnostics[0];
     assert_eq!(
         (d.code.as_str(), d.severity),
-        ("C0201", artscript_syntax::Severity::Warning)
+        ("C0201", ramose_syntax::Severity::Warning)
     );
     assert_eq!(
         d.notes,
@@ -393,13 +393,13 @@ fn evaluate_entry(files: &[(&str, &str)], source: &str) -> Evaluation {
 fn use_of_an_entry_file_imports_its_defs_and_skips_its_drawing() {
     let ev = evaluate_entry(
         &[
-            ("art/a.art", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
+            ("art/a.ramo", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
             (
-                "art/b.art",
+                "art/b.ramo",
                 "@target b.png 10x10\ndef rock\n  rect 1x1 name:stone\nrect 2x2 name:own\n",
             ),
         ],
-        "art/a.art",
+        "art/a.ramo",
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     assert_eq!(paths(&ev.scene.unwrap()), ["r", "r.stone"]);
@@ -409,23 +409,23 @@ fn use_of_an_entry_file_imports_its_defs_and_skips_its_drawing() {
 fn a_def_that_reads_a_skipped_let_of_an_entry_file_is_e0201() {
     let ev = evaluate_entry(
         &[
-            ("art/a.art", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
+            ("art/a.ramo", "@target a.png 10x10\nuse art/b\nrock name:r\n"),
             (
-                "art/b.art",
+                "art/b.ramo",
                 "@target b.png 10x10\nlet mode = big\ndef rock\n  if mode == big\n    rect 1x1\nrock name:own\n",
             ),
         ],
-        "art/a.art",
+        "art/a.ramo",
     );
     let d = ev
         .diagnostics
         .iter()
         .find(|d| d.code == "E0201")
         .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
-    assert_eq!((d.file.as_str(), d.span.line), ("art/b.art", 4));
+    assert_eq!((d.file.as_str(), d.span.line), ("art/b.ramo", 4));
     let own = evaluate_entry(
-        &[("art/b.art", "@target b.png 10x10\nlet mode = big\ndef rock\n  if mode == big\n    rect 1x1\nrock name:own\n")],
-        "art/b.art",
+        &[("art/b.ramo", "@target b.png 10x10\nlet mode = big\ndef rock\n  if mode == big\n    rect 1x1\nrock name:own\n")],
+        "art/b.ramo",
     );
     assert!(own.diagnostics.is_empty(), "{}", show(&own.diagnostics));
 }
@@ -434,21 +434,21 @@ fn a_def_that_reads_a_skipped_let_of_an_entry_file_is_e0201() {
 fn drawing_in_a_library_is_e0204() {
     let ev = run_with(
         "@target t.png 10x10\nuse bad\n",
-        &[("lib/bad.art", "circle 4\n")],
+        &[("lib/bad.ramo", "circle 4\n")],
     );
     let d = ev
         .diagnostics
         .iter()
         .find(|d| d.code == "E0204")
         .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
-    assert_eq!(d.file, "lib/bad.art");
+    assert_eq!(d.file, "lib/bad.ramo");
 }
 
 #[test]
 fn param_kind_mismatch_is_e0320() {
     let ev = run_with(
         "@target t.png 10x10\nuse eye\neye size:#ff0000\n",
-        &[("lib/eye.art", EYE_LIB)],
+        &[("lib/eye.ramo", EYE_LIB)],
     );
     let d = ev
         .diagnostics
@@ -461,7 +461,7 @@ fn param_kind_mismatch_is_e0320() {
     );
 }
 
-fn shape<'a>(s: &'a Scene, path: &str) -> &'a artscript_ir::Shape {
+fn shape<'a>(s: &'a Scene, path: &str) -> &'a ramose_ir::Shape {
     match &node(s, path).kind {
         NodeKind::Shape(sh) => sh,
         _ => panic!("{path} is not a shape"),
@@ -503,8 +503,8 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
         outline("lit").to_svg(),
         "a width list built with each differs from the same literal list"
     );
-    assert!(outline("ink").contains(artscript_ir::Point::new(50.0, 3.5)));
-    assert!(!outline("ink").contains(artscript_ir::Point::new(50.0, 4.6)));
+    assert!(outline("ink").contains(ramose_ir::Point::new(50.0, 3.5)));
+    assert!(!outline("ink").contains(ramose_ir::Point::new(50.0, 4.6)));
 }
 
 #[test]
@@ -760,7 +760,7 @@ fn round_cuts_corners_of_a_flat_curve_and_a_poly() {
     let has = |path: &str, x: f32, y: f32| {
         shape(&s, path)
             .geometry
-            .contains(artscript_ir::Point::new(x, y))
+            .contains(ramose_ir::Point::new(x, y))
     };
     assert!(has("sharp", -9.2, -9.2));
     assert!(!has("soft", -9.2, -9.2));
@@ -806,7 +806,7 @@ fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
         "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
     );
     let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
-    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    let inside = |x: f32, y: f32| ink.contains(ramose_ir::Point::new(x, y));
     assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
     assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
     assert!(inside(64.0, 33.0) && !inside(64.0, 35.0), "the first side runs from 2 to 14");
@@ -819,7 +819,7 @@ fn a_width_list_stroke_inks_every_contour_of_a_path() {
         "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
     );
     let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
-    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    let inside = |x: f32, y: f32| ink.contains(ramose_ir::Point::new(x, y));
     assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
 }
 
@@ -844,10 +844,10 @@ fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
 fn png(src: &str) -> Vec<u8> {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
-    artscript_render::render_png(
+    ramose_render::render_png(
         &ev.scene.unwrap(),
         ev_scale(src),
-        artscript_render::Backend::Cpu,
+        ramose_render::Backend::Cpu,
     ).unwrap()
 }
 
@@ -900,7 +900,7 @@ fn assert_pixels_close(a: &[u8], b: &[u8], mean_limit: f64) {
 fn raw_color_lint_skips_palettes() {
     let p = Project::from_sources(
         "[project]\nout = \"out\"\nlib = [\"lib\"]\n",
-        [("art/t.art".to_string(), "@target t.png 10x10\npalette x\n  color a #ff0000\ncircle 3 fill:x.a\nrect 2x2 fill:#00ff00\n".to_string())].into(),
+        [("art/t.ramo".to_string(), "@target t.png 10x10\npalette x\n  color a #ff0000\ncircle 3 fill:x.a\nrect 2x2 fill:#00ff00\n".to_string())].into(),
     )
     .unwrap();
     let plan = plan(&p);
@@ -970,11 +970,11 @@ fn palette_rows_may_take_reserved_names_and_read_back_qualified() {
         &format!("{MANIFEST}\n[defaults]\npalette = \"palette/house\"\n"),
         [
             (
-                "art/t.art".to_string(),
+                "art/t.ramo".to_string(),
                 "@target t.png 10x10\ncircle 1 fill:p.backdrop name:c\n".to_string(),
             ),
             (
-                "lib/palette/house.art".to_string(),
+                "lib/palette/house.ramo".to_string(),
                 "palette house\n  color backdrop #1d2b53\n".to_string(),
             ),
         ]
@@ -1000,19 +1000,19 @@ fn mask_value_and_mask_block_both_mask_the_draw() {
             .map(|m| &m.source)
             .unwrap_or_else(|| panic!("{p} has no mask"))
     };
-    assert!(matches!(source("g"), artscript_ir::MaskSource::Nodes(n) if n.len() == 1));
+    assert!(matches!(source("g"), ramose_ir::MaskSource::Nodes(n) if n.len() == 1));
     assert!(
-        matches!(source("f"), artscript_ir::MaskSource::Field { threshold: Some(t), .. } if (*t - 0.5).abs() < 1e-6)
+        matches!(source("f"), ramose_ir::MaskSource::Field { threshold: Some(t), .. } if (*t - 0.5).abs() < 1e-6)
     );
     assert!(
-        matches!(source("b"), artscript_ir::MaskSource::Nodes(n) if n[0].path == "b.mask~1.circle~1")
+        matches!(source("b"), ramose_ir::MaskSource::Nodes(n) if n[0].path == "b.mask~1.circle~1")
     );
 }
 
 #[test]
 fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
     let lib = (
-        "lib/cup.art",
+        "lib/cup.ramo",
         "def cup\n  circle 4\n  fx blur 1\n  slot mask\n",
     );
     let s = scene_with(
@@ -1020,13 +1020,13 @@ fn def_fx_run_before_call_site_fx_and_the_mask_is_the_call_sites() {
         &[lib],
     );
     let cup = node(&s, "cup");
-    let ops: Vec<&artscript_ir::EffectOp> = cup.effects.iter().map(|e| &e.op).collect();
+    let ops: Vec<&ramose_ir::EffectOp> = cup.effects.iter().map(|e| &e.op).collect();
     assert!(
         matches!(
             ops.as_slice(),
             [
-                artscript_ir::EffectOp::Blur { .. },
-                artscript_ir::EffectOp::Glow { .. }
+                ramose_ir::EffectOp::Blur { .. },
+                ramose_ir::EffectOp::Glow { .. }
             ]
         ),
         "{ops:?}"
@@ -1065,7 +1065,7 @@ fn a_fill_line_is_a_draw_with_an_unknown_verb() {
 }
 
 const BROKEN: (&str, &str) = (
-    "lib/x/thing.art",
+    "lib/x/thing.ramo",
     "style soft a:.5\nfinish sheen\n  fx grain .05\nlet sky = #8cf\ndef thing\n  rect 1x(2) fill:p.sky name:r\n",
 );
 
@@ -1088,7 +1088,7 @@ fn a_library_that_fails_to_parse_is_reported_once_at_the_library() {
         "@target t.png 64x64\nuse x/thing { sky }\nrect 2x2 fill:sky.1 name:t\n",
     ] {
         let ev = run_with(src, &[BROKEN]);
-        assert_eq!(codes_at(&ev), ["E0101 lib/x/thing.art"], "{src}\n{}", show(&ev.diagnostics));
+        assert_eq!(codes_at(&ev), ["E0101 lib/x/thing.ramo"], "{src}\n{}", show(&ev.diagnostics));
     }
 }
 
@@ -1098,11 +1098,11 @@ fn a_broken_manifest_palette_is_reported_once_at_the_palette() {
         &format!("{MANIFEST}\n[defaults]\npalette = \"palette/house\"\n"),
         [
             (
-                "art/t.art".to_string(),
+                "art/t.ramo".to_string(),
                 "@target t.png 10x10\ncircle 1 fill:p.sky name:c\n".to_string(),
             ),
             (
-                "lib/palette/house.art".to_string(),
+                "lib/palette/house.ramo".to_string(),
                 "palette house\n  color sky 1x(2)\n".to_string(),
             ),
         ]
@@ -1111,17 +1111,17 @@ fn a_broken_manifest_palette_is_reported_once_at_the_palette() {
     .unwrap();
     let plan = plan(&p);
     let ev = evaluate(&p, &plan.jobs[0]);
-    assert_eq!(codes_at(&ev), ["E0101 lib/palette/house.art"], "{}", show(&ev.diagnostics));
+    assert_eq!(codes_at(&ev), ["E0101 lib/palette/house.ramo"], "{}", show(&ev.diagnostics));
 }
 
 #[test]
 fn a_play_of_an_anim_from_a_broken_library_is_quiet() {
-    let lib = ("lib/x/moves.art", "anim bob dur:1s\n  .t at:key(0 4)\nlet x = 1x(2)\n");
+    let lib = ("lib/x/moves.ramo", "anim bob dur:1s\n  .t at:key(0 4)\nlet x = 1x(2)\n");
     let ev = run_with(
         "@target t.png 64x64\nuse x/moves { bob }\nrect 2x2 name:t\nplay bob\n",
         &[lib],
     );
-    assert_eq!(codes_at(&ev), ["E0101 lib/x/moves.art"], "{}", show(&ev.diagnostics));
+    assert_eq!(codes_at(&ev), ["E0101 lib/x/moves.ramo"], "{}", show(&ev.diagnostics));
 }
 
 #[test]
@@ -1132,7 +1132,7 @@ fn a_typo_beside_a_broken_import_is_still_an_unknown_verb() {
     );
     assert_eq!(
         codes_at(&ev),
-        ["E0101 lib/x/thing.art", "E0301 art/t.art"],
+        ["E0101 lib/x/thing.ramo", "E0301 art/t.ramo"],
         "{}",
         show(&ev.diagnostics)
     );
@@ -1171,7 +1171,7 @@ fn assert_box(s: &Scene, path: &str, w: f64, h: f64) {
 }
 
 fn lib_scene(src: &str, lib: &str) -> Scene {
-    let ev = run_with(src, &[("lib/d.art", lib)]);
+    let ev = run_with(src, &[("lib/d.ramo", lib)]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     ev.scene.unwrap()
 }
@@ -1180,9 +1180,9 @@ fn lib_scene(src: &str, lib: &str) -> Scene {
 fn a_def_instance_keeps_its_blend_modes_inside_it() {
     let lib = "def hole r:20\n  circle r fill:#000 blend:erase\ndef tint\n  rect 60x60 fill:#3366ff blend:multiply\n";
     let src = "@target t.png 300x100 bg:#ffffff\nuse d { hole tint }\nrect 100%x100% fill:#e0a020\nhole 30 at:50,50\nlayer iso at:150,50\n  tint\ntint at:250,50\n";
-    let ev = run_with(src, &[("lib/d.art", lib)]);
+    let ev = run_with(src, &[("lib/d.ramo", lib)]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
-    let png = artscript_render::render_png(&ev.scene.unwrap(), 1.0, artscript_render::Backend::Cpu).unwrap();
+    let png = ramose_render::render_png(&ev.scene.unwrap(), 1.0, ramose_render::Backend::Cpu).unwrap();
     let (w, _, px) = rgba(&png);
     let at = |x: i32, y: i32| {
         let i = (y * w + x) as usize * 4;
@@ -1228,7 +1228,7 @@ fn caller_percent_size_resolves_against_the_caller_frame() {
 fn a_square_size_rejects_a_pair() {
     let ev = run_with(
         "@target t.png 80x40\nuse d\nd 30x16\n",
-        &[("lib/d.art", "def d size:10\n  circle size*.5\n")],
+        &[("lib/d.ramo", "def d size:10\n  circle size*.5\n")],
     );
     assert!(
         ev.diagnostics.iter().any(|d| d.code == "E0320"),
@@ -1257,7 +1257,7 @@ fn child_without_at_stays_at_the_instance_origin() {
 fn percent_in_a_def_without_size_is_e0322() {
     let ev = run_with(
         "@target t.png 80x40\nuse d\nblush\n",
-        &[("lib/d.art", "def blush\n  circle 50%\n")],
+        &[("lib/d.ramo", "def blush\n  circle 50%\n")],
     );
     let d = ev
         .diagnostics
@@ -1318,11 +1318,11 @@ fn size_is_not_unused_when_only_percents_use_the_box() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
     let files = [
         (
-            "art/t.art".to_string(),
+            "art/t.ramo".to_string(),
             "@target t.png 80x40\nuse d\nblush\n".to_string(),
         ),
         (
-            "lib/d.art".to_string(),
+            "lib/d.ramo".to_string(),
             "def blush size:40x20 extra:1\n  circle 50%\n".to_string(),
         ),
     ]
@@ -1351,7 +1351,7 @@ fn absolute_size_still_boxes_a_child_of_a_sizeless_def() {
     let ev = run_with(
         "@target t.png 80x40\nuse d\nouter\n",
         &[(
-            "lib/d.art",
+            "lib/d.ramo",
             "def outer\n  inner 50%\ndef inner size:10\n  circle 4\n",
         )],
     );
@@ -1447,7 +1447,7 @@ fn shared_finish_seeds_grain_per_node_like_written_lines() {
 #[test]
 fn library_finish_resolves_names_in_the_library_and_seeds_from_the_use_site() {
     let lib = (
-        "lib/finish/surface.art",
+        "lib/finish/surface.ramo",
         "let shine = #ff0000\nfinish surface width:4\n  fx rim width color:shine\n  fx grain .04 scale:2.5\n",
     );
     let ev = run_with(
@@ -1465,11 +1465,11 @@ fn library_finish_resolves_names_in_the_library_and_seeds_from_the_use_site() {
 #[test]
 fn def_body_finish_comes_before_call_block_fx() {
     let lib = (
-        "lib/leaf.art",
+        "lib/leaf.ramo",
         "finish _edge tone:#00aa00\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\ndef leaf tone:#00ff00\n  circle 10 fill:tone\n  fx _edge tone:tone\n",
     );
     let written = (
-        "lib/leaf.art",
+        "lib/leaf.ramo",
         "def leaf tone:#00ff00\n  circle 10 fill:tone\n  fx rim 3\n  fx grain .05\n  fx outline 4 color:tone\n",
     );
     let src = "@target t.png 100x100\nuse leaf\nleaf tone:#008800\n  fx adjust light:-.06\n";
@@ -1546,19 +1546,19 @@ fn finish_body_is_plain_built_in_effects() {
 
     let ev = run_with(
         "@target t.png 100x100\nuse bad\ncircle 4\n",
-        &[("lib/bad.art", "finish f\n  fx rim 3\n  circle 4\n")],
+        &[("lib/bad.ramo", "finish f\n  fx rim 3\n  circle 4\n")],
     );
     let d = diag(&ev, "E0101");
     assert_eq!(
         (d.file.as_str(), d.span.line, d.message.as_str()),
-        ("lib/bad.art", 3, "a finish holds only `fx` lines")
+        ("lib/bad.ramo", 3, "a finish holds only `fx` lines")
     );
 }
 
 #[test]
 fn a_private_name_is_not_an_export() {
     let lib = (
-        "lib/finish/surface.art",
+        "lib/finish/surface.ramo",
         "finish _surface width:4\n  fx rim width\nfinish surface width:4\n  fx rim width\nstyle _ink fill:#112233\nstyle ink fill:#112233\n",
     );
     let explicit = run_with(
@@ -1605,7 +1605,7 @@ fn a_private_name_is_not_an_export() {
 #[test]
 fn explicit_use_binds_a_style_and_a_finish_that_share_a_name() {
     let lib = (
-        "lib/finish/surface.art",
+        "lib/finish/surface.ramo",
         "style surface fill:#112233\nfinish surface width:4\n  fx rim width\n",
     );
     let ev = run_with(
@@ -1652,7 +1652,7 @@ fn finish_parameters_are_named_and_typed_by_their_defaults() {
 fn non_positive_size_is_e0320() {
     let ev = run_with(
         "@target t.png 40x40\nuse d\nd 0\n",
-        &[("lib/d.art", "def d size:40\n  circle size\n")],
+        &[("lib/d.ramo", "def d size:40\n  circle size\n")],
     );
     let d = ev
         .diagnostics
@@ -1766,7 +1766,7 @@ if clip == go
   play bob
 rect 8 at:10,10 name:box
 ";
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
     let sampled = crate::sample(&p, &plan.jobs[0]);
@@ -1795,7 +1795,7 @@ fn per_frame_checks_report_first_and_worst() {
 assert t < .5
 circle 2
 ";
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     let sampled = crate::sample(&p, &plan.jobs[0]);
     let fail = sampled
@@ -1863,7 +1863,7 @@ fn a_let_inside_if_does_not_escape_and_a_later_let_is_not_early() {
 fn the_same_check_on_two_instances_stays_two_failures() {
     let ev = run_with(
         "@target t.png 40x20\nuse d\ndot name:a\ndot name:b\n",
-        &[("lib/d.art", "def dot\n  circle 4\n  assert false\n")],
+        &[("lib/d.ramo", "def dot\n  circle 4\n  assert false\n")],
     );
     let mut nodes: Vec<_> = ev
         .diagnostics
@@ -1877,20 +1877,20 @@ fn the_same_check_on_two_instances_stays_two_failures() {
 
 #[test]
 fn the_worst_frame_keeps_its_notes_and_fix() {
-    use artscript_syntax::ast::Span;
+    use ramose_syntax::ast::Span;
     let span = Span { line: 2, col: 1 };
     let mild = Diagnostic::error("C0101", span, "gap")
-        .in_file("art/t.art")
+        .in_file("art/t.ramo")
         .at_node("a")
         .with_note("gap is 1")
         .with_fix("nudge 1");
     let worse = Diagnostic::error("C0101", span, "gap")
-        .in_file("art/t.art")
+        .in_file("art/t.ramo")
         .at_node("a")
         .with_note("gap is 9")
         .with_fix("nudge 9");
     let other = Diagnostic::error("C0101", span, "gap")
-        .in_file("art/t.art")
+        .in_file("art/t.ramo")
         .at_node("b")
         .with_note("gap is 2")
         .with_fix("nudge 2");
@@ -1917,12 +1917,12 @@ fn play_marks_an_imported_anim_as_used() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
     let files = [
         (
-            "art/t.art".to_string(),
+            "art/t.ramo".to_string(),
             "@target t.png 40x40\nuse motion { idle spare }\ncircle 4 name:c\nplay idle\n"
                 .to_string(),
         ),
         (
-            "lib/motion.art".to_string(),
+            "lib/motion.ramo".to_string(),
             "anim idle dur:1s\n  .c at:1,0\nstyle spare ink:#000000\n".to_string(),
         ),
     ]
@@ -1947,19 +1947,19 @@ fn a_library_let_and_a_parent_palette_are_not_unused() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"warn\"\noff-canvas = \"off\"\n";
     let files = [
         (
-            "art/t.art".to_string(),
+            "art/t.ramo".to_string(),
             "@target t.png 64x64\nuse grid { tile cell }\nuse elite { elite }\nlet spare = 1\ncell\nrect 10x10 at:tile/2,tile/2 fill:elite.sky name:r\n".to_string(),
         ),
         (
-            "lib/grid.art".to_string(),
+            "lib/grid.ramo".to_string(),
             "let tile = 64\nlet _pad = 3\ndef cell\n  let gap = 2\n  rect 4x4\n".to_string(),
         ),
         (
-            "lib/house.art".to_string(),
+            "lib/house.ramo".to_string(),
             "palette house\n  color sky #446688\n".to_string(),
         ),
         (
-            "lib/elite.art".to_string(),
+            "lib/elite.ramo".to_string(),
             "use house { house }\n\npalette elite from house\n  ramp sky #9a8fb8 5\n".to_string(),
         ),
     ]
@@ -1977,9 +1977,9 @@ fn a_library_let_and_a_parent_palette_are_not_unused() {
     assert_eq!(
         unused,
         [
-            "art/t.art `let spare` is never used",
-            "lib/grid.art `let _pad` is never used",
-            "lib/grid.art `let gap` is never used",
+            "art/t.ramo `let spare` is never used",
+            "lib/grid.ramo `let _pad` is never used",
+            "lib/grid.ramo `let gap` is never used",
         ],
         "{}",
         show(&ev.diagnostics)
@@ -2016,7 +2016,7 @@ fn a_missing_reference_in_if_is_reported_once() {
 fn off_canvas_on_a_later_frame_is_kept() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
     let still_files = [(
-        "art/t.art".to_string(),
+        "art/t.ramo".to_string(),
         "@target t.png 40x40\ncircle 2 name:c\n".to_string(),
     )]
     .into();
@@ -2029,7 +2029,7 @@ fn off_canvas_on_a_later_frame_is_kept() {
         show(&still_ev.diagnostics)
     );
     let files = [(
-        "art/t.art".to_string(),
+        "art/t.ramo".to_string(),
         "@target t.gif 40x40 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .c at:key(0 80),0\ncircle 2 name:c\nplay slide\n".to_string(),
     )]
     .into();
@@ -2050,7 +2050,7 @@ fn hidden_children(src: &str) -> Vec<Diagnostic> {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
     let p = Project::from_sources(
         manifest,
-        [("art/t.art".to_string(), src.to_string())].into(),
+        [("art/t.ramo".to_string(), src.to_string())].into(),
     )
     .unwrap();
     let plan = plan(&p);
@@ -2157,7 +2157,7 @@ fn comparing_target_with_a_path_warns_and_names_the_labels() {
     let lines: Vec<u32> = hits.iter().map(|d| d.span.line).collect();
     assert_eq!(lines, [3, 5], "{}", show(&hits));
     let d = &hits[0];
-    assert_eq!(d.severity, artscript_syntax::Severity::Warning);
+    assert_eq!(d.severity, ramose_syntax::Severity::Warning);
     assert_eq!(d.message, "`target` is never `\"a.png\"` in this file");
     assert_eq!(d.notes, ["its targets are labeled hero, villain"]);
     assert_eq!(
@@ -2206,7 +2206,7 @@ fn a_name_compared_with_target_is_quiet_because_its_value_is_unknown() {
         &format!(
             "{TWO_LABELS}let lead = hero\nif target == lead\n  circle 2\neach v in [hero villain]\n  if target == v\n    circle 3\nuse names\nif target == star\n  circle 4\n"
         ),
-        &[("lib/names.art", "let star = villain\n")],
+        &[("lib/names.ramo", "let star = villain\n")],
     );
     assert!(hits.is_empty(), "{}", show(&hits));
 }
@@ -2217,7 +2217,7 @@ fn unknown_target_off_is_silent() {
     let p = Project::from_sources(
         manifest,
         [(
-            "art/t.art".to_string(),
+            "art/t.ramo".to_string(),
             format!("{TWO_LABELS}if target == \"a.png\"\n  circle 2\n"),
         )]
         .into(),
@@ -2237,7 +2237,7 @@ fn unknown_target_off_is_silent() {
 fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"error\"\n";
     let files = [(
-        "art/t.art".to_string(),
+        "art/t.ramo".to_string(),
         "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim slide dur:1s\n  .c at:key(22 80 ease:linear),0\ncircle 2 name:c\nplay slide\n".to_string(),
     )]
     .into();
@@ -2266,7 +2266,7 @@ fn an_off_canvas_node_stays_one_failure_when_the_wording_changes() {
 #[test]
 fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
     let fast = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff fps:120 dur:1s\ncircle 2\n",
     )]);
     let fast_plan = plan(&fast);
@@ -2284,7 +2284,7 @@ fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
         zero.fix.as_deref(),
         Some("lower `fps` or lengthen `dur` so each frame lasts at least 1cs")
     );
-    let bare = project(&[("art/t.art", "@target t.gif 8x8 bg:#ffffff\ncircle 2\n")]);
+    let bare = project(&[("art/t.ramo", "@target t.gif 8x8 bg:#ffffff\ncircle 2\n")]);
     let bare_plan = plan(&bare);
     let bare_sample = crate::sample(&bare, &bare_plan.jobs[0]);
     assert!(
@@ -2300,7 +2300,7 @@ fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
 #[test]
 fn a_clip_past_the_frame_cap_is_e0206() {
     let p = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:5000s fps:24\ncircle 2\n",
     )]);
     let plan = plan(&p);
@@ -2358,12 +2358,12 @@ fn an_each_binding_shares_the_components_occurrence_base() {
 fn a_patch_expression_is_reported_on_the_anim() {
     let ev = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:1s\n  .c at:@missing\n")],
+        &[("lib/motion.ramo", "anim idle dur:1s\n  .c at:@missing\n")],
     );
     let d = ev
         .diagnostics
         .iter()
-        .find(|d| d.file == "lib/motion.art")
+        .find(|d| d.file == "lib/motion.ramo")
         .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
     assert_eq!(d.span.line, 2, "{d}");
     assert!(d.notes.iter().any(|n| n.contains("in anim `idle`")), "{d}");
@@ -2374,32 +2374,32 @@ fn a_patch_expression_is_reported_on_the_anim() {
     );
     let blend = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:1s\n  .c at:#ffffff\n")],
+        &[("lib/motion.ramo", "anim idle dur:1s\n  .c at:#ffffff\n")],
     );
     let b = blend
         .diagnostics
         .iter()
         .find(|d| d.code == "E0320")
         .unwrap_or_else(|| panic!("{}", show(&blend.diagnostics)));
-    assert_eq!(b.file, "lib/motion.art");
+    assert_eq!(b.file, "lib/motion.ramo");
     assert_eq!(b.span.line, 2, "{b}");
     let unmatched = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:1s\n  .missing at:1,0\n")],
+        &[("lib/motion.ramo", "anim idle dur:1s\n  .missing at:1,0\n")],
     );
     let u = unmatched
         .diagnostics
         .iter()
         .find(|d| d.code == "E0340")
         .unwrap_or_else(|| panic!("{}", show(&unmatched.diagnostics)));
-    assert_eq!(u.file, "art/t.art");
+    assert_eq!(u.file, "art/t.ramo");
     assert_eq!(u.span.line, 4, "{u}");
 }
 
 #[test]
 fn two_calls_to_one_rule_stay_two_failures() {
     let p = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\nrule bad\n  assert false\nassert bad()\nassert bad()\ncircle 1\n",
     )]);
     let plan = plan(&p);
@@ -2445,9 +2445,9 @@ fn a_later_file_play_wins_over_a_play_under_the_instance() {
 #[test]
 fn a_list_clip_stays_a_target_option_after_format() {
     let src = "@target t-{clip}.gif 8x8 clip:[idle blink] each x:[one]\ncircle 1\n";
-    let formatted = artscript_syntax::format(&artscript_syntax::parse(src).unwrap());
-    let before = plan(&project(&[("art/t.art", src)]));
-    let after = plan(&project(&[("art/t.art", &formatted)]));
+    let formatted = ramose_syntax::format(&ramose_syntax::parse(src).unwrap());
+    let before = plan(&project(&[("art/t.ramo", src)]));
+    let after = plan(&project(&[("art/t.ramo", &formatted)]));
     assert!(
         before.jobs.is_empty() && after.jobs.is_empty(),
         "{:?}",
@@ -2467,7 +2467,7 @@ fn a_list_clip_stays_a_target_option_after_format() {
 #[test]
 fn a_loop_reached_after_the_first_frame_loops_the_clip() {
     let late = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:2s fps:2\nanim pulse dur:1s loop\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
     )]);
     let late_plan = plan(&late);
@@ -2479,7 +2479,7 @@ fn a_loop_reached_after_the_first_frame_loops_the_clip() {
     let late_sample = crate::sample(&late, &late_plan.jobs[0]);
     assert!(late_sample.loops, "{}", show(&late_sample.diagnostics));
     let once = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:2s fps:2\nanim pulse dur:1s\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
     )]);
     let once_plan = plan(&once);
@@ -2488,7 +2488,7 @@ fn a_loop_reached_after_the_first_frame_loops_the_clip() {
 
 #[test]
 fn a_gif_without_an_opaque_background_is_e0206() {
-    let bare = project(&[("art/t.art", "@target t.gif 8x8 dur:1s fps:2\ncircle 1\n")]);
+    let bare = project(&[("art/t.ramo", "@target t.gif 8x8 dur:1s fps:2\ncircle 1\n")]);
     let bare_plan = plan(&bare);
     let bare_sample = crate::sample(&bare, &bare_plan.jobs[0]);
     assert!(
@@ -2500,7 +2500,7 @@ fn a_gif_without_an_opaque_background_is_e0206() {
         show(&bare_sample.diagnostics)
     );
     let painted = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\ncircle 1\n",
     )]);
     let painted_plan = plan(&painted);
@@ -2515,7 +2515,7 @@ fn a_gif_without_an_opaque_background_is_e0206() {
 #[test]
 fn added_times_do_not_grow_a_boundary_frame() {
     let p = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff fps:10\nanim idle dur:200ms\n  .c at:1,0\ncircle 4 name:c\nplay idle start:100ms\n",
     )]);
     let plan = plan(&p);
@@ -2597,17 +2597,17 @@ fn an_imported_anim_style_resolves_in_its_module() {
     let lib = "style blue fill:#0000ff\nanim idle dur:1s\n  .c style:blue\n";
     let s = scene_with(
         "@target t.png 40x40\nstyle blue fill:#ff0000\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", lib)],
+        &[("lib/motion.ramo", lib)],
     );
     assert_eq!(fill_hex(node(&s, "c")), "#0000ff");
     let kept = scene_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 fill:#00ff00 name:c\nplay idle\n",
-        &[("lib/motion.art", lib)],
+        &[("lib/motion.ramo", lib)],
     );
     assert_eq!(fill_hex(node(&kept, "c")), "#00ff00");
     let missing = run_with(
         "@target t.png 40x40\nstyle blue fill:#ff0000\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:1s\n  .c style:blue\n")],
+        &[("lib/motion.ramo", "anim idle dur:1s\n  .c style:blue\n")],
     );
     assert!(
         missing.diagnostics.iter().any(|d| d.code == "E0307"),
@@ -2620,7 +2620,7 @@ fn an_imported_anim_style_resolves_in_its_module() {
 fn a_gif_that_would_retain_scenes_past_the_budget_is_e0206_from_sample() {
     let heavy =
         "@target t.gif 8x8 bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n";
-    let over = project(&[("art/t.art", heavy)]);
+    let over = project(&[("art/t.ramo", heavy)]);
     let over_plan = plan(&over);
     assert!(
         over_plan.diagnostics.is_empty(),
@@ -2642,7 +2642,7 @@ fn a_gif_that_would_retain_scenes_past_the_budget_is_e0206_from_sample() {
         over_sample.frames.len()
     );
     let one = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:1s fps:1\neach i in 0..1500\n  circle 1 at:i,0\n",
     )]);
     let one_plan = plan(&one);
@@ -2661,7 +2661,7 @@ fn a_gif_that_would_retain_scenes_past_the_budget_is_e0206_from_sample() {
 #[test]
 fn a_gif_raster_over_the_budget_is_e0206_from_sample() {
     let huge = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 4096x4096 bg:#ffffff dur:1s fps:5\ncircle 1\n",
     )]);
     let huge_plan = plan(&huge);
@@ -2679,7 +2679,7 @@ fn a_gif_raster_over_the_budget_is_e0206_from_sample() {
         show(&huge_sample.diagnostics)
     );
     let small = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 8x8 bg:#ffffff dur:1s fps:2\ncircle 1\n",
     )]);
     let small_plan = plan(&small);
@@ -2706,13 +2706,13 @@ fn an_anim_cannot_rename_a_node() {
         .find(|d| d.code == "E0320")
         .unwrap_or_else(|| panic!("{}", show(&ev.diagnostics)));
     assert!(d.message.contains("name"), "{d}");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     let scene = ev.scene.as_ref().unwrap();
     assert_eq!(paths(scene), ["c"]);
     assert!((node(scene, "c").opacity - 0.5).abs() < 1e-4);
     let patched = run_with(
         "@target t.png 40x40\nuse d\nd name:d\n  .eye name:other\n",
-        &[("lib/d.art", "def d\n  circle 4 name:eye\n")],
+        &[("lib/d.ramo", "def d\n  circle 4 name:eye\n")],
     );
     let p = patched
         .diagnostics
@@ -2726,7 +2726,7 @@ fn an_anim_cannot_rename_a_node() {
 #[test]
 fn a_gif_side_over_65535px_is_e0206_from_sample() {
     let wide = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 70000x1 bg:#ffffff dur:1s fps:1\ncircle 1\n",
     )]);
     let wide_plan = plan(&wide);
@@ -2748,17 +2748,17 @@ fn a_gif_side_over_65535px_is_e0206_from_sample() {
 
 #[test]
 fn a_rule_line_number_does_not_choose_the_worst_frame() {
-    use artscript_syntax::ast::Span;
+    use ramose_syntax::ast::Span;
     let span = Span { line: 2, col: 1 };
-    let note = "via rule `bad` (lib/d.art:400) applied at art/t.art:3";
+    let note = "via rule `bad` (lib/d.ramo:400) applied at art/t.ramo:3";
     let mild = Diagnostic::error("C0101", span, "gap")
-        .in_file("art/t.art")
+        .in_file("art/t.ramo")
         .at_node("a")
         .with_note("gap is 1")
         .with_note(note)
         .with_fix("nudge 1");
     let worse = Diagnostic::error("C0101", span, "gap")
-        .in_file("art/t.art")
+        .in_file("art/t.ramo")
         .at_node("a")
         .with_note("gap is 9")
         .with_note(note)
@@ -2786,7 +2786,7 @@ fn a_geometry_guard_keeps_an_instance_play_ahead_of_a_later_play() {
 #[test]
 fn an_anim_rand_ignores_a_toggling_let() {
     let p = project(&[(
-        "art/t.art",
+        "art/t.ramo",
         "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim idle dur:1s\n  .c at:rand(0 10),0\ncircle 4 name:c\nif t > 0\n  let n = 1\nplay idle\n",
     )]);
     let plan = plan(&p);
@@ -2812,7 +2812,7 @@ fn an_anim_rand_ignores_a_toggling_let() {
         })
         .collect();
     assert!((xs[0] - xs[1]).abs() < 1e-4, "{xs:?}");
-    let lib = [("lib/motion.art", "anim idle dur:1s\n  .c at:rand(0 10),0\n")];
+    let lib = [("lib/motion.ramo", "anim idle dur:1s\n  .c at:rand(0 10),0\n")];
     let bare = scene_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
         &lib,
@@ -2862,8 +2862,8 @@ fn a_play_start_rand_ignores_a_toggling_let() {
     };
     let quiet_src = body("false");
     let noisy_src = body("t > 0");
-    let quiet = project(&[("art/t.art", &quiet_src)]);
-    let noisy = project(&[("art/t.art", &noisy_src)]);
+    let quiet = project(&[("art/t.ramo", &quiet_src)]);
+    let noisy = project(&[("art/t.ramo", &noisy_src)]);
     let xs = |p: &Project| {
         let plan = plan(p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
@@ -2915,17 +2915,17 @@ fn project_is_send_sync() {
 fn a_duration_error_is_reported_on_the_anim() {
     let ev = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:missing\n  .c a:.5\n")],
+        &[("lib/motion.ramo", "anim idle dur:missing\n  .c a:.5\n")],
     );
     let d = ev
         .diagnostics
         .iter()
         .find(|d| d.code.starts_with('E'))
         .unwrap_or_else(|| panic!("no error in {}", show(&ev.diagnostics)));
-    assert_eq!(d.file, "lib/motion.art", "{d}");
+    assert_eq!(d.file, "lib/motion.ramo", "{d}");
     assert_eq!(d.span.line, 1, "{d}");
     assert!(
-        d.notes.iter().any(|n| n.contains("played at art/t.art:4")),
+        d.notes.iter().any(|n| n.contains("played at art/t.ramo:4")),
         "{d}"
     );
 }
@@ -2938,7 +2938,7 @@ fn an_anim_duration_rand_ignores_a_toggling_let() {
         )
     };
     let xs = |src: &str| {
-        let p = project(&[("art/t.art", src)]);
+        let p = project(&[("art/t.ramo", src)]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
         let sampled = crate::sample(&p, &plan.jobs[0]);
@@ -2993,14 +2993,14 @@ fn two_plays_of_an_unmatched_patch_are_two_e0340s() {
 fn an_animated_style_error_is_reported_on_the_anim() {
     let ev = run_with(
         "@target t.png 40x40\nuse motion { idle }\ncircle 4 name:c\nplay idle\n",
-        &[("lib/motion.art", "anim idle dur:1s\n  .c style:blue\n")],
+        &[("lib/motion.ramo", "anim idle dur:1s\n  .c style:blue\n")],
     );
     let d = ev
         .diagnostics
         .iter()
         .find(|d| d.code.starts_with('E'))
         .unwrap_or_else(|| panic!("no error in {}", show(&ev.diagnostics)));
-    assert_eq!(d.file, "lib/motion.art", "{d}");
+    assert_eq!(d.file, "lib/motion.ramo", "{d}");
     assert_eq!(d.span.line, 2, "{d}");
 }
 
@@ -3029,7 +3029,7 @@ fn an_instance_play_inside_a_group_keeps_its_source_order() {
 #[test]
 fn two_plays_of_a_bad_duration_stay_two_failures_across_frames() {
     let src = "@target t.gif 40x40 bg:#ffffff dur:1s fps:2\nanim idle dur:missing\n  .c a:.5\ncircle 4 name:c\nplay idle\nplay idle\n";
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
     let sampled = crate::sample(&p, &plan.jobs[0]);
@@ -3042,7 +3042,7 @@ fn two_plays_of_a_bad_duration_stay_two_failures_across_frames() {
         .collect();
     assert_eq!(
         sites,
-        ["played at art/t.art:5", "played at art/t.art:6"],
+        ["played at art/t.ramo:5", "played at art/t.ramo:6"],
         "{}",
         show(&sampled.diagnostics)
     );
@@ -3067,7 +3067,7 @@ fn eval_lint(src: &str, lint: &str) -> Evaluation {
     let manifest = format!(
         "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\n{lint}"
     );
-    let files = [("art/t.art".to_string(), src.to_string())].into();
+    let files = [("art/t.ramo".to_string(), src.to_string())].into();
     let p = Project::from_sources(&manifest, files).unwrap();
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
@@ -3075,7 +3075,7 @@ fn eval_lint(src: &str, lint: &str) -> Evaluation {
 }
 
 fn pixel(scene: &Scene, x: i32, y: i32) -> [u8; 4] {
-    let (w, h, buf) = artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let (w, h, buf) = ramose_render::render_rgba(scene, 1.0, ramose_render::Backend::Cpu).unwrap();
     assert!(x >= 0 && y >= 0 && x < w as i32 && y < h as i32, "{w}x{h} has no {x},{y}");
     let i = ((y as u32 * w) + x as u32) as usize * 4;
     [buf[i], buf[i + 1], buf[i + 2], buf[i + 3]]
@@ -3109,7 +3109,7 @@ fn a_nose_above_the_eyes_keeps_the_patched_eye_red() {
         &[],
     );
     let d = diag(&missed, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
     assert!(d.fix.as_deref().unwrap().contains("add name:"), "{d}");
 }
@@ -3121,7 +3121,7 @@ fn e0333_is_reported_at_the_second_name() {
         &[],
     );
     let d = diag(&ev, "E0333");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 3);
     assert_eq!(d.notes, ["first named at line 2"]);
     assert_eq!(d.fix.as_deref(), Some("rename one of them"));
@@ -3199,7 +3199,7 @@ fn e0340_for_a_hop_through_a_group_names_the_patch_line() {
         &[],
     );
     let d = diag(&ev, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
     assert_eq!(d.fix.as_deref(), Some("write .leaf"));
 }
@@ -3231,7 +3231,7 @@ fn l0104_warns_once_when_an_unnamed_circle_draws_a_seed() {
     let ev = eval_lint(src, "");
     let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0104").collect();
     assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 2);
     assert_eq!(hits[0].fix.as_deref(), Some("add name:"));
     let quiet = eval_lint(src, "positional-seed = \"off\"\n");
@@ -3261,7 +3261,7 @@ fn an_explicit_seed_draws_the_same_noise_in_any_node_and_file() {
 
 #[test]
 fn a_field_mask_seeds_from_the_node_it_masks() {
-    use artscript_ir::{Field, MaskSource};
+    use ramose_ir::{Field, MaskSource};
     let masked = |children: &str| {
         let src = format!("@target t.png 100x100\ncircle 40 name:l\n{children}  mask simplex(14) > .42\n");
         let ev = eval_lint(&src, "");
@@ -3309,7 +3309,7 @@ def blot
 /// The 48x48 pixels centered on `cx`,`cy`.
 fn crop(scene: &Scene, cx: i32, cy: i32) -> Vec<u8> {
     let (w, h, buf) =
-        artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
+        ramose_render::render_rgba(scene, 1.0, ramose_render::Backend::Cpu).unwrap();
     assert!(cx >= 24 && cy >= 24 && cx + 24 <= w as i32 && cy + 24 <= h as i32);
     let mut out = Vec::new();
     for y in cy - 24..cy + 24 {
@@ -3371,7 +3371,7 @@ fn a_brushed_copy_draws_the_same_pixels_off_the_8px_grid() {
 #[test]
 fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
     let wrap = "use d { blot }\ndef wrap\n  blot seed:7 name:w\n    fx grain .3\n";
-    let libs = [("lib/d.art", BLOT_LIB), ("lib/e.art", wrap)];
+    let libs = [("lib/d.ramo", BLOT_LIB), ("lib/e.ramo", wrap)];
     let ev = run_with(
         "@target t.png 200x96 bg:#ffffff\nuse d { blot }\nuse e { wrap }\n\
          blot at:48,48 seed:7 name:a\n  fx grain .3\nwrap at:144,48 name:x\n",
@@ -3381,7 +3381,7 @@ fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
     let s = ev.scene.unwrap();
     assert!(
         crop(&s, 48, 48) == crop(&s, 144, 48),
-        "the call in lib/e.art drew different pixels"
+        "the call in lib/e.ramo drew different pixels"
     );
 
     let asset = run_with(
@@ -3403,8 +3403,8 @@ fn a_seeded_instance_seeds_slot_content_from_the_seed_in_any_file() {
         fill("    ")
     );
     let libs = [
-        ("lib/d.art", "def holder\n  slot top\n"),
-        ("lib/e.art", wrap.as_str()),
+        ("lib/d.ramo", "def holder\n  slot top\n"),
+        ("lib/e.ramo", wrap.as_str()),
     ];
     let ev = run_with(
         &format!(
@@ -3492,8 +3492,8 @@ def wrap
 
 fn palette_project(manifest: &str, src: &str, libs: &[(&str, &str)]) -> Project {
     let mut files = vec![
-        ("art/t.art".to_string(), src.to_string()),
-        ("lib/palette/house.art".to_string(), HOUSE.to_string()),
+        ("art/t.ramo".to_string(), src.to_string()),
+        ("lib/palette/house.ramo".to_string(), HOUSE.to_string()),
     ];
     files.extend(libs.iter().map(|(k, v)| (k.to_string(), v.to_string())));
     Project::from_sources(manifest, files.into_iter().collect()).unwrap()
@@ -3508,7 +3508,7 @@ fn palette_run(src: &str, libs: &[(&str, &str)]) -> Evaluation {
 
 fn palette_scene(src: &str) -> Scene {
     let src = format!("{src}\n{ELITE}");
-    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    let ev = palette_run(&src, &[("lib/d.ramo", PAINT_LIB)]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     ev.scene.unwrap()
 }
@@ -3581,11 +3581,11 @@ fn an_inner_instance_palette_replaces_an_outer_one() {
 fn a_file_that_binds_p_itself_keeps_its_own_p() {
     let libs = [
         (
-            "lib/own.art",
+            "lib/own.ramo",
             "palette p\n  color sky #444444\ndef mine\n  rect 10x10 fill:p.sky name:a\n",
         ),
         (
-            "lib/imp.art",
+            "lib/imp.ramo",
             "use palette/house as p\ndef theirs\n  rect 10x10 fill:p.sky name:a\n",
         ),
     ];
@@ -3620,9 +3620,9 @@ fn an_instance_palette_that_is_not_a_palette_is_e0320() {
     let src = format!(
         "@target t.png 40x40\nuse d {{ swatch }}\nswatch name:ok\nswatch palette:#ff0000 name:bad\n\n{ELITE}"
     );
-    let ev = palette_run(&src, &[("lib/d.art", PAINT_LIB)]);
+    let ev = palette_run(&src, &[("lib/d.ramo", PAINT_LIB)]);
     let d = diag(&ev, "E0320");
-    assert_eq!((d.span.line, d.file.as_str()), (4, "art/t.art"));
+    assert_eq!((d.span.line, d.file.as_str()), (4, "art/t.ramo"));
     assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:elite")));
 }
 
@@ -3630,7 +3630,7 @@ fn an_instance_palette_that_is_not_a_palette_is_e0320() {
 fn a_target_palette_that_is_not_a_palette_is_reported_at_the_target() {
     let ev = palette_run("@target t.png 40x40 palette:3\nrect 4x4 fill:p.sky name:r\n", &[]);
     let d = diag(&ev, "E0206");
-    assert_eq!((d.span.line, d.file.as_str()), (1, "art/t.art"));
+    assert_eq!((d.span.line, d.file.as_str()), (1, "art/t.ramo"));
     assert!(d.fix.as_deref().is_some_and(|f| f.contains("palette:")));
 }
 
@@ -3640,12 +3640,12 @@ fn a_palette_passed_as_a_module_parameter_hints_at_the_palette_key() {
     let src = format!(
         "@target t.png 40x40\nuse d {{ blob_t }}\nblob_t pal:elite name:b\n\n{ELITE}"
     );
-    let ev = palette_run(&src, &[("lib/d.art", lib)]);
+    let ev = palette_run(&src, &[("lib/d.ramo", lib)]);
     let d = diag(&ev, "E0320");
     assert_eq!(d.span.line, 3);
     let fix = d.fix.as_deref().unwrap();
     assert!(fix.contains("palette:elite"), "{fix}");
-    assert!(!fix.contains(".art"), "{fix}");
+    assert!(!fix.contains(".ramo"), "{fix}");
 }
 
 #[test]
@@ -3653,9 +3653,9 @@ fn a_palette_key_counts_as_reading_the_palette_it_names() {
     let manifest = PALETTE_MANIFEST.replace("unused = \"off\"\n", "");
     let src = "@target t.png 40x40 palette:elite\nuse d { swatch }\nuse palette/elite as elite\nuse palette/hollow as hollow\nswatch palette:hollow name:s\n";
     let libs = [
-        ("lib/palette/elite.art", "palette elite\n  color sky #222222\n"),
-        ("lib/palette/hollow.art", "palette hollow\n  color sky #333333\n"),
-        ("lib/d.art", PAINT_LIB),
+        ("lib/palette/elite.ramo", "palette elite\n  color sky #222222\n"),
+        ("lib/palette/hollow.ramo", "palette hollow\n  color sky #333333\n"),
+        ("lib/d.ramo", PAINT_LIB),
     ];
     let p = palette_project(&manifest, src, &libs);
     let plan = plan(&p);
@@ -3702,7 +3702,7 @@ fn walk_deep<'a>(nodes: &'a [Node], out: &mut Vec<&'a Node>) {
 fn walk_deep_node<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
     out.push(n);
     if let Some(mask) = &n.mask
-        && let artscript_ir::MaskSource::Nodes(inner) = &mask.source
+        && let ramose_ir::MaskSource::Nodes(inner) = &mask.source
     {
         walk_deep(inner, out);
     }
@@ -3791,13 +3791,13 @@ fn key_of(path: &str) -> crate::identity::Key {
 
 fn patch_segments(address: &str) -> Vec<String> {
     let src = format!("@target t.png 10x10\ndef h\n  circle 1\nh name:h\n  {address} a:1\n");
-    let file = artscript_syntax::parse(&src).unwrap_or_else(|e| panic!("{address}: {e:?}"));
+    let file = ramose_syntax::parse(&src).unwrap_or_else(|e| panic!("{address}: {e:?}"));
     for scene in file.scenes() {
-        let artscript_syntax::ast::SceneKind::Draw(draw) = &scene.kind else {
+        let ramose_syntax::ast::SceneKind::Draw(draw) = &scene.kind else {
             continue;
         };
         for item in draw.body.items() {
-            if let artscript_syntax::ast::DrawItem::Patch(patch) = item {
+            if let ramose_syntax::ast::DrawItem::Patch(patch) = item {
                 return patch.path.clone();
             }
         }
@@ -3952,7 +3952,7 @@ fn a_copy_hop_stays_on_that_copy() {
         &[],
     );
     let d = diag(&missed, "E0350");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
     assert!(d.fix.is_some(), "{d}");
 }
@@ -3962,7 +3962,7 @@ fn a_reference_into_an_instance_skips_its_groups() {
     let s = scene_with(
         "@target t.png 64x64\nuse g { thing }\nthing at:20,20 name:t\nexpect @t.box.w == 10\n",
         &[(
-            "lib/g.art",
+            "lib/g.ramo",
             "def thing\n  group at:0,0 name:grp\n    rect 10x10 fill:#ff0000 name:box\n",
         )],
     );
@@ -3986,7 +3986,7 @@ fn a_reference_through_a_group_names_the_key() {
     for (src, written, fix) in cases {
         let ev = run_with(src, &[]);
         let d = diag(&ev, "E0350");
-        assert_eq!(d.file, "art/t.art");
+        assert_eq!(d.file, "art/t.ramo");
         assert!(
             d.message.contains(&format!("`@{written}` hops through")),
             "{d}"
@@ -3995,7 +3995,7 @@ fn a_reference_through_a_group_names_the_key() {
     }
 
     let lib = (
-        "lib/g.art",
+        "lib/g.ramo",
         "def thing\n  group name:grp\n    rect 10x10 fill:#ff0000 name:box\n",
     );
     let ev = run_with(
@@ -4003,7 +4003,7 @@ fn a_reference_through_a_group_names_the_key() {
         &[lib],
     );
     let d = diag(&ev, "E0350");
-    assert_eq!((d.file.as_str(), d.span.line), ("art/t.art", 4));
+    assert_eq!((d.file.as_str(), d.span.line), ("art/t.ramo", 4));
     assert_eq!(d.fix.as_deref(), Some("write @t.box.w"), "{d}");
 
     let missing = run_with(
@@ -4233,7 +4233,7 @@ fn an_index_that_does_not_fit_is_not_copy_zero() {
         &[],
     );
     let d = diag(&ev, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 5);
     assert!(d.message.contains("not an address"), "{d}");
     assert!(
@@ -4247,7 +4247,7 @@ fn an_index_that_does_not_fit_is_not_copy_zero() {
         &[],
     );
     let d = diag(&reference, "E0350");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 3);
     assert!(d.message.contains("not a copy index"), "{d}");
     assert!(d.fix.as_deref().unwrap().contains("whole number"), "{d}");
@@ -4261,13 +4261,13 @@ fn an_unnamed_patch_cites_the_statement_it_spells() {
         &[],
     );
     let d = diag(&verb, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
     assert!(
-        d.notes.iter().any(|n| n.contains("a1") && n.contains("art/t.art:4")),
+        d.notes.iter().any(|n| n.contains("a1") && n.contains("art/t.ramo:4")),
         "{d}"
     );
-    assert!(d.fix.as_deref().unwrap().contains("art/t.art:4"), "{d}");
+    assert!(d.fix.as_deref().unwrap().contains("art/t.ramo:4"), "{d}");
 
     let second = run_with(
         "@target t.png 40x40\ndef face\n  circle 4\n  circle 4\nface name:face\n  .circle2 fill:#ff0000\n",
@@ -4276,10 +4276,10 @@ fn an_unnamed_patch_cites_the_statement_it_spells() {
     let d = diag(&second, "E0340");
     assert_eq!(d.span.line, 6);
     assert!(
-        d.notes.iter().any(|n| n.contains("circle") && n.contains("art/t.art:4")),
+        d.notes.iter().any(|n| n.contains("circle") && n.contains("art/t.ramo:4")),
         "{d}"
     );
-    assert_eq!(d.fix.as_deref(), Some("add name: at art/t.art:4"));
+    assert_eq!(d.fix.as_deref(), Some("add name: at art/t.ramo:4"));
 }
 
 #[test]
@@ -4290,7 +4290,7 @@ fn a_missing_drawn_copy_is_e0340_and_an_undrawn_name_is_not() {
     );
     let hits: Vec<_> = missing.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&missing.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 6);
     assert!(hits[0].message.contains("matches no drawn copy"), "{hits:?}");
     assert!(hits[0].fix.as_deref().unwrap().contains(".eye.0"), "{hits:?}");
@@ -4302,7 +4302,7 @@ fn a_missing_drawn_copy_is_e0340_and_an_undrawn_name_is_not() {
     );
     let hits: Vec<_> = arm.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&arm.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 9);
     assert!(hits[0].fix.as_deref().unwrap().contains(".eye"), "{hits:?}");
     assert_eq!(fill_hex(node(arm.scene.as_ref().unwrap(), "face.eye")), "#ffffff");
@@ -4336,7 +4336,7 @@ fn a_patch_on_an_anchor_is_e0340() {
         &[],
     );
     let d = diag(&ev, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 5);
     assert_eq!(d.fix.as_deref(), Some("patch a shape or a group"));
 }
@@ -4348,7 +4348,7 @@ fn a_group_hop_fix_keeps_the_copy_index_on_the_child() {
         &[],
     );
     let d = diag(&indexed, "E0340");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 7);
     assert_eq!(d.fix.as_deref(), Some("write .leaf.0"));
 
@@ -4391,7 +4391,7 @@ fn a_play_guard_sees_the_same_copies_as_the_draw() {
         &[],
     );
     let d = diag(&family, "E0343");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
     assert!(d.fix.is_some(), "{d}");
     assert_eq!(fill_hex(node(family.scene.as_ref().unwrap(), "eye.0")), "#ffffff");
@@ -4415,7 +4415,7 @@ fn a_final_star_lists_every_copy() {
         show(&uneven.diagnostics)
     );
     let d = diag(&uneven, "C0101");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 6);
 
     let indexed = scene(
@@ -4467,7 +4467,7 @@ fn an_off_instance_still_checks_a_hop_through_it() {
     );
     let hits: Vec<_> = anim.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&anim.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 8);
     assert!(hits[0].message.contains("typo"), "{}", hits[0]);
     assert!(
@@ -4486,7 +4486,7 @@ fn an_off_instance_still_checks_a_hop_through_it() {
         .filter(|d| d.code == "E0340")
         .collect();
     assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 8);
     assert!(hits[0].message.contains("typo"), "{}", hits[0]);
     assert!(
@@ -4506,7 +4506,7 @@ fn a_hidden_path_checks_every_hop() {
     );
     let hits: Vec<_> = nested.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&nested.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 10);
     assert!(hits[0].message.contains("typo"), "{}", hits[0]);
     assert!(
@@ -4548,7 +4548,7 @@ fn an_off_slot_still_checks_a_hop_through_it() {
     );
     let hits: Vec<_> = static_off.diagnostics.iter().filter(|d| d.code == "E0340").collect();
     assert_eq!(hits.len(), 1, "{}", show(&static_off.diagnostics));
-    assert_eq!(hits[0].file, "art/t.art");
+    assert_eq!(hits[0].file, "art/t.ramo");
     assert_eq!(hits[0].span.line, 7);
     assert!(hits[0].message.contains("typo"), "{}", hits[0]);
     assert!(
@@ -4597,7 +4597,7 @@ fn a_stable_host_part_keeps_its_key_in_the_check_fix() {
         &[],
     );
     let d = diag(&ev, "C0101");
-    assert_eq!(d.file, "art/t.art");
+    assert_eq!(d.file, "art/t.ramo");
     assert_eq!(d.span.line, 8);
     let fix = d.fix.as_deref().unwrap();
     assert!(fix.contains("host.eye"), "{d}");
@@ -4756,7 +4756,7 @@ fn the_first_copy_of_a_grid_without_a_cell_cannot_read_outside_it() {
         let ev = run_with(src, &[]);
         let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0352").collect();
         assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
-        assert_eq!(hits[0].file, "art/t.art");
+        assert_eq!(hits[0].file, "art/t.ramo");
         assert_eq!(hits[0].span.line, line);
         assert!(hits[0].fix.as_deref().unwrap().contains("cell:"), "{hits:?}");
     }
@@ -4849,7 +4849,7 @@ fn manifest_palette_must_be_in_a_lib_root() {
     let err = Project::from_sources(manifest, Default::default()).unwrap_err();
     assert_eq!((err.code.as_str(), err.span.line), ("E0200", 5), "{}", err.message);
     assert!(err.message.contains("palette/nope"), "{}", err.message);
-    let files = [("lib/palette/nope.art".to_string(), "palette nope\n  color a #000000\n".to_string())];
+    let files = [("lib/palette/nope.ramo".to_string(), "palette nope\n  color a #000000\n".to_string())];
     assert!(Project::from_sources(manifest, files.into()).is_ok());
 }
 
@@ -4906,7 +4906,7 @@ fn an_entry_play_beats_a_play_in_a_def_body() {
     let s = scene_with(
         "@target t.png 40x40\nuse knight { knight }\nanim outer dur:1s\n  .knight.helmet.eye a:.2\nknight name:knight\nplay outer\n",
         &[(
-            "lib/knight.art",
+            "lib/knight.ramo",
             "anim inner dur:1s\n  .eye a:.8\ndef helmet size:40x40\n  circle 4 name:eye\ndef knight size:40x40\n  helmet name:helmet\n    play inner\n",
         )],
     );
@@ -5107,12 +5107,12 @@ fn e0340s(ev: &Evaluation) -> Vec<&Diagnostic> {
 fn a_patch_on_a_private_part_is_e0340_naming_it_private() {
     let public = run_with(
         "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  .disc off\n",
-        &[("lib/badge.art", BADGE_LIB)],
+        &[("lib/badge.ramo", BADGE_LIB)],
     );
     assert!(public.diagnostics.is_empty(), "{}", show(&public.diagnostics));
     let ev = run_with(
         "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  ._core off\n",
-        &[("lib/badge.art", BADGE_LIB)],
+        &[("lib/badge.ramo", BADGE_LIB)],
     );
     let ds = e0340s(&ev);
     assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
@@ -5125,7 +5125,7 @@ fn a_patch_on_a_private_part_is_e0340_naming_it_private() {
 fn an_anim_patch_on_a_private_part_is_e0340_at_the_play() {
     let ev = run_with(
         "@target t.png 100x100\nuse badge\nanim pulse dur:1s\n  ._core scale:2\nbadge 20 at:50,50 name:b\n  play pulse\n",
-        &[("lib/badge.art", BADGE_LIB)],
+        &[("lib/badge.ramo", BADGE_LIB)],
     );
     let ds = e0340s(&ev);
     assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
@@ -5138,7 +5138,7 @@ fn an_anim_patch_on_a_private_part_is_e0340_at_the_play() {
 fn a_star_patch_skips_private_parts() {
     let s = run_with(
         "@target t.png 100x100\nuse badge\nbadge 20 at:50,50 name:b\n  .* fill:#0000ff\n",
-        &[("lib/badge.art", BADGE_LIB)],
+        &[("lib/badge.ramo", BADGE_LIB)],
     );
     assert!(s.diagnostics.is_empty(), "{}", show(&s.diagnostics));
     let s = s.scene.unwrap();
@@ -5155,7 +5155,7 @@ fn a_star_patch_skips_private_parts() {
 fn a_patch_into_a_slot_fill_cannot_name_a_private_part() {
     let ev = run_with(
         "@target t.png 100x100\nuse eye\neye 10 at:50,50 name:e\n  lashes:\n    circle 2 name:_tip\n  .lashes._tip off\n",
-        &[("lib/eye.art", EYE_LIB)],
+        &[("lib/eye.ramo", EYE_LIB)],
     );
     let ds = e0340s(&ev);
     assert_eq!(ds.len(), 1, "{}", show(&ev.diagnostics));
@@ -5259,7 +5259,7 @@ fn a_feathered_inside_block_fades_its_blend_into_the_canvas() {
 #[test]
 fn an_svg_inside_block_clips_its_blended_child_not_the_block() {
     let s = scene("@target t.svg 40x20 bg:#010001\nrect 40x20 at:20,10 fill:none name:frame\ninside @frame name:view\n  group\n    rect 40x20 at:20,10 fill:#80c0ff blend:multiply name:shade\n");
-    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
     let tag = |part: &str| svg.lines().find(|l| l.contains(part)).unwrap_or_else(|| panic!("no {part} in {svg}"));
     assert!(!tag("id=\"view\"").contains("clip-path"), "a clip-path on the block isolates it: {svg}");
     assert!(tag("mix-blend-mode:multiply").contains("clip-path"), "the blended child lost the clip: {svg}");
@@ -5269,7 +5269,7 @@ fn an_svg_inside_block_clips_its_blended_child_not_the_block() {
 fn an_svg_feathered_inside_block_masks_its_blended_child_not_the_block() {
     for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
         let s = scene(&format!("@target t.svg 40x20 bg:#010001\nrect 30x20 at:15,10 fill:none name:frame\n{clip} name:view\n  group\n    rect 40x20 at:20,10 fill:#80c0ff blend:multiply name:shade\n"));
-        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
         let tag = |part: &str| svg.lines().find(|l| l.contains(part)).unwrap_or_else(|| panic!("no {part} in {svg}"));
         assert!(!tag("id=\"view\"").contains("mask="), "{clip}: a mask on the block isolates it: {svg}");
         assert!(tag("mix-blend-mode:multiply").contains("mask="), "{clip}: the blended child lost the mask: {svg}");
@@ -5279,7 +5279,7 @@ fn an_svg_feathered_inside_block_masks_its_blended_child_not_the_block() {
 #[test]
 fn an_svg_feathered_inside_block_masks_its_overlapping_normal_children_as_one() {
     let s = scene("@target t.svg 40x20 bg:#ffffff\nrect 20x20 at:10,10 fill:none name:frame\ninside @frame feather:2\n  rect 40x20 at:20,10 fill:#ff0000 name:under\n  rect 40x20 at:20,10 fill:#0000ff name:over\n  rect 4x4 at:5,2 fill:#80c0ff blend:multiply name:shade\n");
-    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
     let lines: Vec<_> = svg.lines().collect();
     let at = |name: &str| lines.iter().position(|l| l.contains(&format!("{name}\""))).unwrap_or_else(|| panic!("no {name} in {svg}"));
     let (under, over) = (at("under"), at("over"));
@@ -5292,7 +5292,7 @@ fn an_svg_feathered_inside_block_masks_its_overlapping_normal_children_as_one() 
 fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
     for clip in ["inside @frame feather:2", "outside @frame feather:2"] {
         let s = scene(&format!("@target t.svg 40x20\nrect 30x20 at:15,10 fill:none name:frame\n{clip}\n  rect 40x20 at:20,10 fill:#80c0ff\n"));
-        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
         assert!(svg.contains("<feGaussianBlur"), "{clip}: no blur: {svg}");
         assert!(
             svg.lines().all(|l| !l.contains("<filter") || l.trim_start().starts_with("<filter")),
@@ -5305,7 +5305,7 @@ fn an_svg_feathered_clip_writes_its_blur_filter_outside_the_mask_path() {
 fn an_svg_outside_block_masks_by_luminance_so_its_black_hole_hides() {
     for feather in ["", " feather:2"] {
         let s = scene(&format!("@target t.svg 60x40\ncircle 10 at:30,20 fill:none name:hole\noutside @hole{feather}\n  rect 60x40 at:30,20 fill:#80c0ff\n"));
-        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
         let mask = svg.lines().find(|l| l.contains("<mask")).unwrap_or_else(|| panic!("no mask in {svg}"));
         assert!(svg.contains("fill=\"#000000\""), "outside{feather}: no black hole: {svg}");
         assert!(mask.contains("mask-type=\"luminance\""), "outside{feather}: an alpha mask keeps the black hole: {svg}");
@@ -5316,7 +5316,7 @@ fn an_svg_outside_block_masks_by_luminance_so_its_black_hole_hides() {
 fn an_svg_inside_block_clips_a_baked_child_in_canvas_coordinates() {
     for (feather, def) in [("", "<clipPath id=\"inside-1.rect-1-clip\">"), (" feather:2", "<mask id=\"inside-1.rect-1-pushed\"")] {
         let s = scene(&format!("@target t.svg 60x40 bg:#808080\nrect 30x30 at:30,20 fill:none name:frame\ninside @frame{feather}\n  rect 50x36 at:30,20 fill:#80c0ff blend:multiply\n    fx adjust hue:10\n"));
-        let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Svg, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Svg, 1.0, ramose_render::Backend::Cpu).unwrap();
         assert!(svg.contains("<image x=\"5\" y=\"2\""), "inside{feather}: the child did not bake: {svg}");
         let clip = svg.split(def).nth(1).unwrap_or_else(|| panic!("inside{feather}: no {def} in {svg}"));
         let clip = &clip[..clip.find("</").unwrap()];
@@ -5623,7 +5623,7 @@ fn off_canvas_hits(src: &str) -> Vec<Diagnostic> {
     let manifest = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\n";
     let p = Project::from_sources(
         manifest,
-        [("art/t.art".to_string(), src.to_string())].into(),
+        [("art/t.ramo".to_string(), src.to_string())].into(),
     )
     .unwrap();
     let plan = plan(&p);
@@ -5722,7 +5722,7 @@ fn outer_measures_what_effects_draw_and_plain_refs_do_not() {
 fn glow_strength_defaults_to_one_and_a_negative_one_is_an_error() {
     let s = scene("@target t.png 64x64\ncircle 4 at:32,32 fill:#4af name:a\n  fx glow 3\ncircle 4 at:32,32 fill:#4af name:b\n  fx glow 3 strength:2.5\n");
     let strength = |n: &str| match node(&s, n).effects[0].op {
-        artscript_ir::EffectOp::Glow { strength, .. } => strength,
+        ramose_ir::EffectOp::Glow { strength, .. } => strength,
         ref op => panic!("{op:?}"),
     };
     assert_eq!((strength("a"), strength("b")), (1.0, 2.5));
@@ -5922,7 +5922,7 @@ fn an_unbounded_point_count_is_e0320() {
 #[test]
 fn a_comma_dash_dashes_the_stroke() {
     let s = scene("@target t.svg 40x40\ncurve 4,20 36,20 stroke:#000,2 dash:4,2\n");
-    let svg = artscript_render::render_svg(&s, artscript_ir::Profile::Vector, 1.0, artscript_render::Backend::Cpu).unwrap();
+    let svg = ramose_render::render_svg(&s, ramose_ir::Profile::Vector, 1.0, ramose_render::Backend::Cpu).unwrap();
     assert!(svg.contains("stroke-dasharray=\"4,2\""), "{svg}");
     let ev = run_with("@target t.png 40x40\ncurve 4,20 36,20 stroke:#000,2 dash:red\n", &[]);
     assert_eq!(diag(&ev, "E0320").message, "`dash:` takes lengths");
@@ -5932,7 +5932,7 @@ fn a_comma_dash_dashes_the_stroke() {
 fn an_odd_dash_list_repeats_in_png_as_in_svg() {
     let png = |dash: &str| {
         let s = scene(&format!("@target t.png 60x20\ncurve 2,10 58,10 stroke:#000,2 dash:{dash}\n"));
-        artscript_render::render_png(&s, 1.0, artscript_render::Backend::Cpu).unwrap()
+        ramose_render::render_png(&s, 1.0, ramose_render::Backend::Cpu).unwrap()
     };
     assert_eq!(png("[4 2 3]"), png("[4 2 3 4 2 3]"));
 }
@@ -5964,7 +5964,7 @@ fn a_field_below_a_threshold_masks_the_complement() {
         let s = scene(&format!(
             "@target t.png 32x32\nrect 32x32 at:16,16 fill:#fff\n  mask {mask}\n"
         ));
-        let (_, _, px) = artscript_render::render_rgba(&s, 1.0, artscript_render::Backend::Cpu).unwrap();
+        let (_, _, px) = ramose_render::render_rgba(&s, 1.0, ramose_render::Backend::Cpu).unwrap();
         px.chunks(4).map(|p| p[3] as i32).collect::<Vec<_>>()
     };
     let (above, below, flipped) = (
@@ -6059,7 +6059,7 @@ fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
 #[test]
 fn a_gif_names_each_failing_loop_copy_once() {
     let src = "@target t.gif 20x20 bg:#ffffff dur:1s fps:4\ndef dot k:0\n  circle 2\n  assert t > k\neach i in 0..3\n  dot k:i*.25 name:d\n";
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     let sampled = crate::sample(&p, &plan.jobs[0]);
     let mut named: Vec<String> = Vec::new();
@@ -6076,7 +6076,7 @@ fn a_gif_names_each_failing_loop_copy_once() {
 #[test]
 fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     let src = "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\ndef dot r:6\n  circle r fill:#000 name:disc\n  pointy 3\neach i in 0..3\n  dot at:12+i*20,32 name:d\n";
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     let sampled = crate::sample(&p, &plan.jobs[0]);
     let d = &sampled.diagnostics;
@@ -6085,7 +6085,7 @@ fn a_gif_folds_loop_copies_that_fail_on_every_frame() {
     assert!(d[0].notes.contains(&"also in d.1, d.2".to_string()), "{}", show(d));
 }
 
-fn outline_sides(src: &str) -> artscript_ir::Sides {
+fn outline_sides(src: &str) -> ramose_ir::Sides {
     let s = scene(&format!("@target t.png 100x100\nrect 20x20 name:c\n  fx outline 3 {src}\n"));
     node(&s, "c")
         .effects
@@ -6099,7 +6099,7 @@ fn outline_sides(src: &str) -> artscript_ir::Sides {
 
 #[test]
 fn outline_sides_names_the_sides_it_draws_on() {
-    use artscript_ir::Sides;
+    use ramose_ir::Sides;
     assert_eq!(outline_sides(""), Sides::ALL);
     assert_eq!(outline_sides("sides:top"), Sides { top: true, right: false, bottom: false, left: false });
     assert_eq!(
@@ -6123,7 +6123,7 @@ fn outline_sides_rejects_what_is_not_a_side_word() {
     }
 }
 
-fn outline_mask<'a>(s: &'a Scene, path: &str) -> Option<&'a artscript_ir::Mask> {
+fn outline_mask<'a>(s: &'a Scene, path: &str) -> Option<&'a ramose_ir::Mask> {
     node(s, path)
         .effects
         .iter()
@@ -6136,7 +6136,7 @@ fn outline_mask<'a>(s: &'a Scene, path: &str) -> Option<&'a artscript_ir::Mask> 
 
 #[test]
 fn fx_outline_takes_a_mask_written_like_a_node_mask_with_feather_on_the_mask() {
-    use artscript_ir::MaskSource;
+    use ramose_ir::MaskSource;
     let s = scene(
         "@target t.png 100x100\ncircle 8 name:m\nrect 20x20 name:bare\n  fx outline 3\nrect 20x20 name:block\n  fx glow 2\n  fx outline 3 feather:2\n    mask\n      rect 4x4\n      circle 2\nrect 20x20 name:value\n  fx outline 3\n    mask @m\nrect 20x20 name:field\n  fx outline 3\n    mask simplex(8) > .5\n",
     );
@@ -6162,7 +6162,7 @@ fn fx_outline_takes_a_mask_written_like_a_node_mask_with_feather_on_the_mask() {
 
 #[test]
 fn an_outline_mask_sits_in_the_node_frame_like_its_node_mask() {
-    use artscript_ir::MaskSource;
+    use ramose_ir::MaskSource;
     let s = scene(
         "@target t.png 100x100\nrect 20x20 at:50,50 rot:30 name:c\n  mask\n    circle 4\n  fx outline 3\n    mask\n      circle 4\n",
     );
@@ -6197,7 +6197,7 @@ fn a_bad_outline_mask_is_reported_at_the_mask_line() {
 
 #[test]
 fn an_outline_field_mask_seeds_from_its_own_site() {
-    use artscript_ir::{Field, MaskSource};
+    use ramose_ir::{Field, MaskSource};
     let src = "@target t.png 100x100\nrect 20x20 name:a\n  rect 2x2\n  fx outline 3\n    mask simplex(8) > .5\nrect 20x20 name:b\n  fx outline 3\n    mask simplex(8) > .5\n";
     let seed = |s: &Scene, p: &str| match &outline_mask(s, p).unwrap().source {
         MaskSource::Field { field: Field::Noise { seed, .. }, .. } => *seed,
@@ -6222,7 +6222,7 @@ fn explain_lists_an_outline_mask_and_its_nodes() {
 
 #[test]
 fn a_def_fx_outline_mask_names_and_numbers_its_nodes() {
-    use artscript_ir::MaskSource;
+    use ramose_ir::MaskSource;
     let s = scene(
         "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0\n      rect 4x4 at:(rand(16) - 8),0 name:keep\nbadge at:30,50 name:b\n",
     );
@@ -6236,7 +6236,7 @@ fn a_def_fx_outline_mask_names_and_numbers_its_nodes() {
 
 #[test]
 fn an_fx_line_is_numbered_by_its_source_position_whatever_an_earlier_branch_does() {
-    use artscript_ir::MaskSource;
+    use ramose_ir::MaskSource;
     let src = |guard: &str| {
         format!(
             "@target t.png 100x100\ncircle 20 at:50,50 name:c\n  if {guard}\n    fx glow 2\n  fx outline 3\n    mask\n      rect 4x4 at:(rand(16) - 8),0\n"
@@ -6254,7 +6254,7 @@ fn an_fx_line_is_numbered_by_its_source_position_whatever_an_earlier_branch_does
 
 #[test]
 fn a_call_block_fx_line_counts_after_the_def_s_own_lines() {
-    use artscript_ir::MaskSource;
+    use ramose_ir::MaskSource;
     let s = scene(
         "@target t.png 100x100\ndef badge\n  circle 10\n  fx outline 2\n    mask\n      rect 4x4\nbadge at:30,50 name:b\n  fx outline 3\n    mask\n      circle 2\n",
     );
@@ -6274,7 +6274,7 @@ fn a_call_block_fx_line_counts_after_the_def_s_own_lines() {
 
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {
     match shape(s, path).fill.as_ref().map(|f| &f.paint) {
-        Some(Paint::Field { field: artscript_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
+        Some(Paint::Field { field: ramose_ir::Field::Noise { wrap, .. }, .. }) => *wrap,
         other => panic!("{path} has fill {other:?}"),
     }
 }
@@ -6365,7 +6365,7 @@ fn fx_under_an_if_on_a_boolean_operand_is_e0321() {
 }
 
 fn outputs(src: &str) -> crate::OutputScenes {
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
     crate::evaluate_outputs(&p, &plan.jobs[0])
@@ -6398,7 +6398,7 @@ fn scale_is_the_number_the_target_wrote() {
 
 #[test]
 fn scale_is_one_for_an_svg_whatever_scale_it_lists() {
-    let p = project(&[("art/t.art", "@target t.svg 40x40 scale:1,2\ncircle 5*scale name:c\n")]);
+    let p = project(&[("art/t.ramo", "@target t.svg 40x40 scale:1,2\ncircle 5*scale name:c\n")]);
     let plan = plan(&p);
     let ev = evaluate(&p, &plan.jobs[0]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
@@ -6407,7 +6407,7 @@ fn scale_is_one_for_an_svg_whatever_scale_it_lists() {
 }
 
 fn gif_samples(src: &str) -> crate::OutputSamples {
-    let p = project(&[("art/t.art", src)]);
+    let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
     crate::sample_outputs(&p, &plan.jobs[0])
@@ -6466,7 +6466,7 @@ fn a_let_named_scale_wins_over_the_output_scale() {
 fn a_library_let_named_scale_wins_inside_its_own_defs() {
     let ev = run_with(
         "@target t.png 40x40 scale:2\nuse lib/dots\ndot name:d\n",
-        &[("lib/dots.art", "let scale = 3\ndef dot\n  circle scale name:c\n")],
+        &[("lib/dots.ramo", "let scale = 3\ndef dot\n  circle scale name:c\n")],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
@@ -6703,9 +6703,9 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
 
 #[test]
 fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
-    let brush = ("lib/brushes.art", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
-    let stamp = ("lib/garden.art", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
-    let blot = ("lib/d.art", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
+    let brush = ("lib/brushes.ramo", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
+    let stamp = ("lib/garden.ramo", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
+    let blot = ("lib/d.ramo", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
     let none: &[(&str, &str)] = &[];
     let cases = [
         ("circle 4 seed:\"a\" name:n", "a string", none),
@@ -6838,7 +6838,7 @@ fn edge_of_a_jittered_shape_lies_on_the_jittered_contour() {
     let s = scene("@target t.png 100x100\ncircle 20 at:50,50 jitter:3,30 seed:1 name:c\nedge @c name:e\n");
     let world = node(&s, "c").transform;
     let drawn = crate::geom::sample(&shape(&s, "c").geometry.make_transform(&world), 0.25);
-    let max_off = |path: &artscript_ir::Path| {
+    let max_off = |path: &ramose_ir::Path| {
         crate::geom::sample(path, 1.0)
             .iter()
             .flat_map(|c| c.pos.iter())
@@ -6908,7 +6908,7 @@ def arm_l = hero_arm tone:#ff0000
 fn an_alias_instance_has_the_targets_anchors_parts_and_slots() {
     let ev = run_with(
         "@target t.png 100x100\nuse arm\narm_l at:50,50 name:a\n  glove:\n    circle 2 fill:#00ff00\n  .hand fill:#0000ff\ncircle 2 at:@a.tip name:m\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
@@ -6922,23 +6922,23 @@ fn an_alias_instance_has_the_targets_anchors_parts_and_slots() {
 fn an_alias_call_fills_the_open_parameters_and_cannot_pass_a_fixed_one() {
     let s = scene_with(
         "@target t.png 100x100\nuse arm\narm_l 30 at:50,50 name:a\narm_l len:40 at:50,50 name:b\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     near(at(node(&s, "a.hand")), (15.0, 0.0));
     near(at(node(&s, "b.hand")), (20.0, 0.0));
 
     let ev = run_with(
         "@target t.png 100x100\nuse arm\narm_l tone:#000000 at:50,50 name:a\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     let d = diag(&ev, "E0321");
     assert_eq!(d.message, "`arm_l` fixes `tone`");
-    assert_eq!((d.file.as_str(), d.span.line), ("art/t.art", 3));
+    assert_eq!((d.file.as_str(), d.span.line), ("art/t.ramo", 3));
     assert!(d.fix.as_deref().unwrap_or_default().contains("tone:"), "{d}");
 
     let ev = run_with(
         "@target t.png 100x100\nuse arm\narm_l 30 50 at:50,50 name:a\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     assert_eq!(diag(&ev, "E0321").message, "`arm_l` takes 1 positional argument(s)");
 }
@@ -6947,11 +6947,11 @@ fn an_alias_call_fills_the_open_parameters_and_cannot_pass_a_fixed_one() {
 fn an_alias_instance_draws_the_same_as_the_direct_call() {
     let via_alias = scene_with(
         "@target t.png 100x100\nuse arm\narm_l at:50,50 name:a\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     let direct = scene_with(
         "@target t.png 100x100\nuse arm\nhero_arm tone:#ff0000 at:50,50 name:a\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     assert_eq!(paths(&via_alias), paths(&direct));
     let dot = |s: &Scene| node(s, "a.dot").bounds().unwrap().width();
@@ -6981,12 +6981,12 @@ fn an_unnamed_alias_instance_keys_and_seeds_as_the_direct_call() {
 #[test]
 fn a_library_let_sees_an_alias_declared_above_it() {
     let lib = (
-        "lib/rig.art",
+        "lib/rig.ramo",
         "use arm\ndef arm_r = hero_arm tone:#00ff00\nlet arm = arm_r\ndef rig\n  arm name:near\n",
     );
     let s = scene_with(
         "@target t.png 100x100\nuse rig\nrig at:50,50 name:r\n",
-        &[lib, ("lib/arm.art", ARM_LIB)],
+        &[lib, ("lib/arm.ramo", ARM_LIB)],
     );
     assert_eq!(fill_hex(node(&s, "r.near.bone")), "#00ff00");
     near(at(node(&s, "r.near.hand")), (10.0, 0.0));
@@ -6994,10 +6994,10 @@ fn a_library_let_sees_an_alias_declared_above_it() {
 
 #[test]
 fn an_alias_chains_through_aliases_and_imports_and_may_precede_its_target() {
-    let big = ("lib/big.art", "use arm\ndef arm_big = arm_l len:40\n");
+    let big = ("lib/big.ramo", "use arm\ndef arm_big = arm_l len:40\n");
     let s = scene_with(
         "@target t.png 100x100\nuse big\nuse arm { hero_arm }\ndef mine = hero_arm tone:#00ff00\narm_big at:50,50 name:a\nmine at:50,50 name:b\ndef early = late\nlate at:10,10 name:c\ndef late\n  rect 4x4 name:box\n",
-        &[big, ("lib/arm.art", ARM_LIB)],
+        &[big, ("lib/arm.ramo", ARM_LIB)],
     );
     assert_eq!(fill_hex(node(&s, "a.bone")), "#ff0000");
     near(at(node(&s, "a.hand")), (20.0, 0.0));
@@ -7006,7 +7006,7 @@ fn an_alias_chains_through_aliases_and_imports_and_may_precede_its_target() {
 
     let ev = run_with(
         "@target t.png 100x100\nuse big\narm_big len:3\n",
-        &[big, ("lib/arm.art", ARM_LIB)],
+        &[big, ("lib/arm.ramo", ARM_LIB)],
     );
     assert_eq!(diag(&ev, "E0321").message, "`arm_big` fixes `len`");
 }
@@ -7015,7 +7015,7 @@ fn an_alias_chains_through_aliases_and_imports_and_may_precede_its_target() {
 fn an_alias_reports_its_own_mistakes_at_the_alias_line() {
     let ev = run_with(
         "@target t.png 100x100\nuse arm\n\ndef bad = hero_arm wat:1\ndef twice = arm_l tone:#000000\n",
-        &[("lib/arm.art", ARM_LIB)],
+        &[("lib/arm.ramo", ARM_LIB)],
     );
     let ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0321").collect();
     assert_eq!(ds.len(), 2, "{}", show(&ev.diagnostics));
@@ -7086,7 +7086,7 @@ fn p_in_a_fn_body_is_the_palette_of_the_call_site() {
 
 #[test]
 fn use_imports_a_fn_by_item_list_and_through_an_alias() {
-    let libs = [("lib/m.art", HALF_LIB)];
+    let libs = [("lib/m.ramo", HALF_LIB)];
     let ev = run_with("@target t.png 100x100\nuse m { quarter }\ncircle 4 at:quarter(80),0 name:c\n", &libs);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     near(at(node(ev.scene.as_ref().unwrap(), "c")), (20.0, 0.0));
@@ -7245,11 +7245,11 @@ fn a_malformed_one_of_is_one_error_at_the_def() {
 
 #[test]
 fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
-    let lib = ("lib/tiles.art", "def tile kind:one_of(1 2)\n  circle 2\n");
+    let lib = ("lib/tiles.ramo", "def tile kind:one_of(1 2)\n  circle 2\n");
     let ev = run_with("@target t.png 16x16\nuse tiles\ncircle 2\n", &[lib]);
     let es = errors(&ev);
     assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
-    assert!(es[0].file.ends_with("tiles.art"), "{}", show(&ev.diagnostics));
+    assert!(es[0].file.ends_with("tiles.ramo"), "{}", show(&ev.diagnostics));
     assert_eq!(es[0].span.line, 1, "{}", show(&ev.diagnostics));
 }
 
@@ -7280,7 +7280,7 @@ fn comparing_a_one_of_parameter_with_another_word_warns_and_names_the_words() {
     let lines: Vec<u32> = hits.iter().map(|d| d.span.line).collect();
     assert_eq!(lines, [7, 9], "{}", show(&hits));
     let d = &hits[0];
-    assert_eq!(d.severity, artscript_syntax::Severity::Warning);
+    assert_eq!(d.severity, ramose_syntax::Severity::Warning);
     assert_eq!(d.message, "`kind` is never `flor`");
     assert_eq!(d.notes, ["`kind` is one of floor_top, fill, fill_b"]);
     assert!(d.fix.is_some());
@@ -7308,7 +7308,7 @@ fn unknown_word_off_is_silent() {
     let p = Project::from_sources(
         manifest,
         [(
-            "art/t.art".to_string(),
+            "art/t.ramo".to_string(),
             format!("{TILE}  if kind == flor\n    circle 1\n"),
         )]
         .into(),
@@ -7342,7 +7342,7 @@ fn edge_to_the_end_of_an_open_curve_is_one_piece() {
 
 #[test]
 fn fill_stroke_and_blur_on_an_instance_point_at_palette_and_fx_blur() {
-    let lib = [("lib/arm.art", ARM_LIB)];
+    let lib = [("lib/arm.ramo", ARM_LIB)];
     for (line, key) in [
         ("hero_arm fill:#ff0000", "fill"),
         ("hero_arm stroke:#000000,2", "stroke"),
