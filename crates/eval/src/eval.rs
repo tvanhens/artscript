@@ -1095,6 +1095,7 @@ impl<'a> Evaluator<'a> {
             }
         }
         self.declare_aliases(&module, &parsed);
+        self.check_fn_cycles(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
         let aliases: BTreeMap<String, String> = module
@@ -1230,7 +1231,11 @@ impl<'a> Evaluator<'a> {
                 module.define(name, Value::Rule(Rc::new(rule)));
                 Ok(())
             }
-            DeclKind::Fn { .. } => Ok(()),
+            DeclKind::Fn { name, params, body } => self
+                .declare_fn(module, name, params, body, decl.span)
+                .inspect_err(|_| {
+                    module.lost.borrow_mut().insert(name.clone());
+                }),
             DeclKind::Anim {
                 name,
                 dur,
