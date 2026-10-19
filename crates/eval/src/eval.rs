@@ -2941,20 +2941,22 @@ impl<'a> Evaluator<'a> {
             Some(_) => Some(to_paint(&paint_v, bounds).ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?),
             None => None,
         };
-        let (stamps, rows) = if sets.is_empty() {
-            (Vec::new(), Vec::new())
-        } else {
-            let spine = brush::Spine::new(&geometry, knots, &widths, &channels);
-            let host = crate::stamp::Host {
-                key,
-                explicit: a.num("seed").map(|s| s as u64),
-                world,
-                own_site: site(&["stamp"]),
-                span,
-                paint: stroke_paint.clone().or_else(|| fill.as_ref().map(|f| f.paint.clone())),
-            };
-            let mut at_stamp = |this: &mut Self, f: Fail| at_key(this, f, &["stamp"]);
-            self.stamps(&sets, &spine, &host, sc, &mut at_stamp)?
+        let spine = (!sets.is_empty() || !stroke_marks.is_empty())
+            .then(|| brush::Spine::new(&geometry, knots, &widths, &channels));
+        let (stamps, rows) = match &spine {
+            Some(spine) if !sets.is_empty() => {
+                let host = crate::stamp::Host {
+                    key,
+                    explicit: a.num("seed").map(|s| s as u64),
+                    world,
+                    own_site: site(&["stamp"]),
+                    span,
+                    paint: stroke_paint.clone().or_else(|| fill.as_ref().map(|f| f.paint.clone())),
+                };
+                let mut at_stamp = |this: &mut Self, f: Fail| at_key(this, f, &["stamp"]);
+                self.stamps(&sets, spine, &host, sc, &mut at_stamp)?
+            }
+            _ => (Vec::new(), Vec::new()),
         };
         if width.is_none() {
             return Ok((
@@ -2970,8 +2972,7 @@ impl<'a> Evaluator<'a> {
             ));
         }
         let paint = stroke_paint.expect("a stroke has a paint");
-        if !stroke_marks.is_empty() {
-            let spine = brush::Spine::new(&geometry, knots, &widths, &channels);
+        if let Some(spine) = spine.filter(|_| !stroke_marks.is_empty()) {
             let mut ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
             if tapered {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
