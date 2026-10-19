@@ -191,6 +191,18 @@ struct Provisional {
 }
 
 impl Scope {
+    /// Names bound here or in the module whose value passes `is`, the local ones first. A
+    /// misspelled `brush:` or `stamp:` word lists them.
+    pub(crate) fn names_where(&self, is: impl Fn(&Value) -> bool) -> Vec<String> {
+        let mut names: Vec<String> = self.env.iter().filter(|(_, v)| is(v)).map(|(k, _)| k.clone()).collect();
+        for (k, v) in self.module.globals.borrow().iter() {
+            if is(v) && !names.contains(k) {
+                names.push(k.clone());
+            }
+        }
+        names
+    }
+
     fn child(&self, parent: Key, frame: Rect, world: Matrix) -> Scope {
         Scope {
             parent,

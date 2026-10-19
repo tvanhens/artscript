@@ -390,7 +390,7 @@ impl Evaluator<'_> {
                 Value::Brush(b) => Ok(b.clone()),
                 Value::Ident(w) if sc.module.lost(w) => Err(Fail::reported()),
                 Value::Ident(w) => {
-                    let names = self.brushes_in_scope(sc);
+                    let names = sc.names_where(|v| matches!(v, Value::Brush(_)));
                     let f = fail("E0364", format!("`{w}` is not a brush"));
                     let f = if names.is_empty() {
                         f.note("no brushes in scope").fix("`use std/brushes { dry chip }` and write `brush:dry`")
@@ -426,21 +426,6 @@ impl Evaluator<'_> {
             }
             other => Ok(vec![one(other)?]),
         }
-    }
-
-    fn brushes_in_scope(&self, sc: &Scope) -> Vec<String> {
-        let mut names: Vec<String> = sc
-            .env
-            .iter()
-            .filter(|(_, v)| matches!(v, Value::Brush(_)))
-            .map(|(k, _)| k.clone())
-            .collect();
-        for (k, v) in sc.module.globals.borrow().iter() {
-            if matches!(v, Value::Brush(_)) && !names.contains(k) {
-                names.push(k.clone());
-            }
-        }
-        names
     }
 
     /// One stage per brush of `stack` on `slot`, each seeded from this node's key, the slot, and

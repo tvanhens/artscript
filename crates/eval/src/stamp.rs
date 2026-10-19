@@ -350,7 +350,7 @@ impl Evaluator<'_> {
                 Value::Stamp(s) => Ok(s.clone()),
                 Value::Ident(w) if sc.module.lost(w) => Err(Fail::reported()),
                 Value::Ident(w) => {
-                    let names = self.stamps_in_scope(sc);
+                    let names = sc.names_where(|v| matches!(v, Value::Stamp(_)));
                     let f = fail("E0367", format!("`{w}` is not a stamp"));
                     let f = if names.is_empty() {
                         f.note("no stamps in scope").fix("`use std/stamps { dots }` and write `stamp:dots`")
@@ -383,16 +383,6 @@ impl Evaluator<'_> {
             }
             other => Ok(vec![one(other)?]),
         }
-    }
-
-    fn stamps_in_scope(&self, sc: &Scope) -> Vec<String> {
-        let mut names: Vec<String> = sc.env.iter().filter(|(_, v)| matches!(v, Value::Stamp(_))).map(|(k, _)| k.clone()).collect();
-        for (k, v) in sc.module.globals.borrow().iter() {
-            if matches!(v, Value::Stamp(_)) && !names.contains(k) {
-                names.push(k.clone());
-            }
-        }
-        names
     }
 
     /// Places every set along `spine` and draws the block once per site. Returns the stamp
