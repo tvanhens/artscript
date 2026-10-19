@@ -1146,6 +1146,7 @@ impl<'a> Parser<'a> {
             args,
             named,
             span,
+            mask: None,
         })
     }
 

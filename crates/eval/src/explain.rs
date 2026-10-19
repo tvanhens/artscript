@@ -30,7 +30,7 @@ fn effect(e: &Effect) -> String {
         EffectOp::Glow { radius, color, strength } => format!("glow {} {} strength:{}", num(*radius as f64), color.hex(), num(*strength as f64)),
         EffectOp::Rim { width, color, .. } => format!("rim {} {}", num(*width as f64), color.hex()),
         EffectOp::Adjust { hue, sat, light } => format!("adjust {} {} {}", num(*hue as f64), num(*sat as f64), num(*light as f64)),
-        EffectOp::Outline { width, color, sides } => {
+        EffectOp::Outline { width, color, sides, .. } => {
             let kept: Vec<&str> = [(sides.top, "top"), (sides.right, "right"), (sides.bottom, "bottom"), (sides.left, "left")]
                 .into_iter()
                 .filter_map(|(on, word)| on.then_some(word))

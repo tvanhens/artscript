@@ -435,8 +435,10 @@ pub enum EffectOp {
     Adjust { hue: f32, sat: f32, light: f32 },
     /// Line of `width` around the node's shape geometry, drawn behind the content.
     /// Earlier effects do not change the traced path. Ink past an edge of the traced
-    /// geometry's box is dropped on every side `sides` leaves out.
-    Outline { width: f32, color: Color, sides: Sides },
+    /// geometry's box is dropped on every side `sides` leaves out. `mask` keeps the ring's
+    /// ink only where it keeps it, in the node's local coordinates like the node's own mask,
+    /// and its `feather` fades the ring's alpha at the mask edge. The content is untouched.
+    Outline { width: f32, color: Color, sides: Sides, mask: Option<Box<Mask>> },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
     /// feature in canvas units.
@@ -588,9 +590,10 @@ impl Node {
             visiting,
         };
         for effect in &self.effects {
-            if let EffectOp::Outline { width, sides, .. } = effect.op
-                && width > 0.0
+            if let EffectOp::Outline { width, sides, .. } = &effect.op
+                && *width > 0.0
             {
+                let (width, sides) = (*width, *sides);
                 let traced = self.local_ink().map(|r| {
                     let reach = |on: bool| if on { width } else { 0.0 };
                     Rect::new(

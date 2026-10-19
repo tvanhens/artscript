@@ -277,7 +277,7 @@ impl Evaluator<'_> {
                 sat: a.num("sat").unwrap_or(0.0) as f32,
                 light: a.num("light").unwrap_or(0.0) as f32,
             },
-            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)? },
+            "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)?, mask: None },
             "grain" => {
                 let explicit = a.seed()?;
                 EffectOp::Grain {
