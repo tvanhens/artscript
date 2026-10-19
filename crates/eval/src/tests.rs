@@ -2035,10 +2035,29 @@ fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
         all[0]
             .notes
             .iter()
-            .any(|n| n == "so are the 3 other copies"),
+            .any(|n| n == "also in dot.1, dot.2, dot.3"),
         "{:?}",
         all[0].notes
     );
+}
+
+#[test]
+fn a_child_hidden_in_every_copy_of_its_parent_is_reported_once_at_its_column() {
+    let hidden = hidden_children(
+        "@target t.png 200x200\ncircle 80 at:100,100 name:host\n  each k, c in [0 100]\n    ellipse 20,20 at:c-40,0 name:inner\n      circle 4 at:150,0\n",
+    );
+    assert_eq!(hidden.len(), 1, "{}", show(&hidden));
+    assert_eq!((hidden[0].span.line, hidden[0].span.col), (5, 7));
+    assert_eq!(hidden[0].node, "inner.0.circle~1");
+    assert!(
+        hidden[0].notes.iter().any(|n| n == "also in inner.1.circle~1"),
+        "{:?}",
+        hidden[0].notes
+    );
+    let partly = hidden_children(
+        "@target t.png 200x200\ncircle 80 at:100,100 name:host\n  each c in [0 60]\n    ellipse 20,20 at:c-40,0 name:inner\n      circle 4 at:c,0\n",
+    );
+    assert!(partly.is_empty(), "{}", show(&partly));
 }
 
 #[test]
