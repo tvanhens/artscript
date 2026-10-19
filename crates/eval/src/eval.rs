@@ -4874,9 +4874,14 @@ impl<'a> Evaluator<'a> {
             Value::Color(c) if seg == "line" => Value::Color(Col::plain(color::line(c.rgba))),
             Value::Vec2(x, y) | Value::Size(x, y) => {
                 let c = match seg {
-                    "x" | "w" => *x,
-                    "y" | "h" => *y,
-                    _ => return Err(missing("a vector", vec!["x".into(), "y".into()])),
+                    "x" | "w" | "0" => *x,
+                    "y" | "h" | "1" => *y,
+                    _ => {
+                        return Err(missing(
+                            "a vector",
+                            vec!["x".into(), "y".into(), "0".into(), "1".into()],
+                        ));
+                    }
                 };
                 match c {
                     Coord::Num(v) => Value::Num(v),
