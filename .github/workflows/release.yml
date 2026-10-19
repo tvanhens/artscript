@@ -1,0 +1,100 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "npm/**"
+      - ".github/workflows/release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  platforms:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: echo "matrix=$(jq -c . npm/platforms.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build ${{ matrix.key }}
+    needs: platforms
+    runs-on: ${{ matrix.runner }}
+    # A failed Skia prebuilt download silently falls back to a from-source build.
+    # This bounds it. Do not set FORCE_SKIA_BINARIES_DOWNLOAD: in a crates.io build
+    # it skips the download and forces the source build.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.platforms.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      # skia-bindings links freetype and fontconfig.
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential ca-certificates curl pkg-config libfontconfig-dev libfreetype-dev
+      - run: rustup toolchain install --no-self-update
+      - run: rustup target add ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: cargo build --release --locked -p artscript --target ${{ matrix.target }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: oven-sh/setup-bun@v2
+      - name: Stage the npm packages
+        shell: bash
+        run: |
+          expect=()
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then expect=(--expect-version "${GITHUB_REF_NAME#v}"); fi
+          node npm/stage.mjs "${expect[@]}" platform ${{ matrix.key }} target/${{ matrix.target }}/release/${{ matrix.exe }} dist/npm
+          node npm/stage.mjs "${expect[@]}" main dist/npm
+      - run: node npm/smoke.mjs dist/npm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npm-${{ matrix.key }}
+          path: dist/npm/${{ matrix.key }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/downloaded
+          pattern: npm-*
+      # Artifacts drop the executable bit, so restage each binary into its package.
+      - name: Stage the npm packages
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for p in $(jq -r '.[] | "\(.key):\(.exe)"' npm/platforms.json); do
+            key="${p%%:*}"; exe="${p#*:}"
+            node npm/stage.mjs --expect-version "$version" platform "$key" "dist/downloaded/npm-$key/bin/$exe" dist/npm
+          done
+          node npm/stage.mjs --expect-version "$version" main dist/npm
+      - run: node npm/publish.mjs dist/npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
