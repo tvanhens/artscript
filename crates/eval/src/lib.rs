@@ -634,10 +634,12 @@ pub(crate) fn is_entry_site(note: &str) -> bool {
 /// library's diagnostic with no entry line is about that library's text, so it stays unnamed and
 /// prints once. Callers leave out text lints and load errors for the same reason.
 fn stamp_target(job: &TargetJob, diags: &mut [Diagnostic]) {
-    let target = job.outputs.first().map(|o| o.path.as_str()).unwrap_or_default();
+    let Some(target) = job.outputs.first() else {
+        return;
+    };
     for d in diags {
         if d.file == job.source || d.notes.iter().any(|n| is_entry_site(n)) {
-            d.target = target.to_string();
+            d.targets = vec![target.path.clone()];
         }
     }
 }

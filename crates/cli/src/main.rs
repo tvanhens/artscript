@@ -289,10 +289,26 @@ fn with_project(cwd: &Path, f: impl FnOnce(&Project) -> u8) -> u8 {
     }
 }
 
-/// Dedupes, orders and prints diagnostics; returns the exit code they imply.
-pub(crate) fn report(mut diags: Vec<Diagnostic>, allow_warnings: bool, json: bool) -> u8 {
-    let mut seen = std::collections::HashSet::new();
-    diags.retain(|d| seen.insert(d.to_string()));
+/// Merges diagnostics that differ only in their targets, orders and prints them; returns the exit
+/// code they imply.
+pub(crate) fn report(raw: Vec<Diagnostic>, allow_warnings: bool, json: bool) -> u8 {
+    let mut diags: Vec<Diagnostic> = Vec::new();
+    for d in raw {
+        let same = diags.iter_mut().find(|o| {
+            (o.severity, &o.code, &o.file, o.span, &o.node, &o.message, &o.notes, &o.fix)
+                == (d.severity, &d.code, &d.file, d.span, &d.node, &d.message, &d.notes, &d.fix)
+        });
+        match same {
+            Some(o) => {
+                for t in d.targets {
+                    if !o.targets.contains(&t) {
+                        o.targets.push(t);
+                    }
+                }
+            }
+            None => diags.push(d),
+        }
+    }
     diags.sort_by(|a, b| {
         (&a.file, a.span.line, a.span.col).cmp(&(&b.file, b.span.line, b.span.col))
     });
