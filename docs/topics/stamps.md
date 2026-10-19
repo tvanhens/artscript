@@ -66,7 +66,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 ## Sets, paths and references
 
 - Each stamp of a set is a node under its host with the path `<host>.<set>.<i>`, so the seventh leaf on `vine` is `vine.leaves.6` and its blade `vine.leaves.6.leaf.blade`. The set's name is `name:` on the call, else the stamp's declared name. Two sets with one name on one node is E0333 at `stamp:`; the fix is `leaves(name:small)`.
-- A reference reaches a stamp through its set: `@vine.leaves.6` is the stamp, `@vine.leaves.6.leaf.tip` an anchor inside it, and `@vine.leaves.6.cx` a measure. `at:` takes an anchor or a pair, not a node, so place a berry with `at:@vine.leaves.6.leaf.tip` or `at:@vine.leaves.6.cx,@vine.leaves.6.cy`. A patch cannot reach a stamp: `.vine.leaves.6 off` hops through a shape, which is E0340. Change the call or the def instead.
+- A reference reaches a stamp through its set: `@vine.leaves.6` is the stamp, `@vine.leaves.6.leaf.tip` an anchor inside it, and `@vine.leaves.6.cx` a measure. `at:` takes an anchor or a pair, not a node, so place a berry with `at:@vine.leaves.6.leaf.tip` or `at:@vine.leaves.6.cx,@vine.leaves.6.cy`. A patch cannot reach a stamp: `leaves` is a stamp set, not a part declared under `vine`, so `.vine.leaves.6 off` is E0340. Change the call or the def instead.
 - `explain` lists a stamped node with `stamps:N`, folds a run of three or more stamps of one set into one line with the set's bounds, and prints the first and last stamp in full.
 
 ## What a stamp is part of

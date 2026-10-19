@@ -10,7 +10,7 @@
 | color | `#ff5e5b`, `oklch(.78 .07 55)`, `p.skin.3`, `p.skin` (a ramp's base). A hex color of 3, 4, 6 or 8 digits ends at the first character that cannot continue a name, so `#ff0000+v` is an expression; any other `#` starts a comment |
 | list / range | `[a b c]`, `0..8`, `[each k in 0..n -> expr]` |
 | brush | `dry`, `dry(strength:.9 dir:45)`, `[chip dry]`; a `brush` declaration, a call on one with overrides, or a stack. See `brushes` |
-| reference | `@body`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas`. After an instance, a name finds the part under any group in it, so write `@hero.eye_l`, not `@hero.face.eye_l` for a `group face`. A hop through a group, a layer, or a shape to a part that is not an anchor is E0350, and the fix names the part's key |
+| reference | `@body`, `@thorax.sheen`, `@hero.head.eye_l`, `@body.neck` (anchor), `@self`; also `canvas`. A path names every shape, instance, and slot on the way down, and nothing else. A group or a layer is never a segment, so a part inside `group face` under `hero` is `@hero.eye_l`, and a path through one is E0350 with a fix that drops it. A bare `@sheen` reaches `sheen` only at the root of its scope. For a `sheen` nested under `thorax` it is E0350, and the fix names `@thorax.sheen`; when `sheen` sits under several shapes, the error lists every path |
 
 A list is indexed with `.0` or with `.{expr}`, where the braces hold any expression that gives a number or a name: `tones.{mod(row 3)}`, `pts.{i+1}`. A name in the braces is read as its value, and a name that is not bound is read as itself, so `p.{skin}` is `p.skin`. A value that is neither a number nor a name is E0320. On a reference, `@dot.{k}` picks one copy of a family the way `@dot.1` does.
 
