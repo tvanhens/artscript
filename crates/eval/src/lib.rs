@@ -270,6 +270,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         let parsed = &ev.parsed[f];
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
+        diagnostics.extend(lints::unknown_word(parsed, f, &project.manifest));
     }
     diagnostics.extend(lints::unknown_target(
         &file,

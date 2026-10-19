@@ -1056,6 +1056,24 @@ fn an_unknown_target_word_or_key_is_an_error() {
 }
 
 #[test]
+fn a_word_outside_one_of_fails_check_at_the_call() {
+    let dir = fixture("one-of", &[]);
+    let def = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2\n";
+    fs::write(dir.join("art/t.art"), format!("{def}tile kind:flor_top\n")).unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let err = text(&out);
+    assert!(
+        err.contains("E0320") && err.contains("t.art:5") && err.contains("floor_top, fill, fill_b"),
+        "{err}"
+    );
+    fs::write(dir.join("art/t.art"), format!("{def}tile kind:fill_b\n")).unwrap();
+    let out = artscript(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_closed_output_pipe_keeps_the_exit_code() {
     let dir = fixture("closed-pipe", &[]);
     let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
