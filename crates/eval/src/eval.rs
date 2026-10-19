@@ -2947,6 +2947,23 @@ impl<'a> Evaluator<'a> {
         }
         let fill = fill.map(|paint| IrFill { paint, marks: fill_marks });
         let tapered = matches!(width, Some(W::List(_))) || (width.is_some() && taper.is_some());
+        if tapered && stroke_marks.is_empty() {
+            if pick("dash").is_some() {
+                let f = fail("E0362", "`dash:` on a tapered stroke")
+                    .note("a tapered stroke is a filled outline, which has no dash")
+                    .fix("remove the dash, or give the stroke one width and no `taper:`");
+                return Err(at_key(self, f, &["dash", "stroke", "taper"]));
+            }
+            for k in ["cap", "join"] {
+                if let Some(span) = site(&[k]) {
+                    let f = fail("E0362", format!("`{k}:` on a tapered stroke"))
+                        .note("a tapered stroke has round ends and corners")
+                        .fix(format!("remove `{k}:`, or give the stroke one width and no `taper:`"));
+                    self.report(f, &file, span, &node);
+                    return Err(Fail::reported());
+                }
+            }
+        }
         let widths = match &width {
             None => vec![0.0],
             Some(W::Const(w)) => vec![*w],
