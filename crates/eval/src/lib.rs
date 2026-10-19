@@ -540,6 +540,7 @@ impl AggAcc {
             );
             if let Some(agg) = self.groups.iter_mut().find(|g| g.key == key) {
                 agg.frames += 1;
+                agg.varies |= *d != agg.diag;
                 let mag = note_magnitude(d);
                 if let Some(mag) = mag
                     && (!agg.has_mag || mag > agg.mag)
@@ -562,6 +563,7 @@ impl AggAcc {
                     mag: mag.unwrap_or(0.0),
                     has_mag: mag.is_some(),
                     frames: 1,
+                    varies: false,
                 });
             }
         }
@@ -584,7 +586,7 @@ impl AggAcc {
                 }
                 continue;
             }
-            if frames > 1 || agg.diag.code.starts_with('C') || agg.diag.code.starts_with('E') {
+            if agg.frames < frames || agg.varies {
                 agg.diag
                     .notes
                     .push(format!("first at {}s", num_s(agg.first)));
@@ -608,6 +610,9 @@ struct Agg {
     /// The frames that raised it. A child hidden only on some frames, such as an eye
     /// highlight under a blink, is drawn on the others and L0105 drops it.
     frames: usize,
+    /// A frame raised it differently. One raised the same on every frame is not about time, so it
+    /// takes no frame notes and reads like the same failure from a png target.
+    varies: bool,
 }
 
 fn folded_lint(code: &str) -> bool {
