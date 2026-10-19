@@ -594,7 +594,7 @@ impl Evaluator<'_> {
         let branch_fx = body.collect_branch_fx();
         let before = self.diags.len();
         let children = self.eval_block_nodes(frame.decl.body.iter().filter_map(DefItem::scene), &mut body);
-        let origin = format!("{}:{}", frame.decl.module, frame.decl.span.line);
+        let origin = format!("{}:{}:{}", frame.decl.module, frame.decl.span.line, frame.decl.span.col);
         // A layer per stamp costs a save_layer each. Only a blend inside needs one, to keep it off
         // the host and the other stamps; the host's own layer already keeps it off the backdrop.
         let isolate = children.iter().any(blends);

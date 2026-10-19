@@ -1997,7 +1997,7 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         };
         self.expand_style(&mut a, sc, &path)?;
-        let origin = format!("{}:{}", sc.file(), st.span.line);
+        let origin = format!("{}:{}:{}", sc.file(), st.span.line, st.span.col);
         if let Some(comp) = comp {
             return self.instance(
                 &comp,
@@ -3785,7 +3785,7 @@ impl<'a> Evaluator<'a> {
         self.report_unlanded(&inner);
         let mut node = new_node(
             path,
-            format!("{}:{}", sc.file(), st.span.line),
+            format!("{}:{}:{}", sc.file(), st.span.line, st.span.col),
             m,
             NodeKind::Group {
                 isolate: false,

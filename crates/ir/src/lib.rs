@@ -79,7 +79,7 @@ pub struct Scene {
 pub struct Node {
     /// Stable dotted path, e.g. `hero.body.arm_r`. Unnamed nodes get `<verb><index>`.
     pub path: String,
-    /// Source location `file:line` for diagnostics and `explain`.
+    /// Source location `file:line:col` for diagnostics and `explain`.
     pub origin: String,
     /// Local to parent.
     pub transform: Matrix,
@@ -473,6 +473,14 @@ impl Shape {
         let stroke = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).map_or(0.0, Ribbon::reach);
         fill.max(stroke)
     }
+}
+
+/// The file, line and column a node's `origin` (`file:line:col`) names.
+pub fn parse_origin(origin: &str) -> Option<(&str, u32, u32)> {
+    let mut parts = origin.rsplitn(3, ':');
+    let col = parts.next()?.parse().ok()?;
+    let line = parts.next()?.parse().ok()?;
+    Some((parts.next()?, line, col))
 }
 
 impl Node {
