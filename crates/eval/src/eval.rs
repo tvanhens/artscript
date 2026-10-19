@@ -441,9 +441,9 @@ pub(crate) struct Evaluator<'a> {
     /// The stamp declarations whose blocks are being placed, outermost first. A set whose
     /// declaration is already here would place itself forever.
     pub(crate) stamping: Vec<*const crate::stamp::StampDecl>,
-    /// Names the running statement reads that wait on it: the reads form a cycle, so it runs
-    /// as written and the read reports the cycle.
-    blocked: Vec<Site>,
+    /// The siblings that read back to the running statement: the reads form a cycle, so it runs
+    /// as written and a read of a name one of them holds reports the cycle.
+    blocked: Vec<order::Blocker>,
     /// Names of the statements that failed while blocked. A read of one stays quiet, because
     /// the cycle was reported at that statement.
     broken: BTreeSet<Site>,
@@ -5544,7 +5544,7 @@ impl<'a> Evaluator<'a> {
             return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
-        if self.prepass && matches!(resolved, Resolved::Undrawn(_)) {
+        if self.prepass && matches!(resolved, Resolved::Undrawn(..)) {
             return Err(unseen(&format!("@{first}")));
         }
         let (cur, depth) = self.refs_of(resolved, segs)?;
@@ -5561,28 +5561,30 @@ impl<'a> Evaluator<'a> {
             Resolved::Many(es, depth) => {
                 Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
             }
-            Resolved::Undrawn(site) if self.broken.contains(&site) => Err(Fail::reported()),
-            Resolved::Undrawn(site) if self.blocked.contains(&site) => Err(fail(
-                "E0350",
-                format!(
-                    "`@{label}` is read before `{label}` is drawn, and `{label}` reads back to this line"
-                ),
-            )
-            .note(format!(
-                "`{label}` is drawn at {}:{}",
-                site.file, site.span.line
-            ))
-            .fix(format!(
-                "draw `{label}` with no reference back to this node, and paint this node behind it with `z:behind`"
-            ))),
-            Resolved::Undrawn(site) => Err(fail(
-                "E0350",
-                format!(
-                    "`{label}` is declared at {}:{} and not drawn",
-                    site.file, site.span.line
-                ),
-            )
-            .fix("draw it, or remove the reference")),
+            Resolved::Undrawn(region, id) => {
+                let decl = region.decl(id);
+                let hop = segs[1..].iter().position(|s| !is_copy_index(s)).map(|i| i + 1);
+                if let Some(i) = hop
+                    && decl.kind == identity::NameKind::Group
+                    && region.holds(id, &segs[i])
+                {
+                    return Err(group_hop(segs, 0, i));
+                }
+                if self.broken.contains(&decl.site) {
+                    return Err(Fail::reported());
+                }
+                match self.blocked.iter().find(|b| b.holds.contains(&decl.site)) {
+                    Some(b) => Err(cycle(label, b)),
+                    None => Err(fail(
+                        "E0350",
+                        format!(
+                            "`{label}` is declared at {}:{} and not drawn",
+                            decl.site.file, decl.site.span.line
+                        ),
+                    )
+                    .fix("draw it, or remove the reference")),
+                }
+            }
             Resolved::Missing(names) => Err(missing_part(label, &names)),
             Resolved::Nested(found) => Err(nested_ref(segs, 0, 0, &found)),
             Resolved::Ambiguous(notes) => {
@@ -5970,6 +5972,26 @@ fn nested_ref(
         f = f.note(format!("`{p}`"));
     }
     f.fix("write one of the listed paths")
+}
+
+/// `@{label}` reaches a name that `b` holds, and `b` waits on the statement reading it.
+fn cycle(label: &str, b: &order::Blocker) -> Fail {
+    let at = format!("{}:{}", b.site.file, b.site.span.line);
+    let (who, it) = match &b.name {
+        Some(name) => (format!("`{name}`"), format!("`{name}`")),
+        None => (format!("the statement at {at}"), "that statement".to_string()),
+    };
+    let f = fail(
+        "E0350",
+        format!("`@{label}` is read before {who} is drawn, and {it} reads back to this line"),
+    )
+    .fix(format!(
+        "draw {it} with no reference back to this node, and paint this node behind it with `z:behind`"
+    ));
+    match b.name {
+        Some(_) => f.note(format!("{who} is drawn at {at}")),
+        None => f,
+    }
 }
 
 fn undrawn_part(label: &str, seg: &str, site: &Site) -> Fail {

@@ -4140,6 +4140,32 @@ fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
 }
 
 #[test]
+fn a_cycle_through_an_unnamed_sibling_names_its_line() {
+    let ev = run_with(
+        concat!(
+            "@target t.png 100x100\n",
+            "group name:a at:@top\n",
+            "  rect 10x10\n",
+            "  anchor tip 5,0\n",
+            "group at:@tip\n",
+            "  rect 10x10\n",
+            "  anchor top 0,-5\n",
+        ),
+        &[],
+    );
+    let errors: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code.starts_with('E'))
+        .collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    let d = errors[0];
+    assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
+    assert!(d.message.contains("before the statement at art/t.art:5 is drawn"), "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
+}
+
+#[test]
 fn a_hop_through_a_later_sibling_group_in_a_cycle_is_the_hop_error() {
     let ev = run_with(
         concat!(

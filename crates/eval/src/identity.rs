@@ -1527,7 +1527,7 @@ pub enum Resolved {
     /// `usize` is how many leading copy indices the loop context already chose.
     Many(Vec<Entry>, usize),
     /// Declared, and not drawn on this pass.
-    Undrawn(Site),
+    Undrawn(Rc<Region>, DeclId),
     /// No frame declares it. `names` is the innermost region's list.
     Missing(Vec<String>),
     /// No frame declares it at the root. These are its decls under the frames' shapes.
@@ -1612,20 +1612,20 @@ fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span
         let decl = names.region.decl(id);
         match select(&names.rows[id.0], decl, here_copies, here_loops) {
             Some((entries, _)) if entries.is_empty() => {
-                undrawn.get_or_insert_with(|| decl.site.clone());
+                undrawn.get_or_insert(id);
             }
             Some((entries, depth)) => {
                 skipped = skipped.min(depth);
                 drawn.extend(entries);
             }
             None => {
-                undrawn.get_or_insert_with(|| decl.site.clone());
+                undrawn.get_or_insert(id);
             }
         }
     }
     match drawn.len() {
         0 => match undrawn {
-            Some(site) => Resolved::Undrawn(site),
+            Some(id) => Resolved::Undrawn(names.region.clone(), id),
             None => Resolved::Missing(Vec::new()),
         },
         1 => Resolved::One(drawn.pop().unwrap(), skipped),

@@ -2,13 +2,36 @@ use std::collections::BTreeSet;
 
 use artscript_syntax::ast::{Expr, Scene, SceneKind};
 
-use crate::identity::{DeclId, Region, Site};
+use crate::identity::{DeclId, Name, Region, Site};
 use crate::lints::{scene_line_and_direct_fx_mask_patch_exprs, walk_expr, walk_scene};
 
 pub struct Step {
     pub stmt: usize,
-    /// Names this statement may read that cannot be drawn before it: the reads form a cycle.
-    pub blocked: Vec<Site>,
+    /// The siblings that read back to this statement, so none of them can be drawn before it.
+    pub blocked: Vec<Blocker>,
+}
+
+/// A sibling statement that reads back to the one running. A read of a name it holds reports
+/// the cycle and names the statement.
+pub struct Blocker {
+    /// The name the statement itself declares, when it has one.
+    pub name: Option<Name>,
+    pub site: Site,
+    /// The site of every decl in the statement's subtree, its own included.
+    pub holds: Vec<Site>,
+}
+
+/// A statement blocks only through a decl it holds, so `owned` is never empty.
+fn blocker(st: &Scene, owned: &[DeclId], region: &Region) -> Blocker {
+    let holds: Vec<Site> = owned.iter().map(|&d| region.decl(d).site.clone()).collect();
+    Blocker {
+        name: region.decl_at(st.span).map(|d| region.decl(d).name.clone()),
+        site: Site {
+            file: holds[0].file.clone(),
+            span: st.span,
+        },
+        holds,
+    }
 }
 
 pub fn declared_in(st: &Scene, region: &Region) -> Vec<DeclId> {
@@ -78,7 +101,7 @@ pub fn plan(stmts: &[&Scene], region: &Region) -> Vec<Step> {
                 let blocked = reach[i]
                     .iter()
                     .filter(|&&j| j != i && reach[j].contains(&i))
-                    .flat_map(|&j| owned[j].iter().map(|&d| region.decl(d).site.clone()))
+                    .map(|&j| blocker(stmts[j], &owned[j], region))
                     .collect();
                 (i, blocked)
             }
