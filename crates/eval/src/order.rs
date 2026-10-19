@@ -70,10 +70,15 @@ pub fn plan(stmts: &[&Scene], region: &Region) -> Vec<Step> {
         let (stmt, blocked) = match ready {
             Some(i) => (i, Vec::new()),
             None => {
-                let i = (0..n).find(|&i| !done[i]).expect("a statement is left");
-                let blocked = (0..n)
-                    .filter(|&j| !done[j] && j != i)
-                    .flat_map(|j| owned[j].iter().map(|&d| region.decl(d).site.clone()))
+                let reach: Vec<BTreeSet<usize>> =
+                    (0..n).map(|i| reachable(i, &deps, &done)).collect();
+                let i = (0..n)
+                    .find(|&i| !done[i] && reach[i].contains(&i))
+                    .expect("a stuck plan has a cycle");
+                let blocked = reach[i]
+                    .iter()
+                    .filter(|&&j| j != i && reach[j].contains(&i))
+                    .flat_map(|&j| owned[j].iter().map(|&d| region.decl(d).site.clone()))
                     .collect();
                 (i, blocked)
             }
@@ -82,4 +87,16 @@ pub fn plan(stmts: &[&Scene], region: &Region) -> Vec<Step> {
         steps.push(Step { stmt, blocked });
     }
     steps
+}
+
+/// The statements that have not run and that `from` waits on, directly or through others.
+fn reachable(from: usize, deps: &[BTreeSet<usize>], done: &[bool]) -> BTreeSet<usize> {
+    let mut seen = BTreeSet::new();
+    let mut todo: Vec<usize> = deps[from].iter().copied().collect();
+    while let Some(j) = todo.pop() {
+        if !done[j] && seen.insert(j) {
+            todo.extend(deps[j].iter().copied());
+        }
+    }
+    seen
 }
