@@ -602,7 +602,7 @@ impl Evaluator<'_> {
         let fill = first_fill(&node).unwrap_or(Rgba::GRAY);
         let branch_fx = branch_fx.take();
         let lines = in_source_order(frame.decl.body.iter().filter_map(DefItem::fx), &branch_fx, &body);
-        let sites: Vec<FxSite> = lines.iter().map(|(line, scope)| FxSite { line, scope }).collect();
+        let sites: Vec<FxSite> = lines.iter().map(|(line, scope)| FxSite { line, scope, frame: body.frame, world: body.world }).collect();
         node.effects = self.lower_fx(&sites, &key, fill);
         self.run_checks(&checks);
         let rec = Rc::new(RefCell::new(Record {

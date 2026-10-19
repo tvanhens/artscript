@@ -100,6 +100,8 @@ enum Seg {
     Copy(u32),
     Anon(Anon),
     Mask,
+    /// The nth `fx` line under a node, which owns an outline mask.
+    Fx(u32),
 }
 
 impl fmt::Display for Seg {
@@ -109,6 +111,7 @@ impl fmt::Display for Seg {
             Seg::Copy(i) => write!(f, "{i}"),
             Seg::Anon(a) => write!(f, "{}~{}", a.verb, a.ordinal),
             Seg::Mask => f.write_str("mask~1"),
+            Seg::Fx(n) => write!(f, "fx~{n}"),
         }
     }
 }
@@ -197,6 +200,11 @@ impl Key {
 
     pub fn mask(&self) -> Key {
         self.extend(Seg::Mask, &[])
+    }
+
+    /// The mask under the node's `fx` line number `n`, counted from 1 in source order.
+    pub fn fx_mask(&self, n: u32) -> Key {
+        self.extend(Seg::Fx(n), &[]).mask()
     }
 
     fn extend(&self, seg: Seg, copies: &[u32]) -> Key {
@@ -689,10 +697,8 @@ impl Declarer<'_> {
                 self.sub(s.span, label, &stmts);
             }
             SceneKind::Draw(d) => self.draw(s.span, d),
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => self.scenes(f.mask_block()),
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
 
@@ -746,6 +752,7 @@ impl Declarer<'_> {
                     mask: Mask::Block(b),
                     ..
                 } => self.scenes(b),
+                DrawItem::Fx(f) => self.scenes(f.mask_block()),
                 DrawItem::SlotFill(fill) if call => {
                     let stmts: Vec<&Scene> = fill.body.iter().collect();
                     self.sub(fill.span, format!("the `{}:` fill", fill.name), &stmts);
@@ -941,15 +948,14 @@ fn count<'s>(
                             mask: Mask::Block(b),
                             ..
                         } => children.push(b.iter().collect()),
+                        DrawItem::Fx(f) => children.push(f.mask_block().iter().collect()),
                         DrawItem::SlotFill(f) => children.push(f.body.iter().collect()),
                         _ => {}
                     }
                 }
             }
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => children.push(f.mask_block().iter().collect()),
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
 }

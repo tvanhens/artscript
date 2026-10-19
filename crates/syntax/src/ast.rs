@@ -325,6 +325,19 @@ pub struct Fx {
     pub mask: Option<MaskLine>,
 }
 
+impl Fx {
+    /// The scenes of a `mask` block under the line. Empty for no mask or a `mask <value>`.
+    pub fn mask_block(&self) -> &[Scene] {
+        match &self.mask {
+            Some(MaskLine {
+                mask: Mask::Block(body),
+                ..
+            }) => body,
+            _ => &[],
+        }
+    }
+}
+
 /// A `mask` line with its own span, as written under an `fx` line.
 #[derive(Clone, Debug, PartialEq)]
 pub struct MaskLine {

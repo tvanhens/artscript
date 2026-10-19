@@ -6021,7 +6021,7 @@ fn explain_lists_an_outline_mask_and_its_nodes() {
     );
     let text = crate::explain(ev.scene.as_ref().unwrap(), &ev.seeded);
     assert!(text.contains("[fx outline 2 #201802 mask feather:3]"), "{text}");
-    assert!(text.contains("body.fx~1.mask~1.keep"), "{text}");
+    assert!(text.contains("\n  keep  shape"), "{text}");
 }
 
 fn noise_wrap(s: &Scene, path: &str) -> Option<[f32; 2]> {

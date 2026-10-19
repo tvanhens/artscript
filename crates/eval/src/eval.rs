@@ -2253,7 +2253,7 @@ impl<'a> Evaluator<'a> {
         let lines = in_source_order(body.fx(), &branch_fx, &fx_scope);
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope })
+            .map(|(line, scope)| FxSite { line, scope, frame: body_frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
@@ -2299,14 +2299,34 @@ impl<'a> Evaluator<'a> {
         key: &Key,
     ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
-        let mask_key = key.mask();
+        if let Some(mask) = mask {
+            let origin = node.origin.clone();
+            node.mask = self
+                .lower_mask(mask, feather, sc, frame, world, &key.mask(), &origin)?
+                .map(Box::new);
+        }
+        Ok(())
+    }
+
+    /// A `mask` line's source, evaluated in the masked node's frame, or `None` for `mask none`.
+    /// `mask_key` names its nodes and `origin` is the line they are reported at.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lower_mask(
+        &mut self,
+        mask: &ast::Mask,
+        feather: f32,
+        sc: &Scope,
+        frame: Rect,
+        world: Matrix,
+        mask_key: &Key,
+        origin: &str,
+    ) -> R<Option<Mask>> {
         let source = match mask {
-            None => None,
-            Some(ast::Mask::Block(body)) => {
+            ast::Mask::Block(body) => {
                 let mut inner = sc.child(mask_key.clone(), frame, world);
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
-            Some(ast::Mask::Value(e)) => match self.expr(e, sc)? {
+            ast::Mask::Value(e) => match self.expr(e, sc)? {
                 Value::None => None,
                 Value::Ref(r) => {
                     self.outside_copy(&r, sc)?;
@@ -2329,7 +2349,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let n = new_node(
                         mask_key.to_string(),
-                        node.origin.clone(),
+                        origin.to_string(),
                         Matrix::new_identity(),
                         NodeKind::Shape(Box::new(shape)),
                     );
@@ -2355,15 +2375,12 @@ impl<'a> Evaluator<'a> {
                 }
             },
         };
-        if let Some(source) = source {
-            node.mask = Some(Box::new(Mask {
-                source,
-                luminance: false,
-                feather,
-                invert: false,
-            }));
-        }
-        Ok(())
+        Ok(source.map(|source| Mask {
+            source,
+            luminance: false,
+            feather,
+            invert: false,
+        }))
     }
 
     pub(crate) fn target_palette(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
@@ -3398,7 +3415,7 @@ impl<'a> Evaluator<'a> {
         lines.extend(in_source_order(block.fx(), &call_fx, &call_sc));
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope })
+            .map(|(line, scope)| FxSite { line, scope, frame: call_sc.frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
@@ -3940,6 +3957,7 @@ impl<'a> Evaluator<'a> {
 
     fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
         let mut inner = sc.child(key.clone(), sc.frame, sc.world);
+        let mut fx_lines = 0;
         for item in draw.body.items() {
             match item {
                 DrawItem::Scene(st) => {
@@ -3951,6 +3969,13 @@ impl<'a> Evaluator<'a> {
                 } => {
                     let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
                     self.collect_surface(body, &mut mask_sc, false);
+                }
+                DrawItem::Fx(f) => {
+                    fx_lines += 1;
+                    if !f.mask_block().is_empty() {
+                        let mut mask_sc = sc.child(key.fx_mask(fx_lines), sc.frame, sc.world);
+                        self.collect_surface(f.mask_block(), &mut mask_sc, false);
+                    }
                 }
                 _ => {}
             }
@@ -5292,6 +5317,7 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                             mask: ast::Mask::Block(body),
                             ..
                         } => body.as_slice(),
+                        DrawItem::Fx(f) => f.mask_block(),
                         _ => continue,
                     };
                     if let Some(draw) = find_draw(nested, span) {
@@ -5299,10 +5325,12 @@ fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
                     }
                 }
             }
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => {
+                if let Some(draw) = find_draw(f.mask_block(), span) {
+                    return Some(draw);
+                }
+            }
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
     None
@@ -5337,6 +5365,7 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
                         mask: ast::Mask::Block(body),
                         ..
                     } => body.as_slice(),
+                    DrawItem::Fx(f) => f.mask_block(),
                     _ => continue,
                 };
                 if let Some(found) = slot_fallback_in(nested, span) {
@@ -5345,10 +5374,8 @@ fn slot_fallback_one(scene: &Scene, span: Span) -> Option<Vec<Scene>> {
             }
             None
         }
-        SceneKind::Let { .. }
-        | SceneKind::Check { .. }
-        | SceneKind::Play { .. }
-        | SceneKind::Fx(_) => None,
+        SceneKind::Fx(f) => slot_fallback_in(f.mask_block(), span),
+        SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => None,
     }
 }
 
