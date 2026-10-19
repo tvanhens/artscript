@@ -1,0 +1,34 @@
+# m.normal shades a bevel from a light at the upper left, 192x128 on paper. The brush bevel is
+# declared in this file: within 7 units of the edge it mixes the paint toward white where the edge
+# faces the light and toward black where it faces away, and the inside stays plain paint. The light
+# is the vector (-1,-1) in the node's own frame, up and to the left.
+# Top row (y 40), three forms at x 36, 96 and 156. Cell 1, a blue circle of radius 28: the rim is
+# lightest at its upper left and darkest at its lower right. The rim fades to plain blue at the
+# upper right and the lower left, where the edge is side-on to the light, and to the plain blue of
+# the inside 7 units in from the edge.
+# Cell 2, a gold square 48 wide: the left and top bands are light, the bottom and right bands are
+# dark, and each band is one even shade along its side with the shades meeting at the corners.
+# Cell 3, the same gold square rotated 45 degrees: m.normal is in the node's local frame, so the
+# light turns with the node. The two upper sides of the diamond are light, the two lower sides are
+# dark, and the left and right corners are the only places where light meets dark.
+# Bottom (y 100), a green wavy stroke 18 wide from x 16 to 176 with taper:.3, so it narrows to a
+# point at each end. Its upper side is light wherever it faces up and its lower side is dark
+# wherever it faces down, and the bevel follows the curve. The taper does not tilt the shading:
+# the bevel on the narrowing ends is as light above and as dark below as the bevel at the middle.
+# Nothing is drawn outside a form's edge.
+@target brush/normal.png 192x128
+
+brush bevel toward:-1,-1 depth:7 strength:.7
+  sksl """
+  float4 shade(Mark m) {
+    float k = dot(m.normal, normalize(toward));
+    float band = 1 - smoothstep(0, depth, m.edge);
+    float3 tint = k > 0 ? float3(1) : float3(0);
+    return float4(mix(m.paint.rgb, tint, abs(k) * band * strength), cover(m.edge, m));
+  }
+  """
+
+circle 28 at:36,40 fill:p.blue.2 brush:bevel name:disc
+rect 48 at:96,40 fill:p.gold.2 brush:bevel name:square
+rect 48 at:156,40 rot:45 fill:p.gold.2 brush:bevel name:diamond
+curve 16,100 64,84 128,116 176,100 stroke:p.green.2,18 taper:.3 brush:bevel name:wave
