@@ -80,7 +80,7 @@ layer saucer pivot:512,800
       intersect fill:grad(17deg tea.jade.3 tea.jade,.45 tea.jade.1,.8 tea.jade.0) name:drip
         curve drip closed tension:.45
         copy @cup_form
-      inside @drip
+      inside @cup_shell.drip
         ellipse 70,20 at:392,512 fill:tea.jade.4 a:.7 blur:8
         ellipse 18,5 at:372,506 rot:-8 fill:tea.drip_hi a:.85
       ellipse 34,62 at:370,600 fill:tea.cream.4 a:.75 blur:14

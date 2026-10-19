@@ -110,14 +110,14 @@ layer body scale:canvas.w/1024
     curve 656,650 668,700 672,730 stroke:moss.0,[1.5 4 2] taper:.35 a:.5
     curve 330,736 512,748 694,736 698,778 512,792 326,778 closed tension:.35 fill:grad(11 ochre.3 ochre,.5 ochre.1) stroke:fade(ochre_line .85),2.5 name:sash
       subtract fill:ochre.0 a:.6 blur:2
-        copy @sash
-        copy @sash at:0,-12
+        copy @robe.sash
+        copy @robe.sash at:0,-12
       curve 340,746 512,758 680,746 stroke:ochre.4,3 a:.6 blur:1
       curve 330,762 512,774 690,762 stroke:ochre.1,1.6 a:.5
-    copy @sash at:0,8 fill:moss.0 a:.6 blur:5 z:behind
+    copy @robe.sash at:0,8 fill:moss.0 a:.6 blur:5 z:behind
     ellipse 40,22 at:612,760 fill:ochre.0 a:.5 blur:8
     curve 378,806 416,800 422,836 386,842 closed tension:.25 fill:mix(moss ochre.3 .25) stroke:fade(moss.0 .6),1.5 name:patch
-      copy @patch fill:grad(44 moss.3 moss.1) a:.6
+      copy @robe.patch fill:grad(44 moss.3 moss.1) a:.6
     let seams = [380,810 414,804 418,808 420,832 416,838 388,840 384,836 381,812]
     each seam in 0..4
       let index_a = seam*2

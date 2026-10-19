@@ -30,5 +30,5 @@ anim wobble dur:1.2s loop
 
 play wobble
 
-assert level(@eye.0 @eye.1)
+assert level(@body.eye.0 @body.eye.1)
 assert inside(@body canvas margin:24)

@@ -151,7 +151,7 @@ layer footings pivot:512,840
       layer plaque pivot:512,266
         rect 88x76 at:512,306 r:10 fill:grad(40.8 char.3 char,.5 char.0) name:plate
           rect 70x58 r:6 fill:fade(straw 0) stroke:straw,4 name:frame
-          copy @frame at:-1,-1 fill:fade(straw 0) stroke:straw.4,1.4 a:.6
+          copy @plate.frame at:-1,-1 fill:fade(straw 0) stroke:straw.4,1.4 a:.6
           curve -8,-16 -10,0 -7,16 stroke:straw.3,[3 4.5 2.5] taper:.2,.5
           curve 10,-18 8,-6 stroke:straw.3,[3 2] taper:.1,.6
           curve 6,4 12,12 9,20 stroke:straw.3,[2.5 4 2] taper:.2,.6
