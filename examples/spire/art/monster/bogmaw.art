@@ -107,9 +107,9 @@ layer collar_layer
     each i in 0..8
       circle 2+rand(0 3) at:rand(560 630),rand(440 630) fill:p.shell.0 a:.55 name:collar_pit
         circle 1.5 at:1,1.2 fill:p.shell.5 a:.5 blur:1
-    curve 486,404 550,380 612,386 634,420 fill:none stamp:clump(r:8) name:collar_moss
+    curve 484,399 546,373 612,379 640,444 fill:none stamp:clump(r:8) name:collar_moss
     fx outline 6 color:p.ink
-  curve 494,404 548,384 606,390 628,422 fill:none stamp:strands name:collar_grass
+  curve 488,398 546,373 610,379 636,434 fill:none stamp:strands name:collar_grass
 
 layer legs_mid
   leg 505,680 455,775 470,872 w:36 tone:p.leg.5 bend:10 spur:0 name:leg_n0
