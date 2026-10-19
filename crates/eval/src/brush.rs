@@ -316,6 +316,27 @@ impl Evaluator<'_> {
         // The ribbon main is checked too, so render never meets a program eval did not.
         let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
         if let Err(errs) = artscript_brush::check(&area) {
+            // SkSL stops at the first bad uniform line, so each param is compiled alone to report
+            // them all. The body's errors may follow from the bad name, so they wait for a rename.
+            let names: Vec<(Fail, Span)> = if errs.iter().any(|e| matches!(e.origin, Origin::Param(_))) {
+                decl_params
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, (key, kind))| {
+                        let why = artscript_brush::rejects_param_name(key, *kind)?;
+                        let f = fail("E0363", format!("a brush parameter cannot be named `{key}`: SkSL reserves it"))
+                            .note(format!("SkSL: {why}"))
+                            .fix("rename the parameter");
+                        Some((f, at(Origin::Param(i))))
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            if !names.is_empty() {
+                errors.extend(names);
+                return Err(errors);
+            }
             errors.extend(errs.into_iter().map(|e| {
                 let f = fail("E0360", format!("SkSL: {}", e.message))
                     .note(format!("in brush `{name}`"))
