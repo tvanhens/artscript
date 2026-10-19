@@ -617,6 +617,7 @@ impl Evaluator<'_> {
             decl: None,
             inner: Some(names),
             rows: Rc::default(),
+            seam: 0.0,
         }));
         self.placed.borrow_mut().insert(path, rec.clone());
         out.push((node, rec));

@@ -174,6 +174,9 @@ pub struct Record {
     /// The stamp sets this node placed, in `stamp:` order. A hop after this record that names
     /// no child looks here: `@vine.leaves.6`, then `.blade` continues in that stamp's `inner`.
     pub rows: Rc<Vec<RowRecord>>,
+    /// Where contour position 0 lies on this shape, as a fraction of its total contour length
+    /// from the geometry's own start, before `jitter:`.
+    pub seam: f64,
 }
 
 /// One stamp set a node placed: its name and one record per stamp, index by position.

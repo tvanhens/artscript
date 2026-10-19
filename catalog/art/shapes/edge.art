@@ -1,0 +1,24 @@
+# Edge, a stretch of another shape's contour drawn as an open stroke, 192x192. Four cells in a 2x2 grid, each a plain
+# shape with no outline and a dark ink edge drawn over it. A position is a fraction of the contour, so 0 is 3 o'clock on
+# a circle and the top-left corner on a rect.
+# Top left: a blue circle with a 5px ink arc from 3 o'clock (the right edge) clockwise down to 6 o'clock (the bottom),
+# so the arc covers the lower right quarter of the rim and the rest of the rim has no ink.
+# Top right: a green 64x44 rect with a 5px ink line that starts exactly at the top-left corner, runs along the whole top
+# side, and turns down the right side for a short way. It covers about a third of the outline, with nothing on the
+# left or the bottom.
+# Bottom left: a gold blob with a 3px ink edge that wraps through the start of its contour, from nine tenths round to
+# a tenth past the start. It is one unbroken curve about a fifth of the outline long, it hugs the blob's wobbly edge,
+# and it is not a straight chord.
+# Bottom right: a red ellipse wider than tall with a tapered ink edge over its lower half, from 3 o'clock round the
+# bottom to 9 o'clock. The ink is a hairline at both ends and swells to a thick crescent at the bottom, with the
+# bulge on the outside of the ellipse.
+@target shapes/edge.png 192x192
+
+circle 34 at:48,48 fill:p.blue name:disc
+edge @disc from:0 to:.25 stroke:p.ink,5
+rect 64x44 at:144,48 fill:p.green name:plate
+edge @plate to:.35 stroke:p.ink,5
+blob 32 at:48,144 seed:7 fill:p.gold name:pebble
+edge @pebble from:.9 to:.1 stroke:p.ink,3
+ellipse 40,28 at:144,144 fill:p.red name:egg
+edge @egg to:.5 stroke:p.ink,[1 9 1]

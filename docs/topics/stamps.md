@@ -52,7 +52,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 
 ## stamp: on a node
 
-- `stamp:` is a paint key. It takes a stamp, a list of stamps, or `none`. Like `fill:`, it is valid on every built-in, `copy` included, passes from `layer`, `group`, `inside`, `outside`, `mirror`, `repeat`, `grid`, and `style` to every shape in the block, and a shape's own key wins. A def instance line takes `stamp:` only when the def declares that parameter; otherwise it is E0321. On a boolean operand it is E0321, like `fill:`.
+- `stamp:` is a paint key. It takes a stamp, a list of stamps, or `none`. Like `fill:`, it is valid on every built-in, `copy` and `edge` included, passes from `layer`, `group`, `inside`, `outside`, `mirror`, `repeat`, `grid`, and `style` to every shape in the block, and a shape's own key wins. A def instance line takes `stamp:` only when the def declares that parameter; otherwise it is E0321. On a boolean operand it is E0321, like `fill:`.
 - A bare word that is not a stamp is E0367, and the fix names the nearest stamp in scope. A number or any other kind is E0367. `stamp:[]` is E0367; write `stamp:none` to clear an inherited stamp.
 - A stamped open path with no `stroke:` draws no default line: the stamps are its ink. `stroke:` keeps a line, brushed or not, so `brush:bristle stamp:leaves` gives a brushed stem with leaves on it.
 - A channel key (`pressure: angle: tilt:`) on a node's own line needs a reader: a brushed stroke, or a stamp whose block or `spacing:` mentions that channel's name. Without one it is E0362 at the key. An inherited channel key that nothing reads does nothing.

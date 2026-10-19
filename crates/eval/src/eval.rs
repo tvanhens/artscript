@@ -89,6 +89,10 @@ const OPERAND_IGNORES: &[&str] = &[
     "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend",
 ];
 
+/// A shape's geometry, the authored points of each contour, whether it is closed, and the point
+/// that contour position 0 is nearest when the geometry does not start there.
+type Outline = (Path, Vec<Vec<P>>, bool, Option<P>);
+
 struct Builtin {
     takes: usize,
     keys: &'static [&'static str],
@@ -103,6 +107,7 @@ impl Builtin {
             "star" => (1, &["r", "inner", "round", "jitter", "seed"]),
             "blob" => (1, &["points", "wobble", "jitter", "seed"]),
             "curve" => (usize::MAX, &["tension", "round", "jitter", "seed"]),
+            "edge" => (1, &["from", "to", "jitter", "seed"]),
             "subtract" | "union" | "intersect" | "xor" => (0, &["jitter", "seed"]),
             "repeat" => (1, &["step"]),
             "grid" => (1, &["gap", "cell"]),
@@ -1775,6 +1780,7 @@ impl<'a> Evaluator<'a> {
                 decl: None,
                 inner,
                 rows: Rc::default(),
+                seam: 0.0,
             },
         )
     }
@@ -1898,7 +1904,7 @@ impl<'a> Evaluator<'a> {
                 return Err(Fail::reported());
             }
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
-                .note("shapes: rect circle ellipse poly star curve path blob copy subtract union intersect xor")
+                .note("shapes: rect circle ellipse poly star curve path blob copy edge subtract union intersect xor")
                 .note("structure: layer group inside outside mirror repeat grid anchor slot");
             let comps: Vec<String> = sc
                 .module
@@ -2126,7 +2132,8 @@ impl<'a> Evaluator<'a> {
             let inner_world = world;
             let mut operand_frame = None;
             let explicit = a.seed()?;
-            let (geometry, knots, closed) = match verb {
+            let mut seam = 0.0;
+            let (geometry, knots, closed, anchor) = match verb {
                 "subtract" | "union" | "intersect" | "xor" => {
                     let op = match verb {
                         "subtract" => BoolOp::Subtract,
@@ -2151,7 +2158,7 @@ impl<'a> Evaluator<'a> {
                         .iter()
                         .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
                         .collect();
-                    (geom::boolean(op, &sils), Vec::new(), true)
+                    (geom::boolean(op, &sils), Vec::new(), true, None)
                 }
                 "copy" => {
                     let r = match a.pos.first() {
@@ -2162,14 +2169,20 @@ impl<'a> Evaluator<'a> {
                         }
                     };
                     self.outside_copy(&r, sc)?;
+                    seam = r.record.seam;
                     (
                         r.silhouette().make_transform(&inverse(&sc.world)),
                         Vec::new(),
                         true,
+                        None,
                     )
                 }
+                "edge" => (self.edge(&a, named, st.span, sc)?, Vec::new(), false, None),
                 _ => self.primitive(verb, &a, frame, sc, flag("closed"))?,
             };
+            if let Some(near) = anchor {
+                seam = geom::seam_near(&geometry, near);
+            }
             let mut geometry = geometry;
             if let Some(spec) = a.get("jitter") {
                 let (amount, wavelength) = match spec {
@@ -2227,6 +2240,7 @@ impl<'a> Evaluator<'a> {
                     None,
                 );
                 r.borrow_mut().rows = Rc::new(rows);
+                r.borrow_mut().seam = seam;
                 record = Some(r);
             }
             let gb = match &node.kind {
@@ -2617,7 +2631,7 @@ impl<'a> Evaluator<'a> {
         frame: Rect,
         sc: &Scope,
         closed_flag: bool,
-    ) -> R<(Path, Vec<Vec<P>>, bool)> {
+    ) -> R<Outline> {
         let (fx, fy, fw, fh) = (
             frame.left as f64,
             frame.top as f64,
@@ -2641,7 +2655,9 @@ impl<'a> Evaluator<'a> {
                     Some(Some(r)) if r.len() == 4 => [r[0], r[1], r[2], r[3]],
                     Some(_) => return Err(need("one corner radius or four", "rect 40x20 r:4,4,0,0")),
                 };
-                (geom::rect(w.len(fw), h.len(fh), radii), Vec::new(), true)
+                let (w, h) = (w.len(fw), h.len(fh));
+                let corner = radii.iter().any(|r| *r > 0.0).then_some((-w / 2.0, -h / 2.0));
+                (geom::rect(w, h, radii), Vec::new(), true, corner)
             }
             "circle" => {
                 let r = first
@@ -2649,7 +2665,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a radius", "circle 12"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
-                (geom::ellipse(r, r), Vec::new(), true)
+                (geom::ellipse(r, r), Vec::new(), true, None)
             }
             "ellipse" => {
                 let (rx, ry) = first
@@ -2657,7 +2673,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("two radii", "ellipse 20,12"))?;
                 check_percent(rx, frame, sc)?;
                 check_percent(ry, frame, sc)?;
-                (geom::ellipse(rx.len(fw), ry.len(fh)), Vec::new(), true)
+                (geom::ellipse(rx.len(fw), ry.len(fh)), Vec::new(), true, None)
             }
             "poly" | "star" => {
                 let n = first
@@ -2667,10 +2683,13 @@ impl<'a> Evaluator<'a> {
                 let r = a.num("r").unwrap_or(10.0);
                 let inner = (verb == "star").then(|| a.num("inner").unwrap_or(0.5));
                 let mut p = geom::regular(n as usize, r, inner);
+                let mut first = None;
                 if let Some(round) = a.num("round").filter(|v| *v > 0.0) {
+                    let v = p.points()[0];
+                    first = Some((f64::from(v.x), f64::from(v.y)));
                     p = geom::round_corners(&p, round);
                 }
-                (p, Vec::new(), true)
+                (p, Vec::new(), true, first)
             }
             "curve" => {
                 let mut values: Vec<Value> = Vec::with_capacity(a.pos.len());
@@ -2694,17 +2713,17 @@ impl<'a> Evaluator<'a> {
                 }
                 let closed = closed_flag && pts.len() >= 3;
                 let tension = a.num("tension").unwrap_or(0.5);
-                let path = if closed
-                    && tension == 0.0
-                    && let Some(round) = a.num("round").filter(|v| *v > 0.0)
-                {
+                let round = a
+                    .num("round")
+                    .filter(|v| *v > 0.0 && closed && tension == 0.0);
+                let first = round.map(|_| pts[0]);
+                let path = match round {
                     // A tension-0 spline is cubics. Skia's corner effect only rounds line joins,
                     // so the straight sides are a polygon before the same effect `poly` uses.
-                    geom::round_corners(&geom::polygon(&pts), round)
-                } else {
-                    geom::spline(&pts, tension, closed)
+                    Some(round) => geom::round_corners(&geom::polygon(&pts), round),
+                    None => geom::spline(&pts, tension, closed),
                 };
-                (path, vec![pts], closed)
+                (path, vec![pts], closed, first)
             }
             "path" => {
                 let d = first.and_then(|v| match v {
@@ -2718,7 +2737,7 @@ impl<'a> Evaluator<'a> {
                 let closed =
                     skia_safe::ContourMeasureIter::new(&p, false, None).all(|c| c.is_closed());
                 let knots = geom::vertices(&p);
-                (p, knots, closed)
+                (p, knots, closed, None)
             }
             "blob" => {
                 let r = first
@@ -2735,6 +2754,7 @@ impl<'a> Evaluator<'a> {
                     geom::blob(r, points, a.num("wobble").unwrap_or(0.2), &mut rng),
                     Vec::new(),
                     true,
+                    None,
                 )
             }
             _ => unreachable!("primitive {verb}"),
@@ -3371,6 +3391,7 @@ impl<'a> Evaluator<'a> {
                     decl: None,
                     inner: Some(names.clone()),
                     rows: Rc::default(),
+                    seam: 0.0,
                 }));
                 self.placed.borrow_mut().insert(path.clone(), rec.clone());
                 rec
@@ -4578,6 +4599,7 @@ impl<'a> Evaluator<'a> {
                     decl: None,
                     inner: None,
                     rows: Rc::default(),
+                    seam: 0.0,
                 },
                 source: None,
                 canvas: Some(self.canvas),
@@ -4954,6 +4976,44 @@ impl<'a> Evaluator<'a> {
             ),
         )
         .fix("give the grid a `cell:` size, such as `cell:20x20`"))
+    }
+
+    /// `edge @body from:.2 to:.6`: that stretch of the shape's contour as an open path in this
+    /// node's parent frame.
+    fn edge(&mut self, a: &Args, named: &[Named], span: Span, sc: &Scope) -> R<Path> {
+        let (file, node) = (sc.file().to_string(), sc.node_name());
+        let mut fractions = [0.0, 1.0];
+        for (slot, k) in fractions.iter_mut().zip(["from", "to"]) {
+            let Some(v) = a.get(k) else { continue };
+            match v.num().filter(|x| x.is_finite() && (0.0..=1.0).contains(x)) {
+                Some(x) => *slot = x,
+                None => {
+                    let got = v.num().map_or_else(|| v.kind().to_string(), num);
+                    let f = fail("E0320", format!("`{k}:` is a fraction from 0 to 1, got {got}"))
+                        .fix(format!("write `{k}:.5`"));
+                    let span = named.iter().rfind(|n| n.key == k).map_or(span, |n| n.span);
+                    self.report(f, &file, span, &node);
+                    return Err(Fail::reported());
+                }
+            }
+        }
+        let one_shape = || {
+            let Some(Value::Ref(r)) = a.pos.first() else { return None };
+            let node = r.record.node.as_ref().filter(|_| r.canvas.is_none() && r.extent == Extent::Visual)?;
+            matches!(node.kind, NodeKind::Shape(_)).then_some((r, node))
+        };
+        let Some((r, node)) = one_shape() else {
+            let (msg, fix) = match a.pos.first() {
+                Some(Value::Ref(_)) => ("`edge` reads one shape's contour", "write `edge @belly from:.2 to:.6`, naming one shape"),
+                _ => ("`edge` needs a node reference", "write `edge @body from:.2 to:.6`"),
+            };
+            return Err(fail("E0320", msg).fix(fix));
+        };
+        self.outside_copy(r, sc)?;
+        let NodeKind::Shape(shape) = &node.kind else { unreachable!("one_shape checked the kind") };
+        let to_local = inverse(&sc.world) * r.record.parent_world * node.transform;
+        let [from, to] = fractions;
+        Ok(geom::edge(&shape.geometry, r.record.seam, from, to).make_transform(&to_local))
     }
 
     /// `at:@body.neck`: the anchor's position in the current local frame, the same point

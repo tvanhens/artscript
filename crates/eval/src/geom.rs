@@ -241,6 +241,87 @@ pub fn wobble(path: &Path, amount: f64, rng: &mut Rng, wavelength: f64) -> Path 
     b.detach()
 }
 
+/// The stretch of `path` from `from` to `to`, fractions 0..1 of the total contour length in path
+/// order. A position `p` sits at `seam + p` around the path. A stretch with `from > to` wraps
+/// through the seam, and `from == to` is empty. Each contour piece is its own open subpath, but
+/// a lone closed contour wraps without a break.
+pub fn edge(path: &Path, seam: f64, from: f64, to: f64) -> Path {
+    let measures: Vec<_> = skia_safe::ContourMeasureIter::new(path, false, None)
+        .filter(|m| m.length() > 0.0)
+        .collect();
+    let total: f64 = measures.iter().map(|m| f64::from(m.length())).sum();
+    let mut b = PathBuilder::new();
+    if from == to || total <= 0.0 {
+        return b.detach();
+    }
+    let span = if to > from { to - from } else { to - from + 1.0 };
+    let start = (seam + from).rem_euclid(1.0) * total;
+    let end = start + span * total;
+    let ranges = if end <= total { vec![(start, end)] } else { vec![(start, total), (0.0, end - total)] };
+    let lone_loop = measures.len() == 1 && measures[0].is_closed();
+    for (i, &(lo, hi)) in ranges.iter().enumerate() {
+        let mut offset = 0.0;
+        for m in &measures {
+            let len = f64::from(m.length());
+            let (a, z) = (lo.max(offset) - offset, hi.min(offset + len) - offset);
+            offset += len;
+            if z > a {
+                let _ = m.get_segment(a as f32, z as f32, &mut b, !(lone_loop && i == 1));
+            }
+        }
+    }
+    b.detach()
+}
+
+/// Where the point of `path` nearest `near` lies, as a fraction 0..1 of the total contour length
+/// in path order.
+pub fn seam_near(path: &Path, near: P) -> f64 {
+    let measures: Vec<_> = skia_safe::ContourMeasureIter::new(path, false, None).collect();
+    let total: f64 = measures.iter().map(|m| f64::from(m.length())).sum();
+    if total <= 0.0 {
+        return 0.0;
+    }
+    let dist = |m: &skia_safe::ContourMeasure, s: f64| {
+        let len = f64::from(m.length());
+        let s = if m.is_closed() { s.rem_euclid(len) } else { s.clamp(0.0, len) };
+        let (p, _) = m.pos_tan(s as f32).unwrap_or_default();
+        (f64::from(p.x) - near.0).hypot(f64::from(p.y) - near.1)
+    };
+    let (mut best, mut best_at, mut offset) = (f64::INFINITY, 0.0, 0.0);
+    for m in &measures {
+        let len = f64::from(m.length());
+        if len <= 0.0 {
+            continue;
+        }
+        let n = (len / (len / 4096.0).min(0.125)).ceil().clamp(2.0, 65536.0) as usize;
+        let step = len / n as f64;
+        let (mut lo_d, mut at) = (f64::INFINITY, 0.0);
+        for i in 0..=n {
+            let d = dist(m, step * i as f64);
+            if d < lo_d {
+                (lo_d, at) = (d, step * i as f64);
+            }
+        }
+        let (mut lo, mut hi) = (at - step, at + step);
+        for _ in 0..40 {
+            let (a, c) = (lo + (hi - lo) / 3.0, hi - (hi - lo) / 3.0);
+            if dist(m, a) <= dist(m, c) {
+                hi = c;
+            } else {
+                lo = a;
+            }
+        }
+        let refined = (lo + hi) / 2.0;
+        let (d, refined) = if dist(m, refined) <= lo_d { (dist(m, refined), refined) } else { (lo_d, at) };
+        if d < best {
+            let s = if m.is_closed() { refined.rem_euclid(len) } else { refined.clamp(0.0, len) };
+            (best, best_at) = (d, offset + s);
+        }
+        offset += len;
+    }
+    (best_at / total).rem_euclid(1.0)
+}
+
 /// Organic closed shape: `points` radii scaled by `1 + wobble*u`, angles jittered.
 pub fn blob(r: f64, points: usize, wobble: f64, rng: &mut Rng) -> Path {
     let n = points.max(3);
