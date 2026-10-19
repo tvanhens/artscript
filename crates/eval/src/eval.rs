@@ -5429,7 +5429,7 @@ fn is_paint_key(k: &str) -> bool {
     PAINT_KEYS.contains(&k)
 }
 
-fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
+pub(crate) fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
     let f = fail("E0321", format!("`{verb}` has no key `{key}`"));
     let near = keys
         .iter()
