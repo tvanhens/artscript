@@ -76,7 +76,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 
 ## Seeds and determinism
 
-- Each stamp's seeds come from its own path, so a named host keeps its leaves when other nodes change, and the `positional-seed` lint covers an unnamed one. `seed:` on the host pins every stamp on it, each with its own numbers, and the result is the same from any host in any file.
+- Each stamp's seeds come from its own path, so a named host keeps its leaves when other nodes change, and the `positional-seed` lint covers an unnamed one. A stamp whose block names parts, such as `leaves`, needs a stable host: on an unnamed host it is one E0312 at the host's line, and the host is not drawn. `seed:` on the host pins every stamp on it, each with its own numbers, and the result is the same from any host in any file.
 
 ## std/stamps
 

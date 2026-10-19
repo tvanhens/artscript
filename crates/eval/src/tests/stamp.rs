@@ -350,3 +350,10 @@ fn a_warning_in_a_block_keeps_the_set_going_and_is_reported_once() {
     assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
     assert_eq!(stamps(ev.scene.as_ref().unwrap(), "line").len(), 22, "every bead is placed");
 }
+
+#[test]
+fn an_unnamed_host_whose_block_names_parts_is_one_e0312_at_the_host() {
+    let ds = errors("@target t.png 200x100\nuse garden { leaves }\ncurve 0,50 100,50 stroke:#000000,2 stamp:leaves\n");
+    let got: Vec<(&str, &str, u32)> = ds.iter().map(|d| (d.code.as_str(), d.file.as_str(), d.span.line)).collect();
+    assert_eq!(got, [("E0312", "art/t.art", 3)], "{}", show(&ds));
+}

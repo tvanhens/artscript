@@ -455,8 +455,10 @@ impl Evaluator<'_> {
             None => host.key.clone(),
         };
         let set_key = Key::named(&root, &set.name, &[]);
-        if !region.is_empty() {
+        // The block's names would each report E0312 again, in a file the author may not own.
+        if !region.is_empty() && !set_key.is_stable() {
             self.unstable_scope(&set_key, &region, sc.file(), host.span);
+            return Err(Fail::reported());
         }
         let typed: Vec<(usize, Value)> = decl
             .params
