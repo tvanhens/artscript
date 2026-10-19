@@ -630,3 +630,23 @@ fn a_closed_brushed_tapered_strokes_ink_is_a_ring() {
     assert_eq!(reds(&at, 100, 30..50), 6, "the top edge, 6 units wide midway between knots of width 4 and 8");
     assert_eq!(reds(&at, 100, 50..150), 0, "the ring's middle is not ink");
 }
+
+#[test]
+fn dash_cap_and_join_on_a_tapered_stroke_are_e0362_at_the_key() {
+    let d = first("@target t.png 96x96\ncurve 10,48 48,20 86,48 stroke:#202030,[2 8 2] dash:4,2 cap:butt\n", &[], "E0362");
+    assert!(d.message.contains("`dash:` on a tapered stroke"), "{d}");
+    assert_eq!(col(&d), (2, 48), "{d}");
+    let d = first("@target t.png 96x96\ncurve 10,48 48,20 86,48 stroke:#202030,2 taper:.3 cap:butt\n", &[], "E0362");
+    assert!(d.message.contains("`cap:` on a tapered stroke"), "{d}");
+    assert_eq!(col(&d), (2, 51), "{d}");
+    let d = first("@target t.png 96x96\ncurve 10,48 48,20 86,48 join:bevel stroke:#202030,[2 8 2]\n", &[], "E0362");
+    assert!(d.message.contains("`join:` on a tapered stroke"), "{d}");
+    assert_eq!(col(&d), (2, 25), "{d}");
+    let d = first("@target t.png 96x96\nlayer back dash:4,2\n  curve 10,48 48,20 86,48 stroke:#202030,[2 8 2]\n", &[], "E0362");
+    assert!(d.message.contains("`dash:` on a tapered stroke"), "an inherited dash is never dropped: {d}");
+    assert_eq!(col(&d), (3, 27), "{d}");
+    let s = ok("@target t.png 96x96\nlayer back cap:butt join:bevel\n  curve 10,48 48,20 86,48 stroke:#202030,[2 8 2] name:a\n", &[]);
+    assert!(shape(&s, "a").fill.is_some(), "inherited cap and join do nothing");
+    let s = ok("@target t.png 96x96\ncurve 10,48 48,20 86,48 stroke:#202030,2 dash:4,2 cap:butt name:a\n", &[]);
+    assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().dash, vec![4.0, 2.0], "a stroke of one width keeps its dash");
+}
