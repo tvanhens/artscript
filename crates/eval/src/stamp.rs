@@ -13,7 +13,7 @@ use artscript_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
 use crate::brush::{CHANNEL_KEYS, Spine};
 use crate::color::Rgba;
-use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, first_fill, in_source_order, new_node, osa_distance};
+use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, first_fill, fx_ordinals, in_source_order, new_node, osa_distance};
 use crate::fx::FxSite;
 use crate::geom::P;
 use crate::identity::{self, Key, Lookup, Name, Names, Pending};
@@ -602,7 +602,11 @@ impl Evaluator<'_> {
         let fill = first_fill(&node).unwrap_or(Rgba::GRAY);
         let branch_fx = branch_fx.take();
         let lines = in_source_order(frame.decl.body.iter().filter_map(DefItem::fx), &branch_fx, &body);
-        let sites: Vec<FxSite> = lines.iter().map(|(line, scope)| FxSite { line, scope }).collect();
+        let ordinals = fx_ordinals(frame.decl.body.iter().filter_map(DefItem::fx), frame.decl.body.iter().filter_map(DefItem::scene));
+        let sites: Vec<FxSite> = lines
+            .iter()
+            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body.frame, world: body.world })
+            .collect();
         node.effects = self.lower_fx(&sites, &key, fill);
         self.run_checks(&checks);
         let rec = Rc::new(RefCell::new(Record {
@@ -617,6 +621,7 @@ impl Evaluator<'_> {
             decl: None,
             inner: Some(names),
             rows: Rc::default(),
+            seam: 0.0,
         }));
         self.placed.borrow_mut().insert(path, rec.clone());
         out.push((node, rec));

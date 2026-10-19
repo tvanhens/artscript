@@ -22,6 +22,7 @@ const BUILTIN: &[&str] = &[
     "path",
     "blob",
     "copy",
+    "edge",
     "subtract",
     "union",
     "intersect",
@@ -100,6 +101,9 @@ enum Seg {
     Copy(u32),
     Anon(Anon),
     Mask,
+    /// The nth `fx` line under a node, counted through every line the node owns, which owns
+    /// an outline mask.
+    Fx(u32),
 }
 
 impl fmt::Display for Seg {
@@ -109,6 +113,7 @@ impl fmt::Display for Seg {
             Seg::Copy(i) => write!(f, "{i}"),
             Seg::Anon(a) => write!(f, "{}~{}", a.verb, a.ordinal),
             Seg::Mask => f.write_str("mask~1"),
+            Seg::Fx(n) => write!(f, "fx~{n}"),
         }
     }
 }
@@ -197,6 +202,12 @@ impl Key {
 
     pub fn mask(&self) -> Key {
         self.extend(Seg::Mask, &[])
+    }
+
+    /// The mask under the node's `fx` line number `n`, counted from 1 in source order over
+    /// every `fx` line the node owns, under a skipped branch too.
+    pub fn fx_mask(&self, n: u32) -> Key {
+        self.extend(Seg::Fx(n), &[]).mask()
     }
 
     fn extend(&self, seg: Seg, copies: &[u32]) -> Key {
@@ -689,10 +700,8 @@ impl Declarer<'_> {
                 self.sub(s.span, label, &stmts);
             }
             SceneKind::Draw(d) => self.draw(s.span, d),
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => self.scenes(f.mask_block()),
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
 
@@ -746,6 +755,7 @@ impl Declarer<'_> {
                     mask: Mask::Block(b),
                     ..
                 } => self.scenes(b),
+                DrawItem::Fx(f) => self.scenes(f.mask_block()),
                 DrawItem::SlotFill(fill) if call => {
                     let stmts: Vec<&Scene> = fill.body.iter().collect();
                     self.sub(fill.span, format!("the `{}:` fill", fill.name), &stmts);
@@ -957,15 +967,14 @@ fn count<'s>(
                             mask: Mask::Block(b),
                             ..
                         } => children.push(b.iter().collect()),
+                        DrawItem::Fx(f) => children.push(f.mask_block().iter().collect()),
                         DrawItem::SlotFill(f) => children.push(f.body.iter().collect()),
                         _ => {}
                     }
                 }
             }
-            SceneKind::Let { .. }
-            | SceneKind::Check { .. }
-            | SceneKind::Play { .. }
-            | SceneKind::Fx(_) => {}
+            SceneKind::Fx(f) => children.push(f.mask_block().iter().collect()),
+            SceneKind::Let { .. } | SceneKind::Check { .. } | SceneKind::Play { .. } => {}
         }
     }
 }
@@ -1003,7 +1012,13 @@ impl ModuleIds {
         ordinals(&file, &top, aliases, &mut anon, &mut tags);
         for d in parsed.decls() {
             if let DeclKind::Def { name, body, .. } | DeclKind::Stamp { name, body, .. } = &d.kind {
-                let stmts: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
+                let stmts: Vec<&Scene> = body
+                    .iter()
+                    .flat_map(|item| match item {
+                        DefItem::Scene(s) => std::slice::from_ref(s),
+                        DefItem::Fx(f) => f.mask_block(),
+                    })
+                    .collect();
                 let r = declare(
                     &file,
                     RegionKind::Def,
@@ -1014,7 +1029,12 @@ impl ModuleIds {
                     out,
                 );
                 regions.insert(d.span, Rc::new(r));
-                ordinals(&file, &stmts, aliases, &mut anon, &mut tags);
+                let scenes: Vec<&Scene> = body.iter().filter_map(DefItem::scene).collect();
+                ordinals(&file, &scenes, aliases, &mut anon, &mut tags);
+                for f in body.iter().filter_map(DefItem::fx) {
+                    let block: Vec<&Scene> = f.mask_block().iter().collect();
+                    ordinals(&file, &block, aliases, &mut anon, &mut tags);
+                }
             }
         }
         ModuleIds {

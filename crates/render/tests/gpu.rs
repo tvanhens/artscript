@@ -21,10 +21,14 @@ fn decode(png: &[u8]) -> (i32, i32, Vec<u8>) {
 
 fn layered_scene() -> artscript_ir::Scene {
     let mut ringed = solid("ringed", circle_at(50.0, 60.0, 24.0), red());
-    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL }));
+    ringed.effects.push(effect(EffectOp::Outline { width: 5.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: None }));
     let mut soft = solid("soft", circle_at(110.0, 60.0, 24.0), color(0, 90, 220, 255));
     soft.opacity = 0.6;
-    scene(160.0, 120.0, vec![ringed, soft])
+    let mut cut = solid("cut", circle_at(50.0, 60.0, 10.0), color(255, 255, 255, 255));
+    let keep = solid("keep", skia_safe::Path::rect(skia_safe::Rect::from_xywh(0.0, 0.0, 50.0, 120.0), None), color(255, 255, 255, 255));
+    let mask = artscript_ir::Mask { source: artscript_ir::MaskSource::Nodes(vec![keep]), luminance: false, feather: 3.0, invert: false };
+    cut.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: artscript_ir::Sides::ALL, mask: Some(Box::new(mask)) }));
+    scene(160.0, 120.0, vec![ringed, soft, cut])
 }
 
 #[test]
