@@ -232,3 +232,23 @@ fn children_of_an_unbrushed_fill_still_clip_to_its_geometry() {
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 15, 40)[3], 0);
 }
+
+#[test]
+fn children_of_a_brushed_fill_still_blend_with_it() {
+    let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let mut gray = solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(128, 128, 128, 255));
+    gray.blend = artscript_ir::Blend::Multiply;
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, gray)]), 1.0, Backend::Cpu).unwrap();
+    let px = pixel(&png, 30, 40);
+    assert!(px[0].abs_diff(128) <= 2 && px[1] <= 2 && px[2] <= 2 && px[3] == 255, "gray multiplied over red is dark red: {px:?}");
+}
+
+#[test]
+fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
+    let mut host = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
+    let plain = solid("a.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
+    with_stamps(&mut host, vec![stamp("a.dots.0", artscript_ir::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
+    let svg = render_svg(&scene(80.0, 80.0, vec![host]), artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 1, "{svg}");
+    assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
+}
