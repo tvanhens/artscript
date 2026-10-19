@@ -74,7 +74,7 @@ layer body
     curve 420,350 520,300 640,280 760,296 850,370 fill:none stamp:clump(r:6 spacing:6) name:moss_low
     each k, dr in [470,300 590,272 700,276 812,322]
       curve 0,0 -4,30 2,60 at:dr fill:none stamp:clump(r:4 spacing:5) name:moss_drip
-    each k, gl in [575,250 610,236 785,272]
+    each k, gl in [575,262 612,256 785,282]
       ellipse 50,36 at:gl+(0,22) fill:p.glow.2 a:.35 blur:20 blend:add name:shroom_light
     ellipse 260,150 at:540,330 fill:p.shell.6 a:.3 blur:70 blend:screen
     ellipse 300,200 at:780,600 fill:p.ink a:.35 blur:80 blend:multiply
@@ -85,14 +85,15 @@ layer body
     fang 42+mod(k 2)*18 14+mod(k 2)*3 lean:-6 at:sp.0,sp.1 rot:sp.2 tone:p.bone.2 name:spine
       fx outline 5 color:p.ink
   curve 390,340 470,290 560,260 640,248 720,256 800,294 856,354 896,430 fill:none stamp:strands name:moss_line
-  each k, mu in [575,232 610,218 785,258]
+  each k, mu in [575,252 612,246 785,274]
     ellipse 14,5 at:mu+(0,2) fill:p.ink a:.5 blur:3 name:shroom_shadow
     group at:mu name:shroom
-      curve 0,0 -2,-14 1,-26 stroke:p.bone.3,5 taper:0,.2
-      ellipse 16-k*2,9 at:1,-28 fill:radial(p.glow.4 p.glow.2 at:.4,.3 r:16) name:cap
+      curve 0,6 -2,-12 1,-30 stroke:p.bone.3,5 taper:0,.2
+      ellipse 16-k*2,9 at:1,-32 fill:radial(p.glow.4 p.glow.2 at:.4,.3 r:16) name:cap
         ellipse 8,3 at:-3,-3 fill:p.shine a:.7 blur:1.5
       fx glow 10 color:p.glow.3 a:.7
       fx outline 3 color:p.ink
+    curve -13,1 0,-2 13,1 at:mu fill:none stamp:clump(r:6 spacing:5) name:shroom_moss
 
 layer legs_mid
   leg 505,680 455,775 470,872 w:36 tone:p.leg.5 bend:10 spur:0 name:leg_n0
