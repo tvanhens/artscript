@@ -388,4 +388,12 @@ mod tests {
         assert!(p.x.abs() < 1e-4 && p.y == -20.0, "{p:?}");
         assert_eq!(s.count_points(), 8);
     }
+
+    #[test]
+    fn poly_first_vertex_points_up() {
+        let s = regular(3, 30.0, None);
+        let p = s.points()[0];
+        assert!(p.x.abs() < 1e-4 && p.y == -30.0, "{p:?}");
+        assert_eq!(s.count_points(), 3);
+    }
 }
