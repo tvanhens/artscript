@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 
 use artscript_ir::{Matrix, Node, NodeKind, Paint, Point};
+use artscript_syntax::Severity;
 use artscript_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
 use crate::brush::{CHANNEL_KEYS, Spine};
@@ -481,6 +482,7 @@ impl Evaluator<'_> {
             style: Rc::new(style),
             host,
             sc,
+            warned: RefCell::default(),
         };
         let mut out = Vec::new();
         let mut i = 0u32;
@@ -576,7 +578,8 @@ impl Evaluator<'_> {
     }
 
     /// Draws the block at `s`. Returns `false` when the block reported an error, so the caller
-    /// skips the rest of the set and one typo is one diagnostic.
+    /// skips the rest of the set and one typo is one diagnostic. A warning keeps the set going,
+    /// and each warning line is reported once per set.
     fn one_stamp(&mut self, frame: &StampFrame<'_>, spine: &Spine<'_>, contour: usize, s: f64, i: &mut u32, out: &mut Vec<(Node, Rc<RefCell<Record>>)>) -> R<bool> {
         let site = site_of(spine, contour, s, *i);
         *i += 1;
@@ -612,7 +615,14 @@ impl Evaluator<'_> {
         }));
         self.placed.borrow_mut().insert(path, rec.clone());
         out.push((node, rec));
-        Ok(self.diags.len() == before)
+        let mut failed = false;
+        for d in self.diags.split_off(before) {
+            failed |= d.severity == Severity::Error;
+            if d.severity == Severity::Error || frame.warned.borrow_mut().insert((d.code.clone(), d.file.clone(), d.span.line, d.span.col)) {
+                self.diags.push(d);
+            }
+        }
+        Ok(!failed)
     }
 }
 
@@ -628,6 +638,8 @@ struct StampFrame<'a> {
     style: Rc<Vec<(String, Value)>>,
     host: &'a Host<'a>,
     sc: &'a Scope,
+    /// Warnings already reported for this set, by code and site.
+    warned: RefCell<BTreeSet<(String, String, u32, u32)>>,
 }
 
 impl StampFrame<'_> {

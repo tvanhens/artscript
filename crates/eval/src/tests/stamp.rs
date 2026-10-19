@@ -339,3 +339,14 @@ curve 0,0 40,0 stamp:neither name:b
     assert!(ds[4].message.contains("a `slot`"));
     assert!(ds[5].message.contains("an `anchor`"));
 }
+
+#[test]
+fn a_warning_in_a_block_keeps_the_set_going_and_is_reported_once() {
+    let ev = run_with("@target t.png 256x256\nstamp beads spacing:10\n  circle 2 fill:#333333 name:bead\n  expect i < 5 \"only five fit\"\ncurve 20,128 236,128 stamp:beads name:line\n", &[]);
+    let warned: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "C0201").collect();
+    assert_eq!(warned.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(warned[0].node, "line.beads.5");
+    assert!(!warned[0].notes.iter().any(|n| n.starts_with("also in")), "{}", warned[0]);
+    assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(stamps(ev.scene.as_ref().unwrap(), "line").len(), 22, "every bead is placed");
+}

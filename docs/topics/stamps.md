@@ -40,6 +40,7 @@ circle 4 at:@vine.leaves.6.leaf.tip fill:p.berry                                
 
 - The block sees the paint keys of the layer or style the host sits in, with `stamp:` and the channel keys removed, so `layer garden brush:dry stamp:dots` reaches the shapes in the block without stamping them again. The host's own line's keys do not reach the block. An instance of a def that declares names needs `name:` on its line in the block, as in a def body (E0312).
 - `rand` and `pick` in the block draw from the stamp's own seed, so every stamp gets its own numbers.
+- An error in the block stops the set at that stamp, so one mistake is one diagnostic. A warning, such as a failing `expect`, is reported once per set at its line, and the set places every stamp.
 
 ## Placing
 
