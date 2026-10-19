@@ -3260,6 +3260,31 @@ fn an_explicit_seed_draws_the_same_noise_in_any_node_and_file() {
 }
 
 #[test]
+fn a_field_mask_seeds_from_the_node_it_masks() {
+    use artscript_ir::{Field, MaskSource};
+    let masked = |children: &str| {
+        let src = format!("@target t.png 100x100\ncircle 40 name:l\n{children}  mask simplex(14) > .42\n");
+        let ev = eval_lint(&src, "");
+        assert!(ev.diagnostics.iter().all(|d| d.code != "L0104"), "{}", show(&ev.diagnostics));
+        match &node(ev.scene.as_ref().unwrap(), "l").mask.as_ref().unwrap().source {
+            MaskSource::Field { field: Field::Noise { seed, .. }, .. } => *seed,
+            other => panic!("{other:?}"),
+        }
+    };
+    let bare = masked("");
+    assert_eq!(bare, masked("  circle 10\n"));
+    assert_eq!(bare, masked("  circle 10\n  circle 5\n"));
+}
+
+#[test]
+fn a_field_mask_under_an_unnamed_node_warns_l0104_at_that_node() {
+    let ev = eval_lint("@target t.png 100x100\ncircle 40 name:l\ncircle 40\n  circle 10\n  mask simplex(14) > .42\n", "");
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0104").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(hits[0].span.line, 3);
+}
+
+#[test]
 fn an_unnamed_node_with_an_explicit_seed_does_not_warn_l0104() {
     let ev = eval_lint("@target t.png 40x40\ncircle 4 at:rand(0 10 seed:3),0\n", "");
     assert!(
