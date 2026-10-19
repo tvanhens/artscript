@@ -139,8 +139,7 @@ fn a_brush_on_a_stroke_makes_a_ribbon_and_on_fill_narrows_it() {
     assert_eq!(r.contours.len(), 1);
     let c = &r.contours[0];
     assert!(!c.closed);
-    assert_eq!(c.start, 0.0);
-    assert!((c.len - r.len).abs() < 1e-4 && r.len > 90.0, "len {}", r.len);
+    assert!(c.len > 90.0, "len {}", c.len);
     assert_eq!(c.knots.first().unwrap().s, 0.0);
     assert_eq!(c.knots.last().unwrap().s, c.len);
     assert!(c.knots.iter().all(|k| k.half_width == 2.0 && k.pressure == 1.0 && k.angle == 0.0 && k.tilt == 0.0));
@@ -555,4 +554,31 @@ fn a_paths_on_curve_vertices_are_its_knots() {
     let at = |acc: f32| two.at(acc / total * two.len).pressure;
     assert!((at(0.0) - 0.2).abs() < 1e-3 && (at(20.0) - 0.8).abs() < 1e-3 && (at(40.0) - 0.4).abs() < 1e-3, "{:?}", two.knots);
     assert!((at(total) - 0.2).abs() < 1e-3, "Z closes back to the first vertex's value");
+}
+
+const SOLID: &str = "brush solid\n  sksl \"\"\"\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n";
+
+/// The image of `src` on the CPU, as a pixel reader `(x, y) -> rgba`.
+fn pixels(src: &str) -> impl Fn(i32, i32) -> [u8; 4] + use<> {
+    let (w, _, px) = super::rgba(&super::png(src));
+    move |x, y| {
+        let i = (y * w + x) as usize * 4;
+        [px[i], px[i + 1], px[i + 2], px[i + 3]]
+    }
+}
+
+/// Rows `ys` in column `x` where black ink on white passes half.
+fn inked(at: &impl Fn(i32, i32) -> [u8; 4], x: i32, ys: std::ops::Range<i32>) -> i32 {
+    ys.filter(|&y| at(x, y)[0] < 128).count() as i32
+}
+
+#[test]
+fn each_contour_of_a_brushed_path_tapers_over_its_own_length() {
+    let at = pixels(&format!("@target t.png 200x80 bg:#ffffff\n{SOLID}path \"M10 20 L190 20 M10 60 L190 60\" stroke:#000000,16 taper:.2 brush:solid name:two\n"));
+    for y in [20, 60] {
+        let (start, mid, end) = (inked(&at, 12, y - 10..y + 10), inked(&at, 100, y - 10..y + 10), inked(&at, 188, y - 10..y + 10));
+        assert_eq!(mid, 16, "contour at y {y}: full width in the middle");
+        assert!(start < 8 && end < 8, "contour at y {y} thins at both ends: {start} {mid} {end}");
+        assert_eq!(start, end, "contour at y {y} tapers the same at each end");
+    }
 }

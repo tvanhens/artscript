@@ -697,7 +697,6 @@ pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), 
             sp
         })
         .collect();
-    let len = start;
     let width = lines(widths, 1.0, &spans);
     let channel = |key: &str, default: f64| lines(ch.get(key).unwrap_or(&[]), default, &spans);
     let (pressure, angle, tilt) = (channel("pressure", 1.0), channel("angle", 0.0), channel("tilt", 0.0));
@@ -722,10 +721,10 @@ pub fn ribbon(path: &Path, knots: &[Vec<P>], widths: &[f64], taper: (f64, f64), 
                     velocity: velocity[i].at(s) as f32,
                 })
                 .collect();
-            RibbonContour { start: sp.start as f32, len: sp.len as f32, closed: sp.closed, knots }
+            RibbonContour { len: sp.len as f32, closed: sp.closed, knots }
         })
         .collect();
-    Ribbon { marks, contours, len: len as f32, taper: [taper.0 as f32, taper.1 as f32] }
+    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32] }
 }
 
 /// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime

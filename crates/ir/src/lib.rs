@@ -177,9 +177,8 @@ pub struct Ribbon {
     pub marks: Vec<RibbonMark>,
     /// One per contour of the geometry, in path order.
     pub contours: Vec<RibbonContour>,
-    /// Arc length of every contour together, in local units.
-    pub len: f32,
-    /// The fraction of `len` over which the start and the end thin, through [`taper_ramp`].
+    /// The fraction of each contour's `len` over which its start and its end thin, through
+    /// [`taper_ramp`]. Each contour is its own pen stroke.
     pub taper: [f32; 2],
 }
 
@@ -201,8 +200,6 @@ pub struct RibbonMark {
 /// The channel knots of one contour. Between knots every value interpolates linearly by `s`.
 #[derive(Clone, Debug)]
 pub struct RibbonContour {
-    /// Arc length along the whole geometry at which this contour starts.
-    pub start: f32,
     pub len: f32,
     pub closed: bool,
     /// Rising `s`, the first at 0 and the last at `len`.

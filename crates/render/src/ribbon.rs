@@ -40,7 +40,7 @@ impl FieldKey {
             ltd.skew_y(), ltd.scale_y(), ltd.translate_y(),
             ltd.persp_x(), ltd.persp_y(), ltd[8],
         ];
-        let mut data: Vec<u32> = vec![spec.total_len, spec.taper[0], spec.taper[1], spec.reach].into_iter().map(f32::to_bits).collect();
+        let mut data: Vec<u32> = vec![spec.taper[0], spec.taper[1], spec.reach].into_iter().map(f32::to_bits).collect();
         for k in &spec.contour.knots {
             data.extend([k.s, k.half_width, k.pressure, k.angle, k.tilt, k.velocity].map(f32::to_bits));
         }
@@ -59,7 +59,6 @@ pub(crate) struct Spec<'a> {
     /// Index of the contour in the path, as `ContourMeasureIter` yields them.
     pub index: usize,
     pub contour: &'a RibbonContour,
-    pub total_len: f32,
     pub taper: [f32; 2],
     /// Local units the stages may paint past the ribbon's edge.
     pub reach: f32,
@@ -313,7 +312,7 @@ fn build(spine: &Spine, rect: IRect, spec: &Spec<'_>) -> Result<Field, RenderErr
             };
             let on = s.clamp(0.0, contour.len);
             let k: Knot = contour.at(on);
-            let ramp = taper_ramp(f64::from((contour.start + on) / spec.total_len.max(1e-9)), (f64::from(spec.taper[0]), f64::from(spec.taper[1])));
+            let ramp = taper_ramp(f64::from(on / contour.len.max(1e-9)), (f64::from(spec.taper[0]), f64::from(spec.taper[1])));
             let hw = k.half_width * ramp as f32;
             let (hi, lo) = split_s(s / px);
             field.extend([hi, lo, d / px, hw / px].map(|v| f16_bits(v).to_ne_bytes()).into_iter().flatten());
@@ -335,7 +334,7 @@ mod tests {
 
     fn contour(len: f32, closed: bool, hw: f32) -> RibbonContour {
         let knot = |s: f32| Knot { s, half_width: hw, pressure: 1.0, angle: 0.0, tilt: 0.0, velocity: 1.0 };
-        RibbonContour { start: 0.0, len, closed, knots: vec![knot(0.0), knot(len)] }
+        RibbonContour { len, closed, knots: vec![knot(0.0), knot(len)] }
     }
 
     struct Texels {
@@ -373,7 +372,7 @@ mod tests {
     }
 
     fn field_of(path: &skia_safe::Path, ltd: Matrix, contour: &RibbonContour, reach: f32, rect: IRect) -> Field {
-        let spec = Spec { index: 0, contour, total_len: contour.len, taper: [0.0, 0.0], reach };
+        let spec = Spec { index: 0, contour, taper: [0.0, 0.0], reach };
         let px = 1.0 / ltd.scale_x();
         let spine = Spine::new(path, &ltd, px, &spec, rect).expect("spine");
         build(&spine, rect, &spec).unwrap()

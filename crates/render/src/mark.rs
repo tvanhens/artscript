@@ -68,7 +68,7 @@ pub(crate) fn draw_ribbon(
     let Some(frame) = Frame::of(canvas) else { return Ok(()) };
     let stages: Vec<(&Stage, &())> = ribbon.marks.iter().map(|m| (&m.stage, &())).collect();
     for (index, contour) in ribbon.contours.iter().enumerate() {
-        let spec = Spec { index, contour, total_len: ribbon.len, taper: ribbon.taper, reach: ribbon.reach() };
+        let spec = Spec { index, contour, taper: ribbon.taper, reach: ribbon.reach() };
         let pad = spec.max_half_width() + spec.reach + 2.0 * frame.px;
         let local = geometry.compute_tight_bounds().with_outset((pad, pad));
         let rounded: IRect = frame.ltd.map_rect(local).0.round_out();
