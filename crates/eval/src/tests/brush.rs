@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use artscript_ir::{AreaMark, Ribbon, Scene, UniformValue};
+use artscript_ir::{AreaMark, Cap, Join, Ribbon, Scene, UniformValue};
 use artscript_syntax::Diagnostic;
 
 use crate::{Project, evaluate, plan};
@@ -667,7 +667,8 @@ fn dash_cap_and_join_on_a_tapered_stroke_are_e0362_at_the_key() {
     assert!(d.message.contains("`dash:` on a tapered stroke"), "an inherited dash is never dropped: {d}");
     assert_eq!(col(&d), (3, 27), "{d}");
     let s = ok("@target t.png 96x96\nlayer back cap:butt join:bevel\n  curve 10,48 48,20 86,48 stroke:#202030,[2 8 2] name:a\n", &[]);
-    assert!(shape(&s, "a").fill.is_some(), "inherited cap and join do nothing");
+    let stroke = shape(&s, "a").stroke.as_ref().unwrap();
+    assert!(matches!((stroke.cap, stroke.join), (Cap::Round, Join::Round)), "inherited cap and join do nothing");
     let s = ok("@target t.png 96x96\ncurve 10,48 48,20 86,48 stroke:#202030,2 dash:4,2 cap:butt name:a\n", &[]);
     assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().dash, vec![4.0, 2.0], "a stroke of one width keeps its dash");
 }
