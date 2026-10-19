@@ -1,0 +1,197 @@
+@target monster/bogmaw.png 1024x1024
+@target monster/bogmaw_card.png 1024x1024 bg:#26232c
+
+use paint { sculpt ink }
+use parts { leg fang }
+
+stamp clump spacing:7 r:9 tone:p.moss.2
+  each j in 0..3
+    circle r*(.3+1*rand(0 1)*rand(0 1)+.15) at:rand(-7 7),rand(-6 10)+j*3 fill:pick([shade(tone -2) shade(tone -1) tone shade(tone 1)]) name:bit
+      circle r*.35 at:0-r*.2,0-r*.3 fill:shade(tone 2) a:.55 blur:2
+
+stamp strands spacing:6 h:20
+  curve 0,0 rand(-3 3),0-h*.45 rand(-8 8),0-h*(.5+.7*rand(0 1)) stroke:pick([p.moss.1 p.moss.2 p.moss.3 p.moss.4]),3.5 taper:0,1 rot:-tangent+rand(-30 30) name:strand
+
+layer ground_shadow
+  ellipse 380,50 at:540,885 fill:p.ink a:.6 blur:26
+  ellipse 300,26 at:560,876 fill:p.ink a:.55 blur:10
+  each k, ft in [470,877 592,880 640,877 832,871 690,855 850,840 925,853]
+    ellipse 34,8 at:ft fill:p.ink a:.75 blur:6 name:foot_shadow
+    ellipse 14,4 at:ft+(0,-1) fill:p.ink a:.9 blur:2 name:foot_contact
+
+layer legs_far
+  leg 640,610 715,705 690,850 w:23 tone:p.leg.2 bend:-6 spur:0 name:leg_f1
+  leg 770,615 860,690 850,835 w:21 tone:p.leg.2 bend:-10 name:leg_f2
+  leg 870,590 950,680 925,848 w:18 tone:p.leg.2 bend:-8 spur:0 name:leg_f3
+  fx adjust hue:-14 light:-.14 sat:-.25
+  fx rim 3 dir:1,-1 color:p.rim a:.35
+  fx outline 4 color:p.shell.0
+
+layer underside
+  curve 380,610 520,680 720,690 900,600 905,660 720,745 520,740 385,690 closed fill:p.belly.1 brush:sculpt(lo:p.ink hi:p.belly.4 scale:.6 glossk:.2) name:belly
+    each k in 0..6
+      curve 0,0 6,20 2,44 at:440+k*75,670+abs(k-3)*-6 stroke:p.belly.0,5 a:.6 blur:2 name:fold
+    curve 395,690 520,738 720,742 900,662 stroke:p.belly.4,6 a:.45 blur:4 name:bounce
+    curve 380,615 520,688 720,698 900,606 stroke:p.ink,40 a:.75 blur:12 name:shell_cast
+  fx outline 6 color:p.ink
+
+layer body
+  curve 330,540 360,390 470,280 620,236 770,270 880,380 925,520 885,625 740,675 560,685 400,655 closed fill:p.shell.1 name:shell
+    each k, th in [42 31 17 7 -6 -17 -30 -44]
+      group at:620,900 rot:th name:segment
+        ellipse 112+mod(k*37 44),430 at:24,-430 fill:p.ink a:.7 blur:12
+        ellipse 112+mod(k*37 44),430 at:0,-430 fill:p.shell.3 brush:sculpt(scale:1.6 strength:.85 planes:.8 plump:.9 glossk:.4) name:plate
+          if th < 25
+            curve 100,-330 120,0 100,330 stroke:p.shell.6,3 a:.85 blur:.6
+            curve 108,-330 128,0 108,330 stroke:p.shell.0,7 a:.75 blur:1.5
+            if th > -40
+              curve -40,-290 -62,-130 -64,10 stroke:p.shine,4 taper:.4 a:.35 blur:1.5 name:wet_streak
+            each i in 0..4
+              ellipse 3,1.5 at:104+rand(-2 4),rand(-130 190) rot:rand(-40 40) fill:p.shell.6 a:.8 name:chip
+            each i in 0..7
+              circle 2.5+rand(0 3.5) at:80+rand(0 22),rand(-130 170) fill:p.shell.0 a:.6 name:pit
+                circle 1.8 at:1,1.5 fill:p.shell.5 a:.5 blur:1
+            each i in 0..3
+              curve 0,0 rand(-14 -6),rand(10 30) rand(-24 -10),rand(30 55) at:96,rand(-110 150) stroke:p.shell.6,1.5 taper:.3 a:.4 name:scratch
+    ellipse 380,90 at:640,700 fill:p.shell.0 a:.85 blur:44
+    ellipse 300,120 at:790,660 fill:p.ink a:.3 blur:22 blend:multiply
+    curve 380,600 560,640 760,630 900,560 stroke:p.ink,60 a:.35 blur:30 name:core_shadow
+    curve 410,668 560,694 740,686 880,636 stroke:p.rim,6 a:.3 blur:4 name:shell_rim_bounce
+    ellipse 300,80 at:660,640 fill:p.rim a:.14 blur:40 blend:soft_light name:cool_bounce
+    ellipse 90,160 at:340,580 fill:p.ink a:.75 blur:36
+    ellipse 110,190 at:540,560 fill:p.ink a:.85 blur:34 name:head_contact
+    curve 400,660 560,690 740,680 885,630 stroke:p.belly.3,8 a:.3 blur:6 name:shell_bounce
+    ellipse 120,260 at:960,520 fill:p.shell.0 a:.55 blur:50
+    ellipse 260,330 at:860,480 fill:p.rim a:.12 blur:60 blend:soft_light name:cool_back
+    ellipse 200,260 at:430,470 fill:p.rust.3 a:.18 blur:60 blend:soft_light name:warm_front
+    each k, lc in [500,330,7 560,300,5 610,318,4 735,300,6 815,360,4 655,470,3]
+      curve -22,0 0,-4 22,2 at:lc.0,lc.1 rot:k*40 fill:none stamp:clump(r:lc.2 spacing:lc.2 tone:p.rust.2) a:.85 name:lichen
+    curve 380,370 470,312 560,284 640,272 720,280 800,318 856,378 890,450 stroke:p.ink,34 a:.45 blur:12 name:moss_shadow
+    curve 390,352 470,300 560,272 640,260 720,268 800,306 856,366 892,440 stroke:p.moss.0,22 a:.7 blur:6 name:moss_under
+    curve 380,345 470,290 560,262 640,250 720,258 800,296 856,356 896,430 fill:none stamp:clump(r:10) name:moss_top
+    each k, big in [470,296,16 640,252,20 800,300,15]
+      curve -30,0 0,-4 30,0 at:big.0,big.1 fill:none stamp:clump(r:big.2 spacing:9) name:moss_mass
+    curve 420,350 520,300 640,280 760,296 850,370 fill:none stamp:clump(r:6 spacing:6) name:moss_low
+    each k, dr in [470,300 590,272 700,276 812,322]
+      curve 0,0 -4,30 2,60 at:dr fill:none stamp:clump(r:4 spacing:5) name:moss_drip
+    each k, gl in [575,250 610,236 785,272]
+      ellipse 50,36 at:gl+(0,22) fill:p.glow.2 a:.35 blur:20 blend:add name:shroom_light
+    ellipse 260,150 at:540,330 fill:p.shell.6 a:.3 blur:70 blend:screen
+    ellipse 300,200 at:780,600 fill:p.ink a:.35 blur:80 blend:multiply
+    fx rim 10 dir:1,-1 color:p.rim a:.4
+    fx grain .045 scale:1.4
+  copy @shell fill:none stroke:p.ink,18 brush:ink(center:620,470 thin:.3) name:shell_ink
+  each k, sp in [418,330,-48 525,262,-26 640,240,-4 752,262,18 846,330,42 900,430,64]
+    fang 42+mod(k 2)*18 14+mod(k 2)*3 lean:-6 at:sp.0,sp.1 rot:sp.2 tone:p.bone.2 name:spine
+      fx outline 5 color:p.ink
+  curve 390,340 470,290 560,260 640,248 720,256 800,294 856,354 896,430 fill:none stamp:strands name:moss_line
+  each k, mu in [575,232 610,218 785,258]
+    ellipse 14,5 at:mu+(0,2) fill:p.ink a:.5 blur:3 name:shroom_shadow
+    group at:mu name:shroom
+      curve 0,0 -2,-14 1,-26 stroke:p.bone.3,5 taper:0,.2
+      ellipse 16-k*2,9 at:1,-28 fill:radial(p.glow.4 p.glow.2 at:.4,.3 r:16) name:cap
+        ellipse 8,3 at:-3,-3 fill:p.shine a:.7 blur:1.5
+      fx glow 10 color:p.glow.3 a:.7
+      fx outline 3 color:p.ink
+
+layer legs_mid
+  leg 505,680 455,775 470,872 w:36 tone:p.leg.5 bend:10 spur:0 name:leg_n0
+  fx outline 5 color:p.ink
+
+layer head rot:8 pivot:480,640
+  blob 62 at:470,628 seed:2 wobble:.3 fill:p.flesh.2 brush:sculpt(hi:p.flesh.4 scale:.5) name:cheek
+    fx outline 6 color:p.ink
+  curve 70,600 150,640 300,652 470,625 505,700 430,795 285,825 150,785 85,700 closed fill:p.bone.1 brush:sculpt(hi:p.bone.4 lo:p.flesh.0 scale:.8 glossk:.15 depth:.6) name:jaw
+    each k, ck in [150,700 230,770 380,750 440,700]
+      curve 0,0 rand(6 14),rand(8 16) rand(4 20),rand(18 34) at:ck stroke:p.flesh.0,[1 3.5 1] a:.6 blur:.8 name:crack
+    each i in 0..40
+      circle 1.5+rand(0 1.5) at:rand(110 470),rand(680 800) fill:p.bone.0 a:.4 name:pore
+    curve 90,640 290,690 480,652 stroke:p.bone.4,10 a:.35 blur:5
+    curve 70,612 300,662 500,632 stroke:p.ink,34 a:.45 blur:14 name:helmet_cast
+    curve 80,640 300,690 500,655 stroke:p.flesh.0,26 a:.4 blur:10 name:lip_core
+    curve 110,760 285,822 470,780 stroke:p.rim,10 a:.25 blur:6 name:jaw_bounce
+    each k, rg in [0,0 1,34]
+      curve 92,690+rg.y 285,745+rg.y 495,682+rg.y stroke:p.flesh.0,12 a:.35 blur:5 name:ridge_dark
+      curve 92,683+rg.y 285,738+rg.y 495,675+rg.y stroke:p.bone.4,2 a:.45 blur:1 name:ridge_lit
+    curve 75,628 160,662 300,672 470,648 505,660 stroke:p.flesh.2,16 blur:2 name:lip_roll
+    curve 80,624 160,656 300,665 470,642 stroke:p.flesh.4,3 a:.55 blur:1 name:lip_lit
+    curve 330,700 350,738 340,770 372,790 stroke:p.flesh.0,[1 5 4 1] a:.55 blur:1.5 name:crack_b
+    curve 334,700 354,738 344,770 376,790 stroke:p.bone.4,[1 2 1.5 .5] a:.6 blur:.6 name:crease_lit_b
+    curve 260,700 275,735 268,770 290,800 stroke:p.flesh.0,[1 6 5 1] a:.55 blur:1.5 name:big_crack
+    curve 265,700 280,735 273,770 295,800 stroke:p.bone.4,[1 2.5 2 .5] a:.6 blur:.6 name:crease_lit
+    curve 263,700 278,735 271,770 stroke:p.bone.4,1.5 taper:.2 a:.5
+  copy @jaw fill:none stroke:p.ink,16 brush:ink(center:290,715 thin:.45) name:jaw_ink
+  curve 110,600 300,585 470,585 465,640 300,665 120,640 closed fill:radial(p.maw.2 p.maw.0 at:.5,.2 r:200) name:maw
+    ellipse 120,24 at:300,652 fill:p.flesh.2 brush:sculpt(hi:p.flesh.4 scale:.4 glossk:.8) name:tongue
+    curve 110,600 300,585 470,585 stroke:p.flesh.1,18 blur:4
+    curve 120,640 300,665 465,640 stroke:p.flesh.2,14 blur:3
+    curve 130,638 300,661 455,638 stroke:p.flesh.4,2 a:.6 blur:1
+    each k, dr in [190,600,52 300,590,58 400,592,48]
+      curve 0,0 -3,dr.2*.5 2,dr.2 at:dr.0,dr.1 stroke:p.bone.4,[3+mod(k 2)*3 1.5+mod(k 2)*2 3+mod(k 2)*3] a:.5 name:drool
+      curve -1,2 -3,dr.2*.45 stroke:p.shine,1 a:.7 at:dr.0,dr.1 name:drool_spec
+      circle 4 at:dr.0+2,dr.1+dr.2 fill:p.bone.4 a:.5 name:drop
+        circle 1.5 at:-1,-1.5 fill:p.shine a:.9
+    each k, wt in [180,646 260,656 350,655 420,645]
+      ellipse 6,2 at:wt rot:mod(k 2)*20-10 fill:p.shine a:.7 name:wet
+    ellipse 30,5 at:290,645 fill:p.shine a:.45 blur:2 name:tongue_spec
+    each k in 0..9
+      fang 18+rand(0 20) 6+rand(0 4) lean:rand(-4 6) at:130+k*38+rand(-6 6),596-abs(k-4)*.8 rot:180+rand(-12 12) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:upper_tooth
+    ellipse 180,36 at:300,560 fill:p.ink a:.6 blur:20
+    ellipse 200,22 at:300,668 fill:p.maw.0 a:.5 blur:10 name:gullet_shadow
+  each k in 0..7
+    fang 14+rand(0 16) 6+rand(0 3) lean:rand(-6 4) at:160+k*42+rand(-8 8),652+abs(k-3)*2.5 rot:rand(-14 14) tone:pick([p.bone.2 p.bone.3 p.bone.1]) name:lower_tooth
+      fx outline 3 color:p.ink
+  curve 105,600 120,510 190,440 320,400 460,430 525,520 500,610 470,592 300,585 120,600 closed fill:p.shell.3 brush:sculpt(scale:1.2 strength:.8 planes:.8 plump:.8 glossk:.45) name:helmet
+    curve 110,598 300,585 490,600 stroke:p.shell.0,16 a:.8 blur:6
+    curve 160,470 142,530 150,595 stroke:p.shell.0,6 a:.7 blur:1.5
+    curve 152,470 134,530 142,595 stroke:p.shell.6,4 a:.4 blur:2
+    curve 440,440 428,520 432,592 stroke:p.shell.0,6 a:.7 blur:1.5
+    curve 432,440 420,520 424,592 stroke:p.shell.6,4 a:.4 blur:2
+    each k, e in [196,540 282,522 362,540]
+      ellipse 38+mod(k 2)*7,28 at:e fill:p.maw.0 a:.9 blur:5 name:socket
+      curve e.x-30,e.y-18+(k-1)*-4 e.x,e.y-34 e.x+30,e.y-18-(k-1)*-4 stroke:p.shell.6,7 a:.6 blur:3 name:brow_lit
+      curve e.x-28,e.y-12+(k-1)*-4 e.x,e.y-26 e.x+28,e.y-12-(k-1)*-4 stroke:p.shell.0,6 a:.7 blur:2 name:brow_dark
+    ellipse 190,60 at:280,545 fill:p.glow.2 a:.4 blur:34 blend:add
+  copy @helmet fill:none stroke:p.ink,15 brush:ink(center:310,510 thin:.4) name:helmet_ink
+  fang 34 11 lean:-14 at:200,460 rot:-35 tone:p.bone.2 name:horn_l
+    fx outline 4 color:p.ink
+  fang 50 14 lean:-16 at:320,404 rot:-20 tone:p.bone.2 name:horn_m
+    fx outline 4 color:p.ink
+  fang 38 12 lean:-12 at:440,428 rot:-5 tone:p.bone.2 name:horn_r
+    fx outline 4 color:p.ink
+  each k, e in [196,540 282,522 362,540]
+    circle 15+mod(k 2)*5 at:e fill:radial(p.shine p.glow.4 p.glow.2 p.glow.0 at:.45,.55 r:20) name:eye
+      ellipse 3.5,10 at:0,2 fill:p.ink a:.9
+      group rot:(1-k)*28 name:lid
+        rect 56x28 at:0,-16 fill:grad(down p.shell.1 p.shell.0) name:lid_skin
+        curve -24,-2 0,-1 24,-2 stroke:p.ink,3
+        curve -24,1 0,2 24,1 stroke:p.glow.4,1.5 a:.5
+      fx glow 14 color:p.glow.3 a:.8 strength:1.6
+  fang 80 22 lean:-16 at:110,642 rot:-14 name:tusk_l
+    fx outline 5 color:p.ink
+  fang 104 26 lean:12 at:440,640 rot:4 name:tusk_r
+    fx outline 5 color:p.ink
+
+layer collar_layer
+  curve 485,410 525,490 532,580 512,655 stroke:p.ink,44 a:.6 blur:18 name:collar_shadow
+  curve 650,420 662,540 640,660 stroke:p.ink,30 a:.55 blur:14 name:collar_cast
+  curve 482,398 545,372 612,378 642,450 652,560 628,664 562,676 520,664 540,575 530,488 closed fill:p.shell.3 brush:sculpt(scale:1.4 strength:.85 planes:.8 plump:.8 glossk:.4) name:collar
+    curve 612,380 640,452 650,560 626,662 stroke:p.shell.6,3 a:.8 blur:.6
+    curve 620,384 648,454 658,560 634,664 stroke:p.shell.0,7 a:.7 blur:1.5
+    curve 548,400 530,470 534,560 stroke:p.shine,4 taper:.4 a:.3 blur:1.5
+    ellipse 90,60 at:600,650 fill:p.ink a:.5 blur:30
+    curve 530,520 560,600 600,670 640,640 stroke:p.ink,50 a:.4 blur:24 name:collar_core
+    curve 520,400 534,480 530,560 524,640 stroke:p.ink,26 a:.55 blur:10 name:head_wedge
+    each i in 0..8
+      circle 2+rand(0 3) at:rand(560 630),rand(440 630) fill:p.shell.0 a:.55 name:collar_pit
+        circle 1.5 at:1,1.2 fill:p.shell.5 a:.5 blur:1
+    curve 486,404 550,380 612,386 634,420 fill:none stamp:clump(r:8) name:collar_moss
+    fx outline 6 color:p.ink
+
+layer legs_near
+  leg 575,670 548,772 592,875 w:33 tone:p.leg.4 bend:-12 name:leg_n1
+  leg 700,665 690,768 640,872 w:29 tone:p.leg.3 bend:14 spur:0 name:leg_n2
+  leg 820,640 858,742 832,866 w:25 tone:p.leg.3 bend:-9 name:leg_n3
+  fx outline 5 color:p.ink
+
+assert inside(@shell canvas margin:24)

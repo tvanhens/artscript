@@ -1,0 +1,43 @@
+use paint { sculpt }
+
+# A chitin limb segment from `a` to `b`, `w1` and `w2` half widths, lit from the upper left.
+# `bend` bows the middle sideways, `occl` darkens the root where it tucks under the body.
+def limb a:0,0 b:100,0 w1:20 w2:12 tone:p.shell.2 bulge:.15 bend:0 occl:0 lo:p.ink
+  let d = b-a
+  let len = sqrt(d.x*d.x+d.y*d.y)
+  let nx = 0-d.y/len
+  let ny = d.x/len
+  let m = a+d*.5+(nx,ny)*bend
+  let wm = (w1+w2)*.5*(1+bulge)
+  curve a.x+nx*w1,a.y+ny*w1 m.x+nx*wm,m.y+ny*wm b.x+nx*w2,b.y+ny*w2 b.x-nx*w2,b.y-ny*w2 m.x-nx*wm,m.y-ny*wm a.x-nx*w1,a.y-ny*w1 closed fill:tone brush:sculpt(lo:lo scale:.5 glossk:.3 rimk:.2) name:seg
+    circle w1*1.8 at:a fill:shade(tone -3) a:occl blur:w1*.5
+    circle w1*1.2 at:a fill:p.ink a:occl*.7 blur:w1*.6
+    each i in 0..4
+      curve 0,0 rand(-8 8),rand(6 14) at:a+d*rand(.25 .85)+(nx,ny)*rand(0-wm*.6 wm*.6) stroke:shade(tone 2),1.2 taper:.3 a:.5 name:scuff
+    curve a.x-nx*w1*.9,a.y-ny*w1*.9 m.x-nx*wm*.9,m.y-ny*wm*.9 b.x-nx*w2*.9,b.y-ny*w2*.9 stroke:p.belly.3,wm*.18 a:.3 blur:2
+
+# A tuft of stiff bristles, for leg joints.
+stamp bristles spacing:3 h:9
+  curve 0,0 rand(-2 2),0-h*(.6+.6*rand(0 1)) stroke:p.ink,1.4 taper:0,1 rot:-tangent+rand(-35 35) a:.85 name:hair
+
+# A jointed leg: thigh, joint cap, bent shin, a spur, bristles and a bone claw at the foot.
+def leg hip:0,0 knee:40,80 foot:20,200 w:30 tone:p.shell.3 lo:p.ink bend:8 spur:1
+  limb hip knee w1:w w2:w*.78 tone:tone occl:.9 lo:lo bend:bend*.4 name:thigh
+  limb knee foot w1:w*.72 w2:w*.2 tone:tone lo:lo occl:.4 bend:bend name:shin
+  ellipse w*.6,w*.45 at:knee+(5,8) fill:p.ink a:.6 blur:6 name:knee_shadow
+  ellipse w*.5,w*.38 at:knee rot:atan2(knee.y-hip.y knee.x-hip.x) fill:shade(tone 1) brush:sculpt(lo:lo scale:.3 glossk:.6 plump:.8) name:knuckle
+    curve 0-w*.5,w*.1 0,w*.32 w*.5,w*.1 stroke:p.ink,2.5 a:.6
+    ellipse w*.13,w*.06 at:0-w*.18,0-w*.2 rot:-20 fill:p.shine a:.8
+  curve knee.x-w*.45,knee.y+w*.05 knee.x,knee.y+w*.45 knee.x+w*.45,knee.y+w*.05 stamp:bristles name:knee_hair
+  if spur > 0
+    fang w*.7 w*.18 lean:w*.2 tone:p.bone.1 at:knee+(foot-knee)*.45+(w*.45,0) rot:70 name:spur
+  fang w*.9 w*.3 lean:0-w*.15 tone:p.bone.2 at:foot rot:180 name:claw
+
+# A curved fang rooted at the origin, pointing up, `h` tall and `w` wide at the root.
+def fang h:60 w:16 lean:10 tone:p.bone.3
+  curve 0-w,0 0-w*.6,0-h*.5 lean,0-h w*.4,0-h*.55 w,0 closed fill:grad(left shade(tone 1) shade(tone -1)) name:tusk
+    curve 0-w*.45,0-h*.1 0-w*.25,0-h*.55 lean*.8,0-h*.92 stroke:shade(tone 2),w*.35 a:.75 blur:2
+    curve 0-w*.35,0-h*.2 0-w*.2,0-h*.5 stroke:p.shine,w*.12 a:.6
+    curve 0-w*.7,0-h*.18 w*.6,0-h*.22 stroke:shade(tone -2),1.2 a:.5
+    curve 0-w*.55,0-h*.38 w*.45,0-h*.42 stroke:shade(tone -2),1 a:.4
+    ellipse w*1.2,h*.18 at:0,0 fill:shade(tone -2) a:.6 blur:5
