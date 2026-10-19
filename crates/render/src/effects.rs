@@ -515,16 +515,17 @@ half4 main(half4 c) {
 /// One step of an effect chain that contains an outline. Filters are the Skia graph for a run
 /// of non-outline ops. An outline is geometry, so a name defined in an earlier run is not
 /// visible to a later one.
-pub enum LayerStep {
+pub enum LayerStep<'a> {
     Filter(ImageFilter),
-    Outline(OutlineStep),
+    Outline(OutlineStep<'a>),
 }
 
 #[derive(Clone, Copy)]
-pub struct OutlineStep {
+pub struct OutlineStep<'a> {
     pub width: f32,
     pub color: Color,
     pub sides: Sides,
+    pub mask: Option<&'a Mask>,
     pub cover_halo_past: Option<f32>,
 }
 
@@ -543,10 +544,10 @@ fn paints_past_its_input(effect: &Effect) -> bool {
 
 /// Splits a chain that contains a positive outline. A chain with none stays on the single
 /// image-filter path.
-pub fn layer_steps(
-    effects: &[Effect],
+pub fn layer_steps<'a>(
+    effects: &'a [Effect],
     env: &FxEnv<'_>,
-) -> Result<Option<Vec<LayerStep>>, RenderError> {
+) -> Result<Option<Vec<LayerStep<'a>>>, RenderError> {
     let outlined = effects
         .iter()
         .any(|e| matches!(e.op, EffectOp::Outline { width, .. } if width > 0.0));
@@ -558,10 +559,10 @@ pub fn layer_steps(
     let mut halo = false;
     let mut inked = 0.0_f32;
     for (i, effect) in effects.iter().enumerate() {
-        let EffectOp::Outline { width, color, sides, .. } = &effect.op else {
+        let EffectOp::Outline { width, color, sides, mask } = &effect.op else {
             continue;
         };
-        let (width, color, sides) = (*width, *color, *sides);
+        let (width, color, sides, mask) = (*width, *color, *sides, mask.as_deref());
         if width <= 0.0 {
             continue;
         }
@@ -572,7 +573,7 @@ pub fn layer_steps(
             steps.push(LayerStep::Filter(filter));
             halo |= run.iter().any(paints_past_its_input);
         }
-        steps.push(LayerStep::Outline(OutlineStep { width, color, sides, cover_halo_past: halo.then_some(inked) }));
+        steps.push(LayerStep::Outline(OutlineStep { width, color, sides, mask, cover_halo_past: halo.then_some(inked) }));
         inked = inked.max(width);
         start = i + 1;
     }
@@ -595,14 +596,16 @@ pub(crate) enum Coverage {
     Translucent,
 }
 
+/// `world` is the outlined node's canvas transform, which its mask's nodes draw under.
 pub fn outline_geometry(
-    backend: Backend,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
     src: Image,
     local_to_px: &Matrix,
     node: &Node,
-    step: OutlineStep,
+    step: OutlineStep<'_>,
 ) -> Result<Image, RenderError> {
-    let OutlineStep { width, color, sides, cover_halo_past } = step;
+    let OutlineStep { width, color, sides, mask, cover_halo_past } = step;
     if width <= 0.0 {
         return Ok(src);
     }
@@ -610,10 +613,10 @@ pub fn outline_geometry(
     if regions.is_empty() {
         return Ok(src);
     }
-    let ring = Ring { regions: &regions, local_to_px, width, color, sides };
-    let mut under = ring.composite(backend, &src, BlendMode::DstOver)?;
+    let ring = Ring { regions: &regions, local_to_px, width, color, sides, mask, ctx, world };
+    let mut under = ring.composite(&src, BlendMode::DstOver)?;
     if let Some(inked) = cover_halo_past {
-        let over = ring.composite(backend, &src, BlendMode::SrcOver)?.image_snapshot();
+        let over = ring.composite(&src, BlendMode::SrcOver)?.image_snapshot();
         let outside = ink_area(&regions, inked)?
             .with_transform(local_to_px)
             .with_toggle_inverse_fill_type();
@@ -652,6 +655,10 @@ struct Ring<'a> {
     width: f32,
     color: Color,
     sides: Sides,
+    /// Keeps the ring's ink where it keeps it. The content under the ring is not masked.
+    mask: Option<&'a Mask>,
+    ctx: &'a DrawCtx<'a>,
+    world: Matrix,
 }
 
 impl Ring<'_> {
@@ -671,8 +678,8 @@ impl Ring<'_> {
         )
     }
 
-    fn composite(&self, backend: Backend, src: &Image, mode: BlendMode) -> Result<skia_safe::Surface, RenderError> {
-        let mut surface = gpu::surface(backend, (src.width(), src.height()))
+    fn composite(&self, src: &Image, mode: BlendMode) -> Result<skia_safe::Surface, RenderError> {
+        let mut surface = gpu::surface(self.ctx.backend, (src.width(), src.height()))
             .ok_or_else(|| RenderError::Skia("outline geom surface".into()))?;
         let canvas = surface.canvas();
         canvas.draw_image(src, (0.0, 0.0), None);
@@ -702,6 +709,9 @@ impl Ring<'_> {
         ink.set_blend_mode(BlendMode::DstOut);
         for region in self.regions.iter().filter(|r| r.coverage == Coverage::Translucent) {
             canvas.draw_path(&region.path, &ink);
+        }
+        if let Some(mask) = self.mask {
+            crate::draw::apply_mask(canvas, mask, self.ctx, self.world)?;
         }
         canvas.restore();
         Ok(surface)

@@ -102,11 +102,7 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
     }
     let _ = writeln!(out, "  ({})", n.origin);
     let world = parent * n.transform;
-    let outline_masks = n.effects.iter().filter_map(|e| match &e.op {
-        EffectOp::Outline { mask, .. } => mask.as_deref(),
-        _ => None,
-    });
-    for mask in n.mask.as_deref().into_iter().chain(outline_masks) {
+    for mask in n.masks() {
         if let MaskSource::Nodes(nodes) = &mask.source {
             for c in nodes {
                 walk(c, world, depth + 1, seeded, out, false);

@@ -18,10 +18,10 @@ fn walk(nodes: &[Node], out: &mut Vec<Unsupported>) {
 
 fn visit(node: &Node, out: &mut Vec<Unsupported>) {
     features_of(node, out);
-    if let Some(mask) = &node.mask
-        && let MaskSource::Nodes(inner) = &mask.source
-    {
-        walk(inner, out);
+    for mask in node.masks() {
+        if let MaskSource::Nodes(inner) = &mask.source {
+            walk(inner, out);
+        }
     }
     for child in node.descendants() {
         visit(child, out);
@@ -106,6 +106,7 @@ fn paint_feature(node: &Node, paint: &Paint, fill: bool, out: &mut Vec<Unsupport
 fn effect_feature(op: &EffectOp) -> Option<&'static str> {
     match op {
         EffectOp::Outline { sides, .. } if !sides.is_all() => Some("fx outline sides"),
+        EffectOp::Outline { mask: Some(_), .. } => Some("fx outline mask"),
         EffectOp::Inner { .. } => Some("fx inner"),
         EffectOp::Rim { .. } => Some("fx rim"),
         EffectOp::Grain { .. } => Some("fx grain"),

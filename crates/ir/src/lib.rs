@@ -486,6 +486,16 @@ pub fn parse_origin(origin: &str) -> Option<(&str, u32, u32)> {
 }
 
 impl Node {
+    /// The node's own mask, then the mask of each `fx outline`, in effect order. Every mask
+    /// draws in this node's local coordinates, and the nodes of each are walked with its own.
+    pub fn masks(&self) -> impl Iterator<Item = &Mask> + '_ {
+        let outlines = self.effects.iter().filter_map(|e| match &e.op {
+            EffectOp::Outline { mask, .. } => mask.as_deref(),
+            _ => None,
+        });
+        self.mask.as_deref().into_iter().chain(outlines)
+    }
+
     /// Every node directly under this one, in draw order: a shape's stamps, then its children,
     /// or a group's children. Every walker over the tree reads this. Only a renderer tells a
     /// shape's stamps and children apart, through [`Shape`]'s own fields, because only it clips.

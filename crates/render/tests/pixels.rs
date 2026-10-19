@@ -959,7 +959,7 @@ fn outline_field_mask_breaks_the_ring_and_renders_the_same_every_time() {
         let a = (deg as f32).to_radians();
         pixel(&png, (60.0 + 23.0 * a.cos()).round() as i32, (60.0 + 23.0 * a.sin()).round() as i32)[3]
     }).collect();
-    assert!(ring.iter().any(|&a| a == 255) && ring.iter().any(|&a| a == 0), "{ring:?}");
+    assert!(ring.contains(&255) && ring.contains(&0), "{ring:?}");
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
     assert_eq!(png, render_png(&scene, 1.0, Backend::Cpu).unwrap());
 }
