@@ -8,15 +8,15 @@ fn example_projects() -> Vec<PathBuf> {
         .unwrap()
         .flatten()
         .map(|e| e.path())
-        .filter(|d| d.join("artscript.toml").is_file())
+        .filter(|d| d.join("ramose.toml").is_file())
         .collect();
     dirs.sort();
     assert!(!dirs.is_empty(), "no projects under {}", root.display());
     dirs
 }
 
-fn artscript(dir: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_artscript")).args(args).current_dir(dir).output().unwrap()
+fn ramose(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ramose")).args(args).current_dir(dir).output().unwrap()
 }
 
 fn text(o: &Output) -> String {
@@ -55,15 +55,15 @@ fn output_paths(manifest: &Path) -> Option<Vec<String>> {
 #[test]
 fn every_example_is_formatted() {
     for dir in example_projects() {
-        let out = artscript(&dir, &["fmt", "--check"]);
-        assert_eq!(out.status.code(), Some(0), "run `artscript fmt` in {}\n{}", dir.display(), text(&out));
+        let out = ramose(&dir, &["fmt", "--check"]);
+        assert_eq!(out.status.code(), Some(0), "run `ramose fmt` in {}\n{}", dir.display(), text(&out));
     }
 }
 
 #[test]
 fn every_example_passes_check() {
     for dir in example_projects() {
-        let out = artscript(&dir, &["check"]);
+        let out = ramose(&dir, &["check"]);
         assert_eq!(out.status.code(), Some(0), "{}\n{}", dir.display(), text(&out));
     }
 }
@@ -71,16 +71,16 @@ fn every_example_passes_check() {
 #[test]
 fn every_example_builds_cold_and_makes_the_outputs_its_manifest_lists() {
     for dir in example_projects() {
-        let out_dir = artscript_eval::load(&dir).unwrap_or_else(|d| panic!("{}: {d}", dir.display())).manifest.out;
+        let out_dir = ramose_eval::load(&dir).unwrap_or_else(|d| panic!("{}: {d}", dir.display())).manifest.out;
         let name = dir.file_name().unwrap().to_string_lossy();
-        let copy = std::env::temp_dir().join(format!("artscript-example-{name}-{}", std::process::id()));
+        let copy = std::env::temp_dir().join(format!("ramose-example-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&copy);
         copy_dir(&dir, &copy);
-        for stale in [".artscript", out_dir.as_str()] {
+        for stale in [".ramose", out_dir.as_str()] {
             let _ = fs::remove_dir_all(copy.join(stale));
         }
 
-        let built = artscript(&copy, &["build"]);
+        let built = ramose(&copy, &["build"]);
         assert_eq!(built.status.code(), Some(0), "{}\n{}", dir.display(), text(&built));
         if let Some(committed) = output_paths(&dir.join(&out_dir).join("art-manifest.json")) {
             assert_eq!(

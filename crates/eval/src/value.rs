@@ -3,7 +3,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use artscript_ir::Field;
+use ramose_ir::Field;
 
 use crate::brush::BrushVal;
 use crate::stamp::StampVal;
@@ -365,12 +365,12 @@ impl Arith {
         }
     }
 
-    fn field(self) -> artscript_ir::FieldOp {
+    fn field(self) -> ramose_ir::FieldOp {
         match self {
-            Arith::Add => artscript_ir::FieldOp::Add,
-            Arith::Sub => artscript_ir::FieldOp::Sub,
-            Arith::Mul => artscript_ir::FieldOp::Mul,
-            Arith::Div => artscript_ir::FieldOp::Div,
+            Arith::Add => ramose_ir::FieldOp::Add,
+            Arith::Sub => ramose_ir::FieldOp::Sub,
+            Arith::Mul => ramose_ir::FieldOp::Mul,
+            Arith::Div => ramose_ir::FieldOp::Div,
         }
     }
 }
@@ -408,7 +408,7 @@ pub fn arith(op: Arith, a: &Value, b: &Value) -> Result<Value, String> {
         }
         (Field(_), _) | (_, Field(_)) => {
             let (fa, fb) = (as_field(a).ok_or_else(fail)?, as_field(b).ok_or_else(fail)?);
-            Field(Rc::new(artscript_ir::Field::Binary(op.field(), Box::new(fa), Box::new(fb))))
+            Field(Rc::new(ramose_ir::Field::Binary(op.field(), Box::new(fa), Box::new(fb))))
         }
         (List(xs), Num(_)) => List(Rc::new(xs.iter().map(|x| arith(op, x, b)).collect::<Result<Vec<_>, _>>()?)),
         (Tuple(xs), Num(_)) => List(Rc::new(xs.iter().map(|x| arith(op, x, b)).collect::<Result<Vec<_>, _>>()?)),

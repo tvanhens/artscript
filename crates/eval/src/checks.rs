@@ -4,9 +4,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use artscript_ir::Rect;
+use ramose_ir::Rect;
 use skia_safe::Vector;
-use artscript_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, Span};
+use ramose_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, Span};
 
 use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect, unseen};
 use crate::scope::{RefVal, RuleDef};
@@ -30,7 +30,7 @@ pub(crate) struct CheckState {
 }
 
 fn source_of(stmt: &Scene) -> String {
-    artscript_syntax::format(&File { directives: vec![], items: vec![Item::Scene(stmt.clone())] }).trim().to_string()
+    ramose_syntax::format(&File { directives: vec![], items: vec![Item::Scene(stmt.clone())] }).trim().to_string()
 }
 
 fn refs(v: &[Value]) -> Vec<Rc<RefVal>> {

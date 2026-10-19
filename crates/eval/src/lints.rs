@@ -1,11 +1,11 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use artscript_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
-use artscript_syntax::ast::{
+use ramose_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
+use ramose_syntax::ast::{
     BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
     Span, SwatchKind,
 };
-use artscript_syntax::{Diagnostic, Severity};
+use ramose_syntax::{Diagnostic, Severity};
 
 use crate::identity::PositionalUses;
 use crate::project::{LintLevel, Manifest};
@@ -597,7 +597,7 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
 /// shape not clipped by a parent shape is measured, cut to every `inside` clip and node mask on
 /// its groups. A group or layer with effects is measured as well when none of its shapes left
 /// the canvas, so one cut is reported once.
-pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
+pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
     let level = manifest.lint_level("off-canvas");
     let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
     let mut out = Vec::new();
@@ -718,7 +718,7 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
 /// The file and span a node's `origin` (`file:line:col`) names, or line 1 of `file` when it
 /// names none.
 fn source_span(origin: &str, file: &str) -> (String, Span) {
-    match artscript_ir::parse_origin(origin) {
+    match ramose_ir::parse_origin(origin) {
         Some((src, line, col)) => (src.to_string(), Span { line, col }),
         None => (file.to_string(), Span { line: 1, col: 1 }),
     }
@@ -735,7 +735,7 @@ fn site_note(site: &str) -> String {
 /// land outside, the line's own copies or its parent's, is not reported. A hidden node's children
 /// are not measured.
 pub fn hidden_child(
-    scene: &artscript_ir::Scene,
+    scene: &ramose_ir::Scene,
     manifest: &Manifest,
     file: &str,
 ) -> Vec<Diagnostic> {

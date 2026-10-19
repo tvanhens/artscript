@@ -3,10 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::rc::Rc;
 
-use artscript_syntax::ast::{
+use ramose_syntax::ast::{
     DeclKind, DefItem, Draw, DrawItem, Expr, File, Mask, Scene, SceneKind, Span,
 };
-use artscript_syntax::{Diagnostic, format_expr};
+use ramose_syntax::{Diagnostic, format_expr};
 
 use crate::scope::Record;
 use crate::seed::{explicit_seed, node_seed};
@@ -374,16 +374,16 @@ impl fmt::Display for Key {
     }
 }
 
-pub fn reflect(node: &mut artscript_ir::Node) {
+pub fn reflect(node: &mut ramose_ir::Node) {
     node.path.push_str(REFLECTION);
     if let Some(mask) = &mut node.mask
-        && let artscript_ir::MaskSource::Nodes(ns) = &mut mask.source
+        && let ramose_ir::MaskSource::Nodes(ns) = &mut mask.source
     {
         ns.iter_mut().for_each(reflect);
     }
     match &mut node.kind {
-        artscript_ir::NodeKind::Shape(s) => s.stamps.iter_mut().chain(&mut s.children).for_each(reflect),
-        artscript_ir::NodeKind::Group { children, .. } => children.iter_mut().for_each(reflect),
+        ramose_ir::NodeKind::Shape(s) => s.stamps.iter_mut().chain(&mut s.children).for_each(reflect),
+        ramose_ir::NodeKind::Group { children, .. } => children.iter_mut().for_each(reflect),
     }
 }
 
@@ -1932,10 +1932,10 @@ mod tests {
     use super::*;
 
     fn ids(src: &str) -> (ModuleIds, Vec<Diagnostic>) {
-        let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
+        let parsed = ramose_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut out = Vec::new();
         let ids = ModuleIds::build(
-            "art/t.art",
+            "art/t.ramo",
             &parsed,
             &BTreeSet::new(),
             &BTreeMap::new(),
@@ -1973,7 +1973,7 @@ mod tests {
         );
         let (_, ds) = ids(&src);
         assert_eq!(codes(&ds), [("E0333".into(), 5)]);
-        assert_eq!(ds[0].file, "art/t.art");
+        assert_eq!(ds[0].file, "art/t.ramo");
         assert_eq!(ds[0].notes, ["first named at line 3"]);
         assert_eq!(ds[0].fix.as_deref(), Some("rename one of them"));
     }
@@ -1999,10 +1999,10 @@ mod tests {
     #[test]
     fn a_shape_word_in_the_component_set_opens_a_scope() {
         let src = "@target t.png 40x40\ndef circle\n  slot hole\n    rect 4 name:gem\ncircle name:c\n  hole:\n    rect 4 name:gem\n";
-        let parsed = artscript_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
+        let parsed = ramose_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut bare_out = Vec::new();
         let bare = ModuleIds::build(
-            "art/t.art",
+            "art/t.ramo",
             &parsed,
             &BTreeSet::new(),
             &BTreeMap::new(),
@@ -2016,7 +2016,7 @@ mod tests {
         let mut components = BTreeSet::new();
         components.insert("circle".to_string());
         let ids = ModuleIds::build(
-            "art/t.art",
+            "art/t.ramo",
             &parsed,
             &components,
             &BTreeMap::new(),
@@ -2154,7 +2154,7 @@ mod tests {
     #[test]
     fn identity_seed_hashes_the_same_bytes_as_the_path_seeds_before_it() {
         let mut uses = PositionalUses::default();
-        let file = "art/t.art";
+        let file = "art/t.ramo";
         let key = Key::named(
             &Key::named(&Key::root(), &name("hero"), &[]),
             &name("eye"),
@@ -2162,21 +2162,21 @@ mod tests {
         );
         let old = |base: &str, path: &str| node_seed(base, path);
         let mut s = |k: &Key| seed(file, k, None, &mut uses);
-        assert_eq!(s(&key.draw(2)), old("art/t.art\0hero.eye.2", "2"));
-        assert_eq!(s(&key.blob()), old("art/t.art\0hero.eye.2", "blob"));
-        assert_eq!(s(&key.jitter()), old("art/t.art", "hero.eye.2#jitter"));
-        assert_eq!(s(&key.grain()), old("art/t.art", "hero.eye.2#grain"));
+        assert_eq!(s(&key.draw(2)), old("art/t.ramo\0hero.eye.2", "2"));
+        assert_eq!(s(&key.blob()), old("art/t.ramo\0hero.eye.2", "blob"));
+        assert_eq!(s(&key.jitter()), old("art/t.ramo", "hero.eye.2#jitter"));
+        assert_eq!(s(&key.grain()), old("art/t.ramo", "hero.eye.2#grain"));
         assert_eq!(
             s(&key.at_stmt(&[0, 4], "let y~1").draw(1)),
-            old("art/t.art\0hero.eye.2#0#4\0let y~1", "1")
+            old("art/t.ramo\0hero.eye.2#0#4\0let y~1", "1")
         );
         assert_eq!(
             s(&Key::root().at_stmt(&[], "if~2").draw(1)),
-            old("art/t.art\0\0if~2", "1")
+            old("art/t.ramo\0\0if~2", "1")
         );
         assert_eq!(
             s(&Key::binding("glint").draw(1)),
-            old("art/t.art\0glint", "1")
+            old("art/t.ramo\0glint", "1")
         );
         assert_eq!(uses.sites().count(), 0);
         assert_eq!(uses.seeded().iter().collect::<Vec<_>>(), ["hero.eye.2"]);
@@ -2191,12 +2191,12 @@ mod tests {
         let circle = Anon {
             verb: "circle".into(),
             ordinal: 1,
-            site: Site::new("lib/s.art", line(4)),
+            site: Site::new("lib/s.ramo", line(4)),
         };
         let mut uses = PositionalUses::default();
         for i in 0..3 {
             let key = Key::anon(&call, &circle, &[i]);
-            seed("art/t.art", &key.draw(1), None, &mut uses);
+            seed("art/t.ramo", &key.draw(1), None, &mut uses);
         }
         let sites: Vec<(u32, &str, &str)> = uses
             .sites()

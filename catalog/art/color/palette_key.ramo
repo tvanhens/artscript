@@ -1,4 +1,4 @@
-# Three 48x48 cells in a row on a 192x64 canvas, left to right at x 32, 96 and 160. Each cell is a badge from lib/badge.art, a rounded plate with a round gem, drawn with the library's own p. colors. Cell 3 is two half-size badges side by side.
+# Three 48x48 cells in a row on a 192x64 canvas, left to right at x 32, 96 and 160. Each cell is a badge from lib/badge.ramo, a rounded plate with a round gem, drawn with the library's own p. colors. Cell 3 is two half-size badges side by side.
 # Cell 1: badge with the manifest palette. A blue plate with a darker blue outline and a gold gem.
 # Cell 2: the same badge with palette:forest. The plate is green with a darker green outline and the gem is red. No blue or gold remains.
 # Cell 3: twin palette:forest. The left half-size badge is green with a red gem, like cell 2. The right half-size badge sets its own palette:ember inside, so it is a magenta plate with an indigo gem and nothing green or red.

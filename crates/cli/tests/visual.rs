@@ -7,8 +7,8 @@ use std::fs;
 use std::path::Path;
 use std::process::Command;
 
-const BLESS: &str = "ARTSCRIPT_BLESS";
-const ONLY: &str = "ARTSCRIPT_VISUAL_ONLY";
+const BLESS: &str = "RAMOSE_BLESS";
+const ONLY: &str = "RAMOSE_VISUAL_ONLY";
 const FRAMES_PER_ROW: usize = 8;
 const GAP: usize = 2;
 const GAP_RGBA: [u8; 4] = [128, 128, 128, 255];
@@ -194,21 +194,21 @@ fn catalog_matches_its_goldens() {
     let bless = std::env::var_os(BLESS).is_some();
     let only = std::env::var(ONLY).ok();
 
-    let work = std::env::temp_dir().join(format!("artscript-catalog-{}", std::process::id()));
+    let work = std::env::temp_dir().join(format!("ramose-catalog-{}", std::process::id()));
     let _ = fs::remove_dir_all(&work);
     for part in ["art", "lib"] {
         copy_dir(&root.join(part), &work.join(part));
     }
-    fs::copy(root.join("artscript.toml"), work.join("artscript.toml")).unwrap();
+    fs::copy(root.join("ramose.toml"), work.join("ramose.toml")).unwrap();
 
-    let fmt = Command::new(env!("CARGO_BIN_EXE_artscript")).args(["fmt", "--check"]).current_dir(&work).output().unwrap();
-    assert_eq!(fmt.status.code(), Some(0), "run `artscript fmt` in catalog/\n{}", String::from_utf8_lossy(&fmt.stdout));
+    let fmt = Command::new(env!("CARGO_BIN_EXE_ramose")).args(["fmt", "--check"]).current_dir(&work).output().unwrap();
+    assert_eq!(fmt.status.code(), Some(0), "run `ramose fmt` in catalog/\n{}", String::from_utf8_lossy(&fmt.stdout));
 
     let mut args = vec!["build", "--backend", "cpu"];
     if let Some(glob) = &only {
         args.extend(["--only", glob]);
     }
-    let built = Command::new(env!("CARGO_BIN_EXE_artscript")).args(&args).current_dir(&work).output().unwrap();
+    let built = Command::new(env!("CARGO_BIN_EXE_ramose")).args(&args).current_dir(&work).output().unwrap();
     assert_eq!(
         built.status.code(),
         Some(0),
@@ -222,7 +222,7 @@ fn catalog_matches_its_goldens() {
     let mut outputs = BTreeSet::new();
     for entry in manifest["outputs"].as_array().unwrap() {
         let (path, source) = (entry["path"].as_str().unwrap(), entry["source"].as_str().unwrap());
-        let stem = source.strip_prefix("art/").and_then(|s| s.strip_suffix(".art")).unwrap();
+        let stem = source.strip_prefix("art/").and_then(|s| s.strip_suffix(".ramo")).unwrap();
         assert!(path.starts_with(stem), "{source}: output {path} must start with `{stem}` so a golden names its fixture");
         outputs.insert(path.to_string());
     }
@@ -278,7 +278,7 @@ fn catalog_matches_its_goldens() {
     assert!(
         failures.is_empty(),
         "{} golden(s) out of date. Inspect each sheet (golden | actual | diff), then run \
-         `{BLESS}=1 cargo test -p artscript --test visual` and commit catalog/golden.\n{}",
+         `{BLESS}=1 cargo test -p ramose --test visual` and commit catalog/golden.\n{}",
         failures.len(),
         failures.join("\n")
     );

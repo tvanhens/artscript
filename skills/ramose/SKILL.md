@@ -1,16 +1,16 @@
 ---
-name: artscript
-description: Draw, edit, and export artwork (sprites, icons, characters, props, animated GIFs) with the artscript CLI. Use when a project needs PNG, SVG, or GIF art made or changed, when the user mentions artscript or `.art` files, or when a repo has an `artscript.toml`.
+name: ramose
+description: Draw, edit, and export artwork (sprites, icons, characters, props, animated GIFs) with the ramose CLI. Use when a project needs PNG, SVG, or GIF art made or changed, when the user mentions ramose or `.ramo` files, or when a repo has a `ramose.toml`.
 ---
 
-# artscript
+# ramose
 
-artscript is a declarative language for procedural art. You write `.art` files. `artscript build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source gives the same bytes on the same machine and backend. GPU output can differ from CPU output and between machines.
+ramose is a declarative language for procedural art. You write `.ramo` files. `ramose build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source gives the same bytes on the same machine and backend. GPU output can differ from CPU output and between machines.
 
 ## Before you draw
 
-1. Run `artscript --version`. If it fails, tell the user that the `artscript` binary must be on PATH, and stop.
-2. Run `artscript docs <topic> [topic...]` once per session, naming every topic the task touches. Include `craft` when you draw a new piece or add a part. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
+1. Run `ramose --version`. If it fails, tell the user that the `ramose` binary must be on PATH, and stop.
+2. Run `ramose docs <topic> [topic...]` once per session, naming every topic the task touches. Include `craft` when you draw a new piece or add a part. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
    - `targets` @target keys, entry files and libraries, use, the manifest palette p
    - `values` the values table, expressions, operators, functions, fn
    - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients
@@ -24,24 +24,24 @@ artscript is a declarative language for procedural art. You write `.art` files. 
    - `checks` assert, expect, measurements, check functions, rule
    - `cli` commands, flags, docs topics, exit codes
    - `craft` structure a piece, layers and names, shading, outline, ground shadow, margin
-   - `manifest` artscript.toml tables and keys, project defaults, lint levels
-3. Find the project root: the nearest `artscript.toml`. If there is none, run `artscript init` in the folder where the art belongs, then delete the starter `art/hello.art`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
+   - `manifest` ramose.toml tables and keys, project defaults, lint levels
+3. Find the project root: the nearest `ramose.toml`. If there is none, run `ramose init` in the folder where the art belongs, then delete the starter `art/hello.ramo`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
 
 ## The loop
 
 Repeat until the art is right:
 
-1. Write a new `.art` file with the Write tool and change one with the Edit tool. Do not edit with `sed`, `python`, or a shell heredoc.
-2. Run `artscript check`. Run artscript commands on their own or joined with `&&`, never with `;`, `echo $?`, or other shell plumbing, because the tool already reports the exit code. Fix every error and warning before you continue. Exit codes: 1 compile error, 2 a failed `assert`, 3 warnings only.
-3. Run `artscript build --only '<glob>'` for the piece you changed. The glob matches the entry file or an output path, for example `--only 'art/lamp.art'` or `--only 'props/lamp*'`. Repeat `--only` to build several pieces, or use `{a,b}`, for example `--only 'art/{lamp,desk}.art'`. A glob that matches no target is an error, and `*` does not cross `/`, so use `**` for that.
+1. Write a new `.ramo` file with the Write tool and change one with the Edit tool. Do not edit with `sed`, `python`, or a shell heredoc.
+2. Run `ramose check`. Run ramose commands on their own or joined with `&&`, never with `;`, `echo $?`, or other shell plumbing, because the tool already reports the exit code. Fix every error and warning before you continue. Exit codes: 1 compile error, 2 a failed `assert`, 3 warnings only.
+3. Run `ramose build --only '<glob>'` for the piece you changed. The glob matches the entry file or an output path, for example `--only 'art/lamp.ramo'` or `--only 'props/lamp*'`. Repeat `--only` to build several pieces, or use `{a,b}`, for example `--only 'art/{lamp,desk}.ramo'`. A glob that matches no target is an error, and `*` does not cross `/`, so use `**` for that.
 4. Open the PNG with the Read tool and look at it. Compare it to the request. Look for parts outside the canvas, shading that spills outside its shape, a missing outline, a face that is off-center, and colors that are too close to each other.
-5. Run `artscript fmt` on the files you changed.
+5. Run `ramose fmt` on the files you changed.
 
 Never report a piece as done before you have looked at its rendered PNG. For a GIF, also build a still of a mid-animation frame (`t:` on a PNG target) when the motion matters.
 
 ## Edit existing art
 
-- Read the whole `.art` file before you change it. Run `artscript explain <file>` when the node tree is not clear from the source.
+- Read the whole `.ramo` file before you change it. Run `ramose explain <file>` when the node tree is not clear from the source.
 - Change the smallest set of lines that does the job. A color change usually belongs in the palette ramp, not in each draw.
 - Do not rename or reorder parts that you do not change. Random seeds come from the file and the node path, so a moved node can draw differently.
 - A transparent background is `bg:none` on the target. A solid background is `bg:<color>` on that target.

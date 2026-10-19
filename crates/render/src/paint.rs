@@ -1,6 +1,6 @@
 //! Skia paints, blend modes, and gradient shaders. Stops are already dense sRGB.
 
-use artscript_ir::{Blend, Cap, Color, Join, Paint as IrPaint, Stop, Stroke};
+use ramose_ir::{Blend, Cap, Color, Join, Paint as IrPaint, Stop, Stroke};
 use skia_safe::gradient::{self, Colors, Gradient, Interpolation};
 use skia_safe::paint::{Cap as SkCap, Join as SkJoin, Style};
 use skia_safe::runtime_effect::ChildPtr;
@@ -145,7 +145,7 @@ pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Resul
 fn dither_sksl() -> String {
     format!(
         "{}\n{}",
-        artscript_brush::HASH,
+        ramose_brush::HASH,
         r#"uniform shader u_src;
 uniform float3x3 u_ltd;
 uniform float2 u_origin;

@@ -5,15 +5,15 @@ mod common;
 
 use std::sync::Arc;
 
-use artscript_brush::{MainKind, Program, UniformKind, UniformValue};
-use artscript_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
-use artscript_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
+use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
+use ramose_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
+use ramose_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
 use common::{color, effect, pixel, red, scene, solid, stamp, with_stamps};
 
 fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
     let program = Program::assemble(MainKind::Area, &params, body);
-    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
     Stage {
         program: Arc::new(program),
         uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
@@ -25,7 +25,7 @@ fn mark(stage: Stage, reach: f32) -> AreaMark {
     AreaMark { stage, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach }
 }
 
-fn brushed(path: &str, geometry: Path, paint: Paint, marks: Vec<AreaMark>) -> artscript_ir::Node {
+fn brushed(path: &str, geometry: Path, paint: Paint, marks: Vec<AreaMark>) -> ramose_ir::Node {
     let mut node = solid(path, geometry, red());
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Fill { paint, marks });
@@ -198,15 +198,15 @@ fn only_a_brushed_stamp_bakes_in_svg() {
     with_stamps(
         &mut host,
         vec![
-            stamp("line.dots.0", artscript_ir::Matrix::translate((20.0, 40.0)), vec![plain]),
-            stamp("line.dots.1", artscript_ir::Matrix::translate((60.0, 40.0)), vec![textured]),
+            stamp("line.dots.0", ramose_ir::Matrix::translate((20.0, 40.0)), vec![plain]),
+            stamp("line.dots.1", ramose_ir::Matrix::translate((60.0, 40.0)), vec![textured]),
         ],
         vec![],
     );
     let scene = scene(80.0, 80.0, vec![host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["line.dots.1.c brush fill"]);
-    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(svg.contains("<g id=\"line.dots.0.c\""), "the plain stamp stays a path: {svg}");
     assert!(svg.contains("<g id=\"line.dots.1.c\">"), "the brushed stamp's shape is the baked node: {svg}");
@@ -217,11 +217,11 @@ fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_ove
     let dry = stage("float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }", &[], &[], 3);
     let mut host = brushed("line", Path::rect(skia_safe::Rect::from_xywh(0.0, 38.0, 80.0, 4.0), None), Paint::Solid(color(0, 0, 0, 255)), vec![mark(dry, 0.0)]);
     let plain = solid("line.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
-    with_stamps(&mut host, vec![stamp("line.dots.0", artscript_ir::Matrix::translate((20.0, 40.0)), vec![plain])], vec![]);
+    with_stamps(&mut host, vec![stamp("line.dots.0", ramose_ir::Matrix::translate((20.0, 40.0)), vec![plain])], vec![]);
     let scene = scene(80.0, 80.0, vec![host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["line brush fill"], "profile:vector still reports the host");
-    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     let (host_at, image_at, stamp_at) = (svg.find("<g id=\"line\"").unwrap(), svg.find("<image").unwrap(), svg.find("<g id=\"line.dots.0.c\"").unwrap());
     assert!(host_at < image_at && image_at < stamp_at, "the tile sits in the host and the stamp draws over it: {svg}");
@@ -230,14 +230,14 @@ fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_ove
 /// A brush that leaves a gap at x 38..42 and 40% coverage at x 50..54.
 const GAPPED: &str = "float4 shade(Mark m) {\n  float k = (m.p.x >= 38 && m.p.x < 42) ? 0 : ((m.p.x >= 50 && m.p.x < 54) ? .4 : 1);\n  return float4(m.paint.rgb, cover(m.edge, m) * k);\n}\n";
 
-fn with_child(mut parent: artscript_ir::Node, child: artscript_ir::Node) -> artscript_ir::Node {
+fn with_child(mut parent: ramose_ir::Node, child: ramose_ir::Node) -> ramose_ir::Node {
     if let NodeKind::Shape(shape) = &mut parent.kind {
         shape.children.push(child);
     }
     parent
 }
 
-fn band() -> artscript_ir::Node {
+fn band() -> ramose_ir::Node {
     solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(0, 0, 255, 255))
 }
 
@@ -276,7 +276,7 @@ fn children_of_an_unbrushed_fill_still_clip_to_its_geometry() {
 fn children_of_a_brushed_fill_still_blend_with_it() {
     let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
     let mut gray = solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(128, 128, 128, 255));
-    gray.blend = artscript_ir::Blend::Multiply;
+    gray.blend = ramose_ir::Blend::Multiply;
     let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, gray)]), 1.0, Backend::Cpu).unwrap();
     let px = pixel(&png, 30, 40);
     assert!(px[0].abs_diff(128) <= 2 && px[1] <= 2 && px[2] <= 2 && px[3] == 255, "gray multiplied over red is dark red: {px:?}");
@@ -286,13 +286,13 @@ fn children_of_a_brushed_fill_still_blend_with_it() {
 fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
     let mut host = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
     let plain = solid("a.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
-    with_stamps(&mut host, vec![stamp("a.dots.0", artscript_ir::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
-    let svg = render_svg(&scene(80.0, 80.0, vec![host]), artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    with_stamps(&mut host, vec![stamp("a.dots.0", ramose_ir::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
+    let svg = render_svg(&scene(80.0, 80.0, vec![host]), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
 }
 
-fn outlined(mut node: artscript_ir::Node, width: f32) -> artscript_ir::Node {
+fn outlined(mut node: ramose_ir::Node, width: f32) -> ramose_ir::Node {
     node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None, brush: vec![] }));
     node
 }
@@ -331,23 +331,23 @@ fn fx_outline_on_an_unbrushed_fill_traces_its_geometry() {
 fn fx_outline_over_a_brushed_fill_is_raster_only() {
     let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]), 3.0);
     let mut host = outlined(solid("h", Path::rect(SQUARE, None), red()), 3.0);
-    with_stamps(&mut host, vec![stamp("h.dots.0", artscript_ir::Matrix::translate((30.0, 25.0)), vec![node.clone()])], vec![]);
+    with_stamps(&mut host, vec![stamp("h.dots.0", ramose_ir::Matrix::translate((30.0, 25.0)), vec![node.clone()])], vec![]);
     let scene = scene(80.0, 80.0, vec![node, host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a fx outline brush", "a brush fill", "h fx outline brush", "a fx outline brush", "a brush fill"]);
-    assert!(matches!(render_svg(&scene, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(artscript_render::RenderError::NotVector(_))));
-    let svg = render_svg(&scene, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(matches!(render_svg(&scene, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
+    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 2, "{svg}");
     assert!(!svg.contains("-outline"), "the ring is in the tile, not a path: {svg}");
 }
 
 fn ring_stage(body: &str, seed: u32) -> Stage {
     let program = Program::assemble(MainKind::Ribbon, &[], body);
-    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
     Stage { program: Arc::new(program), uniforms: vec![], seed }
 }
 
-fn ring_outlined(mut node: artscript_ir::Node, width: f32, body: &str, reach: f32) -> artscript_ir::Node {
+fn ring_outlined(mut node: ramose_ir::Node, width: f32, body: &str, reach: f32) -> ramose_ir::Node {
     let brush = vec![RibbonMark { stage: ring_stage(body, 5), reach }];
     node.effects.push(effect(EffectOp::Outline { width, color: color(0, 0, 0, 255), sides: Sides::ALL, mask: None, brush }));
     node
@@ -385,7 +385,7 @@ fn a_brushed_outline_renders_the_same_bytes_twice_and_is_raster_only() {
     assert_eq!(png, render_png(&s, 1.0, Backend::Cpu).unwrap());
     let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a brush outline"]);
-    assert!(matches!(render_svg(&s, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(artscript_render::RenderError::NotVector(_))));
-    let svg = render_svg(&s, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(matches!(render_svg(&s, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
+    let svg = render_svg(&s, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
 }

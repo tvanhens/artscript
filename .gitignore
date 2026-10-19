@@ -1,6 +1,6 @@
 /target
 /catalog/build
-.artscript/
+.ramose/
 .DS_Store
 .claude-review/
 /bench/out

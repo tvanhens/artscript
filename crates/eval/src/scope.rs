@@ -5,8 +5,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc, Weak};
 
-use artscript_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
-use artscript_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
+use ramose_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
+use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
 use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, RegionKind};

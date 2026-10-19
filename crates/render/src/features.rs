@@ -1,6 +1,6 @@
 //! Raster-only census. SVG bakes a node that appears here. Vector reports the same list.
 
-use artscript_ir::{Blend, EffectInput, EffectOp, MaskSource, Node, NodeKind, Paint, Scene};
+use ramose_ir::{Blend, EffectInput, EffectOp, MaskSource, Node, NodeKind, Paint, Scene};
 
 use crate::Unsupported;
 use crate::effects::fill_shows;

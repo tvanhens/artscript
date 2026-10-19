@@ -1,5 +1,5 @@
 //! AST to scene IR: modules, palettes, styles, components, slots, overrides, checks.
-// `Diagnostic` is the error type every layer shares and lives in artscript-syntax.
+// `Diagnostic` is the error type every layer shares and lives in ramose-syntax.
 #![allow(clippy::result_large_err)]
 
 mod brush;
@@ -27,9 +27,9 @@ mod value;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use artscript_ir::Scene;
-use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::DeclKind;
+use ramose_ir::Scene;
+use ramose_syntax::Diagnostic;
+use ramose_syntax::ast::DeclKind;
 
 pub use explain::explain;
 pub use key::{frame_count, frame_delays};
@@ -685,7 +685,7 @@ fn is_site_note(note: &str) -> bool {
     note.starts_with("via rule ") || note.starts_with("played at ") || is_entry_site(note)
 }
 
-/// The `in art/a.art:4` note: the entry-file line that reached a library's diagnostic.
+/// The `in art/a.ramo:4` note: the entry-file line that reached a library's diagnostic.
 pub(crate) fn is_entry_site(note: &str) -> bool {
     note.starts_with("in ") && !note.contains('`')
 }
@@ -753,12 +753,12 @@ pub fn dependencies(project: &Project, entry: &str) -> Vec<String> {
         let Some(src) = project.source(&f) else {
             continue;
         };
-        let Ok(file) = artscript_syntax::parse(src) else {
+        let Ok(file) = ramose_syntax::parse(src) else {
             continue;
         };
         for d in file.decls() {
             if let DeclKind::Use { path, .. } = &d.kind {
-                let rooted = format!("{path}.art");
+                let rooted = format!("{path}.ramo");
                 if let Some(t) = project
                     .resolve_use(path)
                     .or(project.files.contains_key(&rooted).then_some(rooted))

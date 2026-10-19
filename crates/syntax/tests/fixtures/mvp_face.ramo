@@ -5,7 +5,7 @@ def face size:26
   assert level(@eye_l @eye_r) tol:.5
   assert symmetric(@eye_l @eye_r about:@head.cx) tol:.5
   expect gap(@eye_l @eye_r) in .8..1.2 * @eye_l.w "eyes about one eye-width apart"
-# art/chars/hero.art
+# art/chars/hero.ramo
 layer hero at:50%,60%
   body build:slim
   assert @hero.head.h / @hero.h in 1/8..1/6 "stylized heroic proportions"

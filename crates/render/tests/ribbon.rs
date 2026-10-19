@@ -5,15 +5,15 @@ mod common;
 
 use std::sync::Arc;
 
-use artscript_brush::{MainKind, Program, UniformKind, UniformValue};
-use artscript_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
-use artscript_render::{Backend, gpu_available, render_png};
+use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
+use ramose_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
+use ramose_render::{Backend, gpu_available, render_png};
 use common::{color, pixel, red, scene, solid};
 
 fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
     let program = Program::assemble(MainKind::Ribbon, &params, body);
-    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
     Stage {
         program: Arc::new(program),
         uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
@@ -26,7 +26,7 @@ fn knot(s: f32, half_width: f32, pressure: f32, angle: f32, tilt: f32) -> Knot {
 }
 
 /// A stroke-only node along `path`, one open contour of length `len` with the given knots.
-fn ribbon(path: Path, len: f32, closed: bool, knots: Vec<Knot>, paint: Paint, stages: Vec<Stage>, reach: f32) -> artscript_ir::Node {
+fn ribbon(path: Path, len: f32, closed: bool, knots: Vec<Knot>, paint: Paint, stages: Vec<Stage>, reach: f32) -> ramose_ir::Node {
     let mut node = solid("a", path, red());
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = None;
@@ -147,14 +147,14 @@ fn a_closed_contour_outlines_a_rect_and_leaves_its_middle_empty() {
 fn a_brushed_fill_and_a_brushed_stroke_share_one_node() {
     let area = {
         let program = Program::assemble(MainKind::Area, &[], IDENTITY);
-        artscript_brush::check(&program).unwrap();
+        ramose_brush::check(&program).unwrap();
         Stage { program: Arc::new(program), uniforms: vec![], seed: 5 }
     };
     let rect = skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0);
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(160.0, 3.0, 1.0, 0.0, 0.0)];
     let mut node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
     if let NodeKind::Shape(shape) = &mut node.kind {
-        shape.fill = Some(Fill { paint: Paint::Solid(red()), marks: vec![artscript_ir::AreaMark { stage: area, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }] });
+        shape.fill = Some(Fill { paint: Paint::Solid(red()), marks: vec![ramose_ir::AreaMark { stage: area, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }] });
     }
     let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255], "the brushed fill in the middle");

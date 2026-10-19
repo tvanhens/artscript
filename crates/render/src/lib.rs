@@ -1,4 +1,4 @@
-//! Scene IR backends: Skia on CPU raster or GPU (PNG, GIF) and artscript's own SVG writer.
+//! Scene IR backends: Skia on CPU raster or GPU (PNG, GIF) and ramose's own SVG writer.
 
 mod draw;
 mod effects;
@@ -13,7 +13,7 @@ mod sdf;
 mod svg;
 mod text;
 
-use artscript_ir::{Profile, Scene};
+use ramose_ir::{Profile, Scene};
 
 pub use features::raster_only_features;
 pub use gpu::{Backend, gpu_available};

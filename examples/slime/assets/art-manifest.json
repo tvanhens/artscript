@@ -9,7 +9,7 @@
       },
       "path": "slime_grape.gif",
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     },
@@ -24,7 +24,7 @@
       "path": "slime_grape.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     },
@@ -37,7 +37,7 @@
       },
       "path": "slime_mint.gif",
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     },
@@ -52,7 +52,7 @@
       "path": "slime_mint.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     },
@@ -65,7 +65,7 @@
       },
       "path": "slime_peach.gif",
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     },
@@ -80,7 +80,7 @@
       "path": "slime_peach.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/slime.art",
+      "source": "art/slime.ramo",
       "status": "pass",
       "target": null
     }

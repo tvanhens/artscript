@@ -3,7 +3,7 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Paint, Point, Rect, Stop};
+use ramose_ir::{Paint, Point, Rect, Stop};
 
 use crate::color::{Rgba, densify};
 use crate::value::Value;

@@ -9,7 +9,7 @@
       "path": "character/moss_monk.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -22,7 +22,7 @@
       "path": "character/moss_monk.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -35,7 +35,7 @@
       },
       "path": "character/moss_monk_blink.gif",
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -48,7 +48,7 @@
       "path": "character/moss_monk_blink.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -61,7 +61,7 @@
       },
       "path": "character/moss_monk_idle.gif",
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -74,7 +74,7 @@
       },
       "path": "character/moss_monk_yawn.gif",
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -87,7 +87,7 @@
       "path": "character/moss_monk_yawn.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/character/moss_monk.art",
+      "source": "art/character/moss_monk.ramo",
       "status": "pass",
       "target": null
     },
@@ -100,7 +100,7 @@
       "path": "monument/stone_lantern.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monument/stone_lantern.art",
+      "source": "art/monument/stone_lantern.ramo",
       "status": "pass",
       "target": null
     },
@@ -113,7 +113,7 @@
       "path": "monument/stone_lantern.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monument/stone_lantern.art",
+      "source": "art/monument/stone_lantern.ramo",
       "status": "pass",
       "target": null
     },
@@ -126,7 +126,7 @@
       "path": "monument/vermilion_torii.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monument/vermilion_torii.art",
+      "source": "art/monument/vermilion_torii.ramo",
       "status": "pass",
       "target": null
     },
@@ -139,7 +139,7 @@
       "path": "monument/vermilion_torii.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/monument/vermilion_torii.art",
+      "source": "art/monument/vermilion_torii.ramo",
       "status": "pass",
       "target": null
     },
@@ -152,7 +152,7 @@
       "path": "produce/momo_peach.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/produce/momo_peach.art",
+      "source": "art/produce/momo_peach.ramo",
       "status": "pass",
       "target": null
     },
@@ -165,7 +165,7 @@
       "path": "produce/momo_peach.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/produce/momo_peach.art",
+      "source": "art/produce/momo_peach.ramo",
       "status": "pass",
       "target": null
     },
@@ -178,7 +178,7 @@
       "path": "produce/sweet_strawberry.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/produce/sweet_strawberry.art",
+      "source": "art/produce/sweet_strawberry.ramo",
       "status": "pass",
       "target": null
     },
@@ -191,7 +191,7 @@
       "path": "produce/sweet_strawberry.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/produce/sweet_strawberry.art",
+      "source": "art/produce/sweet_strawberry.ramo",
       "status": "pass",
       "target": null
     },
@@ -204,7 +204,7 @@
       "path": "prop/matcha_teacup.png",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/prop/matcha_teacup.art",
+      "source": "art/prop/matcha_teacup.ramo",
       "status": "pass",
       "target": null
     },
@@ -217,7 +217,7 @@
       "path": "prop/matcha_teacup.svg",
       "pivot": null,
       "scale": 1.0,
-      "source": "art/prop/matcha_teacup.art",
+      "source": "art/prop/matcha_teacup.ramo",
       "status": "pass",
       "target": null
     }

@@ -8,8 +8,8 @@ fn docs_dir() -> &'static Path {
     Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs"))
 }
 
-fn artscript(args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_artscript"))
+fn ramose(args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ramose"))
         .args(args)
         .current_dir(std::env::temp_dir())
         .output()
@@ -22,7 +22,7 @@ fn topic(name: &str) -> String {
 
 #[test]
 fn docs_prints_the_card_then_an_index_of_every_topic_file() {
-    let out = artscript(&["docs"]);
+    let out = ramose(&["docs"]);
     assert_eq!(out.status.code(), Some(0));
     let stdout = String::from_utf8(out.stdout).unwrap();
     let card = fs::read_to_string(docs_dir().join("language.md")).unwrap();
@@ -30,7 +30,7 @@ fn docs_prints_the_card_then_an_index_of_every_topic_file() {
         .strip_prefix(card.as_str())
         .expect("output starts with docs/language.md");
     assert!(index.trim_start().starts_with("## Topics\n"), "{index}");
-    assert!(index.contains("artscript docs <topic> [topic...]"), "{index}");
+    assert!(index.contains("ramose docs <topic> [topic...]"), "{index}");
 
     let mut names: Vec<String> = fs::read_dir(docs_dir().join("topics"))
         .unwrap()
@@ -58,7 +58,7 @@ fn docs_prints_the_card_then_an_index_of_every_topic_file() {
 
 #[test]
 fn docs_prints_the_card_then_named_topics_in_order() {
-    let out = artscript(&["docs", "color", "anim"]);
+    let out = ramose(&["docs", "color", "anim"]);
     assert_eq!(out.status.code(), Some(0));
     let card = fs::read_to_string(docs_dir().join("language.md")).unwrap();
     assert_eq!(
@@ -69,7 +69,7 @@ fn docs_prints_the_card_then_named_topics_in_order() {
 
 #[test]
 fn the_skill_lists_every_topic_with_its_summary() {
-    let skill = fs::read_to_string(docs_dir().join("../skills/artscript/SKILL.md")).unwrap();
+    let skill = fs::read_to_string(docs_dir().join("../skills/ramose/SKILL.md")).unwrap();
     for entry in fs::read_dir(docs_dir().join("topics")).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
@@ -82,7 +82,7 @@ fn the_skill_lists_every_topic_with_its_summary() {
 
 #[test]
 fn docs_rejects_an_unknown_topic() {
-    let out = artscript(&["docs", "color", "nope"]);
+    let out = ramose(&["docs", "color", "nope"]);
     assert_eq!(out.status.code(), Some(1));
     assert!(out.stdout.is_empty());
     let stderr = String::from_utf8(out.stderr).unwrap();
@@ -92,25 +92,25 @@ fn docs_rejects_an_unknown_topic() {
 
 #[test]
 fn docs_rejects_flags() {
-    let out = artscript(&["docs", "--all"]);
+    let out = ramose(&["docs", "--all"]);
     assert_eq!(out.status.code(), Some(1));
 }
 
 #[test]
 fn std_lists_the_bundled_libraries_and_prints_one_to_fork() {
-    let list = artscript(&["std"]);
+    let list = ramose(&["std"]);
     assert_eq!(list.status.code(), Some(0));
     assert_eq!(String::from_utf8(list.stdout).unwrap(), "std/brushes\nstd/stamps\n");
     for name in ["brushes", "std/brushes"] {
-        let out = artscript(&["std", name]);
+        let out = ramose(&["std", name]);
         assert_eq!(out.status.code(), Some(0), "{name}");
         let text = String::from_utf8(out.stdout).unwrap();
         assert!(text.starts_with("# std/brushes:"), "{name}: {text}");
         assert!(text.contains("\nbrush dry ") && text.contains("\nbrush chip "), "{name}");
     }
-    let stamps = String::from_utf8(artscript(&["std", "stamps"]).stdout).unwrap();
+    let stamps = String::from_utf8(ramose(&["std", "stamps"]).stdout).unwrap();
     assert!(stamps.starts_with("# std/stamps:") && stamps.contains("\nstamp dots "), "{stamps}");
-    let missing = artscript(&["std", "nope"]);
+    let missing = ramose(&["std", "nope"]);
     assert_eq!(missing.status.code(), Some(1));
     assert!(String::from_utf8(missing.stderr).unwrap().contains("bundled: std/brushes, std/stamps"));
 }
@@ -123,20 +123,20 @@ fn the_brushes_topic_declaration_example_checks() {
         .expect("brushes.md declares `scuff`")
         + 1;
     let example = &body[start..start + body[start..].find("```").unwrap()];
-    let dir = std::env::temp_dir().join(format!("artscript-docs-scuff-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-docs-scuff-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"scuff\"\nout = \"assets\"\nlib = []\nstd = \"0.1\"\n",
     )
     .unwrap();
     fs::write(
-        dir.join("art/scuff.art"),
+        dir.join("art/scuff.ramo"),
         format!("@target scuff.png 64x64\n\npalette p\n  color ink #2a1a2e\n  color sky #7fb8e6\n\n{example}\ncircle 20 fill:p.sky brush:scuff name:c\n"),
     )
     .unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_artscript"))
+    let out = Command::new(env!("CARGO_BIN_EXE_ramose"))
         .arg("check")
         .current_dir(&dir)
         .output()

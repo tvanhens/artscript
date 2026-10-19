@@ -1,4 +1,4 @@
-"""Writes the fuzz seed corpora and the `.art` dictionary from the repo's own sources.
+"""Writes the fuzz seed corpora and the `.ramo` dictionary from the repo's own sources.
 
     python3 fuzz/seeds.py [CORPUS_DIR]
 """
@@ -77,7 +77,7 @@ def projects(text: str):
         named = set(files.values())
         manifest = next((lit for lit in literals(body) if is_manifest(lit)), consts.get("MANIFEST"))
         if manifest is not None:
-            files["artscript.toml"] = manifest
+            files["ramose.toml"] = manifest
         for lit in literals(body):
             if "@target" in lit and lit not in named:
                 for k, v in consts.items():
@@ -99,8 +99,8 @@ def write(target: str, text: str) -> None:
 
 
 def seeds() -> None:
-    art = [p.read_text() for p in sorted(ROOT.rglob("*.art")) if "target" not in p.parts]
-    manifests = [p.read_text() for p in sorted(ROOT.rglob("artscript.toml"))]
+    art = [p.read_text() for p in sorted(ROOT.rglob("*.ramo")) if "target" not in p.parts]
+    manifests = [p.read_text() for p in sorted(ROOT.rglob("ramose.toml"))]
     multi = []
     for path in rust_tests():
         text = path.read_text()

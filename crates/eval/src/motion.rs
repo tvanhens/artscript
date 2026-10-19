@@ -1,4 +1,4 @@
-use artscript_syntax::ast::Expr;
+use ramose_syntax::ast::Expr;
 
 pub fn absolute_channel<'a>(key: &str, value: &'a Expr) -> Option<&'a Expr> {
     if !offset_channel(key) {

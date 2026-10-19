@@ -2,8 +2,8 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Field, FieldFn, FieldOp, NoiseKind};
-use artscript_syntax::ast::{Expr, Named};
+use ramose_ir::{Field, FieldFn, FieldOp, NoiseKind};
+use ramose_syntax::ast::{Expr, Named};
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
