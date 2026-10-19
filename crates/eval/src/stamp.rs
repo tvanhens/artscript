@@ -610,9 +610,9 @@ impl Evaluator<'_> {
         node.effects = self.lower_fx(&sites, &key, fill);
         self.run_checks(&checks);
         let rec = Rc::new(RefCell::new(Record {
-            name: String::new(),
             path: path.clone(),
             key,
+            copies: vec![site.i],
             parent_world: *frame.host.world,
             node: Some(node.clone()),
             anchor: None,

@@ -307,14 +307,30 @@ impl Scope {
     fn node_key(&self, span: Span) -> Key {
         let region = self.names.borrow().region();
         if let Some(id) = region.decl_at(span) {
-            let name = region.decl(id).name.clone();
-            return Key::named(&self.owner, &name, &self.scope_copies);
+            return self.named_key(&region, id);
         }
         if let Some(anon) = self.ids.anon(span) {
             Key::anon(&self.parent, anon, &self.parent_copies)
         } else {
             self.parent.clone()
         }
+    }
+
+    /// A named node's key: the region owner, then each shape down to it with that shape's own
+    /// loop indices, so `thorax.1.sheen.0` is the path an author writes.
+    fn named_key(&self, region: &identity::Region, id: DeclId) -> Key {
+        let mut key = self.owner.clone();
+        let mut taken = 0;
+        for id in region.chain(id) {
+            let decl = region.decl(id);
+            let own = self
+                .scope_copies
+                .get(taken..decl.loops.len())
+                .unwrap_or(&[]);
+            key = Key::named(&key, &decl.name, own);
+            taken = decl.loops.len();
+        }
+        key
     }
 
     fn decl_at(&self, span: Span) -> Option<DeclId> {
@@ -1830,6 +1846,7 @@ impl<'a> Evaluator<'a> {
     ) -> Rc<RefCell<Record>> {
         record.path = key.to_string();
         record.key = key.clone();
+        record.copies = sc.scope_copies.clone();
         record.home = Some(Rc::downgrade(&sc.names));
         record.decl = Some(decl);
         let rec = Rc::new(RefCell::new(record));
@@ -1860,15 +1877,14 @@ impl<'a> Evaluator<'a> {
         at: (f64, f64),
         inner: Option<Rc<RefCell<Names>>>,
     ) -> Rc<RefCell<Record>> {
-        let name = sc.names.borrow().region().decl(decl).name.to_string();
         self.register(
             sc,
             decl,
             key,
             Record {
-                name,
                 path: String::new(),
                 key: key.clone(),
+                copies: Vec::new(),
                 parent_world,
                 node,
                 anchor,
@@ -3724,9 +3740,9 @@ impl<'a> Evaluator<'a> {
             ),
             None => {
                 let rec = Rc::new(RefCell::new(Record {
-                    name: String::new(),
                     path: path.clone(),
                     key: key.clone(),
+                    copies: Vec::new(),
                     parent_world: sc.world,
                     node: Some(placeholder),
                     anchor: None,
@@ -3878,20 +3894,21 @@ impl<'a> Evaluator<'a> {
     /// An arm whose component is not known statically is left unchecked.
     /// Exclusive arms report E0340 only when every known arm rejects the tail.
     fn follow_scope(&mut self, scope: &PatchScope, patch: &PendingPatch, path: &str) {
-        let Some(identity::Hop::Name(name)) = patch.rest.first() else {
+        let Ok(walked) = scope.region.walk(&patch.rest) else {
             return;
         };
-        let decl_ids: Vec<DeclId> = scope.region.lookup(name.as_str()).to_vec();
+        if walked.rest.is_empty() {
+            return;
+        }
         let mut children = Vec::new();
         let mut unresolved = false;
-        for id in decl_ids {
+        for id in walked.ids {
             let decl = scope.region.decl(id);
-            let tail = tail_after(decl, &patch.rest);
-            if tail.is_empty() || !decl.kind.opens_scope() {
+            if !decl.kind.opens_scope() {
                 continue;
             }
             match self.child_scope(scope, decl) {
-                Some(child) => children.push((child, tail)),
+                Some(child) => children.push((child, walked.rest.clone())),
                 None => unresolved = true,
             }
         }
@@ -3983,7 +4000,9 @@ impl<'a> Evaluator<'a> {
                     fills,
                 })
             }
-            identity::NameKind::Draw | identity::NameKind::Anchor => None,
+            identity::NameKind::Shape | identity::NameKind::Group | identity::NameKind::Anchor => {
+                None
+            }
         }
     }
 
@@ -4942,9 +4961,9 @@ impl<'a> Evaluator<'a> {
             "canvas" => Some(Value::Ref(Rc::new(RefVal {
                 label: "canvas".into(),
                 record: Record {
-                    name: "canvas".into(),
                     path: "canvas".into(),
                     key: Key::root(),
+                    copies: Vec::new(),
                     parent_world: Matrix::new_identity(),
                     node: None,
                     anchor: None,
@@ -5464,14 +5483,15 @@ impl<'a> Evaluator<'a> {
         if self.prepass && matches!(resolved, Resolved::Undrawn(_)) {
             return Err(unseen(&format!("@{first}")));
         }
-        let (cur, depth) = self.refs_of(resolved, first)?;
+        let (cur, depth) = self.refs_of(resolved, segs)?;
         if self.prepass && segs[1..].iter().any(|s| !is_copy_index(s)) {
             return Err(unseen(&format!("@{}", segs.join("."))));
         }
         self.walk_ref(cur, segs, 1, first.clone(), sc, depth)
     }
 
-    fn refs_of(&self, resolved: Resolved, label: &str) -> R<(Vec<RefVal>, usize)> {
+    fn refs_of(&self, resolved: Resolved, segs: &[String]) -> R<(Vec<RefVal>, usize)> {
+        let label = &segs[0];
         match resolved {
             Resolved::One(e, depth) => Ok((vec![ref_from(&e, label)], depth)),
             Resolved::Many(es, depth) => {
@@ -5486,6 +5506,7 @@ impl<'a> Evaluator<'a> {
             )
             .fix("draw it, or remove the reference")),
             Resolved::Missing(names) => Err(missing_part(label, &names)),
+            Resolved::Nested(found) => Err(nested_ref(segs, 0, 0, &found)),
             Resolved::Ambiguous(notes) => {
                 let mut f = fail(
                     "E0343",
@@ -5509,6 +5530,8 @@ impl<'a> Evaluator<'a> {
         mut index_depth: usize,
     ) -> R<Value> {
         let mut named_at = 0;
+        // Where the path of the region `cur` sits in starts, so a fix can spell a full path there.
+        let mut region_at = 0;
         while i < segs.len() {
             let seg = segs[i].as_str();
             let last = i + 1 == segs.len();
@@ -5532,7 +5555,7 @@ impl<'a> Evaluator<'a> {
                     )
                     .fix("write a whole number that fits"));
                 };
-                cur.retain(|r| r.record.key.copy_at(index_depth) == Some(ix));
+                cur.retain(|r| r.record.copies.get(index_depth) == Some(&ix));
                 index_depth += 1;
                 label = format!("{label}.{seg}");
                 i += 1;
@@ -5554,46 +5577,66 @@ impl<'a> Evaluator<'a> {
             }
             let one = self.one_ref(&cur, &label, sc)?;
             let mut through_row = false;
-            let (matched, names): (Vec<RefVal>, Vec<String>) = match &one.record.inner {
+            let (mut matched, mut names): (Vec<RefVal>, Vec<String>) = match &one.record.inner {
                 Some(inner) => {
                     let region = inner.borrow().region();
                     let parts = one.parts(seg);
-                    if parts.is_empty()
-                        && let Some(&id) = region.lookup(seg).first()
-                    {
-                        let site = &region.decl(id).site;
-                        return Err(fail(
-                            "E0350",
-                            format!(
-                                "`@{label}.{seg}` is declared at {}:{} and not drawn",
-                                site.file, site.span.line
-                            ),
-                        )
-                        .fix("draw it, or remove the reference"));
+                    if parts.is_empty() {
+                        if let Some(&id) = region.lookup(seg).first() {
+                            return Err(undrawn_part(&label, seg, &region.decl(id).site));
+                        }
+                        let nested = region.nested(None, seg);
+                        if !nested.is_empty() {
+                            let found: Vec<(Rc<identity::Region>, DeclId)> =
+                                nested.into_iter().map(|id| (region.clone(), id)).collect();
+                            return Err(nested_ref(segs, i, i, &found));
+                        }
                     }
                     (parts, region.names().iter().map(|n| n.to_string()).collect())
                 }
-                None => {
-                    if one.holds(seg) {
-                        return Err(group_hop(segs, named_at, i));
+                None => match one.home_decl() {
+                    Some((region, decl)) if region.decl(decl).kind == identity::NameKind::Shape => {
+                        let parts = one.parts_under(seg);
+                        if parts.is_empty() {
+                            if let Some(&id) = region.lookup_in(Some(decl), seg).first() {
+                                return Err(undrawn_part(&label, seg, &region.decl(id).site));
+                            }
+                            let nested = region.nested(Some(decl), seg);
+                            if !nested.is_empty() {
+                                let found: Vec<(Rc<identity::Region>, DeclId)> =
+                                    nested.into_iter().map(|id| (region.clone(), id)).collect();
+                                return Err(nested_ref(segs, region_at, i, &found));
+                            }
+                        }
+                        let names = region
+                            .names_in(Some(decl))
+                            .iter()
+                            .map(|n| n.to_string())
+                            .collect();
+                        (parts, names)
                     }
-                    let kids = one.children();
-                    let mut names: Vec<String> = kids.iter().map(|c| c.record.name.clone()).collect();
-                    let mut matched: Vec<RefVal> = kids.into_iter().filter(|c| c.record.name == seg).collect();
-                    if let Some(row) = one.record.rows.iter().find(|r| r.name.as_str() == seg) {
-                        matched.extend(row.stamps.iter().map(|r| RefVal {
-                            label: format!("{label}.{seg}"),
-                            record: r.borrow().clone(),
-                            source: Some(Rc::as_ptr(r) as usize),
-                            canvas: None,
-                            extent: Extent::Visual,
-                        }));
-                        through_row = true;
+                    Some((region, decl)) => {
+                        if region.holds(decl, seg) {
+                            return Err(group_hop(segs, named_at, i));
+                        }
+                        (Vec::new(), Vec::new())
                     }
-                    names.extend(one.record.rows.iter().map(|r| r.name.to_string()));
-                    (matched, names)
-                }
+                    None => (Vec::new(), Vec::new()),
+                },
             };
+            if one.record.inner.is_none() {
+                if let Some(row) = one.record.rows.iter().find(|r| r.name.as_str() == seg) {
+                    matched.extend(row.stamps.iter().map(|r| RefVal {
+                        label: format!("{label}.{seg}"),
+                        record: r.borrow().clone(),
+                        source: Some(Rc::as_ptr(r) as usize),
+                        canvas: None,
+                        extent: Extent::Visual,
+                    }));
+                    through_row = true;
+                }
+                names.extend(one.record.rows.iter().map(|r| r.name.to_string()));
+            }
             if matched.is_empty() {
                 if last && MEASURES.contains(&seg) {
                     return self.measure(&one, seg, sc);
@@ -5621,11 +5664,12 @@ impl<'a> Evaluator<'a> {
             cur = matched;
             named_at = i;
             label = format!("{label}.{seg}");
-            index_depth = if one.record.inner.is_some() || through_row {
-                0
+            if one.record.inner.is_some() || through_row {
+                index_depth = 0;
+                region_at = i + 1;
             } else {
-                one.record.key.trailing_copies().len()
-            };
+                index_depth = one.record.copies.len();
+            }
             i += 1;
         }
         match cur.len() {
@@ -5676,16 +5720,6 @@ fn fills_in(body: &DrawBody, ids: &Rc<ModuleIds>) -> Vec<FillHop> {
             })
         })
         .collect()
-}
-
-fn tail_after(decl: &identity::NameDecl, rest: &[identity::Hop]) -> Vec<identity::Hop> {
-    let mut i = 1;
-    let mut seen = 0;
-    while i < rest.len() && matches!(rest[i], identity::Hop::Index(_)) && seen < decl.loops.len() {
-        seen += 1;
-        i += 1;
-    }
-    rest[i..].to_vec()
 }
 
 fn find_draw(scenes: &[Scene], span: Span) -> Option<&Draw> {
@@ -5792,17 +5826,15 @@ fn component_names(module: &Module) -> BTreeSet<String> {
         .collect()
 }
 
-/// `segs[at]` names a group, layer, or shape, and `segs[i]` a part under it. The fix drops the
-/// hop the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
+/// `segs[at]` names a group or a layer, and `segs[i]` a part under it. The fix drops the hop
+/// the way a patch's does, so `@row.1.gem.0` becomes `@gem.1.0`.
 fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
     let written = segs.join(".");
     let fail = fail(
         "E0350",
-        format!(
-            "`@{written}` hops through `{}`, which is not an instance or a slot",
-            segs[at]
-        ),
-    );
+        format!("`@{written}` hops through `{}`, which is a group", segs[at]),
+    )
+    .note(identity::GROUP_NOTE);
     let Some(addr) = identity::hops_from(&segs[at + 1..])
         .and_then(|hops| identity::skip_hop(&hops[..i - at - 1], &hops[i - at - 1..]))
     else {
@@ -5815,6 +5847,62 @@ fn group_hop(segs: &[String], at: usize, i: usize) -> Fail {
         format!("write @{}.{addr}", scope.join("."))
     };
     fail.fix(fix)
+}
+
+/// `segs[at]` is a name that sits deeper than the node before it, under one or more shapes.
+/// The fix spells each full path, with the copy indices the author wrote on the shapes they
+/// belong to. `region_at` is where the region's own path starts in `segs`.
+fn nested_ref(
+    segs: &[String],
+    region_at: usize,
+    at: usize,
+    found: &[(Rc<identity::Region>, DeclId)],
+) -> Fail {
+    let written = segs.join(".");
+    let seg = &segs[at];
+    let mut indices: Vec<u32> = segs[region_at..at].iter().filter_map(|s| s.parse().ok()).collect();
+    let mut rest = at + 1;
+    while rest < segs.len() && is_copy_index(&segs[rest]) {
+        indices.extend(segs[rest].parse::<u32>());
+        rest += 1;
+    }
+    let prefix: String = segs[..region_at].iter().map(|s| format!("{s}.")).collect();
+    let tail: String = segs[rest..].iter().map(|s| format!(".{s}")).collect();
+    let mut paths: Vec<String> = Vec::new();
+    for (region, id) in found {
+        let path = format!("@{prefix}{}{tail}", region.spell(*id, &indices));
+        if !paths.contains(&path) {
+            paths.push(path);
+        }
+    }
+    if let [path] = paths.as_slice() {
+        let (region, id) = &found[0];
+        let under = region.spell(region.decl(*id).scope.unwrap(), &[]);
+        return fail(
+            "E0350",
+            format!("`@{written}` names `{seg}`, which is nested under `{prefix}{under}`"),
+        )
+        .fix(format!("write {path}"));
+    }
+    let mut f = fail(
+        "E0350",
+        format!("`@{written}` names `{seg}`, which sits under more than one shape"),
+    );
+    for p in &paths {
+        f = f.note(format!("`{p}`"));
+    }
+    f.fix("write one of the listed paths")
+}
+
+fn undrawn_part(label: &str, seg: &str, site: &Site) -> Fail {
+    fail(
+        "E0350",
+        format!(
+            "`@{label}.{seg}` is declared at {}:{} and not drawn",
+            site.file, site.span.line
+        ),
+    )
+    .fix("draw it, or remove the reference")
 }
 
 fn missing_part(label: &str, names: &[String]) -> Fail {

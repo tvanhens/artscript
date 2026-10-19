@@ -122,7 +122,7 @@ fn patches_rotate_hide_and_reach_nested_params() {
         "use eye\ndef face\n  eye 8 at:-10,0 name:a\n  eye 8 at:10,0 name:c\n  rect 40x2 at:0,10 name:mouth\n",
     );
     let ev = run_with(
-        "@target t.png 100x100\nuse face\nface at:50,50 name:f\n  .a rot:-20\n  .mouth off\n  .c.pupil fill:#ff0000\n  .a iris:#00ff00\n",
+        "@target t.png 100x100\nuse face\nface at:50,50 name:f\n  .a rot:-20\n  .mouth off\n  .c.white.pupil fill:#ff0000\n  .a iris:#00ff00\n",
         &[lib, ("lib/eye.art", EYE_LIB)],
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
@@ -131,8 +131,8 @@ fn patches_rotate_hide_and_reach_nested_params() {
     let (sin, cos) = (a.transform.skew_y(), a.transform.scale_x());
     assert!((sin.atan2(cos).to_degrees() + 20.0).abs() < 1e-3);
     assert!(!paths(&s).iter().any(|p| p == "f.mouth"));
-    assert_eq!(fill_hex(node(&s, "f.c.pupil")), "#ff0000");
-    assert_eq!(fill_hex(node(&s, "f.a.pupil")), "#00ff00");
+    assert_eq!(fill_hex(node(&s, "f.c.white.pupil")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "f.a.white.pupil")), "#00ff00");
     assert_eq!(fill_hex(node(&s, "f.c.white")), "#ffffff");
 
     let head = ("lib/head.art", "use face\ndef head\n  face name:f\n");
@@ -142,8 +142,8 @@ fn patches_rotate_hide_and_reach_nested_params() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
-    assert_eq!(fill_hex(node(&s, "head.f.c.pupil")), "#0000ff");
-    assert_eq!(fill_hex(node(&s, "head.f.a.pupil")), "#3366cc");
+    assert_eq!(fill_hex(node(&s, "head.f.c.white.pupil")), "#0000ff");
+    assert_eq!(fill_hex(node(&s, "head.f.a.white.pupil")), "#3366cc");
 }
 
 #[test]
@@ -950,7 +950,7 @@ fn positional_names_may_take_reserved_words_and_read_back_qualified() {
     let s = scene(
         "@target t.png 64x64\nlayer mask\n  circle 20 at:32,32 fill:#336699\n\
          group light\n  rect 10x10\n  anchor shader 5,7\n\
-         assert @mask.cx ~= 32\nassert @light.shader.x ~= 5\n",
+         assert @mask.cx ~= 32\nassert @shader.x ~= 5\n",
     );
     assert_eq!(fill_hex(node(&s, "mask.circle~1")), "#336699");
 }
@@ -1422,7 +1422,7 @@ fn finish_reaches_only_the_node_its_fx_line_is_under() {
     ));
     assert_eq!(fx_ops(node(&s, "c")), ["Rim", "Grain"]);
     assert!(node(&s, "l").effects.is_empty());
-    assert!(node(&s, "dot").effects.is_empty());
+    assert!(node(&s, "c.dot").effects.is_empty());
 }
 
 #[test]
@@ -2076,7 +2076,7 @@ fn a_child_its_parent_shape_hides_is_reported_and_a_visible_one_is_not() {
         "@target t.png 64x64\ndef face\n  circle 11 at:1,-15 name:skull\n    circle 2 at:-3,-15 name:eye_l\n    circle 2 at:5,-15 name:eye_r\n    circle 3 at:0,2 name:mouth\nface at:32,48 name:f\n",
     );
     let nodes: Vec<_> = hidden.iter().map(|d| d.node.as_str()).collect();
-    assert_eq!(nodes, ["f.eye_l", "f.eye_r"], "{}", show(&hidden));
+    assert_eq!(nodes, ["f.skull.eye_l", "f.skull.eye_r"], "{}", show(&hidden));
     assert_eq!(hidden[0].span.line, 4);
     assert!(
         hidden[0].message.contains("`f.skull`"),
@@ -2099,7 +2099,7 @@ fn a_scatter_is_reported_only_when_every_copy_is_hidden() {
         all[0]
             .notes
             .iter()
-            .any(|n| n == "also in dot.1, dot.2, dot.3"),
+            .any(|n| n == "also in blob.dot.1, blob.dot.2, blob.dot.3"),
         "{:?}",
         all[0].notes
     );
@@ -2112,9 +2112,9 @@ fn a_child_hidden_in_every_copy_of_its_parent_is_reported_once_at_its_column() {
     );
     assert_eq!(hidden.len(), 1, "{}", show(&hidden));
     assert_eq!((hidden[0].span.line, hidden[0].span.col), (5, 7));
-    assert_eq!(hidden[0].node, "inner.0.circle~1");
+    assert_eq!(hidden[0].node, "host.inner.0.circle~1");
     assert!(
-        hidden[0].notes.iter().any(|n| n == "also in inner.1.circle~1"),
+        hidden[0].notes.iter().any(|n| n == "also in host.inner.1.circle~1"),
         "{:?}",
         hidden[0].notes
     );
@@ -2127,11 +2127,11 @@ fn a_child_hidden_in_every_copy_of_its_parent_is_reported_once_at_its_column() {
 #[test]
 fn a_child_hidden_on_only_some_frames_is_not_reported() {
     let some = hidden_children(
-        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(0 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .blob.dot at:key(0 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
     );
     assert!(some.is_empty(), "{}", show(&some));
     let every = hidden_children(
-        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .dot at:key(20 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
+        "@target t.gif 64x64 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .blob.dot at:key(20 30),0\ncircle 10 at:32,32 name:blob\n  circle 2 name:dot\nplay slide\n",
     );
     assert_eq!(every.len(), 1, "{}", show(&every));
 }
@@ -3989,7 +3989,7 @@ fn a_reference_through_a_group_names_the_key() {
     assert!(d.notes.iter().any(|n| n == "parts: grp, box"), "{d}");
 
     scene(
-        "@target t.png 40x40\ngroup name:body\n  rect 10x10\n  anchor neck 5,7\nassert @body.neck.x ~= 5\n",
+        "@target t.png 40x40\ngroup name:body\n  rect 10x10\n  anchor neck 5,7\nassert @neck.x ~= 5\n",
     );
 }
 
@@ -4000,11 +4000,11 @@ fn at_takes_an_anchor_reference_like_its_x_and_y() {
         "group name:body at:30,20 rot:90\n",
         "  rect 10x10\n",
         "  anchor neck 5,7\n",
-        "circle 2 at:@body.neck name:a\n",
-        "circle 2 at:@body.neck.x,@body.neck.y name:b\n",
+        "circle 2 at:@neck name:a\n",
+        "circle 2 at:@neck.x,@neck.y name:b\n",
         "group at:10,10 rot:30 scale:2\n",
-        "  circle 2 at:@body.neck name:c\n",
-        "  circle 2 at:@body.neck.x,@body.neck.y name:d\n",
+        "  circle 2 at:@neck name:c\n",
+        "  circle 2 at:@neck.x,@neck.y name:d\n",
     ));
     near(at(node(&s, "a")), (23.0, 25.0));
     let b = at(node(&s, "b"));
@@ -4036,7 +4036,7 @@ fn an_anim_offset_adds_to_an_anchor_rest_at() {
         "group name:body at:30,40\n",
         "  rect 10x10\n",
         "  anchor neck 0,-6\n",
-        "circle 2 at:@body.neck name:dot\n",
+        "circle 2 at:@neck name:dot\n",
         "play bob\n",
     ));
     near(at(node(&s, "dot")), (30.0, 29.0));
@@ -6062,7 +6062,7 @@ fn explain_lists_an_outline_mask_and_its_nodes() {
     );
     let text = crate::explain(ev.scene.as_ref().unwrap(), &ev.seeded);
     assert!(text.contains("[fx outline 2 #201802 mask feather:3]"), "{text}");
-    assert!(text.contains("\n  keep  shape"), "{text}");
+    assert!(text.contains("\n  body.keep  shape"), "{text}");
 }
 
 #[test]
@@ -7061,4 +7061,137 @@ fn edge_to_the_end_of_an_open_curve_is_one_piece() {
             assert_eq!(moves, 1, "curve {k}, from:.{i:02}");
         }
     }
+}
+
+#[test]
+fn a_name_is_unique_under_its_nearest_shape() {
+    let s = scene(
+        "@target t.png 80x40\ncircle 10 at:20,20 name:thorax\n  circle 2 at:0,-4 name:sheen\ncircle 10 at:60,20 name:abdomen\n  group g\n    circle 2 at:0,4 name:sheen\nassert @thorax.sheen.cy ~= 16\nassert @abdomen.sheen.cy ~= 24\n",
+    );
+    let got = paths(&s);
+    for p in ["thorax", "thorax.sheen", "abdomen", "abdomen.sheen"] {
+        assert!(got.iter().any(|q| q == p), "{p} in {got:?}");
+    }
+
+    let ev = run_with(
+        "@target t.png 40x40\ncircle 10 name:thorax\n  circle 2 name:sheen\n  group g\n    circle 2 name:sheen\n",
+        &[],
+    );
+    let hits: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0333").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 5));
+    assert!(hits[0].message.contains("under `thorax`"), "{}", hits[0]);
+    assert_eq!(hits[0].notes, ["first named at line 3"]);
+}
+
+#[test]
+fn a_bare_reference_to_a_nested_part_names_the_full_path() {
+    let one = run_with(
+        "@target t.png 40x40\ncircle 10 name:thorax\n  circle 2 name:sheen\nlet y = @sheen.cy\n",
+        &[],
+    );
+    let hits: Vec<_> = one.diagnostics.iter().filter(|d| d.code == "E0350").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&one.diagnostics));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 4));
+    assert!(hits[0].message.contains("`@sheen.cy` names `sheen`, which is nested under `thorax`"), "{}", hits[0]);
+    assert_eq!(hits[0].fix.as_deref(), Some("write @thorax.sheen.cy"));
+
+    let indexed = run_with(
+        "@target t.png 40x40\neach i in 0..2\n  circle 10 name:thorax\n    circle 2 name:sheen\nlet y = @sheen.1.cy\n",
+        &[],
+    );
+    let d = diag(&indexed, "E0350");
+    assert_eq!(d.fix.as_deref(), Some("write @thorax.1.sheen.cy"), "{d}");
+
+    let many = run_with(
+        "@target t.png 40x40\ncircle 10 name:thorax\n  circle 2 name:sheen\ncircle 10 name:abdomen\n  circle 2 name:sheen\nlet y = @sheen.cy\n",
+        &[],
+    );
+    let d = diag(&many, "E0350");
+    assert_eq!(d.span.line, 6);
+    assert!(d.message.contains("more than one shape"), "{d}");
+    assert_eq!(d.notes, ["`@thorax.sheen.cy`", "`@abdomen.sheen.cy`"]);
+    assert_eq!(d.fix.as_deref(), Some("write one of the listed paths"));
+
+    let lib = ("lib/bug.art", "def bug\n  circle 10 name:head\n    circle 2 at:3,0 name:eye_l\n");
+    let skipped = run_with(
+        "@target t.png 40x40\nuse bug\nbug at:20,20 name:b\nlet x = @b.eye_l.cx\n",
+        &[lib],
+    );
+    let d = diag(&skipped, "E0350");
+    assert!(d.message.contains("nested under `b.head`"), "{d}");
+    assert_eq!(d.fix.as_deref(), Some("write @b.head.eye_l.cx"));
+    scene_with(
+        "@target t.png 40x40\nuse bug\nbug at:20,20 name:b\nassert @b.head.eye_l.cx ~= 23\n",
+        &[lib],
+    );
+}
+
+#[test]
+fn a_patch_follows_the_shape_path() {
+    let lib = ("lib/bug.art", "def bug\n  circle 10 name:thorax\n    circle 2 fill:#ffffff name:sheen\n");
+    let filled = scene_with(
+        "@target t.png 40x40\nuse bug\nbug name:b\n  .thorax.sheen fill:#ff0000\n",
+        &[lib],
+    );
+    assert_eq!(fill_hex(node(&filled, "b.thorax.sheen")), "#ff0000");
+    let off = scene_with(
+        "@target t.png 40x40\nuse bug\nbug name:b\n  .thorax.sheen off\n",
+        &[lib],
+    );
+    assert_eq!(paths(&off), ["b", "b.thorax"]);
+
+    let bare = run_with(
+        "@target t.png 40x40\nuse bug\nbug name:b\n  .sheen off\n",
+        &[lib],
+    );
+    let hits: Vec<_> = bare.diagnostics.iter().filter(|d| d.code == "E0340").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&bare.diagnostics));
+    assert_eq!((hits[0].file.as_str(), hits[0].span.line), ("art/t.art", 4));
+    assert!(hits[0].message.contains("nested under `thorax`"), "{}", hits[0]);
+    assert_eq!(hits[0].fix.as_deref(), Some("write .thorax.sheen"));
+
+    let looped = (
+        "lib/bugs.art",
+        "def bugs\n  each i in 0..2\n    circle 10 at:i*20,0 name:thorax\n      each j in 0..2\n        circle 2 at:0,j*5 name:sheen\n",
+    );
+    let copy = scene_with(
+        "@target t.png 60x40\nuse bugs\nbugs name:b\n  .thorax.1.sheen.0 off\n",
+        &[looped],
+    );
+    let sheens: Vec<String> = paths(&copy).into_iter().filter(|p| p.contains("sheen")).collect();
+    assert_eq!(sheens, ["b.thorax.0.sheen.0", "b.thorax.0.sheen.1", "b.thorax.1.sheen.1"]);
+
+    let grouped = ("lib/hero.art", "def hero\n  group face\n    circle 2 fill:#ffffff name:eye_l\n");
+    let through = scene_with(
+        "@target t.png 40x40\nuse hero\nhero name:h\n  .eye_l fill:#ff0000\n",
+        &[grouped],
+    );
+    assert_eq!(fill_hex(node(&through, "h.eye_l")), "#ff0000");
+    let hop = run_with(
+        "@target t.png 40x40\nuse hero\nhero name:h\n  .face.eye_l fill:#ff0000\n",
+        &[grouped],
+    );
+    let d = diag(&hop, "E0340");
+    assert!(d.message.contains("hops through `face`, which is a group"), "{d}");
+    assert_eq!(d.fix.as_deref(), Some("write .eye_l"));
+}
+
+#[test]
+fn a_group_under_a_shape_stays_out_of_a_reference_path() {
+    let lib = (
+        "lib/hero.art",
+        "def hero\n  circle 10 name:head\n    group face\n      circle 2 at:3,0 name:eye_l\n      anchor brow 0,-4\n",
+    );
+    scene_with(
+        "@target t.png 40x40\nuse hero\nhero at:20,20 name:h\nassert @h.head.eye_l.cx ~= 23\nassert @h.head.brow.y ~= 16\n",
+        &[lib],
+    );
+    let ev = run_with(
+        "@target t.png 40x40\nuse hero\nhero at:20,20 name:h\nlet x = @h.head.face.eye_l.cx\n",
+        &[lib],
+    );
+    let d = diag(&ev, "E0350");
+    assert!(d.message.contains("hops through `face`, which is a group"), "{d}");
+    assert_eq!(d.fix.as_deref(), Some("write @h.head.eye_l.cx"));
 }
