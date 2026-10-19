@@ -1,0 +1,35 @@
+# fx outline with brush: shades the ring as a ribbon, 272x80 on paper, four 48px cells at y 40,
+# each with a 4px ink ring.
+# Cell 1 (x 32), a gold square with a plain outline: a solid ink ring with round outer corners.
+# Cell 2 (x 96), a gold square with brush:dry at strength .6: the ring is combed into streaks that
+# run along each side, and paper shows through the outer half of the ring. The inner half sits
+# over the gold, so the square's edge stays a straight ink line.
+# Cell 3 (x 160), a blue circle of radius 24 with brush:chip at strength .8: the outer edge of the
+# ring is bitten by flakes all the way round, and the ring stays solid against the blue.
+# Cell 4 (x 224), a gold square with the spur brush declared in this file, reach 6: teeth of ink
+# stick up to 6px out past the ring at a regular spacing along each side, starting at the
+# top-left corner, and the ring itself stays solid.
+# The .svg target uses profile:svg: a brushed outline bakes with its node into a raster tile, so
+# cells 2 to 4 look like the PNG's, and cell 1 stays a path and an outline path.
+@target brush/ring.png 272x80
+@target brush/ring.svg 272x80 profile:svg
+
+use std/brushes { dry chip }
+
+# A tooth 6 units past the ring every 12 units along the contour.
+brush spur reach:6
+  sksl """
+  float4 shade(Mark m) {
+    float tooth = step(.6, fract(m.s / 12));
+    return float4(m.paint.rgb, cover(m.edge + tooth * 6, m));
+  }
+  """
+
+rect 48 at:32,40 fill:p.gold.2 name:plain
+  fx outline 4 color:p.ink
+rect 48 at:96,40 fill:p.gold.2 name:dried
+  fx outline 4 color:p.ink brush:dry(strength:.6)
+circle 24 at:160,40 fill:p.blue.2 name:chipped
+  fx outline 4 color:p.ink brush:chip(strength:.8)
+rect 48 at:224,40 fill:p.gold.2 name:spurred
+  fx outline 4 color:p.ink brush:spur

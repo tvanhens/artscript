@@ -1,6 +1,6 @@
-# brushes: brush declarations, SkSL bodies, the Mark, brush: on fills and strokes, channels, stacks, seeds, std/brushes
+# brushes: brush declarations, SkSL bodies, the Mark, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
 
-A brush is an SkSL program that shades a fill or a stroke. Its body sees a `Mark` with the pixel's position, its signed distance to the edge, where it sits along and across the stroke, and the paint it would have had, and returns a straight color plus coverage. The `brush:` paint key puts one or more brushes on a node.
+A brush is an SkSL program that shades a fill, a stroke, or the ring of an `fx outline`. Its body sees a `Mark` with the pixel's position, its signed distance to the edge, where it sits along and across the stroke, and the paint it would have had, and returns a straight color plus coverage. The `brush:` paint key puts one or more brushes on a node.
 
 ```
 use std/brushes { dry chip bristle }
@@ -34,7 +34,7 @@ brush scuff strength:.5 scale:1 tint:p.ink reach:3
 
 ## The Mark
 
-One struct serves both slots. On a fill the frame is the geometry's bounds rotated into `dir`; on a stroke it is the ribbon, and `s` and `d` are measured to the point of the stroke's spine whose ink covers the pixel deepest, which is the nearest point wherever the spine does not pass near itself.
+One struct serves both slots. On a fill the frame is the geometry's bounds rotated into `dir`; on a stroke, and on an outline's ring (see Outlines), it is the ribbon, and `s` and `d` are measured to the point of the stroke's spine whose ink covers the pixel deepest, which is the nearest point wherever the spine does not pass near itself.
 
 | field | on a fill | on a stroke |
 |---|---|---|
@@ -96,9 +96,19 @@ A brushed stroke is a ribbon. The shape's geometry is the spine, and every devic
 - A channel key on the node's own line that nothing reads is E0362 ("has no effect because nothing on this node reads it") at the key. A brushed stroke reads every channel, and a stamp reads the channels its block or `spacing:` names (see `stamps`). An inherited channel key that nothing reads does nothing, like an inherited `cap:`, so `layer ink brush:bristle pressure:[.3 1 .5]` may hold a filled circle and a `style` with `pressure:` may serve a plain stroke. A channel value that is not a number or a list of numbers is E0320.
 - The field is built on the CPU at device resolution for both backends, in strips over the ribbon's device bounds plus its reach, and the brush body runs once per pixel in those strips. The cost follows the ribbon's area, not the length of the path's point list. `m.s` is exact to a twentieth of a device pixel at any length along the stroke, because each strip counts it from the least arc length the strip holds, and `m.d` to about a tenth on a stroke 200 px wide. A strip that holds more than 65536 device px of one contour's length, such as a zigzag that crosses the same 64 rows hundreds of times, is a render error at the node; split the path.
 
+## Outlines
+
+`fx outline 4 brush:dry` shades the ring with the brush, so an outline can break up, dry out, and vary in weight like an inked line. `brush:` on an `fx outline` line takes what it takes on a node: a brush, a list of brushes, or `none`. The ring is drawn as a stroke: the traced area is filled solid, then each contour of it is a closed ribbon of constant half width `4` along the contour, and the stages run over it as over a brushed stroke, so the Mark has its stroke meaning, with `pressure` 1, `angle` 0, `tilt` 0, and `velocity` 1. `m.paint` is the outline's color at full alpha, and the line's `a:` applies to the result.
+
+- Each contour runs with the traced area on its right of travel: clockwise on screen around the outside, counter-clockwise around a hole. So `m.d > 0` is the half of the ribbon over the area, which the solid fill covers, and `m.d < 0` is the half that shows, where `m.normal` points away from the area. A brush that rags an edge, such as `chip`, rags the ring's outer edge.
+- `m.s` runs from 0 at the contour's start. When the outline traces one shape, the start is the shape's contour position (see `shapes`): a `rect`'s ring starts at its top-left corner and a `circle`'s at 3 o'clock, and a brush that rags its ends, such as `bristle`, rags the seam there. When it traces several areas, such as a stroke beside a fill or a parent with children, their union is traced and each contour starts at its own first point.
+- A stage's `reach:` grows the ring: the node's bounds, its bake tiles, and the outline's reach grow by the widest reach on the sides the ring draws on. `sides:`, a `mask` under the line, and the erase inside translucent areas apply to a brushed ring as to a plain one.
+- A stage narrowed to `on:fill` has no slot on a ring and is E0362 at `brush:`.
+- A brushed outline is raster-only: `profile:svg` bakes the node to a PNG tile, and `profile:vector` reports E0209 with the feature `brush outline`.
+
 ## Seeds and determinism
 
-- Each stage's seed comes from the node's key, the slot (`fill` or `stroke`), and the stage's index, so a named node keeps its texture when other nodes change, and the `positional-seed` lint covers an unnamed one. `seed:` on the node pins every brush seed on it; `seed:` on an instance pins the brushes inside it.
+- Each stage's seed comes from the node's key, the slot (`fill` or `stroke`), and the stage's index, so a named node keeps its texture when other nodes change, and the `positional-seed` lint covers an unnamed one. A stage on an `fx outline` seeds from the node's key, the line's number among the node's `fx` lines, and the stage's index, and each line of a finish counts its own number under the `fx` line that expands it, so two brushed outlines on one node, or in one finish, seed apart. `seed:` on the node pins every brush seed on it, its outlines' included; `seed:` on an instance pins the brushes inside it.
 - The shader sees 256 distinct `m.seed` values and 3599 distinct `seeded(m)` offsets. Two nodes in one scene can share a pattern. That is a deliberate trade: the hash inputs stay small enough to be exact on both backends.
 - CPU and GPU builds each produce byte-identical outputs on every build. The two backends do not match each other bit for bit: the lattice hash, `rot`, the dither and the 8-bit snap are exact on both, but `simplex`, `vnoise`, `worley`, `fbm`, and SkSL's own `mix` and `smoothstep` are float arithmetic, so a GPU build can differ from a CPU build by a level or two at some pixels.
 
