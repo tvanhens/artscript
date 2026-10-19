@@ -6311,3 +6311,4 @@ fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
 
 mod brush;
 mod stamp;
+mod text;

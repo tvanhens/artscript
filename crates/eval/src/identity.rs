@@ -21,6 +21,7 @@ const BUILTIN: &[&str] = &[
     "curve",
     "path",
     "blob",
+    "text",
     "copy",
     "subtract",
     "union",
