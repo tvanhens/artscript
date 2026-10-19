@@ -260,6 +260,10 @@ pub fn draw_node(
             let reach = reach_px(node, ctx, &parent_world, &parent_to_px, &steps);
             paint_layer_steps(canvas, node, ctx, world, reach, steps)?;
         } else {
+            let bounds = reach_px(node, ctx, &parent_world, &parent_to_px, &[]).and_then(|reach| {
+                let px_to_local = canvas.local_to_device_as_3x3().invert()?;
+                Some(px_to_local.map_rect(Rect::from(reach)).0)
+            });
             let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -268,7 +272,10 @@ pub fn draw_node(
             if let Some(filter) = filter {
                 paint.set_image_filter(filter);
             }
-            let rec = SaveLayerRec::default().paint(&paint);
+            let mut rec = SaveLayerRec::default().paint(&paint);
+            if let Some(bounds) = &bounds {
+                rec = rec.bounds(bounds);
+            }
             canvas.save_layer(&rec);
             draw_clipped(canvas, node, ctx, world)?;
             canvas.restore();
