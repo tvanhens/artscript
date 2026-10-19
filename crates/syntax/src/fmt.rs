@@ -104,6 +104,15 @@ impl<'a> Printer<'a> {
                 self.emit(line, 0, &join_head("def", name, &[], params));
                 self.def_body(body);
             }
+            DeclKind::Alias {
+                name,
+                target,
+                args,
+                named,
+            } => {
+                let call = join_head(target, "", args, named);
+                self.emit(line, 0, &format!("def {name} = {call}"));
+            }
             DeclKind::Stamp { name, params, body } => {
                 self.emit(line, 0, &join_head("stamp", name, &[], params));
                 self.def_body(body);

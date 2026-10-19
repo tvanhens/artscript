@@ -6563,5 +6563,167 @@ fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
     }
 }
 
+const ARM_LIB: &str = "\
+def hero_arm len:20 tone:#3366cc
+  rect len,6 fill:tone name:bone
+  circle 4 at:len/2,0 fill:#ffffff name:hand
+  circle rand(3 9) at:0,0 fill:#000000 name:dot
+  anchor tip len/2+4,0
+  slot glove at:len/2,0
+
+def arm_l = hero_arm tone:#ff0000
+";
+
+#[test]
+fn an_alias_instance_has_the_targets_anchors_parts_and_slots() {
+    let ev = run_with(
+        "@target t.png 100x100\nuse arm\narm_l at:50,50 name:a\n  glove:\n    circle 2 fill:#00ff00\n  .hand fill:#0000ff\ncircle 2 at:@a.tip name:m\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "a.bone")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "a.hand")), "#0000ff");
+    assert!(paths(&s).iter().any(|p| p == "a.glove.circle~1"), "{:?}", paths(&s));
+    near(at(node(&s, "m")), (64.0, 50.0));
+}
+
+#[test]
+fn an_alias_call_fills_the_open_parameters_and_cannot_pass_a_fixed_one() {
+    let s = scene_with(
+        "@target t.png 100x100\nuse arm\narm_l 30 at:50,50 name:a\narm_l len:40 at:50,50 name:b\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    near(at(node(&s, "a.hand")), (15.0, 0.0));
+    near(at(node(&s, "b.hand")), (20.0, 0.0));
+
+    let ev = run_with(
+        "@target t.png 100x100\nuse arm\narm_l tone:#000000 at:50,50 name:a\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    let d = diag(&ev, "E0321");
+    assert_eq!(d.message, "`arm_l` fixes `tone`");
+    assert_eq!((d.file.as_str(), d.span.line), ("art/t.art", 3));
+    assert!(d.fix.as_deref().unwrap_or_default().contains("tone:"), "{d}");
+
+    let ev = run_with(
+        "@target t.png 100x100\nuse arm\narm_l 30 50 at:50,50 name:a\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(diag(&ev, "E0321").message, "`arm_l` takes 1 positional argument(s)");
+}
+
+#[test]
+fn an_alias_instance_draws_the_same_as_the_direct_call() {
+    let via_alias = scene_with(
+        "@target t.png 100x100\nuse arm\narm_l at:50,50 name:a\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    let direct = scene_with(
+        "@target t.png 100x100\nuse arm\nhero_arm tone:#ff0000 at:50,50 name:a\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(paths(&via_alias), paths(&direct));
+    let dot = |s: &Scene| node(s, "a.dot").bounds().unwrap().width();
+    assert_eq!(dot(&via_alias), dot(&direct));
+}
+
+#[test]
+fn an_unnamed_alias_instance_keys_and_seeds_as_the_direct_call() {
+    let via_alias = scene_with(
+        "@target t.png 100x100\ndef pebble r:4 tone:#3366cc\n  circle r+rand(0 9) fill:tone\ndef red = pebble tone:#ff0000\nred at:50,50\npebble at:20,20\n",
+        &[],
+    );
+    let direct = scene_with(
+        "@target t.png 100x100\ndef pebble r:4 tone:#3366cc\n  circle r+rand(0 9) fill:tone\npebble tone:#ff0000 at:50,50\npebble at:20,20\n",
+        &[],
+    );
+    let widths = |s: &Scene| -> Vec<(String, f32)> {
+        paths(s)
+            .into_iter()
+            .map(|p| (p.clone(), node(s, &p).bounds().unwrap().width()))
+            .collect()
+    };
+    assert_eq!(widths(&via_alias).len(), 4, "{:?}", paths(&via_alias));
+    assert_eq!(widths(&via_alias), widths(&direct));
+}
+
+#[test]
+fn a_library_let_sees_an_alias_declared_above_it() {
+    let lib = (
+        "lib/rig.art",
+        "use arm\ndef arm_r = hero_arm tone:#00ff00\nlet arm = arm_r\ndef rig\n  arm name:near\n",
+    );
+    let s = scene_with(
+        "@target t.png 100x100\nuse rig\nrig at:50,50 name:r\n",
+        &[lib, ("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(fill_hex(node(&s, "r.near.bone")), "#00ff00");
+    near(at(node(&s, "r.near.hand")), (10.0, 0.0));
+}
+
+#[test]
+fn an_alias_chains_through_aliases_and_imports_and_may_precede_its_target() {
+    let big = ("lib/big.art", "use arm\ndef arm_big = arm_l len:40\n");
+    let s = scene_with(
+        "@target t.png 100x100\nuse big\nuse arm { hero_arm }\ndef mine = hero_arm tone:#00ff00\narm_big at:50,50 name:a\nmine at:50,50 name:b\ndef early = late\nlate at:10,10 name:c\ndef late\n  rect 4x4 name:box\n",
+        &[big, ("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(fill_hex(node(&s, "a.bone")), "#ff0000");
+    near(at(node(&s, "a.hand")), (20.0, 0.0));
+    assert_eq!(fill_hex(node(&s, "b.bone")), "#00ff00");
+    assert!(paths(&s).iter().any(|p| p == "c.box"), "{:?}", paths(&s));
+
+    let ev = run_with(
+        "@target t.png 100x100\nuse big\narm_big len:3\n",
+        &[big, ("lib/arm.art", ARM_LIB)],
+    );
+    assert_eq!(diag(&ev, "E0321").message, "`arm_big` fixes `len`");
+}
+
+#[test]
+fn an_alias_reports_its_own_mistakes_at_the_alias_line() {
+    let ev = run_with(
+        "@target t.png 100x100\nuse arm\n\ndef bad = hero_arm wat:1\ndef twice = arm_l tone:#000000\n",
+        &[("lib/arm.art", ARM_LIB)],
+    );
+    let ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0321").collect();
+    assert_eq!(ds.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "`hero_arm` has no parameter `wat`");
+    assert_eq!(ds[0].span.line, 4);
+    assert_eq!(ds[1].message, "`arm_l` fixes `tone`");
+    assert_eq!(ds[1].span.line, 5);
+
+    let ev = run_with(
+        "@target t.png 100x100\ndef a = b\ndef b = a\npalette q\n  color ink #000000\ndef c = q\ndef d = nothing\n",
+        &[],
+    );
+    let mut ds: Vec<&Diagnostic> = ev.diagnostics.iter().filter(|d| d.code == "E0323").collect();
+    ds.sort_by_key(|d| d.span.line);
+    assert_eq!(ds.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!(ds[0].message, "`a` is an alias of itself");
+    assert_eq!(ds[0].notes, ["through a -> b -> a"]);
+    assert_eq!(ds[0].span.line, 2);
+    assert_eq!(ds[1].message, "`q` is a palette, not a def");
+    assert_eq!(ds[1].span.line, 6);
+    assert_eq!(diag(&ev, "E0301").message, "unknown def `nothing`");
+
+    let ev = run_with(
+        "@target t.png 100x100\ndef early = late_alias\ndef late_alias = nothing\nearly at:1,1 name:e\n",
+        &[],
+    );
+    assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(diag(&ev, "E0301").span.line, 3);
+}
+
+#[test]
+fn an_alias_fixed_argument_follows_the_instance_palette_like_a_default() {
+    let s = palette_scene(
+        "@target t.png 100x100\nuse d { eye }\ndef sky_eye = eye iris:p.sky\nsky_eye name:plain\nsky_eye palette:elite name:swapped\n",
+    );
+    assert_eq!(fill_hex(node(&s, "plain.i")), "#111111");
+    assert_eq!(fill_hex(node(&s, "swapped.i")), "#222222");
+}
+
 mod brush;
 mod stamp;
