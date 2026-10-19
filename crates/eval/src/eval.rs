@@ -26,6 +26,7 @@ use crate::identity::{
 };
 use crate::key::Ease;
 use crate::motion::{absolute_channel, offset_channel};
+use crate::order;
 use crate::paint::{key_color, to_paint};
 use crate::project::Project;
 use crate::range::Range;
@@ -399,6 +400,12 @@ pub(crate) struct Evaluator<'a> {
     /// The stamp declarations whose blocks are being placed, outermost first. A set whose
     /// declaration is already here would place itself forever.
     pub(crate) stamping: Vec<*const crate::stamp::StampDecl>,
+    /// Names the running statement reads that wait on it: the reads form a cycle, so it runs
+    /// as written and the read reports the cycle.
+    blocked: Vec<Site>,
+    /// Names of the statements that failed while blocked. A read of one stays quiet, because
+    /// the cycle was reported at that statement.
+    broken: BTreeSet<Site>,
 }
 
 struct StyleHit {
@@ -908,6 +915,8 @@ impl<'a> Evaluator<'a> {
             silence: false,
             placed: RefCell::new(HashMap::new()),
             stamping: Vec::new(),
+            blocked: Vec::new(),
+            broken: BTreeSet::new(),
         }
     }
 
@@ -1470,13 +1479,52 @@ impl<'a> Evaluator<'a> {
         sc: &mut Scope,
         out: &mut Siblings,
     ) {
-        for st in stmts {
-            let entry = sc.file() == self.job.source;
+        let stmts: Vec<&Scene> = stmts.into_iter().collect();
+        let mut slots: Vec<Siblings> = stmts.iter().map(|_| Siblings::default()).collect();
+        self.run_block(&stmts, sc, |ev, st, sc, i| ev.eval_stmt(st, sc, &mut slots[i]));
+        out.items.extend(slots.into_iter().flat_map(|s| s.items));
+    }
+
+    /// Runs a block's statements in the order `order::plan` gives. Each one sees the `let`s
+    /// written above it, however early or late it runs.
+    fn run_block(
+        &mut self,
+        stmts: &[&Scene],
+        sc: &mut Scope,
+        mut run: impl FnMut(&mut Self, &Scene, &mut Scope, usize) -> R<()>,
+    ) {
+        let region = sc.names.borrow().region();
+        let entry = sc.file() == self.job.source;
+        let base = sc.env.len();
+        let mut bound: Vec<Vec<(String, Value)>> = vec![Vec::new(); stmts.len()];
+        let mut in_order = true;
+        let mut prev = None;
+        for step in order::plan(stmts, &region) {
+            let i = step.stmt;
+            in_order &= prev.is_none_or(|p| p < i);
+            prev = Some(i);
+            if !in_order {
+                sc.env.truncate(base);
+                sc.env.extend(bound[..i].iter().flatten().cloned());
+            }
+            let mark = sc.env.len();
+            let st = stmts[i];
             if entry {
                 sc.site = Some(st.span.line);
             }
             let before = self.diags.len();
-            if let Err(f) = self.eval_stmt(st, sc, out) {
+            let outer = self.blocked.len();
+            let forced = !step.blocked.is_empty();
+            self.blocked.extend(step.blocked);
+            let result = run(self, st, sc, i);
+            self.blocked.truncate(outer);
+            if let Err(f) = result {
+                if forced {
+                    let sites = order::declared_in(st, &region)
+                        .into_iter()
+                        .map(|d| region.decl(d).site.clone());
+                    self.broken.extend(sites);
+                }
                 let node = sc.node_name();
                 let file = sc.file().to_string();
                 self.report(f, &file, st.span, &node);
@@ -1484,6 +1532,11 @@ impl<'a> Evaluator<'a> {
             if entry {
                 self.mark_site(before, st.span.line);
             }
+            bound[i] = sc.env[mark..].to_vec();
+        }
+        if !in_order {
+            sc.env.truncate(base);
+            sc.env.extend(bound.into_iter().flatten());
         }
     }
 
@@ -4109,13 +4162,8 @@ impl<'a> Evaluator<'a> {
     }
 
     fn collect_surface(&mut self, scenes: &[Scene], sc: &mut Scope, schedule: bool) {
-        for st in scenes {
-            if let Err(f) = self.collect_one(st, sc, schedule) {
-                let file = sc.file().to_string();
-                let node = sc.node_name();
-                self.report(f, &file, st.span, &node);
-            }
-        }
+        let stmts: Vec<&Scene> = scenes.iter().collect();
+        self.run_block(&stmts, sc, |ev, st, sc, _| ev.collect_one(st, sc, schedule));
     }
 
     fn collect_one(&mut self, st: &Scene, sc: &mut Scope, schedule: bool) -> R<()> {
@@ -5338,6 +5386,20 @@ impl<'a> Evaluator<'a> {
             Resolved::Many(es, depth) => {
                 Ok((es.iter().map(|e| ref_from(e, label)).collect(), depth))
             }
+            Resolved::Undrawn(site) if self.broken.contains(&site) => Err(Fail::reported()),
+            Resolved::Undrawn(site) if self.blocked.contains(&site) => Err(fail(
+                "E0350",
+                format!(
+                    "`@{label}` is read before `{label}` is drawn, and `{label}` reads back to this line"
+                ),
+            )
+            .note(format!(
+                "`{label}` is drawn at {}:{}",
+                site.file, site.span.line
+            ))
+            .fix(format!(
+                "draw `{label}` with no reference back to this node, and paint this node behind it with `z:behind`"
+            ))),
             Resolved::Undrawn(site) => Err(fail(
                 "E0350",
                 format!(
