@@ -1,0 +1,24 @@
+# Children of a brushed fill clip to the coverage its brush leaves, 192x72, three 56px squares on
+# paper at y 36, each with one child drawn across it.
+# Cell 1 (x 32), gold square with chip: the edge is bitten by flakes, and a dark band 72 wide
+# crosses the square's left and right sides. The band stops at the flaked edge: each bite shows
+# paper through the band, and the band never reaches past the chipped outline.
+# Cell 2 (x 96), blue square with dry: horizontal streaks of paper break the blue. A dark bar
+# crosses the square from top to bottom and is broken by the same streaks, so the bar shows only
+# where blue is painted and the paper gaps run through it.
+# Cell 3 (x 160), a faint gold square (alpha .25) with chip and a dark band like cell 1's: the
+# square itself is pale, but the band inside it is as dark and opaque as in cell 1, and still
+# stops at the flaked edge. Its flakes fall in other places than cell 1's.
+# The .svg target uses profile:svg: a brushed node bakes into a raster tile, children included,
+# so each cell looks like the PNG's.
+@target brush/clip.png 192x72
+@target brush/clip.svg 192x72 profile:svg
+
+use std/brushes { dry chip }
+
+rect 56 at:32,36 fill:p.gold.2 brush:chip(strength:.9 scale:2) name:chipped
+  rect 72,14 fill:p.ink name:band
+rect 56 at:96,36 fill:p.blue.2 brush:dry(strength:.6) name:streaked
+  rect 12,72 fill:p.ink name:bar
+rect 56 at:160,36 fill:#e8b33a40 brush:chip(strength:.9 scale:2) name:faint
+  rect 72,14 fill:p.ink name:faint_band

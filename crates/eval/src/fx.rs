@@ -242,7 +242,7 @@ impl Evaluator<'_> {
             },
             "outline" => EffectOp::Outline { width: n0.unwrap_or(2.0) as f32, color: color(color::line(f))?, sides: sides(named)? },
             "grain" => {
-                let explicit = a.num("seed").map(|s| s as u64);
+                let explicit = a.seed()?;
                 EffectOp::Grain {
                     strength: n0.unwrap_or(0.05) as f32,
                     scale: a.num("scale").unwrap_or(1.5) as f32,

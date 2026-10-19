@@ -760,6 +760,29 @@ fn jitter_is_amplitude_and_wavelength() {
 }
 
 #[test]
+fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
+    let s = scene(
+        "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
+    );
+    let ink = &shape(&s, "a").geometry;
+    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
+    assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
+    assert!(inside(64.0, 33.0) && !inside(64.0, 35.0), "the first side runs from 2 to 14");
+    assert!(!inside(64.0, 64.0), "the ink is a ring");
+}
+
+#[test]
+fn a_width_list_stroke_inks_every_contour_of_a_path() {
+    let s = scene(
+        "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
+    );
+    let ink = &shape(&s, "a").geometry;
+    let inside = |x: f32, y: f32| ink.contains(artscript_ir::Point::new(x, y));
+    assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
+}
+
+#[test]
 fn scaled_taper_matches_the_same_stroke_in_pixel_space() {
     let unit = png(
         "@target t.png 200x120\ngroup scale:50 at:100,60\n  curve -1,0 0,-.5 1,0 stroke:#000,[.05 .1 .05] taper:.3\n",
@@ -3190,8 +3213,7 @@ def blot
   fx grain .3
 ";
 
-/// The 48x48 pixels centered on `cx`,`cy`. Paint dithers on an 8px device grid, so two crops
-/// match byte for byte only when their centers differ by a multiple of 8.
+/// The 48x48 pixels centered on `cx`,`cy`.
 fn crop(scene: &Scene, cx: i32, cy: i32) -> Vec<u8> {
     let (w, h, buf) =
         artscript_render::render_rgba(scene, 1.0, artscript_render::Backend::Cpu).unwrap();
@@ -3216,6 +3238,41 @@ fn two_instances_with_the_same_seed_draw_the_same_pixels() {
     let (a, b, c) = (crop(&s, 48, 48), crop(&s, 144, 48), crop(&s, 240, 48));
     assert!(a == b, "seed:7 drew different pixels at a and g.b");
     assert!(a != c, "seed:7 and seed:8 drew the same pixels");
+}
+
+#[test]
+fn a_seeded_copy_draws_the_same_pixels_off_the_8px_grid() {
+    for dx in [98, 100, 101] {
+        let s = lib_scene(
+            &format!(
+                "@target t.png 300x96 bg:#ffffff\nuse d {{ blot }}\n\
+                 blot at:48,48 seed:7 name:a\nblot at:{},48 seed:7 name:b\n",
+                48 + dx
+            ),
+            BLOT_LIB,
+        );
+        assert!(crop(&s, 48, 48) == crop(&s, 48 + dx, 48), "seed:7 drew different pixels {dx}px over");
+    }
+}
+
+#[test]
+fn a_seeded_noise_fill_draws_the_same_pixels_off_the_8px_grid() {
+    let s = scene(
+        "@target t.png 200x64 bg:#ffffff\n\
+         rect 40x40 at:32,32 fill:fbm(simplex(6 seed:3)) -> [#000 #fff] name:a\n\
+         rect 40x40 at:132,32 fill:fbm(simplex(6 seed:3)) -> [#000 #fff] name:b\n",
+    );
+    assert!(crop(&s, 32, 32) == crop(&s, 132, 32), "the noise fill drew different pixels 100px over");
+}
+
+#[test]
+fn a_brushed_copy_draws_the_same_pixels_off_the_8px_grid() {
+    let s = scene(
+        "@target t.png 200x64 bg:#ffffff\nuse std/brushes { dry }\n\
+         rect 40x40 at:32,32 fill:#3366cc brush:dry(strength:.6) seed:7 name:a\n\
+         rect 40x40 at:133,32 fill:#3366cc brush:dry(strength:.6) seed:7 name:b\n",
+    );
+    assert!(crop(&s, 32, 32) == crop(&s, 133, 32), "the brush drew different pixels 101px over");
 }
 
 #[test]
@@ -6193,6 +6250,36 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
     let ev = run_with("@target t.png 80x80\nlet pts = [10,10 50,10]\ncurve pts red\n", &[]);
     let d = diag(&ev, "E0320");
     assert!(d.message.contains("points like 0,0 20,-15"), "{d}");
+}
+
+#[test]
+fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
+    let brush = ("lib/brushes.art", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
+    let stamp = ("lib/garden.art", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
+    let blot = ("lib/d.art", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
+    let none: &[(&str, &str)] = &[];
+    let cases = [
+        ("circle 4 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 jitter:0,60 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 fill:#000000 seed:foo name:n", "a word", none),
+        ("circle rand(4 8 seed:\"a\") name:n", "a string", none),
+        ("circle pick([4 8] seed:foo) name:n", "a word", none),
+        ("rect 20x20 fill:simplex(16 seed:\"a\") -> [#000000 #ffffff] name:n", "a string", none),
+        ("blob 20 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 jitter:1.5,60 seed:\"a\" name:n", "a string", none),
+        ("rect 20x20 name:n\n  fx grain .3 seed:\"a\"", "a string", none),
+        ("use brushes { dry }\nrect 20x20 fill:#ff0000 brush:dry seed:\"a\" name:n", "a string", &[brush]),
+        ("use garden { dots }\ncurve 0,9 30,9 stroke:#000000,2 stamp:dots seed:\"a\" name:n", "a string", &[stamp]),
+        ("use d { blot }\nblot seed:\"a\" name:n", "a string", &[blot]),
+    ];
+    for (body, kind, libs) in cases {
+        let ev = run_with(&format!("@target t.png 40x40\n{body}\n"), libs);
+        let line = 2 + body.lines().count() as u32 - 1;
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, format!("`seed:` takes a number, got {kind}"), "{body}: {d}");
+        assert_eq!(d.span.line, line, "{body}: {d}");
+        assert_eq!(ev.diagnostics.len(), 1, "{body}: {}", show(&ev.diagnostics));
+    }
 }
 
 mod brush;

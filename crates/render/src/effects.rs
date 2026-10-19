@@ -1000,7 +1000,6 @@ pub fn apply_image_filter(
 pub fn white_paint() -> Paint {
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
-    paint.set_dither(true);
     paint.set_color4f(
         Color4f {
             r: 1.0,

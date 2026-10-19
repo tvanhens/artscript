@@ -30,13 +30,20 @@ fn visit(node: &Node, out: &mut Vec<Unsupported>) {
 
 /// Whether SVG replaces this whole node with one tile.
 pub fn bakes(node: &Node) -> bool {
-    has(node, node_features) || (has(node, paint_features) && !has_stamps(node))
+    has(node, node_features) || (has(node, paint_features) && !splits_stamps(node))
 }
 
 /// Whether SVG bakes only this shape's own fill and stroke, and writes its stamps as elements over
 /// the tile: a brushed or field-painted host whose stamps would otherwise be baked with it.
 pub fn bakes_paint(node: &Node) -> bool {
-    !has(node, node_features) && has(node, paint_features) && has_stamps(node)
+    !has(node, node_features) && has(node, paint_features) && splits_stamps(node)
+}
+
+/// A host whose children clip to a brushed fill's coverage bakes whole, since an SVG clip path
+/// cannot follow that coverage.
+fn splits_stamps(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::Shape(shape)
+        if !shape.stamps.is_empty() && (shape.children.is_empty() || shape.coverage_clip().is_none()))
 }
 
 fn has(node: &Node, features: fn(&Node, &mut Vec<Unsupported>)) -> bool {
@@ -45,9 +52,6 @@ fn has(node: &Node, features: fn(&Node, &mut Vec<Unsupported>)) -> bool {
     !tmp.is_empty()
 }
 
-fn has_stamps(node: &Node) -> bool {
-    matches!(&node.kind, NodeKind::Shape(shape) if !shape.stamps.is_empty())
-}
 
 fn features_of(node: &Node, out: &mut Vec<Unsupported>) {
     node_features(node, out);

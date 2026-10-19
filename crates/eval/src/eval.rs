@@ -348,6 +348,10 @@ impl Args {
         self.get(k).and_then(Value::num)
     }
 
+    pub fn seed(&self) -> R<Option<u64>> {
+        self.get("seed").map(Value::seed).transpose()
+    }
+
     fn word(&self, k: &str) -> Option<String> {
         self.get(k).and_then(|v| v.word().map(str::to_string))
     }
@@ -2121,6 +2125,7 @@ impl<'a> Evaluator<'a> {
         } else {
             let inner_world = world;
             let mut operand_frame = None;
+            let explicit = a.seed()?;
             let (geometry, knots, closed) = match verb {
                 "subtract" | "union" | "intersect" | "xor" => {
                     let op = match verb {
@@ -2185,7 +2190,6 @@ impl<'a> Evaluator<'a> {
                         return Err(fail("E0320", "`jitter:` wavelength must be positive")
                             .fix("write `jitter:1.5,60`"));
                     }
-                    let explicit = a.num("seed").map(|s| s as u64);
                     let jitter = identity::seed(sc.file(), &key.jitter(), explicit, &mut self.uses);
                     let mut rng = Rng::new(jitter);
                     geometry = geom::wobble(&geometry, amount, &mut rng, wavelength);
@@ -2722,7 +2726,7 @@ impl<'a> Evaluator<'a> {
                     .ok_or_else(|| need("a radius", "blob 30 seed:4 wobble:.2"))?;
                 check_percent(r, frame, sc)?;
                 let r = r.len(fw.min(fh));
-                let explicit = a.num("seed").map(|s| s as u64);
+                let explicit = a.seed()?;
                 let blob =
                     identity::seed(sc.file(), &self.seed_key.blob(), explicit, &mut self.uses);
                 let mut rng = Rng::new(blob);
@@ -2908,7 +2912,7 @@ impl<'a> Evaluator<'a> {
                         }
                     }
                 }
-                let explicit = a.num("seed").map(|s| s as u64);
+                let explicit = a.seed()?;
                 (
                     self.area_marks(&fill_stack, key, explicit, &file),
                     self.ribbon_marks(&stroke_stack, key, explicit, &file),
@@ -2959,7 +2963,7 @@ impl<'a> Evaluator<'a> {
             Some(spine) if !sets.is_empty() => {
                 let host = crate::stamp::Host {
                     key,
-                    explicit: a.num("seed").map(|s| s as u64),
+                    explicit: a.seed()?,
                     world,
                     own_site: site(&["stamp"]),
                     span,
@@ -3012,20 +3016,12 @@ impl<'a> Evaluator<'a> {
             ));
         }
         if tapered {
-            let knots = match knots {
-                [k] if k.len() == widths.len() => k.as_slice(),
-                _ => &[],
-            };
+            let spine = brush::Spine::new(&geometry, knots, &widths, &Channels::default());
+            let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), Vec::new());
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
-            let outline = geom::brush(
-                &geometry,
-                knots,
-                &widths,
-                taper.unwrap_or((0.0, 0.0)),
-                0.75 / px,
-            );
+            let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
             // The gradient spans the ink, not the spine.
             let ob = geom::bounds(&outline);
             let paint = to_paint(&paint_v, ob)
@@ -3186,11 +3182,7 @@ impl<'a> Evaluator<'a> {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
             } else if k == "seed" {
-                let seed = v.num().ok_or_else(|| {
-                    fail("E0320", format!("`seed:` takes a number, got {}", v.kind()))
-                        .fix("write `seed:7`")
-                })?;
-                key = key.seeded(&comp.module, &comp.name, seed as u64);
+                key = key.seeded(&comp.module, &comp.name, v.seed()?);
             } else if k == "palette" {
                 if !matches!(v, Value::Palette(_) | Value::Module(_)) {
                     return Err(fail(

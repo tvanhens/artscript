@@ -114,8 +114,9 @@ pub struct Shape {
     /// (children, `inside`, `copy`, booleans and anchors see the spine as before).
     pub stamps: Vec<Node>,
     /// Drawn after the shape, clipped to [`Shape::clip`] whatever the shape's fill or alpha (the
-    /// "clip by nesting" rule). The shape, its stamps and its children form one isolated group,
-    /// so a child's blend mode never reaches content below the shape.
+    /// "clip by nesting" rule), or to the coverage of a brushed fill. The shape, its stamps and
+    /// its children form one isolated group, so a child's blend mode never reaches content below
+    /// the shape.
     pub children: Vec<Node>,
 }
 
@@ -457,6 +458,12 @@ impl Shape {
                 skia_safe::op(&self.geometry, ink, skia_safe::PathOp::Union).unwrap_or_else(|| ink.clone()),
             ),
         }
+    }
+
+    /// The brushed fill whose coverage clips the children, or `None` when they clip to
+    /// [`Shape::clip`].
+    pub fn coverage_clip(&self) -> Option<&Fill> {
+        self.fill.as_ref().filter(|f| !f.marks.is_empty())
     }
 
     /// Local units the brush marks may paint past the fill's geometry or the ribbon's edge. 0

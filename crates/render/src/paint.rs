@@ -3,8 +3,10 @@
 use artscript_ir::{Blend, Cap, Color, Join, Paint as IrPaint, Stop, Stroke};
 use skia_safe::gradient::{self, Colors, Gradient, Interpolation};
 use skia_safe::paint::{Cap as SkCap, Join as SkJoin, Style};
+use skia_safe::runtime_effect::ChildPtr;
 use skia_safe::{
-    BlendMode, BlurStyle, Color4f, MaskFilter, Paint, PathEffect, Point, Shader, TileMode,
+    BlendMode, BlurStyle, Color4f, Data, MaskFilter, Matrix, Paint, PathEffect, Point, RuntimeEffect,
+    Shader, TileMode,
 };
 
 use crate::field::{FieldUse, field_shader};
@@ -90,7 +92,6 @@ fn gradient_between(
 pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Result<Paint, RenderError> {
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
-    paint.set_dither(true);
     match src {
         IrPaint::Solid(c) => {
             paint.set_color4f(color4(*c), None);
@@ -137,6 +138,60 @@ pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Resul
         paint.set_mask_filter(filter);
     }
     Ok(paint)
+}
+
+/// SkSL for [`dithered`]: the child's premultiplied color moved by under half an 8-bit level per
+/// channel, with the offset hashed from the device pixel relative to `u_origin`.
+fn dither_sksl() -> String {
+    format!(
+        "{}\n{}",
+        artscript_brush::HASH,
+        r#"uniform shader u_src;
+uniform float3x3 u_ltd;
+uniform float2 u_origin;
+half4 main(float2 p) {
+    float4 c = float4(u_src.eval(p));
+    float3 d = u_ltd * float3(p, 1);
+    float n = (hcore(floor(d.xy / d.z) - u_origin) - 0.5) / 255;
+    return half4(clamp(c.rgb + n, 0, c.a), c.a);
+}
+"#
+    )
+}
+
+thread_local! {
+    static DITHER: RuntimeEffect =
+        RuntimeEffect::make_for_shader(dither_sksl(), None).expect("dither shader compiles");
+}
+
+/// The device pixel of local (0,0) under `ltd`. Dither is hashed relative to it, so two copies
+/// of a node a whole number of pixels apart dither alike.
+pub fn dither_origin(ltd: &Matrix) -> [f32; 2] {
+    let o = ltd.map_point((0.0, 0.0));
+    [o.x.round(), o.y.round()]
+}
+
+/// `paint` with its shader dithered in place of Skia's dither, which follows the device's 8x8
+/// grid. A paint without a shader is a solid color and is left as it is.
+pub fn dithered(mut paint: Paint, ltd: &Matrix) -> Result<Paint, RenderError> {
+    let Some(src) = paint.shader() else {
+        return Ok(paint);
+    };
+    let bytes: Vec<u8> = mat9(ltd).iter().chain(&dither_origin(ltd)).flat_map(|f| f.to_ne_bytes()).collect();
+    let shader = DITHER
+        .with(|e| e.make_shader(Data::new_copy(&bytes), &[ChildPtr::from(src)], None))
+        .ok_or_else(|| RenderError::Skia("dither shader".into()))?;
+    paint.set_shader(shader);
+    Ok(paint)
+}
+
+/// Column-major 3x3, as SkSL lays out a `float3x3` uniform.
+pub fn mat9(m: &Matrix) -> [f32; 9] {
+    [
+        m.scale_x(), m.skew_y(), m.persp_x(),
+        m.skew_x(), m.scale_y(), m.persp_y(),
+        m.translate_x(), m.translate_y(), m[8],
+    ]
 }
 
 fn stops_linear(stops: &[Stop], from: Point, to: Point) -> Result<Shader, RenderError> {
