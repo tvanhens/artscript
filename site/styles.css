@@ -335,7 +335,7 @@ main > section { margin-top: var(--section); }
 }
 .feat__text { padding: var(--pad); display: grid; gap: 12px; align-content: start; }
 .feat__name { font-size: var(--step-body); font-weight: 500; letter-spacing: -0.01em; }
-.feat__text pre { color: var(--muted); min-width: 0; }
+.feat__text pre { color: var(--muted); min-width: 0; white-space: pre-wrap; }
 .feat__text { grid-template-columns: minmax(0, 1fr); }
 .feat__art { position: relative; flex: 1; min-height: 140px; overflow: clip; }
 .feat__art img { position: absolute; left: 50%; width: 100%; max-width: none; transform: translateX(-50%); }
@@ -541,3 +541,50 @@ main > section { margin-top: var(--section); }
 }
 pre { max-width: 100%; }
 .hero__board > *, .demo__panel > *, .field > *, .demo__controls > * { min-width: 0; }
+
+:root {
+  --code-ink: var(--ink);
+  --code-quiet: #5c5b6b;
+  --code-comment: #66657a;
+  --code-num: #2c4a7c;
+  --code-ref: #4a3f6b;
+  --code-line: rgba(29, 28, 46, 0.07);
+}
+.tile--ink {
+  --code-ink: #f7f6f3;
+  --code-quiet: #c4c3cf;
+  --code-comment: #a2a1b3;
+  --code-num: #a9b8e6;
+  --code-ref: #c3b3e6;
+  --code-line: rgba(247, 246, 243, 0.08);
+}
+pre[data-lang] { color: var(--code-ink); white-space: pre-wrap; overflow-wrap: break-word; }
+.t-verb { color: var(--code-ink); }
+.t-decl { color: var(--code-ink); font-weight: 600; }
+.t-key, .t-punct, .t-sign { color: var(--code-quiet); }
+.t-comment { color: var(--code-comment); }
+.t-num, .t-str { color: var(--code-num); }
+.t-ref { color: var(--code-ref); }
+.t-hex { color: var(--code-ink); }
+.t-chip {
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  margin-left: 0.4em;
+  border-radius: 2px;
+  vertical-align: -0.06em;
+  outline: 1px solid rgba(29, 28, 46, 0.28);
+  outline-offset: -1px;
+  box-sizing: border-box;
+}
+.tile--ink .t-chip { outline-color: rgba(247, 246, 243, 0.4); }
+.ln { display: block; margin-inline: -14px; padding-inline: 14px; }
+.ln--meta { color: var(--code-comment); }
+.ln--del { background: var(--code-line); }
+.ln--add { background: var(--code-line); }
+.ln--add .t-sign, .ln--del .t-sign { font-weight: 600; color: var(--code-ink); }
+@media (max-width: 900px) {
+  .hero__source { max-height: none; }
+}
+.lw { display: block; min-height: 1lh; padding-left: var(--hang); text-indent: calc(-1 * var(--hang)); }
+.ln.lw { padding-left: calc(14px + var(--hang)); }

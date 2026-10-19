@@ -36,7 +36,7 @@
       <figcaption class="caption">specimen/luna_tailed.png</figcaption>
     </figure>
     <figure class="tile tile--surface hero__source">
-      <pre><code># The hero: one luna specimen, large, pinned through the thorax.
+      <pre data-lang="art"><code># The hero: one luna specimen, large, pinned through the thorax.
 @target specimen/luna_tailed.png 1600x1600
 
 use moth { moth }
@@ -55,7 +55,7 @@ layer pin
     <div class="hero__pair">
       <div class="tile tile--ink hero__what">
         <p class="lead">A small language for procedural art. One text file builds painted PNG, SVG and GIF.</p>
-        <pre><code>artscript check --json
+        <pre data-lang="sh"><code>artscript check --json
 artscript build</code></pre>
       </div>
       <div class="tile tile--accent hero__action">
@@ -90,7 +90,7 @@ artscript build</code></pre>
   <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/rosy_tailed.png" width="640" height="640" loading="lazy" alt="A pink moth with long tails and yellow-tipped hind wings"><figcaption class="caption">plate/rosy_tailed.png</figcaption></figure>
   <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/dusk_plain.png" width="640" height="640" loading="lazy" alt="A plain slate-blue moth with sharp wings and no eyespots"><figcaption class="caption">plate/dusk_plain.png</figcaption></figure>
   <figure class="tile tile--surface plate__source" data-reveal>
-    <pre><code>@target plate/{name}.png 640x640 each name:[luna_veil luna_tailed dusk_ember dusk_lantern ember_brindle ember_falcate bone_scribe bone_pale rosy_sash rosy_lanternfly luna_sickle dusk_tailed ember_tailed bone_tailed rosy_tailed dusk_plain]
+    <pre data-lang="art"><code>@target plate/{name}.png 640x640 each name:[luna_veil luna_tailed dusk_ember dusk_lantern ember_brindle ember_falcate bone_scribe bone_pale rosy_sash rosy_lanternfly luna_sickle dusk_tailed ember_tailed bone_tailed rosy_tailed dusk_plain]
 
 use moth { moth }
 
@@ -117,7 +117,7 @@ each s in specs
     <form class="demo__controls" id="demo-form" aria-label="Moth parameters">
       <div class="demo__line">
         <p class="caption">This picture is the line</p>
-        <pre><code>moth wing:<span data-token="wing">luna</span> pattern:<span data-token="pattern">1</span> tails:<span data-token="tails">on</span></code></pre>
+        <pre data-lang="art"><code>moth wing:<span data-token="wing">luna</span> pattern:<span data-token="pattern">1</span> tails:<span data-token="tails">on</span></code></pre>
       </div>
 
       <fieldset class="row">
@@ -161,7 +161,7 @@ each s in specs
   </div>
 
   <figure class="tile tile--surface demo__source" data-reveal>
-    <pre><code># One moth, fanned out. The target matrix renders every combination of a wing palette,
+    <pre data-lang="art"><code># One moth, fanned out. The target matrix renders every combination of a wing palette,
 # a pattern seed, and tails on or off: 5 x 4 x 2 = 40 images from one line of drawing.
 @target demo/moth_{wing}_{pattern}_{tails}.png 720x720 each wing:[luna dusk ember bone rosy] pattern:[1 2 3 4] tails:[on off]
 
@@ -179,7 +179,7 @@ moth wing:wing pattern:pattern tails:tails at:360,328 scale:2.15 name:specimen</
     <div class="field__card" data-ui data-reveal>
       <div class="card">
         <p class="card__file"><code>art/sprout_broken.art</code></p>
-        <pre class="card__code"><code>  each k in [-1 1]
+        <pre class="card__code" data-lang="art"><code>  each k in [-1 1]
     ellipse 22,8 at:k*72,48 fill:p.coral.3 a:.45 blur:6 name:cheek
     circle 15 at:k*50,22+k*9 fill:sprout.ink name:eye
       circle 5 at:-5,-6 fill:sprout.seed.4
@@ -226,7 +226,7 @@ assert inside(@body canvas margin:24)</code></pre>
   <div class="field field--deep">
     <div class="field__card" data-ui data-reveal>
       <div class="card">
-        <pre class="card__code card__diff"><code>--- a/art/sprout.art
+        <pre class="card__code card__diff" data-lang="diff"><code>--- a/art/sprout.art
 +++ b/art/sprout.art
 @@ -7 +7 @@
 -  ramp leaf #6f8a4f 5
@@ -248,7 +248,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">One hex, a whole ramp.</h3>
       <p>A ramp turns one colour into five stops. Its shadows shift toward cool blue-violet and its lights toward warm yellow, so this stone is shaded from a single hex.</p>
-      <pre><code>palette study
+      <pre data-lang="art"><code>palette study
   ramp pebble #ff6a5a 5</code></pre>
     </div>
     <div class="feat__art feat__art--bottom"><img src="art/studies/assets/ramp.png" width="800" height="500" loading="lazy" alt="Five painted colour chips from deep red to pale peach beside a shaded coral pebble"></div>
@@ -259,7 +259,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">Shading stays inside.</h3>
       <p>Children clip to their parent. The texture on this leaf is an 800 by 800 rectangle, but it is the leaf’s child, so it paints only inside the leaf.</p>
-      <pre><code>    rect 800x800 fill:fbm(simplex(26)) -&gt; [fade(p.leaf.0 0) fade(p.leaf.0 .45)] name:texture</code></pre>
+      <pre data-lang="art"><code>    rect 800x800 fill:fbm(simplex(26)) -&gt; [fade(p.leaf.0 0) fade(p.leaf.0 .45)] name:texture</code></pre>
     </div>
   </article>
 
@@ -267,7 +267,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">Brushes written in SkSL.</h3>
       <p>A brush is a small SkSL program that shades each pixel of a fill or a stroke. This swash stacks two brushes from std/brushes over one curve, with a width and a pressure at each point.</p>
-      <pre><code>brush:[bristle(strength:.85 gaps:.9) dry(strength:.25)] pressure:[.7 1 1 .85 .55 .3 .1]</code></pre>
+      <pre data-lang="art"><code>brush:[bristle(strength:.85 gaps:.9) dry(strength:.25)] pressure:[.7 1 1 .85 .55 .3 .1]</code></pre>
     </div>
     <div class="feat__art feat__art--bottom"><img src="art/studies/assets/brush.png" width="800" height="500" loading="lazy" alt="One coral brush stroke with dry bristle texture, thick at the start and trailing off"></div>
   </article>
@@ -277,7 +277,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">Stamps follow the path.</h3>
       <p>A stamp is a block of drawing laid along a stroke. Each leaf here reads the stroke’s pressure, so the sprigs grow larger and further apart toward the root.</p>
-      <pre><code>stamp sprigs spacing:22+34*pressure
+      <pre data-lang="art"><code>stamp sprigs spacing:22+34*pressure
   let side = if mod(i 2) == 0 then 1 else -1</code></pre>
     </div>
   </article>
@@ -286,7 +286,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">Noise as paint.</h3>
       <p>Simplex, perlin, worley and fbm fields fill a shape through a ramp or a list of colours. The stone is fbm noise. The lichen is worley noise mapped through three greens.</p>
-      <pre><code>fill:fbm(simplex(90)) -&gt; [p.stone.1 p.stone.3]</code></pre>
+      <pre data-lang="art"><code>fill:fbm(simplex(90)) -&gt; [p.stone.1 p.stone.3]</code></pre>
     </div>
     <div class="feat__art feat__art--bottom"><img src="art/studies/assets/field.png" width="800" height="800" loading="lazy" alt="A grey stone mottled with noise and patches of green lichen"></div>
   </article>
@@ -296,7 +296,7 @@ assert inside(@body canvas margin:24)</code></pre>
     <div class="feat__text">
       <h3 class="feat__name">Motion is a patch.</h3>
       <p>An anim keys the rotation of three named parts over 1.5 seconds. The GIF target plays the loop. A PNG target of the same file draws the frame at 375 ms.</p>
-      <pre><code>anim sway dur:1.5s loop
+      <pre data-lang="art"><code>anim sway dur:1.5s loop
   .sprig rot:key(-6 6 -6)
   .crown rot:key(4 -8 4)
   .low rot:key(-5 7 -5)</code></pre>
@@ -323,7 +323,7 @@ assert inside(@body canvas margin:24)</code></pre>
   <div class="cta__tile" data-reveal>
     <h2 class="head" id="install-title">Draw your first asset</h2>
     <p>artscript builds with stable Rust. Install the CLI, run init, then build.</p>
-    <pre><code>git clone https://github.com/tvanhens/artscript
+    <pre data-lang="sh"><code>git clone https://github.com/tvanhens/artscript
 cd artscript
 cargo install --path crates/cli</code></pre>
     <a class="button" href="https://github.com/tvanhens/artscript">Get it on GitHub</a>
