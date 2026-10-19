@@ -45,7 +45,9 @@ fn bezier_controls(p0: P, p1: P, p2: P, p3: P, tension: f64) -> (P, P) {
 }
 
 /// Smooth curve through every point. Needs 2 points open, 3 closed; fewer give a polyline.
-pub fn spline(pts: &[P], tension: f64, closed: bool) -> Path {
+/// `bounded` clamps each segment's handles, per axis, into the box of its end points, so the
+/// segment never goes past either end point.
+pub fn spline(pts: &[P], tension: f64, closed: bool, bounded: bool) -> Path {
     let n = pts.len();
     let mut b = PathBuilder::new();
     if n == 0 {
@@ -71,7 +73,12 @@ pub fn spline(pts: &[P], tension: f64, closed: bool) -> Path {
     };
     b.move_to(pt(pts[0]));
     for i in 0..if closed { n } else { n - 1 } {
-        let (c1, c2) = bezier_controls(ext[i], ext[i + 1], ext[i + 2], ext[i + 3], tension);
+        let (a, z) = (ext[i + 1], ext[i + 2]);
+        let (mut c1, mut c2) = bezier_controls(ext[i], a, z, ext[i + 3], tension);
+        if bounded {
+            let clamp = |c: P| (c.0.clamp(a.0.min(z.0), a.0.max(z.0)), c.1.clamp(a.1.min(z.1), a.1.max(z.1)));
+            (c1, c2) = (clamp(c1), clamp(c2));
+        }
         b.cubic_to(pt(c1), pt(c2), pt(ext[i + 2]));
     }
     if closed {
@@ -236,7 +243,7 @@ pub fn wobble(path: &Path, amount: f64, rng: &mut Rng, wavelength: f64) -> Path 
                 (c.pos[i].0 - c.tan[i].1 * disp, c.pos[i].1 + c.tan[i].0 * disp)
             })
             .collect();
-        b.add_path(&spline(&pts, 0.5, c.closed), None);
+        b.add_path(&spline(&pts, 0.5, c.closed, false), None);
     }
     b.detach()
 }
@@ -252,7 +259,7 @@ pub fn blob(r: f64, points: usize, wobble: f64, rng: &mut Rng) -> Path {
             (rr * a.cos(), rr * a.sin())
         })
         .collect();
-    spline(&pts, 0.5, true)
+    spline(&pts, 0.5, true, false)
 }
 
 /// Regular polygon, or a star when `inner` is set (fraction of `r`). The first vertex points up.
@@ -351,7 +358,7 @@ mod tests {
     #[test]
     fn curve_passes_through_its_points() {
         let pts = [(0.0, 0.0), (20.0, -15.0), (40.0, 0.0)];
-        let path = spline(&pts, 0.5, false);
+        let path = spline(&pts, 0.5, false, true);
         for p in pts {
             assert!(contains(&path, p), "curve misses {p:?}");
         }
@@ -362,7 +369,7 @@ mod tests {
 
     #[test]
     fn tapered_stroke_is_full_width_in_the_middle() {
-        let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false);
+        let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false, true);
         let knots = [vec![(0.0, 0.0), (100.0, 0.0)]];
         let spine = crate::brush::Spine::new(&line, &knots, &[8.0, 8.0], &Default::default());
         let ribbon = crate::brush::ribbon(&spine, (0.3, 0.3), Vec::new());

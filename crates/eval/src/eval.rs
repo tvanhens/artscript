@@ -2976,7 +2976,7 @@ impl<'a> Evaluator<'a> {
                     // so the straight sides are a polygon before the same effect `poly` uses.
                     geom::round_corners(&geom::polygon(&pts), round)
                 } else {
-                    geom::spline(&pts, tension, closed)
+                    geom::spline(&pts, tension, closed, true)
                 };
                 (path, vec![pts], closed)
             }
