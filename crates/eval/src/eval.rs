@@ -3011,14 +3011,8 @@ impl<'a> Evaluator<'a> {
             ));
         }
         if tapered {
-            let ribbon = brush::ribbon(
-                &geometry,
-                knots,
-                &widths,
-                taper.unwrap_or((0.0, 0.0)),
-                &Channels::default(),
-                Vec::new(),
-            );
+            let spine = brush::Spine::new(&geometry, knots, &widths, &Channels::default());
+            let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), Vec::new());
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
             let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);

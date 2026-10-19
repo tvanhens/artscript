@@ -364,7 +364,8 @@ mod tests {
     fn tapered_stroke_is_full_width_in_the_middle() {
         let line = spline(&[(0.0, 0.0), (100.0, 0.0)], 0.5, false);
         let knots = [vec![(0.0, 0.0), (100.0, 0.0)]];
-        let ribbon = crate::brush::ribbon(&line, &knots, &[8.0, 8.0], (0.3, 0.3), &Default::default(), Vec::new());
+        let spine = crate::brush::Spine::new(&line, &knots, &[8.0, 8.0], &Default::default());
+        let ribbon = crate::brush::ribbon(&spine, (0.3, 0.3), Vec::new());
         let outline = ribbon_ink(&line, &ribbon, 0.75);
         let probe = |y: f32| outline.contains(Point::new(50.0, y));
         assert!(probe(3.9) && probe(-3.9));
