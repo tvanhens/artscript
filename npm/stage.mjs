@@ -39,7 +39,7 @@ function stagePlatform(version, key, binary, outDir) {
   copyFileSync(binary, dest);
   chmodSync(dest, 0o755);
   writeJson(join(dir, "package.json"), {
-    name: `@artscript/${key}`,
+    name: p.package,
     version,
     description: `The artscript binary for ${key}.`,
     ...common,
@@ -59,7 +59,7 @@ function stageMain(version, outDir) {
   for (const f of ["README.md", "LICENSE"]) copyFileSync(join(root, f), join(dir, f));
   const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"));
   pkg.version = version;
-  pkg.optionalDependencies = Object.fromEntries(platforms.map((p) => [`@artscript/${p.key}`, version]));
+  pkg.optionalDependencies = Object.fromEntries(platforms.map((p) => [p.package, version]));
   writeJson(join(dir, "package.json"), pkg);
 }
 

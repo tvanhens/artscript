@@ -1,13 +1,12 @@
 # npm packaging
 
-`artscript` is a Node shim. Each `@artscript/<key>` package holds one binary and declares `os`, `cpu`, and `libc`, so the package manager installs only the one that fits. There is no postinstall script, which keeps it working under bun and `--ignore-scripts`.
+`artscript` is a Node shim. Each `artscript-<key>` package holds one binary and declares `os`, `cpu`, and `libc`, so the package manager installs only the one that fits. There is no postinstall script, which keeps it working under bun and `--ignore-scripts`.
 
 `platforms.json` is the only list of platforms. The shim, `stage.mjs`, and the release matrix all read it.
 
 ## One-time setup
 
-1. Create the `artscript` org on npm, which owns the `@artscript` scope.
-2. Add an automation token as the repository secret `NPM_TOKEN`.
+Add an automation token as the repository secret `NPM_TOKEN`.
 
 ## Cut a release
 
@@ -18,7 +17,7 @@ The `release` workflow builds every platform, smoke-tests each package with npm 
 
 ## Add a platform
 
-Add one row to `platforms.json`: `key`, `os`, `cpu`, `libc` for Linux, Rust `target`, GitHub `runner`, and `exe`. Nothing else lists platforms.
+Add one row to `platforms.json`: `key`, `package` (`artscript-<key>`), `os`, `cpu`, `libc` for Linux, Rust `target`, GitHub `runner`, and `exe`. Nothing else lists platforms.
 
 ## Check locally
 

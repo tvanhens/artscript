@@ -26,10 +26,10 @@ if (!entry) {
 
 let binary;
 try {
-  binary = require.resolve(`@artscript/${entry.key}/bin/${entry.exe}`);
+  binary = require.resolve(`${entry.package}/bin/${entry.exe}`);
 } catch {
   fail(
-    `the package @artscript/${entry.key} is not installed for ${here}. ` +
+    `the package ${entry.package} is not installed for ${here}. ` +
       `Reinstall without --no-optional or --omit=optional. Supported: ${supported}. ` +
       `Or build from source with: ${fallback}`,
   );
