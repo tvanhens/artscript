@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>artscript: a small language for painted art your model writes</title>
+<meta name="description" content="artscript is a small text language and CLI that builds painted PNG, SVG and GIF art. A model writes it, checks it and fixes it. One file fans out a whole family of assets.">
+<link rel="icon" href="brand/mark.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script>document.documentElement.classList.add('js')</script>
+</head>
+<body>
+
+<header class="board hero" id="top">
+  <nav class="nav" aria-label="Main">
+    <a class="tile tile--ink nav__mark" href="#top" aria-label="artscript, back to top"><img src="brand/mark.png" width="512" height="512" alt=""></a>
+    <div class="tile tile--surface nav__links">
+      <a class="link" href="#features">Language</a>
+      <a class="link" href="#plate">Examples</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/blob/main/docs/language.md">Docs</a>
+      <a class="link" href="#install">Install</a>
+    </div>
+    <a class="tile tile--ink nav__action button-tile" href="https://github.com/tvanhens/artscript">GitHub</a>
+  </nav>
+
+  <div class="hero__board">
+    <div class="tile tile--surface hero__name">
+      <h1 class="display">artscript</h1>
+    </div>
+    <figure class="tile tile--card hero__picture shutter">
+      <img src="art/moths/assets/specimen/luna_tailed.png" width="1600" height="1600" fetchpriority="high"
+        alt="A pale green luna moth with long tails and red eyespots, painted with a grainy wash and pinned through the thorax">
+      <figcaption class="caption">specimen/luna_tailed.png</figcaption>
+    </figure>
+    <figure class="tile tile--surface hero__source">
+      <pre><code># The hero: one luna specimen, large, pinned through the thorax.
+@target specimen/luna_tailed.png 1600x1600
+
+use moth { moth }
+
+moth wing:luna shape:broad tails:on eyes:on pattern:2 at:800,722 scale:5.2 name:hero
+
+layer pin
+  curve 810,612 830,540 stroke:fade(p.ink .3),12 blur:7 name:pin_shadow
+  circle 26 at:810,604 fill:fade(p.ink .4) blur:9 name:pin_contact
+  curve 800,604 818,520 stroke:p.steel,9 taper:0,.15 name:shaft
+  curve 802,600 819,522 stroke:fade(p.paper .85),2.4 taper:0,.15 name:shaft_lit
+  circle 19 at:820,510 fill:radial(shade(p.ink 2) p.ink at:.35,.3 r:24) name:pin_head
+    circle 5.5 at:-5.5,-5.5 fill:fade(p.paper .8) blur:1.5</code></pre>
+      <figcaption class="caption">art/specimen.art</figcaption>
+    </figure>
+    <div class="hero__pair">
+      <div class="tile tile--ink hero__what">
+        <p class="lead">A small language for procedural art. One text file builds painted PNG, SVG and GIF.</p>
+        <pre><code>artscript check --json
+artscript build</code></pre>
+      </div>
+      <div class="tile tile--accent hero__action">
+        <p class="lead">Your model writes it, checks it and fixes it.</p>
+        <a class="button" href="#install">Install the CLI</a>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<section class="board plate" id="plate" aria-labelledby="plate-title">
+  <div class="tile tile--ink plate__head" data-reveal>
+    <h2 class="head" id="plate-title">One file, sixteen moths</h2>
+    <p>Every specimen here is the same component, lib/moth.art, given a palette row, a pattern seed and a wing shape. A new species is one line.</p>
+  </div>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/luna_veil.png" width="640" height="640" loading="lazy" alt="A pale green moth with rounded wings and red eyespots"><figcaption class="caption">plate/luna_veil.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/luna_tailed.png" width="640" height="640" loading="lazy" alt="A pale green luna moth with long hind-wing tails"><figcaption class="caption">plate/luna_tailed.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/dusk_ember.png" width="640" height="640" loading="lazy" alt="A slate-blue moth with pale bands and red eyespots"><figcaption class="caption">plate/dusk_ember.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/dusk_lantern.png" width="640" height="640" loading="lazy" alt="A slate-blue moth with sharp, hooked forewings"><figcaption class="caption">plate/dusk_lantern.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/ember_brindle.png" width="640" height="640" loading="lazy" alt="A rust-orange moth with yellow bands and small ringed spots"><figcaption class="caption">plate/ember_brindle.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/ember_falcate.png" width="640" height="640" loading="lazy" alt="A rust-orange moth with hooked forewings and yellow eyespots"><figcaption class="caption">plate/ember_falcate.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/bone_scribe.png" width="640" height="640" loading="lazy" alt="A speckled bone-grey moth with sharp wings and dark scribbled lines"><figcaption class="caption">plate/bone_scribe.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/bone_pale.png" width="640" height="640" loading="lazy" alt="A speckled bone-grey moth with rounded wings and red eyespots"><figcaption class="caption">plate/bone_pale.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/rosy_sash.png" width="640" height="640" loading="lazy" alt="A pink moth with yellow sashes and ringed eyespots"><figcaption class="caption">plate/rosy_sash.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/rosy_lanternfly.png" width="640" height="640" loading="lazy" alt="A pink moth with hooked forewings and yellow eyespots"><figcaption class="caption">plate/rosy_lanternfly.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/luna_sickle.png" width="640" height="640" loading="lazy" alt="A pale green moth with sickle-shaped forewings"><figcaption class="caption">plate/luna_sickle.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/dusk_tailed.png" width="640" height="640" loading="lazy" alt="A slate-blue moth with long tails and pale-tipped hind wings"><figcaption class="caption">plate/dusk_tailed.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/ember_tailed.png" width="640" height="640" loading="lazy" alt="A rust-orange moth with hooked forewings and long tails"><figcaption class="caption">plate/ember_tailed.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/bone_tailed.png" width="640" height="640" loading="lazy" alt="A bone-grey moth with long tails and dark eyespots"><figcaption class="caption">plate/bone_tailed.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/rosy_tailed.png" width="640" height="640" loading="lazy" alt="A pink moth with long tails and yellow-tipped hind wings"><figcaption class="caption">plate/rosy_tailed.png</figcaption></figure>
+  <figure class="tile cell" data-reveal><img src="art/moths/assets/plate/dusk_plain.png" width="640" height="640" loading="lazy" alt="A plain slate-blue moth with sharp wings and no eyespots"><figcaption class="caption">plate/dusk_plain.png</figcaption></figure>
+  <figure class="tile tile--surface plate__source" data-reveal>
+    <pre><code>@target plate/{name}.png 640x640 each name:[luna_veil luna_tailed dusk_ember dusk_lantern ember_brindle ember_falcate bone_scribe bone_pale rosy_sash rosy_lanternfly luna_sickle dusk_tailed ember_tailed bone_tailed rosy_tailed dusk_plain]
+
+use moth { moth }
+
+each s in specs
+  if s.0 == name
+    moth wing:s.1 shape:s.2 tails:s.3 eyes:s.4 pattern:s.5 at:320,296 scale:1.9 name:specimen</code></pre>
+    <figcaption class="caption">art/plate.art, without its table of sixteen specs</figcaption>
+  </figure>
+</section>
+
+<section class="board demo" id="demo" aria-labelledby="demo-title">
+  <div class="demo__intro" data-reveal>
+    <h2 class="head" id="demo-title">Change one line</h2>
+    <p>Each control edits one line of demo.art. The picture is that file’s real build.</p>
+  </div>
+
+  <div class="demo__panel" data-reveal>
+    <figure class="demo__stage">
+      <img id="demo-img" src="art/moths/assets/demo/moth_luna_1_on.png" width="720" height="720"
+        alt="The demo moth with wing luna, pattern 1, tails on">
+      <a class="link demo__file" href="art/moths/art/demo.art">Read demo.art</a>
+    </figure>
+
+    <form class="demo__controls" id="demo-form" aria-label="Moth parameters">
+      <div class="demo__line">
+        <p class="caption">This picture is the line</p>
+        <pre><code>moth wing:<span data-token="wing">luna</span> pattern:<span data-token="pattern">1</span> tails:<span data-token="tails">on</span></code></pre>
+      </div>
+
+      <fieldset class="row">
+        <legend>Wing</legend>
+        <div class="choices choices--swatch">
+          <label class="choice" style="--sw:#b9cfae"><input type="radio" name="wing" value="luna" checked><span>luna</span></label>
+          <label class="choice" style="--sw:#5d6686"><input type="radio" name="wing" value="dusk"><span>dusk</span></label>
+          <label class="choice" style="--sw:#c2703f"><input type="radio" name="wing" value="ember"><span>ember</span></label>
+          <label class="choice" style="--sw:#e6dfd0"><input type="radio" name="wing" value="bone"><span>bone</span></label>
+          <label class="choice" style="--sw:#e39ab0"><input type="radio" name="wing" value="rosy"><span>rosy</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="row">
+        <legend>Pattern</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="pattern" value="1" checked><span>1</span></label>
+          <label class="choice"><input type="radio" name="pattern" value="2"><span>2</span></label>
+          <label class="choice"><input type="radio" name="pattern" value="3"><span>3</span></label>
+          <label class="choice"><input type="radio" name="pattern" value="4"><span>4</span></label>
+        </div>
+      </fieldset>
+
+      <fieldset class="row">
+        <legend>Tails</legend>
+        <div class="choices">
+          <label class="choice"><input type="radio" name="tails" value="on" checked><span>on</span></label>
+          <label class="choice"><input type="radio" name="tails" value="off"><span>off</span></label>
+        </div>
+      </fieldset>
+
+      <div class="row row--info">
+        <span class="row__name">File</span>
+        <output class="row__value"><code id="demo-out">demo/moth_luna_1_on.png</code></output>
+      </div>
+      <div class="row row--info">
+        <span class="row__name">Size</span>
+        <span class="row__value">720 × 720 PNG</span>
+      </div>
+    </form>
+  </div>
+
+  <figure class="tile tile--surface demo__source" data-reveal>
+    <pre><code># One moth, fanned out. The target matrix renders every combination of a wing palette,
+# a pattern seed, and tails on or off: 5 x 4 x 2 = 40 images from one line of drawing.
+@target demo/moth_{wing}_{pattern}_{tails}.png 720x720 each wing:[luna dusk ember bone rosy] pattern:[1 2 3 4] tails:[on off]
+
+use moth { moth }
+
+moth wing:wing pattern:pattern tails:tails at:360,328 scale:2.15 name:specimen</code></pre>
+    <figcaption class="caption">art/demo.art, the whole file</figcaption>
+  </figure>
+  <p class="tile tile--surface demo__note" data-reveal>Forty images from a seven-line file that calls one component. Built by artscript build. None was retouched.</p>
+</section>
+
+<section class="loop" id="loop" aria-labelledby="loop-title">
+  <div class="field field--light">
+    <h2 class="head field__title" id="loop-title" data-reveal>The agent’s loop</h2>
+    <div class="field__card" data-ui data-reveal>
+      <div class="card">
+        <p class="card__file"><code>art/sprout_broken.art</code></p>
+        <pre class="card__code"><code>  each k in [-1 1]
+    ellipse 22,8 at:k*72,48 fill:p.coral.3 a:.45 blur:6 name:cheek
+    circle 15 at:k*50,22+k*9 fill:sprout.ink name:eye
+      circle 5 at:-5,-6 fill:sprout.seed.4
+  curve -14,52 0,60 14,52 stroke:sprout.ink,4 name:mouth
+  fx outline 5
+
+assert level(@eye.0 @eye.1) tol:.5
+assert inside(@body canvas margin:24)</code></pre>
+      </div>
+    </div>
+    <p class="field__clause lead" data-reveal>First the model writes it.</p>
+  </div>
+
+  <div class="field field--dark">
+    <div class="field__card" data-ui data-reveal>
+      <div class="card">
+        <img class="card__img" src="art/studies/assets/sprout_broken.png" width="512" height="512" loading="lazy" alt="A round seedling character whose right eye sits lower than its left">
+        <dl class="card__rows">
+          <div><dt>exit</dt><dd><code>2</code></dd></div>
+          <div><dt>code</dt><dd><code>C0101</code></dd></div>
+          <div><dt>message</dt><dd><code>assert level(@eye.0 @eye.1) tol:.5</code></dd></div>
+          <div><dt>notes</dt><dd><code>eye.cy = 329   eye.cy = 347   difference 18 &gt; tol 0.5</code></dd></div>
+          <div><dt>fix</dt><dd><code>set .eye.1 at:50,13</code></dd></div>
+        </dl>
+      </div>
+    </div>
+    <p class="field__clause lead" data-reveal>Then check finds the eyes.</p>
+  </div>
+
+  <div class="field field--mid">
+    <div class="field__card" data-ui data-reveal>
+      <div class="card">
+        <img class="card__img" src="art/studies/evidence/sprout.png" width="512" height="512" loading="lazy" alt="The seedling with level eyes and a green leaf">
+        <dl class="card__rows">
+          <div><dt>path</dt><dd><code>sprout.png</code></dd></div>
+          <div><dt>hash</dt><dd><code>8daee09c806aa725</code></dd></div>
+          <div><dt>status</dt><dd><code>pass</code></dd></div>
+        </dl>
+      </div>
+    </div>
+    <p class="field__clause lead" data-reveal>Then build paints it.</p>
+  </div>
+
+  <div class="field field--deep">
+    <div class="field__card" data-ui data-reveal>
+      <div class="card">
+        <pre class="card__code card__diff"><code>--- a/art/sprout.art
++++ b/art/sprout.art
+@@ -7 +7 @@
+-  ramp leaf #6f8a4f 5
++  ramp leaf <mark>#d9773a</mark> 5</code></pre>
+        <img class="card__img" src="art/studies/evidence/sprout_recolor.png" width="512" height="512" loading="lazy" alt="The same seedling with an orange leaf and stem">
+        <dl class="card__rows">
+          <div><dt>hash</dt><dd><code>8daee09c806aa725 → fdd045a16fb5e59c</code></dd></div>
+        </dl>
+      </div>
+    </div>
+    <p class="field__clause lead" data-reveal>Then the diff shows one change.</p>
+  </div>
+</section>
+
+<section class="board features" id="features" aria-labelledby="features-title">
+  <h2 class="head features__title" id="features-title" data-reveal>Painted, not plotted</h2>
+
+  <article class="feat feat--text-top" data-reveal>
+    <div class="feat__text">
+      <h3 class="feat__name">One hex, a whole ramp.</h3>
+      <p>A ramp turns one colour into five stops. Its shadows shift toward cool blue-violet and its lights toward warm yellow, so this stone is shaded from a single hex.</p>
+      <pre><code>palette study
+  ramp pebble #ff6a5a 5</code></pre>
+    </div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/ramp.png" width="800" height="500" loading="lazy" alt="Five painted colour chips from deep red to pale peach beside a shaded coral pebble"></div>
+  </article>
+
+  <article class="feat feat--art-top" data-reveal>
+    <div class="feat__art feat__art--top feat__art--leaf"><img src="art/studies/assets/clip.png" width="800" height="800" loading="lazy" alt="A tilted green leaf with painted veins and a noise texture kept inside its outline"></div>
+    <div class="feat__text">
+      <h3 class="feat__name">Shading stays inside.</h3>
+      <p>Children clip to their parent. The texture on this leaf is an 800 by 800 rectangle, but it is the leaf’s child, so it paints only inside the leaf.</p>
+      <pre><code>    rect 800x800 fill:fbm(simplex(26)) -&gt; [fade(p.leaf.0 0) fade(p.leaf.0 .45)] name:texture</code></pre>
+    </div>
+  </article>
+
+  <article class="feat feat--text-top" data-reveal>
+    <div class="feat__text">
+      <h3 class="feat__name">Brushes written in SkSL.</h3>
+      <p>A brush is a small SkSL program that shades each pixel of a fill or a stroke. This swash stacks two brushes from std/brushes over one curve, with a width and a pressure at each point.</p>
+      <pre><code>brush:[bristle(strength:.85 gaps:.9) dry(strength:.25)] pressure:[.7 1 1 .85 .55 .3 .1]</code></pre>
+    </div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/brush.png" width="800" height="500" loading="lazy" alt="One coral brush stroke with dry bristle texture, thick at the start and trailing off"></div>
+  </article>
+
+  <article class="feat feat--art-top" data-reveal>
+    <div class="feat__art feat__art--top"><img src="art/studies/assets/stamp.png" width="800" height="800" loading="lazy" alt="A brown vine with leaves along it, larger and sparser near the root"></div>
+    <div class="feat__text">
+      <h3 class="feat__name">Stamps follow the path.</h3>
+      <p>A stamp is a block of drawing laid along a stroke. Each leaf here reads the stroke’s pressure, so the sprigs grow larger and further apart toward the root.</p>
+      <pre><code>stamp sprigs spacing:22+34*pressure
+  let side = if mod(i 2) == 0 then 1 else -1</code></pre>
+    </div>
+  </article>
+
+  <article class="feat feat--text-top" data-reveal>
+    <div class="feat__text">
+      <h3 class="feat__name">Noise as paint.</h3>
+      <p>Simplex, perlin, worley and fbm fields fill a shape through a ramp or a list of colours. The stone is fbm noise. The lichen is worley noise mapped through three greens.</p>
+      <pre><code>fill:fbm(simplex(90)) -&gt; [p.stone.1 p.stone.3]</code></pre>
+    </div>
+    <div class="feat__art feat__art--bottom"><img src="art/studies/assets/field.png" width="800" height="800" loading="lazy" alt="A grey stone mottled with noise and patches of green lichen"></div>
+  </article>
+
+  <article class="feat feat--art-top" data-reveal>
+    <div class="feat__art feat__art--top feat__art--gif"><picture><source srcset="art/studies/assets/sway.png" media="(prefers-reduced-motion: reduce)"><img src="art/studies/assets/sway.gif" width="400" height="400" loading="lazy" alt="A small sprig with three leaves swaying in a loop"></picture></div>
+    <div class="feat__text">
+      <h3 class="feat__name">Motion is a patch.</h3>
+      <p>An anim keys the rotation of three named parts over 1.5 seconds. The GIF target plays the loop. A PNG target of the same file draws the frame at 375 ms.</p>
+      <pre><code>anim sway dur:1.5s loop
+  .sprig rot:key(-6 6 -6)
+  .crown rot:key(4 -8 4)
+  .low rot:key(-5 7 -5)</code></pre>
+    </div>
+  </article>
+</section>
+
+<section class="board proof" id="proof" aria-labelledby="proof-title">
+  <div class="tile tile--ink proof__head" data-reveal>
+    <h2 class="head" id="proof-title">Small enough for one turn</h2>
+  </div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">644</p><p>tokens: the core language card a model reads first.</p></div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">435</p><p>tokens: slime.art, which builds three PNGs and three GIFs.</p></div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">4,135</p><p>tokens: the average piece in the chibi example.</p></div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">43×</p><p>larger: the built SVG against its .art source.</p></div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">624,507</p><p>SVG tokens built from momo_peach.art, which is 3,540.</p></div>
+  <div class="tile tile--surface mark" data-reveal><p class="head mark__n">1 s</p><p>about, to check the whole chibi project without rendering.</p></div>
+</section>
+
+<section class="cta" id="install" aria-labelledby="install-title">
+  <figure class="cta__flank cta__flank--left">
+    <picture><source srcset="art/moths/assets/flutter/dusk_mid.png" media="(prefers-reduced-motion: reduce)"><img src="art/moths/assets/flutter/dusk.gif" width="480" height="480" loading="lazy" alt="A slate-blue moth beating its wings in a loop"></picture>
+  </figure>
+  <div class="cta__tile" data-reveal>
+    <h2 class="head" id="install-title">Draw your first asset</h2>
+    <p>artscript builds with stable Rust. Install the CLI, run init, then build.</p>
+    <pre><code>git clone https://github.com/tvanhens/artscript
+cd artscript
+cargo install --path crates/cli</code></pre>
+    <a class="button" href="https://github.com/tvanhens/artscript">Get it on GitHub</a>
+  </div>
+  <div class="cta__flank cta__flank--right" aria-hidden="true"></div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="blocks" aria-label="artscript" role="img">
+    <span style="--h:.78">a</span><span style="--h:.62">r</span><span style="--h:.9">t</span><span style="--h:.7">s</span><span style="--h:1">c</span><span style="--h:.66">r</span><span style="--h:.84">i</span><span style="--h:.74">p</span><span style="--h:.94">t</span>
+  </div>
+  <div class="footer__cols">
+    <div>
+      <p class="footer__h">Learn</p>
+      <a class="link" href="https://github.com/tvanhens/artscript/blob/main/docs/language.md">Language card</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/tree/main/docs/topics">Topics</a>
+      <a class="link" href="https://github.com/tvanhens/artscript#the-agent-loop">The agent loop</a>
+    </div>
+    <div>
+      <p class="footer__h">Examples</p>
+      <a class="link" href="https://github.com/tvanhens/artscript/tree/main/examples/chibi">Chibi</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/tree/main/examples/slime">Slime</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/tree/main/examples/spire">Spire</a>
+    </div>
+    <div>
+      <p class="footer__h">This page’s art</p>
+      <a class="link" href="art/moths/lib/moth.art">lib/moth.art</a>
+      <a class="link" href="art/moths/art/plate.art">art/plate.art</a>
+      <a class="link" href="art/moths/art/demo.art">art/demo.art</a>
+    </div>
+    <div>
+      <p class="footer__h">Project</p>
+      <a class="link" href="https://github.com/tvanhens/artscript">GitHub</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/issues">Issues</a>
+      <a class="link" href="https://github.com/tvanhens/artscript/blob/main/LICENSE">License</a>
+    </div>
+    <div class="footer__contact">
+      <p>Business Source License 1.1. The art you build is yours.</p>
+      <p>artscript is a v0.1 draft. Expect breaking changes.</p>
+    </div>
+  </div>
+  <div class="footer__last">
+    <p>© 2026 Tyler van Hensbergen</p>
+    <a class="button button--small" href="#top">Back to top</a>
+  </div>
+</footer>
+
+<script src="main.js"></script>
+</body>
+</html>

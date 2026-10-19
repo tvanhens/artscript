@@ -1,0 +1,7 @@
+# One moth, fanned out. The target matrix renders every combination of a wing palette,
+# a pattern seed, and tails on or off: 5 x 4 x 2 = 40 images from one line of drawing.
+@target demo/moth_{wing}_{pattern}_{tails}.png 720x720 each wing:[luna dusk ember bone rosy] pattern:[1 2 3 4] tails:[on off]
+
+use moth { moth }
+
+moth wing:wing pattern:pattern tails:tails at:360,328 scale:2.15 name:specimen

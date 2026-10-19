@@ -1,0 +1,10 @@
+[project]
+name = "artscript-site-brand"
+out  = "."
+lib  = []
+std  = "0.1"
+
+[defaults]
+scale   = [1]
+bg      = "none"
+profile = "auto"

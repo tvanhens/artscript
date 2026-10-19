@@ -1,0 +1,17 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "8daee09c806aa725",
+      "line": 1,
+      "matrix": {},
+      "path": "sprout.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/sprout.art",
+      "status": "pass",
+      "target": null
+    }
+  ]
+}

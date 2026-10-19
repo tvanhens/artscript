@@ -1,0 +1,18 @@
+@target sway.gif 400x400 bg:#f7f6f3 dur:1.5s
+@target sway.png 400x400 t:375ms
+
+use flora { leaf }
+
+anim sway dur:1.5s loop
+  .sprig rot:key(-6 6 -6)
+  .crown rot:key(4 -8 4)
+  .low rot:key(-5 7 -5)
+play sway
+
+ellipse 46,6 at:200,364 fill:p.ink a:.2 blur:4
+group at:200,360 name:sprig
+  curve 0,0 8,-100 -2,-210 stroke:p.bark.1,[11 7 4] taper:0,.2 name:stem
+  leaf 90 tone:p.leaf.3 at:5,-120 rot:-24 name:low
+  group at:-2,-210 name:crown
+    leaf 70 tone:p.moss.2 rot:-165 name:side
+    leaf 130 tone:p.leaf.2 rot:-62 name:top

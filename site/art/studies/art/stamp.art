@@ -1,0 +1,10 @@
+@target stamp.png 800x800
+
+use std/brushes { bristle }
+use flora { leaf }
+
+stamp sprigs spacing:22+34*pressure
+  let side = if mod(i 2) == 0 then 1 else -1
+  leaf 26+70*pressure tone:pick([p.leaf.2 p.leaf.3 p.moss.2]) at:0,side*3 rot:side*rand(35 60) name:leaf
+
+curve 90,700 250,660 340,540 310,400 420,260 580,240 710,110 stroke:p.bark.1,[16 14 11 9 6 4 2] brush:bristle pressure:[1 .95 .85 .7 .5 .3 .1] stamp:sprigs name:vine

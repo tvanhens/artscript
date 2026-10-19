@@ -1,0 +1,20 @@
+# The family's colours. Each wing palette is one ramp here and one ramp of the same name in `marks`,
+# so `p.{wing}` and `marks.{wing}` pick a specimen's main and secondary colour from one word.
+palette moths
+  ramp luna #b9cfae 7
+  ramp dusk #5d6686 7
+  ramp ember #c2703f 7
+  ramp bone #e6dfd0 7
+  ramp rosy #e39ab0 7
+  color ink #1d1c2e
+  color paper #f7f6f3
+  color coral #ff6a5a
+  color steel #9a9ba6
+
+# The secondary colour of each wing palette: bands, speckles and the eyespot disc.
+palette marks
+  ramp luna #9c7a80 5
+  ramp dusk #c9c4d6 5
+  ramp ember #e8c88a 5
+  ramp bone #6a6670 5
+  ramp rosy #f2d27a 5

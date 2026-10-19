@@ -1,0 +1,5 @@
+@target brush.png 800x500
+
+use std/brushes { bristle dry }
+
+curve 80,360 170,330 300,262 450,214 590,196 700,212 740,232 stroke:grad(right p.coral.1 p.coral.2 p.coral.3),[50 82 84 70 44 18 4] taper:.08,.04 brush:[bristle(strength:.85 gaps:.9) dry(strength:.25)] pressure:[.7 1 1 .85 .55 .3 .1] name:swash

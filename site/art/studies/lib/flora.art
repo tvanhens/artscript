@@ -1,0 +1,7 @@
+# Shared plant parts for the studies.
+
+# A leaf lying along +x from its stalk at the origin, lit from its upper edge.
+def leaf size:40 tone:p.leaf.2
+  curve 0,0 size*.38,-size*.3 size,0 size*.38,size*.3 closed tension:.45 fill:grad(down shade(tone 1) shade(tone -1)) name:blade
+    curve 0,0 size*.5,-size*.03 size,0 stroke:shade(tone 2),size*.05 taper:0,.9 a:.7 name:rib
+    fx outline 2

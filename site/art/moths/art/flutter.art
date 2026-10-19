@@ -1,0 +1,13 @@
+# A dusk specimen slowly opening and closing its wings, with a twitch of the antennae.
+@target flutter/dusk.gif 480x480 bg:#f7f6f3 fps:24 dur:1.2s
+@target flutter/dusk_mid.png 480x480 t:600ms
+
+use moth { moth }
+
+moth wing:dusk shape:broad tails:off eyes:on pattern:3 at:240,228 scale:1.55 name:f
+
+anim flutter dur:1.2s loop
+  .f.wings scale:key(1,1 .74,1 1,1 ease:in_out)
+  .f.antenna rot:key(0 4 -2 0)
+  .f.abdomen at:0,key(0 1.5 0)
+play flutter

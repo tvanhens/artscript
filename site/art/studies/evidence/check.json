@@ -1,0 +1,1 @@
+{"diagnostics":[{"code":"C0101","file":"art/sprout_broken.art","fix":"set .eye.1 at:50,13","message":"assert level(@eye.0 @eye.1) tol:.5","node":"","notes":["eye.cy = 329   eye.cy = 347   difference 18 > tol 0.5"],"severity":"error","span":{"col":1,"line":26},"target":"sprout_broken.png"}]}

@@ -1,0 +1,12 @@
+@target field.png 800x800
+
+ellipse 250,30 at:410,612 fill:p.ink a:.22 blur:14
+blob 280 seed:9 wobble:.12 at:400,410 scale:1,.7 fill:fbm(simplex(90)) -> [p.stone.1 p.stone.3] name:stone
+  rect 600x600 fill:worley(12) -> [fade(p.stone.0 .3) fade(p.stone.0 0)] name:pits
+  each k, c in [-120,-150,70 10,-210,46 -200,-30,40 90,-120,30 -40,-60,26]
+    blob c.2 at:c.0,c.1 fill:fbm(worley(14)) -> [p.moss.1 p.lichen.2 p.lichen.4] jitter:5,14 a:.9 name:lichen
+  subtract fill:p.stone.0 a:.7 blur:16
+    copy @stone
+    copy @stone at:-50,-70
+  ellipse 130,60 at:-90,-150 fill:p.stone.4 a:.4 blur:30
+  fx outline 4
