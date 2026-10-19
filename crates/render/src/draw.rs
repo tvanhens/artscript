@@ -369,7 +369,11 @@ fn path_extent(node: &Node) -> Option<Rect> {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
             let pad = stroke + shape.blur * 3.0 + shape.mark_reach();
-            Some(shape.geometry.bounds().with_outset((pad, pad)))
+            let mut r = shape.geometry.bounds().with_outset((pad, pad));
+            if let Some(ink) = shape.stroke.as_ref().and_then(|s| s.ink.as_ref()) {
+                r.join(ink.bounds().with_outset((pad, pad)));
+            }
+            Some(r)
         }
         NodeKind::Group { .. } => None,
     };
@@ -532,12 +536,15 @@ fn draw_shape(
             }
         }
         if let Some(stroke) = &shape.stroke {
-            match &stroke.ribbon {
-                None => {
+            match (&stroke.ribbon, &stroke.ink) {
+                (None, Some(ink)) => {
+                    canvas.draw_path(ink, &content_paint(&stroke.paint, shape.blur, None)?);
+                }
+                (None, None) => {
                     let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
                     canvas.draw_path(&shape.geometry, &paint);
                 }
-                Some(ribbon) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
+                (Some(ribbon), _) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
             }
         }
         Ok(())

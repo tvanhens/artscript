@@ -469,22 +469,14 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
         "bottom {}",
         b.bottom
     );
-    let ink = shape(&s, "ink").geometry.to_svg();
-    let lit = shape(&s, "lit").geometry.to_svg();
+    let outline = |name| shape(&s, name).stroke.as_ref().and_then(|st| st.ink.clone()).expect("tapered ink");
     assert_eq!(
-        ink, lit,
+        outline("ink").to_svg(),
+        outline("lit").to_svg(),
         "a width list built with each differs from the same literal list"
     );
-    assert!(
-        shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 3.5))
-    );
-    assert!(
-        !shape(&s, "ink")
-            .geometry
-            .contains(artscript_ir::Point::new(50.0, 4.6))
-    );
+    assert!(outline("ink").contains(artscript_ir::Point::new(50.0, 3.5)));
+    assert!(!outline("ink").contains(artscript_ir::Point::new(50.0, 4.6)));
 }
 
 #[test]

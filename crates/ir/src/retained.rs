@@ -55,7 +55,7 @@ fn stroke_bytes(stroke: &Stroke) -> u64 {
         vec_bytes(&r.marks, |m| vec_bytes(&m.stage.uniforms, |(name, _)| str_bytes(name)))
             + vec_bytes(&r.contours, |c| vec_bytes(&c.knots, |_| 0))
     });
-    paint_bytes(&stroke.paint) + vec_bytes(&stroke.dash, |_| 0) + ribbon
+    paint_bytes(&stroke.paint) + vec_bytes(&stroke.dash, |_| 0) + stroke.ink.as_ref().map_or(0, path_bytes) + ribbon
 }
 
 fn paint_bytes(paint: &Paint) -> u64 {

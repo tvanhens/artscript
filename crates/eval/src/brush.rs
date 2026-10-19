@@ -764,7 +764,7 @@ pub fn ribbon(spine: &Spine<'_>, taper: (f64, f64), marks: Vec<RibbonMark>) -> R
             knots: spine.bends(i).into_iter().map(|s| spine.at(i, s)).collect(),
         })
         .collect();
-    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32], ink: None }
+    Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32] }
 }
 
 /// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime

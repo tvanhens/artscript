@@ -170,6 +170,11 @@ pub struct Stroke {
     pub cap: Cap,
     pub join: Join,
     pub dash: Vec<f32>,
+    /// The filled outline of a tapered or width-list stroke. When `Some`, the stroke's ink is
+    /// this outline filled with `paint`, not the geometry stroked at `width`, and `cap`, `join`
+    /// and `dash` do not apply. Outline effects, children and `inside` read it. `None` at
+    /// constant width.
+    pub ink: Option<Path>,
     /// The brush stages that shade the stroke as a ribbon along the shape's geometry. `None` is a
     /// plain stroke. A ribbon has round caps and joins and no dash.
     pub ribbon: Option<Ribbon>,
@@ -186,11 +191,6 @@ pub struct Ribbon {
     /// The fraction of each contour's `len` over which its start and its end thin, through
     /// [`taper_ramp`]. Each contour is its own pen stroke.
     pub taper: [f32; 2],
-    /// The filled outline of a tapered or width-list ribbon, the ink an unbrushed stroke of the
-    /// same widths would fill. Outline effects, children and `inside` read it. `None` at
-    /// constant width, where those readers use the geometry and its stroke at `width`, as they
-    /// do for an unbrushed stroke.
-    pub ink: Option<Path>,
 }
 
 impl Ribbon {
@@ -446,10 +446,10 @@ pub enum EffectOp {
 
 impl Shape {
     /// What the shape's children, `inside` and `copy` clip to: the geometry, as for any shape,
-    /// except that a brushed tapered stroke contributes its ink outline in place of the spine,
-    /// joined with the geometry when the shape also has a fill.
+    /// except that a tapered stroke contributes its ink outline in place of the spine, joined
+    /// with the geometry when the shape also has a fill.
     pub fn clip(&self) -> std::borrow::Cow<'_, Path> {
-        let ink = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).and_then(|r| r.ink.as_ref());
+        let ink = self.stroke.as_ref().and_then(|s| s.ink.as_ref());
         match ink {
             None => std::borrow::Cow::Borrowed(&self.geometry),
             Some(ink) if self.fill.is_none() => std::borrow::Cow::Borrowed(ink),
@@ -668,11 +668,16 @@ fn union_ink(nodes: &[Node]) -> Option<Rect> {
 }
 
 /// Geometry plus half the stroke width, plus what the brush marks may paint past it, joined
-/// with the stamps' bounds.
+/// with the stamps' bounds. An unbrushed tapered stroke contributes its ink instead, in place of
+/// the geometry when the shape has no fill. A brushed stroke keeps the half width, since its
+/// marks paint from the ribbon's edge, not from the ink's flattened outline.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
     let mut r = s.geometry.compute_tight_bounds();
-    if let Some(st) = &s.stroke {
-        r.outset((st.width / 2.0, st.width / 2.0));
+    match s.stroke.as_ref().map(|st| (st, st.ink.as_ref().filter(|_| st.ribbon.is_none()))) {
+        Some((_, Some(ink))) if s.fill.is_none() => r = ink.compute_tight_bounds(),
+        Some((_, Some(ink))) => r.join(ink.compute_tight_bounds()),
+        Some((st, None)) => r.outset((st.width / 2.0, st.width / 2.0)),
+        None => {}
     }
     let reach = s.mark_reach();
     if reach > 0.0 {
@@ -690,7 +695,7 @@ fn shape_bounds(s: &Shape) -> Option<Rect> {
 /// draws it. A dash only removes ink, so it is ignored.
 fn shape_ink(s: &Shape) -> Option<Rect> {
     let plain = shape_bounds(s)?;
-    let Some(st) = s.stroke.as_ref().filter(|st| st.width > 0.0) else {
+    let Some(st) = s.stroke.as_ref().filter(|st| st.width > 0.0 && st.ink.is_none()) else {
         return Some(plain);
     };
     let mut paint = skia_safe::Paint::default();
