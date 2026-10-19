@@ -1,0 +1,21 @@
+# Two cells on paper in one row, 96px pitch. Each cell holds a red 28x40 torso centered on the cell's center, with an anchor (`shoulder`, `shoulder2`) 14 px left and 8 px up from the torso's center, and a blue 36x12 arm centered on that anchor. The arm is written above the torso and placed with `at:@body.shoulder`, so the reference resolves to a sibling drawn later. The arm still paints at its own line, behind the torso: the torso covers the arm's inner half, and the blue shows only to the left of the torso's left edge.
+# 1. The arm and the torso.
+# 2. The same, with a gold circle of radius 6 written first and placed at `at:@arm2.wrist`, an anchor 18 px left of the arm's center, so a reference reaches a sibling that itself waits for a later one. The circle sits on the arm's left end, and the arm covers the circle's right half.
+@target structure/forward_ref.png 192x96
+
+group name:arm at:@body.shoulder
+  rect 36x12 fill:p.blue
+
+group name:body at:48,48
+  rect 28x40 fill:p.red
+  anchor shoulder -14,-8
+
+circle 6 at:@arm2.wrist fill:p.gold
+
+group name:arm2 at:@body2.shoulder2
+  rect 36x12 fill:p.blue
+  anchor wrist -18,0
+
+group name:body2 at:144,48
+  rect 28x40 fill:p.red
+  anchor shoulder2 -14,-8
