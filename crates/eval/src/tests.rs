@@ -5224,6 +5224,57 @@ fn an_unknown_key_on_a_builtin_verb_is_e0321() {
 }
 
 #[test]
+fn an_unknown_key_on_an_fx_line_is_e0321() {
+    let ev = run_with(
+        "@target t.png 64x64\n\
+         finish surface\n  fx rim 3 dri:1,1\n\
+         rect 30 at:32,32 fill:#7fd4a8\n  fx glow 4 bogus:1 colour:#ffffff\n  fx outline 4 brush:dry\n  fx surface\n  fx blur 2 color:#000000\n",
+        &[],
+    );
+    let found: Vec<(u32, String, String)> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0321")
+        .map(|d| (d.span.line, d.message.clone(), d.fix.clone().unwrap_or_default()))
+        .collect();
+    let list = "use one of the listed keys";
+    let want = [
+        (3, "`fx rim` has no key `dri`", "did you mean `dir:`?"),
+        (5, "`fx glow` has no key `bogus`", list),
+        (5, "`fx glow` has no key `colour`", "did you mean `color:`?"),
+        (6, "`fx outline` has no key `brush`", list),
+        (8, "`fx blur` has no key `color`", list),
+    ];
+    assert_eq!(
+        found,
+        want.map(|(l, m, f)| (l, m.to_string(), f.to_string())),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    let glow = ev.diagnostics.iter().find(|d| d.message.ends_with("`bogus`")).unwrap();
+    assert!(glow.notes.iter().any(|n| n.contains("strength")), "{glow}");
+
+    for line in [
+        "fx blur 2 blur:3 of:self as:soft",
+        "fx shadow 0,4 blur:4 color:#000000 a:.5",
+        "fx inner 0,4 blur:4 color:#000000 a:.5",
+        "fx glow 8 strength:2 color:#ffffff a:.5",
+        "fx rim 3 dir:1,1 color:#ffffff a:.5",
+        "fx adjust hue:10 sat:-.2 light:.05",
+        "fx outline 4 sides:top color:#000000 a:.5",
+        "fx grain .05 scale:1.5 seed:3",
+        "fx blur 2 as:b\n  fx merge self b a:.4,1",
+    ] {
+        let ev = run_with(&format!("@target t.png 64x64\nrect 30 at:32,32 fill:#7fd4a8\n  {line}\n"), &[]);
+        assert!(
+            ev.diagnostics.iter().all(|d| d.code != "E0321"),
+            "{line}: {}",
+            show(&ev.diagnostics)
+        );
+    }
+}
+
+#[test]
 fn paint_on_a_boolean_operand_is_e0321() {
     let ev = run_with(
         "@target t.png 64x64\n\
