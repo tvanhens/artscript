@@ -16,7 +16,7 @@ use crate::gpu::{self, Backend};
 use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
-use crate::paint::{blend_mode, color4, content_paint};
+use crate::paint::{blend_mode, color4, content_paint, dithered};
 
 pub struct SceneIndex<'a> {
     nodes: HashMap<&'a str, &'a Node>,
@@ -262,7 +262,6 @@ pub fn draw_node(
             let filter = effects::chain(&node.effects, &FxEnv { ctx, world })?;
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
-            paint.set_dither(true);
             paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
             paint.set_blend_mode(blend_mode(node.blend));
             if let Some(filter) = filter {
@@ -290,7 +289,7 @@ fn paint_layer_steps(
     mut steps: Vec<effects::LayerStep>,
 ) -> Result<(), RenderError> {
     let Some(bounds) = canvas.device_clip_bounds().and_then(|clip| match reach {
-        Some(reach) => IRect::intersect(&clip, &dither_aligned(clip, reach)),
+        Some(reach) => IRect::intersect(&clip, &reach),
         None => Some(clip),
     }) else {
         return Ok(());
@@ -324,7 +323,6 @@ fn paint_layer_steps(
     canvas.reset_matrix();
     let mut paint = Paint::default();
     paint.set_anti_alias(true);
-    paint.set_dither(true);
     paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
     paint.set_blend_mode(blend_mode(node.blend));
     canvas.draw_image(
@@ -385,13 +383,6 @@ fn path_extent(node: &Node) -> Option<Rect> {
             a.join(b);
             a
         })
-}
-
-/// Moves `reach`'s top-left corner out to a whole period of Skia's 8x8 ordered dither from the
-/// clip's corner, so a layer dithers its pixels as a layer over the whole clip would.
-fn dither_aligned(clip: IRect, reach: IRect) -> IRect {
-    let snap = |from: i32, to: i32| from + (to - from).max(0) / 8 * 8;
-    IRect::new(snap(clip.left, reach.left), snap(clip.top, reach.top), reach.right, reach.bottom)
 }
 
 fn rasterize_layer(
@@ -525,7 +516,8 @@ fn draw_shape(
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
             if fill.marks.is_empty() {
-                let paint = content_paint(&fill.paint, shape.blur, None)?;
+                let paint =
+                    dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
                 canvas.draw_path(&shape.geometry, &paint);
             } else {
                 crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin)?;
@@ -534,7 +526,10 @@ fn draw_shape(
         if let Some(stroke) = &shape.stroke {
             match &stroke.ribbon {
                 None => {
-                    let paint = content_paint(&stroke.paint, shape.blur, Some(stroke))?;
+                    let paint = dithered(
+                        content_paint(&stroke.paint, shape.blur, Some(stroke))?,
+                        &canvas.local_to_device_as_3x3(),
+                    )?;
                     canvas.draw_path(&shape.geometry, &paint);
                 }
                 Some(ribbon) => crate::mark::draw_ribbon(canvas, &shape.geometry, stroke, ribbon, ctx, origin)?,
