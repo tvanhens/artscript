@@ -190,11 +190,10 @@ fn render_error(job: &TargetJob, e: artscript_render::RenderError) -> Diagnostic
             Diagnostic::error("E0400", span, format!("render failed: {msg}")).in_file(&job.source)
         }
         artscript_render::RenderError::AtNode { origin, message } => {
-            let (file, line) = origin
-                .rsplit_once(':')
-                .and_then(|(f, l)| Some((f.to_string(), l.parse::<u32>().ok()?)))
-                .unwrap_or((job.source.clone(), span.line));
-            Diagnostic::error("E0400", Span { line, col: 1 }, format!("render failed: {message}")).in_file(file)
+            let (file, span) = artscript_ir::parse_origin(&origin)
+                .map(|(f, line, col)| (f.to_string(), Span { line, col }))
+                .unwrap_or((job.source.clone(), Span { line: span.line, col: 1 }));
+            Diagnostic::error("E0400", span, format!("render failed: {message}")).in_file(file)
         }
         artscript_render::RenderError::TransparentGif => {
             Diagnostic::error("E0206", span, "a gif needs an opaque `bg:`")
@@ -581,5 +580,21 @@ mod tests {
         assert_eq!(resolve_backend(BackendChoice::Gpu, true), Some(Backend::Gpu));
         assert_eq!(resolve_backend(BackendChoice::Gpu, false), None, "forced gpu never falls back");
         assert_eq!(resolve_backend(BackendChoice::Cpu, true), Some(Backend::Cpu));
+    }
+
+    #[test]
+    fn a_render_error_at_a_node_points_at_its_file_line_and_column() {
+        let project = Project::from_sources(
+            "[project]\nout = \"out\"\n",
+            [("art/t.art".to_string(), "@target t.png 8x8\n".to_string())].into(),
+        )
+        .unwrap();
+        let job = &artscript_eval::plan(&project).jobs[0];
+        let e = artscript_render::RenderError::AtNode {
+            origin: "lib/a.art:12:5".to_string(),
+            message: "too long".to_string(),
+        };
+        let d = render_error(job, e);
+        assert_eq!((d.file.as_str(), d.span.line, d.span.col), ("lib/a.art", 12, 5));
     }
 }

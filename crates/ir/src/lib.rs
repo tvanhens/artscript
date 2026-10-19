@@ -468,6 +468,14 @@ impl Shape {
     }
 }
 
+/// The file, line and column a node's `origin` (`file:line:col`) names.
+pub fn parse_origin(origin: &str) -> Option<(&str, u32, u32)> {
+    let mut parts = origin.rsplitn(3, ':');
+    let col = parts.next()?.parse().ok()?;
+    let line = parts.next()?.parse().ok()?;
+    Some((parts.next()?, line, col))
+}
+
 impl Node {
     /// Every node directly under this one, in draw order: a shape's stamps, then its children,
     /// or a group's children. Every walker over the tree reads this. Only a renderer tells a

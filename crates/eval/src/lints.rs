@@ -627,12 +627,10 @@ pub fn off_canvas(scene: &artscript_ir::Scene, manifest: &Manifest, file: &str) 
 /// The file and span a node's `origin` (`file:line:col`) names, or line 1 of `file` when it
 /// names none.
 fn source_span(origin: &str, file: &str) -> (String, Span) {
-    let mut parts = origin.rsplitn(3, ':');
-    let (Some(col), Some(line), Some(src)) = (parts.next(), parts.next(), parts.next()) else {
-        return (file.to_string(), Span { line: 1, col: 1 });
-    };
-    let n = |s: &str| s.parse().unwrap_or(1);
-    (src.to_string(), Span { line: n(line), col: n(col) })
+    match artscript_ir::parse_origin(origin) {
+        Some((src, line, col)) => (src.to_string(), Span { line, col }),
+        None => (file.to_string(), Span { line: 1, col: 1 }),
+    }
 }
 
 /// The `in <entry>:<line>` note for the entry-file node `site` that reached a library's node.
