@@ -19,6 +19,7 @@ ramose is a declarative language for procedural art. You write `.ramo` files. `r
    - `fields` noise fields, fbm, ridged, field fills and masks, seeds
    - `brushes` brush declarations, SkSL bodies, the Mark, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
    - `stamps` stamp declarations, the block and its bound names, spacing and count, stamp: on a node, sets and references, seeds, std/stamps
+   - `warp` corners and cylinder, stacks, order of application, the warped box, raster-only
    - `components` def, size box, slots, patches, let/if/each, style
    - `anim` t, key, anim, play, node keys, explain
    - `checks` assert, expect, measurements, check functions, rule
