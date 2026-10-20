@@ -6,7 +6,7 @@
 
 ## One-time setup
 
-1. Add an npm automation token as the repository secret `NPM_TOKEN`.
+1. On npmjs.com, add a GitHub Actions trusted publisher to `ramose` and to each `ramose-<key>` package: user `tvanhens`, repository `ramose`, workflow `release.yml`, no environment, with "Allow npm publish" checked. npm sets up a trusted publisher only for a package that already exists, so publish a placeholder `0.0.0` of each new package by hand first.
 2. Add a fine-grained personal access token with read and write access to contents and pull requests as `RELEASE_PLEASE_TOKEN`. With `GITHUB_TOKEN`, GitHub runs no checks on the release PR.
 
 The `ramose` name on npm first held a graph database, which published 0.2.0 and 0.3.0. `.release-please-manifest.json` starts at 0.3.0, so the first CLI release is 0.4.0 or later. `publish.mjs` stops before it publishes anything when the version is below `latest`.

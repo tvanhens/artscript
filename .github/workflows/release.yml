@@ -115,7 +115,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
+      # Trusted publishing needs npm 11.5.1 or later, and Node 22 ships npm 10.
+      - run: npm install -g npm@11
       - uses: actions/download-artifact@v4
         with:
           path: dist/downloaded
@@ -131,5 +132,3 @@ jobs:
           done
           node npm/stage.mjs --expect-version "$VERSION" main dist/npm
       - run: node npm/publish.mjs dist/npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
