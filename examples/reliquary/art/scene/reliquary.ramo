@@ -1,0 +1,27 @@
+# The reliquary before anything is carried in.
+# A drowned nave. Amber falls from the upper right, where the cage will hang.
+# The far arches are air, not architecture. Water holds the only reflection.
+
+@target scene/reliquary.png 1440x810 viewport
+
+use paint { sculpt }
+
+layer air_layer
+  rect 1600x900 at:720,400 fill:grad(down p.void mix(p.void p.tide.0 .7)) name:sky
+  ellipse 720,640 at:1180,-60 fill:p.amber.1 a:.22 blur:8 blend:screen name:shaft
+  ellipse 180,520 at:1080,120 fill:p.amber.3 a:.1 blur:6 blend:add name:core
+  ellipse 980,180 at:480,560 fill:p.tide.0 a:.35 blur:16 name:mist
+  ellipse 420,260 at:-20,-10 fill:p.void a:.8 blur:10 name:vignette_tl
+  ellipse 380,240 at:1500,860 fill:p.void a:.75 blur:10 name:vignette_br
+
+layer far_layer
+  each k in 0..5
+    curve -46,90 -50,-20 0,-78 50,-20 46,90 at:150+k*230,520-k*14 scale:1,.82+k*.05 stroke:p.bone.0,20 a:.45 name:arch
+    curve -26,74 -28,-6 0,-48 28,-6 26,74 at:150+k*230,526-k*14 scale:1,.82+k*.05 stroke:p.void,14 name:opening
+  rect 1500x4 at:720,600 fill:p.bone.1 a:.22 name:sill
+
+layer water_layer
+  rect 1500x240 at:720,780 fill:mix(p.void p.pool .55) name:basin
+  ellipse 1500,36 at:720,668 fill:p.tide.0 brush:sculpt(lo:p.void hi:p.tide.2 scale:2.2 planes:.45 wrap:.18 glossk:.1 depth:.6) name:skin
+  ellipse 220,8 at:1040,710 fill:p.amber.2 a:.16 blur:2 name:glint
+  ellipse 90,5 at:1120,760 fill:p.amber.1 a:.08 blur:2 name:glint_far

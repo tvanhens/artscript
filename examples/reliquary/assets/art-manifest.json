@@ -1,0 +1,31 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "3f9c9ec50a19b1b1",
+      "line": 5,
+      "matrix": {},
+      "path": "scene/reliquary.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/scene/reliquary.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "71d07895b0226e93",
+      "line": 6,
+      "matrix": {},
+      "path": "study/marks.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/study/marks.ramo",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

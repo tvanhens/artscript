@@ -1,0 +1,24 @@
+# Soft contact under a foot or a base. The origin is the contact point.
+def contact w:80
+  ellipse w,w*.15 fill:p.ink a:.42 blur:w*.1 name:cast
+  ellipse w*.5,w*.07 at:2,-2 fill:p.ink a:.72 blur:2.5 name:touch
+
+# A wet eye. The catchlight sits upper right, with the room's key, whatever `look` does.
+def eye r:8 tone:p.amber.5 pupil:p.ink look:.2,-.15
+  circle r fill:shade(tone -3) name:ball
+    circle r*.78 fill:mix(tone p.tide.2 .18)
+    circle r*.4 at:look*r*.32 fill:pupil
+    circle r*.22 at:look*r*.32+(r*.08,r*.12) fill:shade(pupil 1) a:.8
+    circle r*.16 at:r*.28,-r*.34 fill:p.shine name:catch
+    ellipse r*1.05,r*.22 at:0,r*.62 fill:p.ink a:.4 blur:1.2 name:lid
+  ellipse r*1.15,r*.35 at:0,r*.2 fill:p.ink a:.28 blur:2 name:socket
+
+# Salt crust laid along a stroke. Name the host so the seed stays put.
+stamp crust spacing:8
+  poly 4 r:1.1+rand(0 2.4) rot:rand(0 80) fill:pick([p.bone.4 p.bone.5 p.bone.6 p.shine]) a:.55+rand(0 .4) name:grain
+  circle .6+rand(0 .8) at:rand(-2 2),rand(-2 2) fill:p.rim a:.35 name:wet
+
+# A drifting ember. Use it in air, not as a texture inside stone.
+stamp ember spacing:18
+  circle 2.4+rand(0 3.5) fill:p.amber.4 a:.22 blur:2.4 name:haze
+  circle .7+rand(0 1.3) fill:pick([p.amber.5 p.amber.6 p.shine]) name:spark

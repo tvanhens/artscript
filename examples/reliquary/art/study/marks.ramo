@@ -1,0 +1,54 @@
+# Two large marks on the void.
+# Left is a bone niche with a verdigris band and an amber flame.
+# Right is the censer helm on plated shoulders, the head of the warden.
+# Key light is upper right. Ink is heavy on the shadow side and thin on the lit side.
+
+@target study/marks.png 1024x560
+
+use paint { sculpt ink }
+use parts { contact crust ember }
+
+layer bench_layer
+  contact 90 at:250,490 name:shadow_niche
+  contact 100 at:760,490 name:shadow_warden
+
+layer niche_layer
+  subtract fill:p.bone.2 brush:sculpt(scale:1.8 depth:.78 planes:.7) name:wall
+    rect 340x430 r:6 at:250,270
+    ellipse 108,150 at:250,268
+  inside @wall
+    rect 90x430 at:-110,0 fill:p.bone.0 a:.55
+    rect 120x80 at:70,-140 fill:p.bone.5 a:.75
+    ellipse 40,18 at:90,-150 fill:p.bone.6 a:.6 blur:4
+    curve -40,20 10,70 40,40 stroke:p.ink,4 a:.8 name:crack
+    each i in 0..6
+      circle 1.5+rand(0 2) at:rand(-140 140),rand(-180 160) fill:p.ink a:.45 name:pit
+  ellipse 100,140 at:250,270 fill:p.void name:mouth
+    ellipse 70,90 at:16,-20 fill:p.amber.1 a:.35 blur:8
+    circle 14 at:8,-10 fill:p.amber.5 name:flame
+      circle 5 at:3,-4 fill:p.shine
+      fx glow 16 color:p.amber.4 a:.8 strength:1.6
+    curve -20,40 0,10 16,36 fill:none stamp:ember name:sparks
+  curve 160,430 250,446 340,428 fill:none stamp:crust name:sill
+  rect 300x22 at:250,120 fill:p.verd.2 brush:sculpt(scale:.6 glossk:.4) name:band
+    ellipse 40,8 at:80,-2 fill:p.verd.5 a:.6 blur:2
+    circle 5 at:-90,0 fill:p.verd.1 name:rivet
+      circle 1.6 at:.8,-.8 fill:p.shine
+  fx outline 8 brush:ink color:p.ink
+
+layer warden_layer
+  curve -120,70 -150,10 -80,-30 40,-20 90,24 70,78 10,96 -70,88 closed at:780,400 fill:p.verd.1 brush:sculpt(scale:1.5 depth:.75) name:pauldron
+    ellipse 50,16 at:40,-24 fill:p.verd.4 a:.4 blur:4
+    curve -20,10 10,30 40,18 stroke:p.verd.0,6 a:.45 name:ridge
+  curve -36,20 -20,-30 24,-36 40,10 10,28 closed at:800,360 fill:p.verd.3 brush:sculpt(scale:.8 glossk:.4) name:collar
+  circle 52 at:820,250 fill:p.amber.2 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.28 planes:.22 glossk:.55 scale:1.1) name:heart
+    circle 18 at:12,-10 fill:p.amber.5
+    circle 6 at:16,-14 fill:p.shine
+    fx glow 24 color:p.amber.4 a:.7 strength:1.4
+  curve -8,-78 -24,-10 4,70 at:790,250 stroke:p.bone.2,16 brush:sculpt(scale:.9) name:rib_front
+  curve 18,-70 34,0 10,64 at:850,255 stroke:p.bone.1,11 a:.85 brush:sculpt(scale:.7) name:rib_back
+  curve -40,8 -8,-6 28,16 at:820,230 stroke:p.bone.4,12 brush:sculpt(scale:.6) name:rib_lip
+  curve -10,20 -30,50 -16,90 at:760,340 stroke:p.verd.1,4 brush:sculpt(scale:.35) name:chain
+  circle 6 at:744,428 fill:p.verd.4 brush:sculpt(scale:.25 glossk:.6) name:link
+  ellipse 28,12 at:780,168 fill:p.ash.3 a:.3 blur:8 name:smoke
+  fx outline 7 brush:ink color:p.ink

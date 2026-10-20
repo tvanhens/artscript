@@ -1,0 +1,20 @@
+# The Reliquary of the Last Sun.
+# Bone and void carry the room. Tide is the water. Verdigris is old copper.
+# Amber is scarce and belongs to the caged sun, lanterns, and resin.
+# Rose is only the window and the page's cloak.
+
+palette marrow
+  ramp bone #2c2228 #f4e6cc 7
+  ramp rose #3a1822 #f2b0ae 6
+  ramp amber #5c240c #ffe6a8 7
+  ramp verd #102e2c #c6ead4 6
+  ramp tide #0a2428 #b5e4df 6
+  ramp glass #221433 #ddd0f4 6
+  ramp flesh #4a2430 #f3cbb8 6
+  ramp ash #1a1618 #d0c8c0 5
+  ramp moss #1a2610 #d2dea0 5
+  color ink #120e12
+  color shine #fff8ea
+  color rim #c5eef0
+  color void #0c0a10
+  color pool #0e3036

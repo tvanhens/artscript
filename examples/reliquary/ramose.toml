@@ -1,0 +1,18 @@
+[project]
+name = "reliquary"
+out  = "assets"
+lib  = ["lib"]
+std  = "0.1"
+
+[build]
+backend = "cpu"
+
+[defaults]
+palette = "palette/marrow"
+scale   = [1]
+bg      = "#0c0a10"
+profile = "auto"
+
+[lint]
+raw-color = "error"
+positional-seed = "error"
