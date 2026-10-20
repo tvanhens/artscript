@@ -1,0 +1,61 @@
+# One salt ledge, alone. y = 0 is the walk surface. The face hangs down.
+# The sun is upper right. The right corner is a fresh break. Salt stays on the old skin.
+
+@target ground/ledge.png 400x120 bg:none
+
+use paint { sculpt ink }
+use parts { crust }
+
+def salt_ledge
+  layer stone_layer
+    curve -176,12 -166,4 -148,0 -90,0 -10,0 70,0 104,0 112,3 118,16 136,22 122,34 150,44 168,58 174,74 160,84 168,96 70,100 0,95 -80,100 -150,94 -166,86 -158,78 -174,62 -170,32 -176,12 closed tension:.08 fill:p.bone.3 brush:sculpt(lo:p.bone.0 hi:p.bone.6 scale:1.4 depth:.66 planes:.48 strength:.52 plump:.78) name:slab
+      curve -160,3 -140,0 -10,0 96,1 104,6 96,15 10,15 -90,16 -158,11 closed fill:p.bone.5 brush:sculpt(lo:p.bone.3 hi:p.shine scale:.65 glossk:.36 depth:.42 planes:.4 plump:.66) name:lip
+        ellipse 18,4.5 at:78,6 fill:p.bone.6 a:.7 name:lip_glint
+      curve -154,15 -40,17 70,15 104,16 stroke:p.ink,3.2 a:.4 name:lip_seam
+      curve -154,13 -40,15 70,13 104,14 stroke:p.bone.6,1.6 a:.5 name:lip_lit
+      curve -146,8 -112,4 -78,9 -30,5 16,8 62,4 92,8 fill:none stamp:crust name:lip_salt
+      curve -28,24 -16,30 -6,25 6,32 16,27 fill:none stamp:crust(spacing:5) name:bloom
+      curve -168,14 -150,10 -96,20 -78,12 -154,30 -166,48 closed fill:p.bone.2 brush:sculpt(lo:p.bone.0 hi:p.bone.4 scale:1.05 depth:.72 planes:.5) name:block_left
+      curve 18,18 86,14 94,36 88,62 16,58 closed fill:p.bone.4 brush:sculpt(lo:p.bone.2 hi:p.bone.6 scale:.95 depth:.55 planes:.46 glossk:.2) a:.8 name:block_right
+      curve 100,6 114,8 126,18 132,24 116,32 102,22 closed fill:p.bone.6 brush:sculpt(lo:p.bone.4 hi:p.shine scale:.42 glossk:.52 depth:.28 planes:.32 plump:.6) name:break_face
+        ellipse 4.2,1.8 at:118,12 fill:p.shine a:.75 name:break_glint
+        curve 98,12 112,22 120,32 stroke:p.ink,2.8 a:.8 name:break_seam
+        curve 102,10 116,20 124,30 stroke:p.bone.6,1.3 a:.65 name:break_seam_lit
+      curve 116,30 98,46 90,64 stroke:p.ink,[1.6 3.4 1.8] a:.8 name:break_crack
+      curve 118,30 100,46 92,64 stroke:p.bone.5,[.6 1.3 .7] a:.5 name:break_crack_lit
+      curve -146,30 -48,26 36,29 96,24 stroke:p.bone.0,4 a:.4 brush:sculpt(scale:.32 depth:.6 lo:p.bone.0) name:bed_0
+      curve -146,27 -48,23 36,26 96,21 stroke:p.bone.6,1.5 a:.48 name:bed_0_lit
+      curve -154,48 -36,52 64,45 108,50 stroke:p.bone.0,4.5 a:.36 brush:sculpt(scale:.36 depth:.62 lo:p.bone.0) name:bed_1
+      curve -154,45 -36,49 64,42 108,47 stroke:p.bone.5,1.4 a:.4 name:bed_1_lit
+      curve -136,66 -12,62 70,67 118,63 stroke:p.ink,2.8 a:.32 brush:sculpt(scale:.28 depth:.55 lo:p.ink) name:bed_2
+      curve -92,14 -106,32 -88,48 -102,64 stroke:p.ink,[1.1 2.8 1.7 .8] a:.7 name:seam
+      curve -90,14 -104,32 -86,48 -100,64 stroke:p.bone.5,1.1 a:.45 name:seam_lit
+      circle 3.4 at:-98,36 fill:p.moss.2 brush:sculpt(scale:.2 depth:.4 planes:.35 lo:p.moss.0 hi:p.moss.4) name:moss
+        circle 1.6 at:-.6,-.8 fill:p.moss.3 name:moss_tip
+      circle 1.7 at:-108,46 fill:p.moss.1 a:.85 name:moss_b
+      circle 1.3 at:-90,26 fill:p.moss.2 a:.75 name:moss_c
+      ellipse 9,4 at:-16,40 rot:-12 fill:p.bone.0 a:.72 brush:sculpt(scale:.38 depth:.84 glossk:.1 lo:p.ink) name:pock_a
+        ellipse 3.2,1.2 at:2,-1.1 fill:p.bone.6 a:.6 name:pock_a_lip
+      ellipse 6.5,3 at:70,48 rot:8 fill:p.ink a:.5 brush:sculpt(scale:.32 depth:.78 lo:p.ink) name:pock_b
+        ellipse 2.4,1 at:1.5,-.7 fill:p.bone.6 a:.55 name:pock_b_lip
+      ellipse 5.5,2.6 at:-80,60 rot:16 fill:p.bone.1 a:.6 brush:sculpt(scale:.28 depth:.75 lo:p.bone.0) name:pock_c
+        ellipse 2.2,.85 at:1.2,-.6 fill:p.bone.5 a:.5 name:pock_c_lip
+      each i in 0..8
+        circle 1.2+rand(0 1.6) at:rand(-120 96),rand(26 64) fill:p.ink a:.55 brush:sculpt(scale:.2 depth:.88 glossk:.06 lo:p.ink) name:pit
+          circle .5+rand(0 .4) at:.65,-.5 fill:p.bone.6 a:.7 name:pit_shine
+      each i in 0..4
+        ellipse 1.5,.6 at:rand(-100 90),rand(24 60) rot:rand(-36 32) fill:p.bone.6 a:.55 name:nick
+      circle 6.2 at:-2,64 fill:p.bone.0 a:.75 brush:sculpt(scale:.3 depth:.8 lo:p.ink hi:p.bone.2) name:socket
+      circle 2.8 at:-2,64 fill:p.tide.2 brush:sculpt(lo:p.tide.0 hi:p.rim glossk:.6 scale:.22 depth:.28 planes:.2) name:pool
+        circle .9 at:.7,-.7 fill:p.shine a:.75 name:pool_catch
+      curve -160,78 -36,82 78,76 150,84 186,114 -196,114 -178,88 closed fill:p.bone.0 brush:sculpt(lo:p.ink hi:p.bone.2 depth:.7 planes:.42 scale:1.05 strength:.42 plump:.72) name:soffit
+      curve -148,76 -28,80 82,75 142,81 stroke:p.bone.5,2.2 a:.62 brush:sculpt(scale:.28 glossk:.22 lo:p.bone.2 hi:p.bone.6) name:arris
+      curve -146,80 -28,84 82,79 140,86 stroke:p.ink,4.5 a:.55 name:soffit_crease
+      ellipse 24,5.5 at:-72,92 fill:p.rim a:.34 blend:soft_light name:cool_rim
+      curve -150,90 -118,96 -86,91 fill:none stamp:crust(spacing:7) name:weep_salt
+      fx grain .026 scale:1.2
+      fx outline 5 brush:ink(center:-4,48 thin:.32) color:p.ink
+
+salt_ledge at:200,7.999 name:ledge
+assert inside(@ledge canvas margin:8)
+assert @ledge.top in -12..8
