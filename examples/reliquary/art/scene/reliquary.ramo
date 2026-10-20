@@ -1,27 +1,73 @@
-# The reliquary before anything is carried in.
-# A drowned nave. Amber falls from the upper right, where the cage will hang.
-# The far arches are air, not architecture. Water holds the only reflection.
+# The Reliquary of the Last Sun, one room, side view.
+# The page enters from the left. The warden stands in the nave. The eel lies in the pool.
+# The stair climbs to the hart, and the hart stands under the caged sun.
 
 @target scene/reliquary.png 1440x810 viewport
 
-use paint { sculpt }
+use art/bg/rose_window { rose_window }
+use art/bg/vault { vault_ribs }
+use art/arch/colonnade { colonnade }
+use art/arch/stair { vertebra_stair }
+use art/arch/sun_cage { sun_cage }
+use art/ground/nave { nave_floor }
+use art/ground/ledge { salt_ledge }
+use art/prop/offering { offering_bowl }
+use art/prop/crown { fallen_crown }
+use art/prop/candles { anemone_candles }
+use art/flora/root { copper_root }
+use art/monster/warden { censer_warden }
+use art/monster/choir { glass_choir }
+use art/monster/eel { marrow_eel }
+use art/monster/pilgrim { salt_pilgrim }
+use art/monster/hart { resin_hart }
+use art/hero/page { lantern_page }
+use art/fg/pier { cracked_pier }
+use art/fx/embers { ember_field }
 
 layer air_layer
   rect 1600x900 at:720,400 fill:grad(down p.void mix(p.void p.tide.0 .7)) name:sky
-  ellipse 720,640 at:1180,-60 fill:p.amber.1 a:.22 blur:8 blend:screen name:shaft
-  ellipse 180,520 at:1080,120 fill:p.amber.3 a:.1 blur:6 blend:add name:core
-  ellipse 980,180 at:480,560 fill:p.tide.0 a:.35 blur:16 name:mist
-  ellipse 420,260 at:-20,-10 fill:p.void a:.8 blur:10 name:vignette_tl
-  ellipse 380,240 at:1500,860 fill:p.void a:.75 blur:10 name:vignette_br
+  ellipse 720,640 at:1180,-40 fill:p.amber.1 a:.2 blur:8 blend:screen name:shaft
+  ellipse 180,520 at:1120,140 fill:p.amber.3 a:.12 blur:6 blend:add name:core
+  ellipse 980,180 at:480,560 fill:p.tide.0 a:.28 blur:16 name:mist
 
-layer far_layer
-  each k in 0..5
-    curve -46,90 -50,-20 0,-78 50,-20 46,90 at:150+k*230,520-k*14 scale:1,.82+k*.05 stroke:p.bone.0,20 a:.45 name:arch
-    curve -26,74 -28,-6 0,-48 28,-6 26,74 at:150+k*230,526-k*14 scale:1,.82+k*.05 stroke:p.void,14 name:opening
-  rect 1500x4 at:720,600 fill:p.bone.1 a:.22 name:sill
+layer window_layer
+  rose_window at:1000,340 scale:.5 name:rose
+    fx adjust light:-.16 sat:-.12
 
-layer water_layer
-  rect 1500x240 at:720,780 fill:mix(p.void p.pool .55) name:basin
-  ellipse 1500,36 at:720,668 fill:p.tide.0 brush:sculpt(lo:p.void hi:p.tide.2 scale:2.2 planes:.45 wrap:.18 glossk:.1 depth:.6) name:skin
-  ellipse 220,8 at:1040,710 fill:p.amber.2 a:.16 blur:2 name:glint
-  ellipse 90,5 at:1120,760 fill:p.amber.1 a:.08 blur:2 name:glint_far
+layer vault_layer
+  vault_ribs at:720,150 name:ribs
+
+layer arch_layer
+  colonnade at:210,680 scale:.78 name:columns
+
+layer floor_layer
+  nave_floor at:720,640 name:stones
+  salt_ledge at:250,500 name:ledge_l
+  salt_ledge at:860,430 scale:.9 name:ledge_m
+  salt_ledge at:1160,470 scale:.85 name:ledge_r
+
+layer step_layer
+  vertebra_stair at:1035,634 scale:.48 name:flight
+
+layer cage_layer
+  sun_cage at:1180,230 scale:.78 name:cage
+  ember_field at:1080,260 scale:.9 a:.85 name:sparks
+
+layer creature_layer
+  resin_hart at:1140,470 scale:.62 name:hart
+  glass_choir at:640,90 scale:.85 name:singers
+  copper_root at:150,30 scale:.72 name:root_l
+  copper_root at:820,40 scale:.55 name:root_r
+  censer_warden at:470,655 scale:.58 name:warden
+  salt_pilgrim at:230,500 scale:.9 name:pilgrim
+  offering_bowl at:920,446 scale:.85 name:bowl
+  fallen_crown at:770,458 scale:1 name:crown
+  anemone_candles at:1214,644 scale:.5 name:flames
+  marrow_eel at:717,803 scale:.66 name:eel
+  lantern_page at:260,650 name:page
+
+layer front_layer
+  cracked_pier at:70,820 scale:.82 name:pier_l
+  cracked_pier at:1380,830 scale:.7 name:pier_r
+  ellipse 500,280 at:-40,-20 fill:p.void a:.55 blur:12 name:vignette_tl
+  ellipse 420,240 at:1500,860 fill:p.void a:.5 blur:12 name:vignette_br

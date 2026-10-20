@@ -237,6 +237,7 @@ The agent finds or creates `ramose.toml`, writes the `.ramo` source, builds it, 
 
 - [`docs/language.md`](docs/language.md) is the core language card. [`docs/topics/`](docs/topics) has one file per topic.
 - [`examples/spire`](examples/spire) is the bogmaw, with its own brushes, stamps, and parts library.
+- [`examples/reliquary`](examples/reliquary) is one drowned nave, painted as separate sprites and placed in a single scene.
 - [`examples/chibi`](examples/chibi) has a shared palette, a face-parts library, and an animated character.
 - [`assets/logo.ramo`](assets/logo.ramo) draws the logo. The wordmark is [Inter](https://rsms.me/inter/), under the SIL Open Font License.
 

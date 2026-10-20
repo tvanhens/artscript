@@ -63,6 +63,19 @@
     {
       "anchors": {},
       "checks": [],
+      "hash": "3f509042cd02155f",
+      "line": 5,
+      "matrix": {},
+      "path": "bg/vault.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/bg/vault.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
       "hash": "fab4577b8d8586a9",
       "line": 4,
       "matrix": {},
@@ -268,9 +281,34 @@
       "target": null
     },
     {
-      "anchors": {},
+      "anchors": {
+        "bowl.feet": [
+          920,
+          446
+        ],
+        "flames.feet": [
+          1214,
+          644
+        ],
+        "flight.feet": [
+          1035,
+          634
+        ],
+        "page.sole": [
+          260,
+          650
+        ],
+        "pilgrim.feet": [
+          230,
+          500
+        ],
+        "warden.sole": [
+          470,
+          655
+        ]
+      },
       "checks": [],
-      "hash": "3f9c9ec50a19b1b1",
+      "hash": "66d8ac273db4ee9b",
       "line": 5,
       "matrix": {},
       "path": "scene/reliquary.png",
