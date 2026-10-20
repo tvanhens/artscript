@@ -4,6 +4,8 @@
 
 use ramose_ir::Scene;
 
+use crate::{Evaluation, Project, evaluate, plan};
+
 use super::{at, diag, node, run_with, scene, shape, show};
 
 fn close(got: (f32, f32), want: (f64, f64), tol: f64) {
@@ -88,11 +90,10 @@ fn parts_read_flat_inside_the_body_and_warped_from_outside_after_it_closes() {
     close(probe(s, "probe"), (warped_cx, 50.0), 1e-3);
     let tip = (100.0 + 40.0 * sin(1.0), 50.0);
     close(probe(s, "on_tip"), tip, 1e-3);
-    let (_, rig) = ev
+    let rig = ev
         .rig
         .anchors
-        .iter()
-        .find(|(k, _)| k.ends_with("tip"))
+        .get("label.tip")
         .unwrap_or_else(|| panic!("{:?}", ev.rig.anchors));
     assert!(
         (rig.0 - tip.0).abs() < 1e-3 && (rig.1 - tip.1).abs() < 1e-3,
@@ -291,4 +292,62 @@ fn key_interpolates_warps_of_one_shape_and_rejects_a_mix() {
         );
         assert!(diag(&ev, "E0320").message.contains("mixes"), "{t}");
     }
+}
+
+fn with_manifest(manifest: &str, src: &str) -> (Project, crate::targets::Plan) {
+    let p = Project::from_sources(
+        manifest,
+        [("art/t.ramo".to_string(), src.to_string())].into(),
+    )
+    .unwrap();
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+    (p, plan)
+}
+
+fn lint_manifest(level: &str) -> String {
+    format!(
+        "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\nunused = \"off\"\nwarp-cut = \"{level}\"\n"
+    )
+}
+
+#[test]
+fn content_past_the_visible_half_is_linted_once_with_a_radius_that_fits() {
+    let src = "@target t.png 300x100\nrect 200x24 at:150,50 warp:cylinder(40) name:wide\n";
+    let (p, plan) = with_manifest(&lint_manifest("warn"), src);
+    let ev: Evaluation = evaluate(&p, &plan.jobs[0]);
+    let cuts: Vec<_> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0108")
+        .collect();
+    assert_eq!(cuts.len(), 1, "{}", show(&ev.diagnostics));
+    let d = cuts[0];
+    assert!(
+        d.message
+            .contains("`cylinder(40)` hides 74 units of `wide`"),
+        "{d}"
+    );
+    assert!(
+        d.fix.as_deref().is_some_and(|f| f.contains("cylinder(64)")),
+        "{d}"
+    );
+    assert_eq!(d.span.line, 2, "{d}");
+    let (p, plan) = with_manifest(&lint_manifest("off"), src);
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(
+        ev.diagnostics.iter().all(|d| d.code != "L0108"),
+        "{}",
+        show(&ev.diagnostics)
+    );
+    let anim = "@target t.gif 300x100 bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .wide at:key(0 10 ease:linear),0\nrect 200x24 at:150,50 warp:cylinder(40) name:wide\nplay slide\n";
+    let (p, plan) = with_manifest(&lint_manifest("warn"), anim);
+    let sampled = crate::sample(&p, &plan.jobs[0]);
+    assert!(sampled.frames.len() > 1);
+    let cuts = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "L0108")
+        .count();
+    assert_eq!(cuts, 1, "{}", show(&sampled.diagnostics));
 }

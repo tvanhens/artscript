@@ -287,6 +287,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         placement = lints::off_canvas(&scene, &project.manifest, &job.source);
     }
     placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
+    placement.extend(lints::warp_cut(&scene, &project.manifest, &job.source));
     stamp_target(job, &mut placement);
     diagnostics.extend(placement);
     Evaluation {
@@ -679,7 +680,7 @@ struct Agg {
 }
 
 fn folded_lint(code: &str) -> bool {
-    matches!(code, "L0102" | "L0104" | "L0105")
+    matches!(code, "L0102" | "L0104" | "L0105" | "L0108")
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.

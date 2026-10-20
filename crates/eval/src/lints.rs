@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use ramose_ir::{MaskSource, Matrix, Node, NodeKind, Rect};
+use ramose_ir::{Axis, MaskSource, Matrix, Node, NodeKind, Rect, WarpStage};
 use ramose_syntax::ast::{
     BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
     Span, SwatchKind,
@@ -11,6 +11,8 @@ use crate::identity::PositionalUses;
 use crate::place::Place;
 use crate::project::{LintLevel, Manifest};
 use crate::targets;
+use crate::value::num;
+use crate::warp::stage_text;
 
 fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnostic> {
     let severity = match level {
@@ -869,6 +871,68 @@ pub fn hidden_child(
             d = d.with_note(site_note(site));
         }
         out.push(d);
+    }
+    out
+}
+
+/// Content a `cylinder` stage hides past its visible half: one report per node and stage, with
+/// the radius that would show all of it.
+pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("warp-cut");
+    fn nodes<'n>(n: &'n Node, out: &mut Vec<&'n Node>) {
+        out.push(n);
+        for mask in n.masks() {
+            if let MaskSource::Nodes(inner) = &mask.source {
+                inner.iter().for_each(|c| nodes(c, out));
+            }
+        }
+        n.descendants().for_each(|c| nodes(c, out));
+    }
+    let mut all = Vec::new();
+    scene.children.iter().for_each(|c| nodes(c, &mut all));
+    let mut out = Vec::new();
+    for n in all {
+        for stage in n.warp.stages() {
+            let WarpStage::Cylinder(c) = &stage.kind else {
+                continue;
+            };
+            let strips = stage.cut();
+            if strips.is_empty() {
+                continue;
+            }
+            let (hidden, reach) = match c.axis() {
+                Axis::Y => (
+                    strips.iter().map(Rect::width).sum::<f32>(),
+                    stage.src.left.abs().max(stage.src.right.abs()),
+                ),
+                Axis::X => (
+                    strips.iter().map(Rect::height).sum::<f32>(),
+                    stage.src.top.abs().max(stage.src.bottom.abs()),
+                ),
+            };
+            let fits = num(f64::from((reach * 2.0 / std::f32::consts::PI).ceil()));
+            let (src, span) = source_span(&n.origin, file);
+            let Some(d) = diag(
+                level,
+                "L0108",
+                span,
+                format!(
+                    "`{}` hides {} units of `{}` past its visible half",
+                    stage_text(&stage.kind),
+                    num(f64::from(hidden.round())),
+                    n.path
+                ),
+            ) else {
+                continue;
+            };
+            let axis = match c.axis() {
+                Axis::Y => "",
+                Axis::X => " axis:x",
+            };
+            out.push(d.in_file(&src).at_node(&n.path).with_fix(format!(
+                "a radius of {fits} shows all of it: `cylinder({fits}{axis})`"
+            )));
+        }
     }
     out
 }
