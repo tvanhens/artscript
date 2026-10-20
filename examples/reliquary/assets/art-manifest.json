@@ -37,6 +37,19 @@
     {
       "anchors": {},
       "checks": [],
+      "hash": "4fcd3b36677d97e9",
+      "line": 4,
+      "matrix": {},
+      "path": "bg/rose_window.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/bg/rose_window.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
       "hash": "fab4577b8d8586a9",
       "line": 4,
       "matrix": {},
@@ -158,6 +171,24 @@
       "pivot": null,
       "scale": 1.0,
       "source": "art/monster/pilgrim.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "warden.sole": [
+          216,
+          552
+        ]
+      },
+      "checks": [],
+      "hash": "c6fb25320297599f",
+      "line": 5,
+      "matrix": {},
+      "path": "monster/warden.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/warden.ramo",
       "status": "pass",
       "target": null
     },
