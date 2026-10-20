@@ -15,6 +15,9 @@ pub mod warp;
 
 pub use warp::{Axis, Corners, CornersError, Cylinder, Placer, Warp, WarpError, WarpStage};
 
+/// Local units a bent outline may stray from its true image when a box is measured through it.
+const PLACE_TOL: f32 = 0.05;
+
 /// sRGB, 0..1, straight (not premultiplied) alpha.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
@@ -540,7 +543,13 @@ impl Node {
     /// Content frame to parent: through the warp, then `transform`. The one owner of that
     /// composition.
     pub fn place_rect(&self, local: Rect) -> Rect {
-        self.transform.map_rect(self.warp.map_rect(local)).0
+        if self.warp.is_none() {
+            return self.transform.map_rect(local).0;
+        }
+        // The warped outline is a quad or a bent band, so its box is taken after the
+        // transform, where boxing the local result first would grow it under a rotation.
+        self.place_path(&Path::rect(local, None), PLACE_TOL)
+            .compute_tight_bounds()
     }
 
     pub fn place_path(&self, local: &Path, tol: f32) -> Path {
