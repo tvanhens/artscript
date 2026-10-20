@@ -5,10 +5,12 @@ mod common;
 
 use common::{brushed, circle_at, color, effect, mark, red, scene, solid, stage};
 use ramose_ir::{
-    Axis, Blend, Corners, Cylinder, EffectOp, Matrix, Node, NodeKind, Paint, Path, Point, Rect,
-    Sides, Warp, WarpStage,
+    Axis, Blend, Corners, Cylinder, EffectOp, Matrix, Node, NodeKind, Paint, Path, Point, Profile,
+    Rect, Sides, Warp, WarpStage,
 };
-use ramose_render::{Backend, gpu_available, render_png};
+use ramose_render::{
+    Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg,
+};
 use skia_safe::Contains;
 
 struct Raster {
@@ -399,4 +401,39 @@ fn fx_outline_rings_the_warped_quad_and_not_the_flat_rect() {
     }
     assert_eq!(img.at(20, 50)[3], 0, "the flat rect's place stays clear");
     assert_eq!(img.at(43, 50)[3], 0, "no ring around the flat rect's edge");
+}
+
+/// The box of the `index`th `<image>` tag in `svg`.
+fn image_box(svg: &str, index: usize) -> Rect {
+    let attrs = &svg[svg.match_indices("<image").nth(index).unwrap().0..];
+    let num = |name: &str| -> f32 {
+        let key = format!(" {name}=\"");
+        let start = attrs.find(&key).unwrap() + key.len();
+        attrs[start..].split('"').next().unwrap().parse().unwrap()
+    };
+    Rect::from_xywh(num("x"), num("y"), num("width"), num("height"))
+}
+
+#[test]
+fn both_kinds_are_raster_only_and_svg_bakes_each_node_to_its_warped_box() {
+    let s = warped_scene();
+    let census: Vec<String> = raster_only_features(&s)
+        .iter()
+        .map(|u| format!("{} {}", u.node, u.feature))
+        .collect();
+    assert_eq!(census, ["side warp corners", "label warp cylinder"]);
+    assert!(matches!(
+        render_svg(&s, Profile::Vector, 1.0, Backend::Cpu),
+        Err(RenderError::NotVector(_))
+    ));
+    let svg = render_svg(&s, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert_eq!(svg.matches("<image").count(), 2, "{svg}");
+    for (i, node) in s.children.iter().enumerate() {
+        let (tile, bounds) = (image_box(&svg, i), node.bounds().unwrap());
+        assert!(
+            same_box(tile, bounds, 0.01),
+            "{}: tile {tile:?}, bounds {bounds:?}",
+            node.path
+        );
+    }
 }
