@@ -2,11 +2,13 @@ name: release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   pull_request:
     paths:
       - "npm/**"
       - ".github/workflows/release.yml"
+      - "release-please-config.json"
+      - ".release-please-manifest.json"
   workflow_dispatch:
 
 permissions:
@@ -17,7 +19,36 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      version: ${{ steps.rp.outputs.version }}
+    steps:
+      # A PAT, not GITHUB_TOKEN: GitHub runs no workflows on a PR that GITHUB_TOKEN opens or pushes to.
+      - id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      # release-please bumps Cargo.toml only. Without this, the --locked builds fail on the release PR.
+      - if: steps.rp.outputs.prs_created == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ fromJSON(steps.rp.outputs.pr).headBranchName }}
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+      - if: steps.rp.outputs.prs_created == 'true'
+        run: |
+          cargo update --workspace
+          if git diff --quiet Cargo.lock; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore: update Cargo.lock for the release"
+          git push
+
   platforms:
+    needs: release-please
+    if: ${{ !cancelled() && !failure() && (github.event_name != 'push' || needs.release-please.outputs.release_created == 'true') }}
     runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.read.outputs.matrix }}
@@ -28,7 +59,8 @@ jobs:
 
   build:
     name: build ${{ matrix.key }}
-    needs: platforms
+    needs: [release-please, platforms]
+    if: ${{ !cancelled() && needs.platforms.result == 'success' }}
     runs-on: ${{ matrix.runner }}
     # A failed Skia prebuilt download silently falls back to a from-source build.
     # This bounds it. Do not set FORCE_SKIA_BINARIES_DOWNLOAD: in a crates.io build
@@ -56,9 +88,11 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - name: Stage the npm packages
         shell: bash
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
         run: |
           expect=()
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then expect=(--expect-version "${GITHUB_REF_NAME#v}"); fi
+          if [[ -n "$VERSION" ]]; then expect=(--expect-version "$VERSION"); fi
           node npm/stage.mjs "${expect[@]}" platform ${{ matrix.key }} target/${{ matrix.target }}/release/${{ matrix.exe }} dist/npm
           node npm/stage.mjs "${expect[@]}" main dist/npm
       - run: node npm/smoke.mjs dist/npm
@@ -69,8 +103,8 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [release-please, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' && needs.release-please.outputs.release_created == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -88,13 +122,14 @@ jobs:
           pattern: npm-*
       # Artifacts drop the executable bit, so restage each binary into its package.
       - name: Stage the npm packages
+        env:
+          VERSION: ${{ needs.release-please.outputs.version }}
         run: |
-          version="${GITHUB_REF_NAME#v}"
           for p in $(jq -r '.[] | "\(.key):\(.exe)"' npm/platforms.json); do
             key="${p%%:*}"; exe="${p#*:}"
-            node npm/stage.mjs --expect-version "$version" platform "$key" "dist/downloaded/npm-$key/bin/$exe" dist/npm
+            node npm/stage.mjs --expect-version "$VERSION" platform "$key" "dist/downloaded/npm-$key/bin/$exe" dist/npm
           done
-          node npm/stage.mjs --expect-version "$version" main dist/npm
+          node npm/stage.mjs --expect-version "$VERSION" main dist/npm
       - run: node npm/publish.mjs dist/npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
