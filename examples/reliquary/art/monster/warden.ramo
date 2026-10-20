@@ -1,0 +1,193 @@
+# The nave's knight. Gouache, one key from the upper right.
+# Feet on y = 0. The body grows up, negative y. Side view, facing right.
+# A censer for a head: bone ribs around an amber heart. No face.
+
+@target monster/warden.png 440x580 bg:none
+
+use paint { sculpt ink }
+use parts { contact crust ember }
+
+def censer_warden
+  anchor sole 0,0
+
+  layer shadow_layer
+    contact 44 at:-34,-2 name:shadow_far
+    contact 50 at:60,-3 name:shadow_near
+
+  layer far_layer
+    curve -102,0 -108,-12 -90,-30 -58,-40 -22,-32 -4,-14 2,-2 -10,0 -52,0 closed fill:p.bone.1 brush:sculpt(scale:.9 depth:.78 planes:.66) name:foot_far
+      ellipse 18,5 at:-36,-10 fill:p.bone.4 a:.4 blur:2 name:lit
+      fx outline 6 brush:ink(center:-52,-16) color:p.ink
+    ellipse 28,52 at:-28,-70 rot:2 fill:p.verd.0 brush:sculpt(scale:1.15 depth:.8 planes:.68) name:shin_far
+      ellipse 10,18 at:8,-14 fill:p.verd.3 a:.35 blur:2 name:lit
+      ellipse 18,16 at:-2,24 fill:mix(p.verd.0 p.tide.0 .5) a:.55 name:wet
+      curve 6,-26 8,2 4,26 stroke:p.verd.3,3.5 a:.45 name:ridge
+      fx outline 6 brush:ink color:p.ink
+    ellipse 15,34 at:-20,-68 rot:3 fill:p.verd.2 brush:sculpt(scale:.7 depth:.7 glossk:.2) name:greave_far
+      ellipse 5,12 at:3,-6 fill:p.verd.4 a:.4 name:lit
+      fx outline 4 brush:ink color:p.ink
+    ellipse 22,16 at:-30,-118 rot:8 fill:p.verd.1 brush:sculpt(scale:.55 glossk:.35 depth:.72) name:knee_far
+      ellipse 8,3 at:4,-3 fill:p.verd.4 a:.5 name:lit
+      fx outline 5 brush:ink color:p.ink
+    curve -8,-190 -62,-206 -104,-164 -98,-124 -66,-108 -34,-114 -24,-156 -6,-186 closed fill:p.verd.0 brush:sculpt(scale:1.2 depth:.78 planes:.66) name:thigh_far
+      ellipse 14,16 at:-36,-178 fill:p.verd.3 a:.3 blur:2 name:lit
+      fx outline 6 brush:ink(center:-50,-155) color:p.ink
+    curve -22,-352 -78,-338 -136,-300 -146,-258 -128,-204 -104,-170 -70,-164 -76,-210 -88,-262 -48,-324 -18,-346 closed fill:p.verd.0 brush:sculpt(scale:1.2 depth:.78 planes:.64) name:arm_far
+      ellipse 16,22 at:-96,-250 fill:p.verd.3 a:.28 blur:2 name:lit
+      ellipse 18,18 at:-118,-230 fill:p.verd.0 a:.45 name:shade
+      fx outline 6 brush:ink(center:-84,-260) color:p.ink
+    ellipse 18,16 at:-132,-274 rot:24 fill:p.verd.2 brush:sculpt(scale:.55 glossk:.3) name:couter
+      ellipse 6,3 at:3,-3 fill:p.verd.4 a:.55 name:lit
+      fx outline 4 brush:ink color:p.ink
+    ellipse 20,14 at:-92,-162 rot:-18 fill:p.bone.2 brush:sculpt(scale:.5 depth:.68 glossk:.25) name:mitten
+      ellipse 7,3 at:3,-2 fill:p.bone.5 a:.6 name:lit
+      fx outline 4 brush:ink color:p.ink
+
+  layer body_layer
+    curve 0,-408 40,-394 82,-356 90,-304 76,-250 64,-214 88,-186 72,-166 8,-158 -52,-164 -82,-184 -74,-232 -66,-304 -54,-366 -26,-400 closed fill:p.verd.1 brush:sculpt(scale:1.5 depth:.76 planes:.62) name:cuirass
+      ellipse 30,20 at:42,-340 fill:p.verd.4 a:.4 blur:3 name:lit
+      ellipse 34,30 at:-16,-240 fill:p.verd.0 a:.4 name:shade
+      circle 2.6 at:22,-330 fill:p.verd.0 a:.7 name:pit_a
+      circle 2.1 at:8,-286 fill:p.ink a:.55 name:pit_b
+      circle 2.8 at:36,-268 fill:p.verd.0 a:.65 name:pit_c
+      circle 1.9 at:-6,-240 fill:p.ink a:.5 name:pit_d
+      circle 2.3 at:28,-220 fill:p.verd.0 a:.6 name:pit_e
+      circle 1.7 at:48,-304 fill:p.ink a:.45 name:pit_f
+      curve 16,-336 26,-300 18,-266 stroke:p.ink,2.6 a:.62 name:crack
+      curve -18,-250 -4,-228 6,-206 stroke:p.ink,2 a:.4 name:scratch
+      fx outline 8 brush:ink(center:6,-280) color:p.ink
+    curve -16,-18 24,-26 52,-2 40,18 4,22 -20,4 closed at:10,-248 fill:p.verd.2 brush:sculpt(scale:.9 depth:.7 planes:.6) name:belly
+      ellipse 14,7 at:14,-6 fill:p.verd.4 a:.4 blur:1 name:lit
+      circle 2.2 at:8,6 fill:p.verd.0 a:.7 name:pit
+      fx outline 5 brush:ink(center:12,0) color:p.ink
+    curve 4,-70 40,-64 58,-28 46,2 14,8 -10,-16 closed at:22,-324 fill:p.verd.3 brush:sculpt(scale:1 glossk:.34 depth:.66 planes:.58) name:breast
+      ellipse 16,8 at:16,-18 fill:p.verd.5 a:.5 blur:2 name:lit
+      circle 2.6 at:8,4 fill:p.verd.0 name:rivet
+        circle 1 at:.5,-.5 fill:p.shine a:.8
+      circle 2.4 at:28,-8 fill:p.verd.0 name:rivet_b
+        circle 1 at:.5,-.5 fill:p.shine a:.75
+      curve 2,-16 16,-4 26,-14 stroke:p.verd.0,3.5 a:.5 name:seam
+      fx outline 5 brush:ink(center:24,-30) color:p.ink
+    curve -46,-4 10,-10 56,-2 58,8 8,12 -44,6 closed at:8,-206 fill:p.verd.0 brush:sculpt(scale:.65 depth:.82) name:belt
+      ellipse 11,7 at:34,0 fill:p.bone.3 brush:sculpt(scale:.35 glossk:.4) name:buckle
+        ellipse 4,2 at:2,-1 fill:p.bone.5 a:.75 name:lit
+      fx outline 4 brush:ink(center:6,2) color:p.ink
+    each i in 0..3
+      curve -78-i*4,-8 6,-14 88+i*5,-6 94+i*4,16 8,24 -82-i*3,16 closed at:2,-186+i*20 fill:p.verd.2 brush:sculpt(scale:.8 depth:.72 planes:.6) name:lame
+        curve -30,2 16,0 46,4 stroke:p.verd.4,2.5 a:.5 name:ridge
+        fx outline 5 brush:ink(center:6,6) color:p.ink
+    curve -48,-360 -64,-280 -56,-190 stroke:p.bone.2,11 brush:sculpt(scale:.55 depth:.66) name:spine
+      fx outline 3 brush:ink(center:-56,-270) color:p.ink
+
+  layer near_layer
+    curve 18,-196 74,-212 116,-168 110,-122 74,-106 42,-114 30,-158 14,-188 closed fill:p.verd.1 brush:sculpt(scale:1.2 depth:.74 planes:.64) name:thigh_near
+      ellipse 16,18 at:78,-178 fill:p.verd.4 a:.38 blur:2 name:lit
+      ellipse 16,14 at:40,-132 fill:p.verd.0 a:.35 name:shade
+      fx outline 6 brush:ink(center:62,-158) color:p.ink
+    curve -24,-16 18,-24 46,2 38,26 -4,22 -28,4 closed at:64,-158 fill:p.verd.3 brush:sculpt(scale:.85 glossk:.28 depth:.68) name:tasset
+      ellipse 12,6 at:10,-8 fill:p.verd.5 a:.45 name:lit
+      circle 2.4 at:16,6 fill:p.verd.0 name:rivet
+        circle 1 at:.4,-.5 fill:p.shine a:.8
+      fx outline 5 brush:ink(center:8,2) color:p.ink
+    ellipse 24,16 at:58,-112 rot:-10 fill:p.verd.3 brush:sculpt(scale:.6 glossk:.42 depth:.66) name:knee_near
+      ellipse 8,3 at:5,-3 fill:p.verd.5 a:.6 name:lit
+      circle 2.3 at:-2,2 fill:p.verd.0 name:rivet
+        circle 1 at:.4,-.4 fill:p.shine a:.8
+      fx outline 4 brush:ink color:p.ink
+    ellipse 28,54 at:52,-66 rot:-3 fill:p.verd.1 brush:sculpt(scale:1.15 depth:.76 planes:.66) name:shin_near
+      ellipse 10,18 at:8,-16 fill:p.verd.4 a:.4 blur:2 name:lit
+      ellipse 20,18 at:-2,24 fill:mix(p.verd.0 p.tide.0 .55) a:.62 name:wet
+      curve 7,-28 9,2 5,28 stroke:p.verd.4,3.5 a:.5 name:ridge
+      circle 2.4 at:2,10 fill:p.ink a:.55 name:pit
+      circle 2 at:-5,-12 fill:p.verd.0 a:.6 name:pit_b
+      circle 1.8 at:6,-2 fill:p.ink a:.4 name:pit_c
+      fx outline 6 brush:ink color:p.ink
+    ellipse 16,36 at:62,-64 rot:-5 fill:p.verd.3 brush:sculpt(scale:.75 glossk:.3 depth:.64) name:greave
+      ellipse 5,10 at:3,-6 fill:p.verd.5 a:.45 name:lit
+      fx outline 4 brush:ink color:p.ink
+    curve 18,0 12,-12 28,-32 58,-40 96,-32 124,-16 140,-6 136,0 78,0 closed fill:p.bone.2 brush:sculpt(scale:.9 depth:.72 planes:.62) name:foot_near
+      ellipse 24,6 at:36,-10 fill:p.bone.5 a:.4 blur:2 name:lit
+      ellipse 16,5 at:24,-4 fill:p.bone.0 a:.3 name:shade
+      fx outline 6 brush:ink(center:76,-16) color:p.ink
+    ellipse 28,10 at:104,-14 rot:-12 fill:p.bone.4 brush:sculpt(scale:.45 glossk:.3) name:sabaton
+      ellipse 8,3 at:4,-2 fill:p.bone.6 a:.55 name:lit
+      fx outline 3 brush:ink color:p.ink
+
+  layer chain_layer
+    each i in 0..8
+      let u = (i+.5)/8
+      let x = (1-u)*(1-u)*92+2*(1-u)*u*162+u*u*124
+      let y = -344+u*268
+      ellipse 16+mod(i 2)*11,28-mod(i 2)*12 at:x,y rot:8-mod(i 2)*82 fill:if mod(i 2) > .5 then p.verd.1 else p.verd.2 brush:sculpt(scale:.42 glossk:.58 depth:.58 planes:.48) name:link
+        ellipse 4,7 at:0,1 fill:p.verd.0 a:.7 name:hole
+        ellipse 4,2 at:4,-7 fill:p.verd.5 a:.8 name:glint
+        fx outline 4 brush:ink color:p.ink
+    curve 0,-2 16,12 8,32 -14,24 at:126,-70 stroke:p.bone.3,9 brush:sculpt(scale:.4 glossk:.28) name:hook
+      fx outline 3 brush:ink(center:126,-54) color:p.ink
+
+  layer shoulder_layer
+    curve 8,8 -24,18 -96,-4 -118,-40 -72,-74 -8,-66 18,-36 closed at:-24,-348 fill:p.verd.1 brush:sculpt(scale:1.25 depth:.76 planes:.64) name:pauldron_far
+      ellipse 20,8 at:8,-22 fill:p.verd.4 a:.32 blur:2 name:lit
+      curve -30,-28 0,-40 16,-24 stroke:p.verd.0,5 a:.45 name:ridge
+      circle 2.2 at:-8,-8 fill:p.moss.2 name:moss
+        circle 1.4 at:1.2,.6 fill:p.moss.3 name:leaf
+      fx outline 6 brush:ink(center:-30,-28) color:p.ink
+    curve -24,18 28,14 92,0 124,-30 102,-62 36,-70 -8,-46 closed at:34,-358 fill:p.verd.3 brush:sculpt(scale:1.3 glossk:.32 depth:.7 planes:.6) name:pauldron_near
+      ellipse 26,10 at:28,-18 fill:p.verd.5 a:.42 blur:2 name:lit
+      curve -4,2 28,12 58,2 stroke:p.verd.0,5 a:.4 name:ridge
+      circle 3.2 at:46,-4 fill:p.verd.0 name:rivet
+        circle 1.2 at:.6,-.6 fill:p.shine a:.85
+      circle 3 at:12,6 fill:p.verd.0 name:rivet_b
+        circle 1.1 at:.5,-.5 fill:p.shine a:.8
+      circle 2.2 at:60,-22 fill:p.ink a:.55 name:pit
+      fx outline 7 brush:ink(center:40,-24) color:p.ink
+    ellipse 14,16 at:108,-336 rot:-20 fill:p.bone.3 brush:sculpt(scale:.4 glossk:.45) name:ring
+      ellipse 6,7 fill:p.bone.0 a:.75 name:hole
+      fx outline 3 brush:ink color:p.ink
+    ellipse 36,16 at:6,-392 fill:p.bone.2 brush:sculpt(scale:.65 depth:.68) name:collar
+      ellipse 12,4 at:8,-3 fill:p.bone.5 a:.45 name:lit
+      fx outline 4 brush:ink color:p.ink
+
+  layer head_layer
+    curve -8,-56 28,-64 54,-36 56,-2 36,28 4,40 -34,30 -54,4 -56,-28 -34,-52 closed at:8,-448 fill:p.bone.2 brush:sculpt(scale:1.15 depth:.74 planes:.64) name:vessel
+      ellipse 18,8 at:14,-16 fill:p.bone.5 a:.35 blur:2 name:lit
+      ellipse 20,14 at:-10,12 fill:p.bone.0 a:.35 name:shade
+      curve -16,8 0,18 14,10 stroke:p.ink,2 a:.4 name:crack
+      fx outline 7 brush:ink color:p.ink
+    circle 34 at:12,-450 fill:p.amber.2 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.22 planes:.16 glossk:.62 scale:1.05) name:heart
+      circle 13 at:8,-7 fill:p.amber.5 name:core
+      circle 5 at:11,-11 fill:p.shine name:spark
+      fx glow 10 color:p.amber.4 a:.48 strength:1.1
+      fx outline 4 brush:ink color:p.ink
+    curve -16,18 -22,-4 -12,-22 at:10,-448 stroke:p.bone.3,11 brush:sculpt(scale:.6 depth:.66) name:bar_a
+      fx outline 3 brush:ink(center:10,-448) color:p.ink
+    curve 2,20 0,-2 6,-24 at:12,-448 stroke:p.bone.4,12 brush:sculpt(scale:.55 depth:.6 glossk:.16) name:bar_b
+      fx outline 3 brush:ink(center:12,-448) color:p.ink
+    curve 16,16 26,-6 14,-20 at:14,-446 stroke:p.bone.3,10 brush:sculpt(scale:.55 depth:.64) name:bar_c
+      fx outline 3 brush:ink(center:14,-446) color:p.ink
+    ellipse 26,11 at:8,-500 fill:p.bone.3 brush:sculpt(scale:.5 glossk:.26) name:lid
+      circle 2.3 at:-5,1 fill:p.ink name:vent
+      circle 2.1 at:5,-1 fill:p.ink name:vent_b
+      fx outline 3 brush:ink color:p.ink
+    circle 5 at:8,-512 fill:p.bone.4 brush:sculpt(scale:.3 glossk:.4) name:finial
+      fx outline 2 brush:ink color:p.ink
+    each i in 0..3
+      ellipse 6,9 at:50+i*3,-418+i*14 rot:16+i*6 fill:p.bone.3 brush:sculpt(scale:.3 glossk:.45) name:bead
+        ellipse 2,1 at:1.2,-2 fill:p.bone.5 a:.7 name:glint
+        fx outline 2 brush:ink color:p.ink
+    circle 4.2 at:40,-292 fill:p.amber.4 brush:sculpt(lo:p.amber.1 hi:p.shine depth:.18 planes:.12 glossk:.6 scale:.3) name:tear
+      circle 1.6 at:1,-1 fill:p.shine
+      fx glow 5 color:p.amber.4 a:.4
+    curve 40,-288 43,-278 38,-270 stroke:p.amber.3,2.2 brush:sculpt(scale:.25) name:track
+
+  layer smoke_layer
+    ellipse 28,11 at:6,-492 fill:p.ash.2 a:.22 blur:5 name:smoke_a
+    ellipse 16,8 at:18,-500 fill:p.ash.3 a:.15 blur:4 name:smoke_b
+    ellipse 12,7 at:-8,-484 fill:p.ash.1 a:.18 blur:4 name:smoke_c
+    curve -28,-88 -18,-48 -12,-16 fill:none stamp:crust name:salt_far
+    curve 68,-86 78,-46 72,-14 fill:none stamp:crust name:salt_near
+    curve -4,-490 12,-508 2,-518 fill:none stamp:ember name:breath
+
+censer_warden at:216,552 name:warden
+assert inside(@warden canvas margin:12)
+assert @warden.bottom-@warden.sole.y in -8..16
