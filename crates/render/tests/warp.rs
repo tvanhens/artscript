@@ -3,10 +3,10 @@
 
 mod common;
 
-use common::{brushed, circle_at, color, mark, red, scene, solid, stage};
+use common::{brushed, circle_at, color, effect, mark, red, scene, solid, stage};
 use ramose_ir::{
-    Axis, Blend, Corners, Cylinder, Matrix, Node, NodeKind, Paint, Path, Point, Rect, Warp,
-    WarpStage,
+    Axis, Blend, Corners, Cylinder, EffectOp, Matrix, Node, NodeKind, Paint, Path, Point, Rect,
+    Sides, Warp, WarpStage,
 };
 use ramose_render::{Backend, gpu_available, render_png};
 use skia_safe::Contains;
@@ -372,4 +372,31 @@ fn a_brushed_fill_renders_through_a_warp() {
         0,
         "nothing lands where the flat square was"
     );
+}
+
+#[test]
+fn fx_outline_rings_the_warped_quad_and_not_the_flat_rect() {
+    let mut node = warped(side(), &[corners(QUAD)]);
+    node.effects.push(effect(EffectOp::Outline {
+        width: 4.0,
+        color: color(0, 0, 0, 255),
+        sides: Sides::ALL,
+        mask: None,
+        brush: vec![],
+    }));
+    let png = render_png(&scene(200.0, 200.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let img = Raster::decode(&png);
+    let center = centroid(QUAD);
+    for i in 0..4 {
+        let (ax, ay) = QUAD[i];
+        let (bx, by) = QUAD[(i + 1) % 4];
+        let mid = Point::new((ax + bx) * 0.5, (ay + by) * 0.5);
+        let ring = img.at_point(toward(mid, center, -2.0));
+        assert!(
+            ring[3] > 128 && ring[0] < 40 && ring[1] < 40 && ring[2] < 40,
+            "no ring just outside edge {i}: {ring:?}"
+        );
+    }
+    assert_eq!(img.at(20, 50)[3], 0, "the flat rect's place stays clear");
+    assert_eq!(img.at(43, 50)[3], 0, "no ring around the flat rect's edge");
 }
