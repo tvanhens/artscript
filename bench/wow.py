@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPTS = {
     "fox": "draw a cute fox sitting next to a glowing mushroom",
     "chest": "make a game icon of a treasure chest overflowing with gold coins",
+    "lighthouse": "paint a lighthouse on a cliff at dusk in a loose watercolor style",
 }
 JUDGES = ("claude-opus-5-5", "claude-sonnet-5-5")
 AXES = ("fidelity", "composition", "color", "form", "polish", "wow")
@@ -32,15 +33,17 @@ TRIAL_TIMEOUT_S = 20 * 60
 
 RUBRIC = """You are an art director judging one image made by an AI agent from this request: "{prompt}"
 
-Score each axis from 1 to 20. Use the whole range. Anchors for every axis:
-1-4 broken or unreadable. 5-8 programmer clip art: flat primitives, generic. 9-12 a competent amateur asset.
-13-16 a polished indie game asset you would ship. 17-20 portfolio-grade, striking, an artist would be proud of it.
+Judge the image within its style: the style the request names, or the one the image chose when the request names none. No style scores higher than another for being that style, but an image that ignores a style the request names loses fidelity.
 
-- fidelity: does it clearly show what was asked, with the subject readable at a glance?
+Score each axis from 1 to 20. Use the whole range. Anchors for every axis:
+1-4 broken or unreadable. 5-8 generic programmer art: crude primitives, no intent. 9-12 a competent amateur asset.
+13-16 polished, professional work you would ship. 17-20 portfolio-grade, striking, an artist would be proud of it.
+
+- fidelity: does it clearly show what was asked, in the style asked for, with the subject readable at a glance?
 - composition: framing, silhouette, balance, use of the canvas, nothing cut off by accident.
 - color: palette harmony, value contrast, color as light (glow, shadow, atmosphere).
-- form: volume, shading, depth, believable construction and proportions.
-- polish: clean edges, consistent outline and detail level, no artifacts, stray shapes, or misplaced parts.
+- form: believable construction, proportions, and depth, with volume and shading where the style uses them.
+- polish: clean, deliberate edges and a consistent level of detail for its style, no artifacts, stray shapes, or misplaced parts.
 - wow: would a person seeing this as their first result from the tool say "wow"?
 
 Reply with only a JSON object: {{"fidelity":n,"composition":n,"color":n,"form":n,"polish":n,"wow":n,"notes":"two sentences: the biggest strength and the biggest flaw"}}"""
