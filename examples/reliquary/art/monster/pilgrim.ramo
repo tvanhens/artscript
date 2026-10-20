@@ -1,0 +1,92 @@
+# A crusted pilgrim. The shell is the body. One key, upper right.
+# The head comes out of the aperture. Salt sits on the lit ridge.
+@target monster/pilgrim.png 180x240 bg:none
+
+use paint { sculpt ink }
+use parts { contact eye crust }
+
+def salt_pilgrim
+  anchor feet 0,0
+
+  layer shadow_layer
+    contact 46 at:4,1 name:cast_feet
+    contact 16 at:84,1 name:cast_staff
+
+  layer rear_layer
+    curve -34,1 -36,-10 -28,-32 -12,-34 -2,-18 2,1 -16,2 closed tension:.3 fill:p.flesh.1 brush:sculpt(scale:.5 depth:.72 planes:.6 plump:.85) name:rear_foot
+      ellipse 7,3 at:-18,-6 rot:-20 fill:p.bone.4 brush:sculpt(scale:.22 depth:.4) name:rear_salt
+      fx outline 2.6 brush:ink(center:-16,-14) color:p.ink
+
+  layer neck_layer
+    curve 6,-36 2,-62 22,-84 40,-64 34,-34 closed fill:p.flesh.1 brush:sculpt(scale:.55 depth:.7 glossk:.25) name:neck
+
+  layer shell_layer
+    group name:shell_mass
+      curve -4,-16 -32,-24 -50,-46 -54,-80 -44,-114 -28,-140 -14,-160 2,-146 20,-122 38,-104 48,-86 30,-72 16,-58 28,-44 46,-36 18,-22 closed tension:.28 fill:p.bone.2 brush:sculpt(scale:1.55 depth:.7 planes:.7 plump:.92 glossk:.24) name:shell
+        ellipse 16,22 at:24,-64 fill:p.ink a:.78 name:aperture
+        curve -8,-36 -30,-52 -26,-86 -4,-98 18,-78 10,-46 closed tension:.35 fill:p.bone.3 brush:sculpt(scale:.9 depth:.66 planes:.64 plump:.88 glossk:.28) name:whorl
+          curve -18,-48 -12,-74 8,-84 stroke:p.bone.5,1.5 a:.5 name:whorl_lit
+        curve -26,-108 -34,-128 -16,-144 -6,-124 -12,-108 closed tension:.3 fill:p.bone.3 brush:sculpt(scale:.6 depth:.68 planes:.62) name:whorl_tip
+        curve -30,-46 -16,-68 2,-78 stroke:p.bone.0,2.4 name:groove
+        curve -28,-42 -14,-64 4,-74 stroke:p.bone.5,1.1 a:.55 name:groove_lit
+        curve -22,-96 -8,-112 6,-104 stroke:p.bone.0,2 name:groove_up
+        ellipse 36,16 at:-20,-38 fill:p.bone.0 a:.55 brush:sculpt(scale:.65 depth:.3) name:belly
+        ellipse 22,12 at:24,-110 fill:p.bone.5 a:.55 brush:sculpt(scale:.4) name:shoulder
+        circle 5.2 at:26,-108 fill:p.bone.0 name:relic_pit
+          circle 2.5 at:.3,.5 fill:p.amber.3 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.22 planes:.28 glossk:.62 scale:.22) name:relic
+            circle 1.05 at:.35,-.45 fill:p.amber.5
+            circle .42 at:.55,-.7 fill:p.shine
+            fx glow 2.4 color:p.amber.4 a:.32
+        ellipse 5,2.4 at:-16,-70 rot:-28 fill:p.verd.1 brush:sculpt(scale:.22 glossk:.2 rimk:.12 hi:p.verd.3 depth:.4) name:verd_a
+        ellipse 4.2,2 at:-6,-80 rot:-18 fill:p.verd.2 brush:sculpt(scale:.2 glossk:.25 rimk:.12 hi:p.verd.4 depth:.35) name:verd_b
+        circle 1.6 at:-10,-74 fill:p.verd.4 brush:sculpt(scale:.15 glossk:.4 rimk:.1) name:verd_chip
+        circle 3.2 at:-36,-58 fill:p.moss.1 brush:sculpt(scale:.2 depth:.45) name:moss_a
+        circle 2 at:-30,-52 fill:p.moss.3 brush:sculpt(scale:.16) name:moss_b
+        each i, spot in [-18,-70 -4,-88 12,-96 8,-58 -28,-100 18,-78]
+          circle 1.4+rand(0 1.5) at:spot fill:p.bone.0 a:.78 name:pit
+            circle .65 at:.55,-.45 fill:p.bone.5 a:.5 name:pit_glint
+      each i, spot in [-12,-152 6,-136 24,-116]
+        poly 4 r:3.6+rand(0 1.8) rot:rand(-20 40) at:spot fill:pick([p.bone.4 p.bone.5 p.shine]) brush:sculpt(scale:.24 depth:.45 planes:.4) name:plate
+      fx outline 3.6 brush:ink(center:-4,-88) color:p.ink
+    curve -16,-142 -2,-132 14,-118 28,-106 fill:none stamp:crust name:salt_ridge
+
+  layer head_layer
+    curve 22,-48 16,-64 26,-78 46,-80 62,-70 66,-56 58,-44 38,-40 closed tension:.42 fill:p.flesh.2 brush:sculpt(scale:.55 depth:.68 planes:.56 plump:.9 glossk:.4) name:mantle
+      ellipse 16,6 at:42,-72 fill:p.flesh.0 a:.5 name:brow_shade
+      ellipse 8,3.5 at:54,-66 fill:p.flesh.4 a:.42 brush:sculpt(scale:.28 glossk:.55) name:mantle_wet
+      eye 5 at:48,-62 tone:p.flesh.5 pupil:p.ink look:1.15,-.22 name:gaze
+      fx outline 2.6 brush:ink(center:42,-60) color:p.ink
+
+  layer lip_layer
+    curve 18,-88 36,-108 60,-98 66,-82 48,-74 26,-78 closed tension:.32 fill:p.bone.3 brush:sculpt(scale:.65 depth:.68 planes:.64 plump:.8 glossk:.26) name:lip
+      curve 34,-100 52,-92 60,-84 stroke:p.bone.5,1.4 a:.55 name:lip_lit
+      curve 44,-96 56,-88 stroke:p.ink,1.5 name:lip_crack
+      poly 4 r:3.2 rot:18 at:40,-102 fill:p.bone.5 brush:sculpt(scale:.22 depth:.4) name:lip_salt
+      fx outline 2.8 brush:ink(center:40,-90) color:p.ink
+
+  layer fore_layer
+    curve 14,1 16,-14 28,-36 44,-30 50,-14 42,1 26,2 closed tension:.32 fill:p.flesh.2 brush:sculpt(scale:.48 depth:.7 planes:.58 plump:.85) name:front_foot
+      ellipse 14,5 at:30,-26 fill:p.ink a:.34 name:front_shade
+      ellipse 6,2.6 at:38,-8 rot:16 fill:p.bone.4 brush:sculpt(scale:.2 depth:.4) name:front_salt
+      fx outline 2.6 brush:ink(center:32,-16) color:p.ink
+
+  layer staff_layer
+    group name:staff_mass
+      circle 6.4 at:84,-40 fill:p.bone.3 brush:sculpt(scale:.3 depth:.68 planes:.58) name:knob_lo
+      circle 6 at:80,-86 fill:p.bone.2 brush:sculpt(scale:.28 depth:.68 planes:.58) name:knob_mid
+      circle 7.6 at:76,-132 fill:p.bone.3 brush:sculpt(scale:.32 depth:.66 planes:.56 glossk:.22) name:knob_hi
+      curve 86,1 84,-38 80,-82 76,-128 stroke:p.bone.3,9.5 brush:sculpt(scale:.4 depth:.72 planes:.6 plump:.68 glossk:.18) name:shaft
+      curve 76,-126 88,-148 96,-134 88,-120 stroke:p.bone.2,7.5 brush:sculpt(scale:.36 depth:.68 planes:.58 plump:.62) name:crook
+      curve 84,-20 82,-52 78,-86 stroke:p.bone.0,1.4 a:.7 name:marrow
+      circle 2.1 at:86,-140 fill:p.ink name:foramen
+        circle .65 at:.4,-.4 fill:p.bone.5 a:.75
+      poly 4 r:2.8 rot:24 at:78,-112 fill:p.bone.5 brush:sculpt(scale:.2 depth:.4) name:staff_salt_a
+      poly 4 r:2.4 rot:-12 at:82,-64 fill:p.bone.4 brush:sculpt(scale:.18 depth:.4) name:staff_salt_b
+      fx outline 2.8 brush:ink(center:82,-74) color:p.ink
+    curve 78,-104 76,-126 80,-142 fill:none stamp:crust name:salt_shaft
+    curve 46,-50 54,-64 72,-66 92,-58 88,-46 68,-44 closed fill:p.flesh.1 brush:sculpt(scale:.36 depth:.62 glossk:.3) name:grip
+      fx outline 2.2 brush:ink(center:70,-54) color:p.ink
+
+salt_pilgrim at:68,198 name:pilgrim
+assert inside(@pilgrim canvas margin:10)
+assert @pilgrim.bottom-@pilgrim.feet.y in -8..16
