@@ -1,0 +1,175 @@
+# A resin hart, still, facing right. Gouache, one key from the upper right.
+# Bone skull on a thin body. Antlers are a lancet of amber, branching like tracery.
+
+@target monster/hart.png 480x500 bg:none
+
+use paint { sculpt ink }
+use parts { contact crust ember }
+
+def resin_hart
+  contact 100 name:cast
+
+  layer far_antler_layer
+    curve 46,-262 12,-308 -28,-348 -72,-378 stroke:p.amber.1,[13 10 6 4] brush:sculpt(lo:p.amber.0 hi:p.amber.5 depth:.55 glossk:.32 planes:.4 scale:.8) name:far_beam
+      circle 1.5 at:-2,-332 fill:p.amber.5 a:.7 name:bubble
+      fx outline 3 brush:ink color:p.ink
+    curve 8,-312 -24,-346 -58,-328 stroke:p.amber.1,[8 5 3] tension:.2 brush:sculpt(lo:p.amber.0 hi:p.amber.4 depth:.5 glossk:.3 scale:.65) name:far_fork
+      fx outline 2.5 brush:ink color:p.ink
+    fx glow 4 color:p.amber.3 a:.2
+
+  layer far_leg_layer
+    curve -6,0 -4,-22 -2,-58 4,-92 10,-122 2,-130 -14,-102 -24,-80 -16,-52 -18,-18 -30,0 -16,-7 closed tension:.28 fill:p.bone.1 brush:sculpt(scale:1.1 depth:.8) name:hind_far
+      curve -16,-2 -17,-10 stroke:p.ink,1.6 name:cleft
+      fx outline 4 brush:ink color:p.ink
+    curve 24,0 26,-20 24,-54 18,-86 10,-120 22,-128 32,-98 38,-72 30,-46 32,-16 44,0 32,-7 closed tension:.28 fill:p.bone.1 brush:sculpt(scale:1.05 depth:.8) name:fore_far
+      curve 32,-2 33,-10 stroke:p.ink,1.6 name:cleft
+      fx outline 4 brush:ink color:p.ink
+
+  layer rump_layer
+    curve -118,-128 -140,-144 -132,-126 -116,-122 closed fill:p.bone.2 brush:sculpt(scale:.55) name:tail
+      fx outline 3 brush:ink color:p.ink
+
+  layer torso_layer
+    curve -124,-120 -114,-154 -62,-172 -10,-180 40,-174 68,-154 54,-132 14,-120 -40,-114 -90,-118 -126,-124 closed fill:p.bone.2 brush:sculpt(scale:1.25 depth:.74) name:torso
+      each k in 0..5
+        curve -52+k*18,-166 -36+k*18,-146 -54+k*18,-128 stroke:p.bone.0,[5 3.2 4.2] a:.8 brush:sculpt(scale:.4 depth:.35 planes:.2) name:rib
+      curve -70,-158 -20,-172 28,-170 stroke:p.bone.4,3 a:.4 name:spine_lit
+      ellipse 34,12 at:-28,-132 fill:p.ink a:.32 brush:sculpt(scale:.45 depth:.2 planes:.15) name:belly_shade
+      curve -96,-126 -52,-118 -16,-122 stroke:p.rim,2.2 a:.4 name:belly_rim
+      curve -24,-158 -6,-146 -18,-134 stroke:p.ink,[1.4 2.8 1.2] a:.7 name:flank_crack
+      each i in 0..7
+        circle 1.1+rand(0 1.6) at:-78+rand(0 110),-156+rand(-8 22) fill:p.bone.0 a:.5 name:pit
+      fx outline 6 brush:ink color:p.ink
+    each k, vp in [-96,-150 -66,-164 -32,-174 2,-176 32,-168]
+      poly 3 r:7 at:vp rot:-8+k*4 fill:p.bone.2 brush:sculpt(scale:.4) name:spine
+    ellipse 15,20 at:34,-156 rot:22 fill:p.bone.3 brush:sculpt(scale:.6) name:scapula
+      curve -2,-10 3,2 1,12 stroke:p.bone.5,2 a:.55 name:ridge
+      fx outline 3 brush:ink color:p.ink
+    ellipse 13,15 at:-82,-140 rot:-32 fill:p.bone.3 brush:sculpt(scale:.55) name:hip
+      fx outline 3 brush:ink color:p.ink
+    curve -100,-148 -40,-170 24,-172 fill:none stamp:crust name:salt_spine
+
+  layer near_leg_layer
+    curve -34,0 -32,-10 -36,-40 -30,-74 -24,-88 -14,-116 -4,-142 -20,-156 -44,-146 -60,-118 -78,-86 -60,-72 -52,-38 -58,-12 -74,0 -56,0 -52,-9 -40,0 closed tension:.28 fill:p.bone.3 brush:sculpt(scale:1.05 depth:.72) name:hind_near
+      ellipse 10,5 at:-56,-10 fill:p.bone.5 a:.8 brush:sculpt(scale:.3) name:hoof
+      curve -52,-1 -53,-12 stroke:p.ink,2 name:cleft
+      curve -48,-48 -58,-36 -46,-24 stroke:p.bone.0,1.8 a:.65 name:crack
+      fx outline 5 brush:ink color:p.ink
+    curve 42,0 44,-12 40,-42 36,-74 26,-106 14,-142 30,-156 48,-140 58,-108 74,-76 60,-70 56,-36 66,-12 80,0 64,0 60,-9 50,0 closed tension:.28 fill:p.bone.4 brush:sculpt(scale:1 depth:.66 glossk:.2) name:fore_near
+      ellipse 11,5 at:64,-10 fill:p.bone.6 a:.85 brush:sculpt(scale:.3) name:hoof
+      curve 60,-1 61,-12 stroke:p.ink,2 name:cleft
+      curve 46,-56 64,-48 50,-36 stroke:p.verd.3,3.6 brush:sculpt(scale:.35 glossk:.5 depth:.4) name:wire
+      curve 48,-42 66,-34 52,-24 stroke:p.verd.4,2.4 brush:sculpt(scale:.3 glossk:.55) name:wire_b
+      fx outline 5 brush:ink color:p.ink
+    curve -70,-4 -48,-2 56,-2 78,-4 fill:none stamp:crust name:salt_hoof
+
+  layer neck_layer
+    curve 16,-146 28,-174 38,-206 66,-230 86,-216 58,-186 36,-156 18,-140 closed fill:p.bone.2 brush:sculpt(scale:1.05 depth:.76) name:neck
+      curve 34,-164 48,-194 68,-220 stroke:p.bone.0,8 a:.4 name:nape
+      curve 40,-160 54,-190 74,-214 stroke:p.bone.5,2.4 a:.5 name:nape_lit
+      ellipse 28,12 at:48,-200 fill:p.ink a:.4 brush:sculpt(scale:.35 depth:.2 planes:.1) name:skull_cast
+      fx outline 5 brush:ink color:p.ink
+
+  layer skull_layer
+    curve 20,-210 10,-238 24,-266 58,-288 100,-280 140,-260 176,-240 208,-224 218,-208 198,-196 164,-202 136,-194 112,-208 88,-200 48,-208 closed fill:p.bone.3 brush:sculpt(scale:1 depth:.68 glossk:.18) name:skull
+      ellipse 27,23 at:92,-244 fill:p.void name:socket
+        ellipse 16,12 at:-5,6 fill:p.ink name:well
+      ellipse 12,16 at:192,-214 fill:p.void name:nares
+        ellipse 8,11 at:1,2 fill:p.ink name:well
+        circle 3.8 at:-1,6 fill:p.moss.3 name:moss
+          circle 2.1 at:1.1,.5 fill:p.moss.1 name:leaf
+          circle 1.5 at:-1.6,-.8 fill:p.moss.4 name:tip
+      curve 70,-266 98,-276 128,-262 stroke:p.bone.5,3.5 a:.65 name:brow
+      curve 118,-250 150,-234 176,-224 stroke:p.bone.5,2.6 a:.4 name:nasal_lit
+      curve 34,-246 60,-266 82,-248 stroke:p.ink,[1.4 2.8 1.4] a:.8 name:coronal
+      circle 2.6 at:62,-256 fill:p.moss.2 name:crack_moss
+        circle 1.4 at:.8,.5 fill:p.moss.4 name:tip
+      curve 108,-270 142,-256 170,-240 stroke:p.bone.0,2 a:.75 name:nasal_seam
+      curve 46,-256 62,-262 54,-248 stroke:p.bone.0,1.6 a:.55 name:chip
+      each i in 0..4
+        circle 1+rand(0 1.3) at:146+rand(0 36),-226+rand(-6 8) fill:p.ink a:.48 name:snout_pit
+      each i in 0..3
+        circle 1.1+rand(0 1.4) at:36+rand(0 30),-258+rand(-8 6) fill:p.bone.0 a:.5 name:crown_pit
+      ellipse 30,14 at:156,-248 rot:-18 fill:p.bone.5 a:.28 brush:sculpt(scale:.35 planes:.2) name:brow_light
+      each k in 0..4
+        ellipse 3.4,5 at:124+k*11,-198 fill:p.bone.1 name:upper_tooth
+      fx outline 6 brush:ink color:p.ink
+    curve 42,-212 62,-232 78,-214 52,-194 96,-178 152,-174 190,-184 206,-196 184,-188 140,-190 100,-196 72,-206 closed fill:p.bone.2 brush:sculpt(scale:.85 depth:.8) name:jaw
+      each k in 0..4
+        ellipse 3.6,5 at:118+k*13,-184 fill:p.bone.5 name:molar
+      curve 108,-190 150,-186 186,-190 stroke:p.bone.0,3 a:.5 name:tooth_line
+      curve 100,-180 148,-176 184,-186 stroke:p.rim,2.4 a:.42 name:jaw_rim
+      ellipse 40,8 at:130,-194 fill:p.ink a:.28 brush:sculpt(scale:.3 planes:.1) name:gum
+      fx outline 5 brush:ink color:p.ink
+    curve 48,-272 54,-304 84,-314 114,-304 106,-274 76,-266 closed fill:p.bone.4 brush:sculpt(scale:.5) name:pedicle
+      curve 58,-286 82,-304 104,-286 stroke:p.bone.0,1.5 a:.45 name:seam
+      fx outline 3.5 brush:ink color:p.ink
+    curve 58,-278 84,-302 108,-280 fill:none stamp:crust name:salt_crown
+    curve 186,-192 190,-204 187,-214 stroke:p.amber.4,[2.6 2 1.1] brush:sculpt(lo:p.amber.0 hi:p.shine glossk:.7 depth:.28 scale:.35) name:tear
+      fx outline 1.6 brush:ink color:p.ink
+    circle 3.4 at:187,-216 fill:p.amber.5 brush:sculpt(lo:p.amber.1 hi:p.shine glossk:.75 depth:.22 scale:.28) name:bead
+      circle 1.2 at:.8,-.9 fill:p.shine
+      fx glow 5 color:p.amber.4 a:.65
+      fx outline 1.5 brush:ink color:p.ink
+
+  layer antler_layer
+    curve 66,-296 48,-338 64,-380 100,-418 stroke:p.amber.1,[18 14 9 4] brush:sculpt(lo:p.amber.0 hi:p.amber.4 depth:.72 glossk:.35 planes:.5 scale:.8) name:jamb_l
+      curve 69,-299 51,-341 67,-383 103,-421 stroke:p.amber.4,[6 4.5 3 1.6] a:.9 name:lit
+      curve 63,-293 45,-335 61,-377 97,-415 stroke:p.amber.0,[8 6 3.5 1.6] a:.62 name:shade
+      circle 1.7 at:56,-348 fill:p.amber.6 a:.8 name:bubble
+      circle 1.3 at:72,-390 fill:p.shine a:.7 name:glint
+      fx outline 3.5 brush:ink color:p.ink
+    curve 106,-296 150,-340 132,-380 100,-418 stroke:p.amber.1,[18 14 9 4] brush:sculpt(lo:p.amber.0 hi:p.amber.4 depth:.7 glossk:.38 planes:.48 scale:.8) name:jamb_r
+      curve 110,-299 154,-343 136,-383 104,-421 stroke:p.amber.5,[6 4.5 3 1.6] a:.92 name:lit
+      curve 103,-293 146,-337 128,-377 96,-415 stroke:p.amber.0,[8 6 3.5 1.6] a:.6 name:shade
+      circle 1.8 at:138,-360 fill:p.amber.6 a:.85 name:bubble
+      circle 1.2 at:128,-388 fill:p.shine a:.75 name:glint
+      fx outline 3.5 brush:ink color:p.ink
+    curve 78,-302 70,-350 86,-392 stroke:p.amber.3,[12 9 5] brush:sculpt(lo:p.amber.0 hi:p.shine depth:.42 glossk:.58 scale:.65) name:mullion_l
+      circle 1.3 at:74,-346 fill:p.shine a:.5 name:bubble
+      fx outline 3 brush:ink color:p.ink
+    curve 100,-302 126,-352 114,-392 stroke:p.amber.3,[12 9 5] brush:sculpt(lo:p.amber.0 hi:p.shine depth:.4 glossk:.6 scale:.65) name:mullion_r
+      circle 1.4 at:120,-360 fill:p.amber.6 a:.7 name:bubble
+      fx outline 3 brush:ink color:p.ink
+    curve 56,-356 78,-378 94,-360 stroke:p.amber.4,[8 5 7] tension:.18 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.36 glossk:.6 scale:.55) name:lancet_l
+      fx outline 2.5 brush:ink color:p.ink
+    curve 106,-360 124,-382 144,-358 stroke:p.amber.4,[8 5 7] tension:.18 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.34 glossk:.62 scale:.55) name:lancet_r
+      fx outline 2.5 brush:ink color:p.ink
+    circle 13 at:100,-386 fill:none stroke:p.amber.3,6.5 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.36 glossk:.68 scale:.5) name:oculus
+      circle 1.4 at:8,-7 fill:p.shine a:.7 name:inclusion
+      fx outline 2.5 brush:ink color:p.ink
+    curve 58,-304 8,-338 -48,-358 -108,-334 -156,-360 stroke:p.amber.1,[16 12 8 4] brush:sculpt(lo:p.amber.0 hi:p.amber.4 depth:.68 glossk:.32 planes:.48 scale:.8) name:tine_back
+      curve 61,-307 11,-341 -45,-361 -105,-337 -153,-363 stroke:p.amber.4,[5 4 2.5 1.4] a:.88 name:lit
+      curve 55,-301 5,-335 -51,-355 -111,-331 -159,-357 stroke:p.amber.0,[7 5 3 1.5] a:.55 name:shade
+      circle 1.6 at:-40,-352 fill:p.amber.5 a:.75 name:bubble
+      curve -16,-350 -6,-344 4,-352 stroke:p.shine,1.3 a:.65 name:fracture
+      fx outline 3 brush:ink color:p.ink
+    curve 4,-334 -28,-372 -72,-352 stroke:p.amber.3,[9 6 3] tension:.2 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.4 glossk:.54 scale:.6) name:tine_back_fork
+      fx outline 2.5 brush:ink color:p.ink
+    curve -46,-360 -50,-374 -44,-386 stroke:p.amber.4,[3.5 2.4 1] brush:sculpt(lo:p.amber.0 hi:p.shine glossk:.6 depth:.3 scale:.4) name:drip_back
+      circle 2.8 at:-44,-388 fill:p.amber.5 brush:sculpt(lo:p.amber.1 hi:p.shine glossk:.7 depth:.22 scale:.3) name:drop_back
+      fx outline 1.6 brush:ink color:p.ink
+    curve 116,-304 162,-342 204,-328 236,-362 stroke:p.amber.1,[15 11 7 4] brush:sculpt(lo:p.amber.0 hi:p.amber.4 depth:.66 glossk:.36 planes:.46 scale:.75) name:tine_fore
+      curve 119,-307 165,-345 207,-331 239,-365 stroke:p.amber.5,[5 3.5 2.4 1.3] a:.9 name:lit
+      curve 113,-301 159,-339 201,-325 233,-359 stroke:p.amber.0,[6 4 2.6 1.3] a:.55 name:shade
+      circle 1.7 at:176,-336 fill:p.amber.6 a:.8 name:bubble
+      fx outline 3 brush:ink color:p.ink
+    curve 170,-334 206,-366 228,-344 stroke:p.amber.3,[8 5 3] tension:.2 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.36 glossk:.6 scale:.55) name:tine_fore_fork
+      fx outline 2.5 brush:ink color:p.ink
+    curve 200,-332 206,-318 198,-306 stroke:p.amber.4,[3.2 2.2 1] brush:sculpt(lo:p.amber.0 hi:p.shine glossk:.62 depth:.28 scale:.35) name:drip_fore
+      circle 2.6 at:198,-304 fill:p.amber.5 brush:sculpt(lo:p.amber.1 hi:p.shine glossk:.72 depth:.2 scale:.28) name:drop_fore
+      fx outline 1.6 brush:ink color:p.ink
+    curve 50,-348 34,-362 48,-376 stroke:p.amber.4,[6 3] brush:sculpt(lo:p.amber.0 hi:p.shine glossk:.55 depth:.3 scale:.4) name:crocket_l
+      fx outline 2 brush:ink color:p.ink
+    curve 142,-350 160,-364 148,-378 stroke:p.amber.4,[6 3] brush:sculpt(lo:p.amber.0 hi:p.shine glossk:.58 depth:.28 scale:.4) name:crocket_r
+      fx outline 2 brush:ink color:p.ink
+    circle 5.5 at:100,-414 fill:p.amber.4 brush:sculpt(lo:p.amber.1 hi:p.shine glossk:.74 depth:.24 scale:.32) name:finial
+      circle 2 at:1.2,-1.2 fill:p.shine a:.85
+      fx outline 2 brush:ink color:p.ink
+    curve 88,-400 102,-410 116,-398 fill:none stamp:ember(spacing:16) name:sparks
+    fx glow 6 color:p.amber.2 a:.28
+
+let feet = 450
+resin_hart at:204,feet name:hart
+assert inside(@hart canvas margin:12)
+assert @hart.bottom-feet in -8..16
