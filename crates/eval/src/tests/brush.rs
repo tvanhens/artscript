@@ -482,7 +482,8 @@ fn std_files_are_formatted_lint_clean_and_their_brushes_and_stamps_draw() {
         }
         let names: Vec<String> = brushes.iter().chain(&stamps).cloned().collect();
         assert!(!names.is_empty(), "{path} declares no brush or stamp");
-        let mut art = format!("@target t.png 100x100\nuse {path} {{ {} }}\npalette pal\n  color red #ff0000\n", names.join(" "));
+        let w = (brushes.len() * 30 + 10).max(100);
+        let mut art = format!("@target t.png {w}x100\nuse {path} {{ {} }}\npalette pal\n  color red #ff0000\n", names.join(" "));
         for (i, n) in brushes.iter().enumerate() {
             art.push_str(&format!("rect 20x20 at:{},50 fill:pal.red brush:{n} name:n{i}\n", 20 + i * 30));
         }

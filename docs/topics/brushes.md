@@ -136,8 +136,9 @@ A brushed stroke is a ribbon. The shape's geometry is the spine, and every devic
 
 ## std/brushes
 
-`use std/brushes { dry chip bristle }` imports the bundled library. `std/` names only bundled libraries: a project file under `std/` at the project root or at a lib root is E0213, and `use std/nope` is E0210. `ramose std` lists the bundled libraries, and `ramose std brushes` prints the file, so `ramose std brushes > lib/brushes.ramo` forks it. The lints do not run on a bundled file. `std/stamps` holds the bundled stamps; see `stamps`.
+`use std/brushes { dry chip bristle form }` imports the bundled library. `std/` names only bundled libraries: a project file under `std/` at the project root or at a lib root is E0213, and `use std/nope` is E0210. `ramose std` lists the bundled libraries, and `ramose std brushes` prints the file, so `ramose std brushes > lib/brushes.ramo` forks it. The lints do not run on a bundled file. `std/stamps` holds the bundled stamps; see `stamps`.
 
 - `dry strength:.5 scale:1 fade:0 dir:0`: coverage breaks into parallel streaks along `dir` on a fill and along the ribbon on a stroke; `fade` wears the paint out toward the far end.
 - `chip strength:.6 scale:1 grit:.5`: a chipped, gritty edge. `scale` is the chip size, and the inside stays solid. On a stroke thinner than about `strength * 18 * scale` the whole ribbon is edge.
 - `bristle strength:.7 scale:1 gaps:.7 speed:.4`: for strokes. Bristle streaks along the ribbon, gaps where `pressure` is low (`gaps`) or `velocity` is high (`speed`), and ragged ends.
+- `form sun:-.6,-.8 shadow:.8 lift:.4 rim:.5 strength:.5`: for fills. Shades the shape as a rounded volume lit from `sun`: a darker, cooler shade of the paint away from it (`shadow`), a paler, warmer one and a soft highlight toward it (`lift`), and reflected light on the shadow edge (`rim`). The light falls across the shape's bounds and rounds off near its edge, so a tall, wide, or irregular shape reads as one form. `strength` is a faint paint mottle.
