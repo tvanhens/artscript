@@ -1,6 +1,6 @@
 # brushes: brush declarations, SkSL bodies, the Mark, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
 
-A brush is an SkSL program that shades a fill, a stroke, or the ring of an `fx outline`. Its body sees a `Mark` with the pixel's position, its signed distance to the edge, where it sits along and across the stroke, and the paint it would have had, and returns a straight color plus coverage. The `brush:` paint key puts one or more brushes on a node.
+A brush is an SkSL program that shades a fill, a stroke, or the ring of an `fx outline`. Its body sees a `Mark` with the pixel's position, its signed distance to the edge, where it sits along and across the stroke, the paint it would have had, and what is already drawn under it, and returns a straight color plus coverage. The `brush:` paint key puts one or more brushes on a node.
 
 ```
 use std/brushes { dry chip bristle }
@@ -49,6 +49,7 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `pressure`, `angle`, `tilt`, `velocity` | 1, `dir`, 0 and 1 | the node's channels at `s` |
 | `seed` | the stage's seed, 0..255 | the same |
 | `paint` | the straight rgba the pixel would have had: the fill at that pixel for the first stage, the previous stage's result after that | the same, from the stroke's paint |
+| `below` | the straight rgba already drawn under the pixel in the node's group, as the backdrop a `blend:` on the node would composite with; see The backdrop | the same, with the node's own fill included |
 | `px` | local units per device pixel | the same |
 
 `normal` and `edge` together shade a form. This brush lights a bevel from the upper left. It mixes the paint toward white where the edge faces `toward` and toward black where it faces away, within `depth` units of the edge:
@@ -69,6 +70,27 @@ brush bevel toward:-1,-1 depth:7 strength:.7
 
 Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(p, octaves)`, `rot(p, deg)`, `seeded(m)` (a per-stage offset to add to a noise position), `cover(d, m)` (signed distance in local units to an antialiased coverage, one pixel wide). The rest of SkSL is available: `mix`, `smoothstep`, `floor`, `fract`, and so on.
 
+## The backdrop
+
+`m.below` is the straight rgba already drawn under the pixel in the node's group, at 8-bit levels: the backdrop a `blend:` on the node would composite with. This brush smudges a shape into its neighbors, so a limb tucked under a body loses its hard edge:
+
+```
+brush smudge k:.5
+  sksl """
+  float4 shade(Mark m) {
+    return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * k), cover(m.edge, m));
+  }
+  """
+```
+
+- A group starts from nothing. A `layer`, a def instance, a stamp, and a `mask` block each open one, so a def draws the same pixels wherever it is called, and the first node in a `layer` sees `float4(0)`. A shape with children or stamps, and any node with `a:`, `blend:`, `fx` or `mask`, also opens a group, but that group starts with the node's own fill and stroke. So a child's `m.below` is its parent's paint, the stamps, and the earlier siblings, and nothing from under the parent. At the top of a file the group is the canvas: `m.below` is the paper, or nothing when the target has no `bg:`, and what earlier nodes drew. A plain `group`, `inside` and `outside` open no group.
+- The fill draws before the stroke, so a stroke's `m.below` includes the node's own fill. Every stage of a stack sees the same `m.below`, the backdrop under the node; the stage before it is `m.paint`.
+- The paint of a node whose brush reads `m.below` is computed over the real backdrop and is still the node's own content: `a:`, `blend:`, `fx`, a mask and a clip apply to it as to any node, and its children blend with it and not with what is under the node, as before.
+- The coverage that children clip to and that `fx outline` traces is computed over a transparent backdrop, so it does not depend on what is under the node.
+- Two places draw a node offscreen, where there is no backdrop, and are errors instead of a wrong read. `fx outline` on a node whose brush reads `m.below` is E0362 at the `fx` line, since the outline rasterizes the node alone; outline a parent instead. A brush that reads `m.below` on an `fx outline ... brush:` line is E0362 at `brush:`, since the ring is drawn alone.
+- An `.svg` target cannot bake such a node into a tile, which has no backdrop: `profile:svg` and `profile:vector` both report E0209 with the feature `brush below`. A `.png` or `.gif` target draws it.
+- The backdrop is the deterministic composite so far, so a build stays byte-identical per backend. A body that reads `m.below` is compiled as a blender rather than a shader, and so is every other stage of its stack; `ramose check` compiles both forms, so a body that is sound in one is sound in the other.
+
 ## Calling a brush
 
 - `NAME(k:v...)` returns a new brush with those keys replaced; the declaration is unchanged. A key that is a declared parameter must match its kind. A placement key sets placement. An unknown key, a kind mismatch, or a positional argument is E0361, and the notes list the parameters and the placement keys. A parameter may be called again inside a def: `def stone tone:p.stone.3 brush:chip` with `rect size fill:tone brush:brush(scale:.5)`. A parameter whose default is a brush is brush-typed: the call's arguments are checked against the default's declaration whatever the instance passed, and the call is `none` when the instance passed `brush:none`.
@@ -80,11 +102,11 @@ Helpers: `hash12(p)`, `hash22(p)`, `vnoise(p)`, `simplex(p)`, `worley(p)`, `fbm(
 - A bare word that is not a brush is E0364, and the fix names the nearest brush in scope. A number or any other kind is E0364. `brush:[]` is E0364; write `brush:none` to clear an inherited brush.
 - A brush applies to every paint slot the node has. A fill gets an area mark and a stroke gets a ribbon mark, so one brush on a node with both gives two marks, seeded apart. `on:fill` or `on:stroke` narrows it. A brush on the node's own line with no slot it can reach, such as `fill:none brush:dry`, is E0362, and so is each stage of a stack on that line that reaches no slot. An inherited brush with no matching slot does nothing.
 - `blur:` together with a brush is E0362. Blur the parent instead. `dash:` together with a brush that reaches the stroke is E0362: a ribbon has no dash, and the dash is never dropped.
-- Children of a node with a brushed fill clip to the coverage that fill leaves, so a child shows only where the fill's brush paints: the chips of `chip` and the streaks of `dry` cut it too. A pixel where the stages leave 40% coverage shows 40% of the child. The coverage is the product of the stage coverages and ignores the paint's alpha, so a translucent brushed fill keeps its children opaque. The coverage includes any `reach:` past the geometry. A stroke brush does not widen it. Stamps are not children and stay unclipped. Children of a node whose fill is not brushed, a brushed stroke on a plain fill included, clip to the shape the node has without the brush: the geometry, and for a tapered or width-list stroke the stroke's tapered outline in place of the spine, joined with the fill when the node has one.
+- Children of a node with a brushed fill clip to the coverage that fill leaves, so a child shows only where the fill's brush paints: the chips of `chip` and the streaks of `dry` cut it too. A pixel where the stages leave 40% coverage shows 40% of the child. The coverage is the product of the stage coverages and ignores the paint's alpha, so a translucent brushed fill keeps its children opaque. The coverage includes any `reach:` past the geometry, and is computed over a transparent backdrop (see The backdrop). A stroke brush does not widen it. Stamps are not children and stay unclipped. Children of a node whose fill is not brushed, a brushed stroke on a plain fill included, clip to the shape the node has without the brush: the geometry, and for a tapered or width-list stroke the stroke's tapered outline in place of the spine, joined with the fill when the node has one.
 - A brush does not change the shape that `inside`, `copy`, `edge` and booleans see: it is the shape the node has without the brush, as just described, and not the brushed ink.
-- `fx outline` on a node whose fill is brushed traces the coverage that fill leaves, where the stage coverages pass one half, so the ring follows the bites of `chip` and the streaks of `dry` and shows paper inside each. The traced coverage includes any `reach:` past the geometry and ignores the paint's alpha. A brushed stroke still adds the stroke's plain outline. This holds wherever the outline reaches a brushed fill: the node itself, a stamp, a child under a fill that shows nothing, or a mask drawn with shapes. Like `sides:`, such an outline is raster-only: `profile:svg` bakes the node to a PNG tile, and `profile:vector` reports E0209 with the feature `fx outline brush`.
-- Stacks: `brush:[a b]` runs the stages in list order on each slot. The first stage sees the fill's paint at that pixel as `m.paint`, so gradients and fields reach the body. Each later stage sees the previous stage's rgb as `m.paint`. Coverages multiply. Each stage has its own seed.
-- A brushed node is raster-only. A `.svg` target with `profile:svg` bakes it to a PNG tile, and `profile:vector` reports E0209 with the feature `brush fill` or `brush stroke`.
+- `fx outline` on a node whose fill is brushed traces the coverage that fill leaves, where the stage coverages pass one half, so the ring follows the bites of `chip` and the streaks of `dry` and shows paper inside each. The traced coverage includes any `reach:` past the geometry and ignores the paint's alpha. A brushed stroke still adds the stroke's plain outline. This holds wherever the outline reaches a brushed fill: the node itself, a stamp, a child under a fill that shows nothing, or a mask drawn with shapes. Like `sides:`, such an outline is raster-only: `profile:svg` bakes the node to a PNG tile, and `profile:vector` reports E0209 with the feature `fx outline brush`. `fx outline` on a node whose own brush reads `m.below` is E0362 at the `fx` line (see The backdrop).
+- Stacks: `brush:[a b]` runs the stages in list order on each slot. The first stage sees the fill's paint at that pixel as `m.paint`, so gradients and fields reach the body. Each later stage sees the previous stage's rgb as `m.paint`. Every stage sees the same `m.below`. Coverages multiply. Each stage has its own seed.
+- A brushed node is raster-only. A `.svg` target with `profile:svg` bakes it to a PNG tile, and `profile:vector` reports E0209 with the feature `brush fill` or `brush stroke`. A node whose brush reads `m.below` cannot bake, since a tile has no backdrop: both profiles report E0209 with the feature `brush below`.
 
 ## Strokes
 
@@ -103,7 +125,7 @@ A brushed stroke is a ribbon. The shape's geometry is the spine, and every devic
 - Each contour runs with the traced area on its right of travel: clockwise on screen around the outside, counter-clockwise around a hole. So `m.d > 0` is the half of the ribbon over the area, which the solid fill covers, and `m.d < 0` is the half that shows, where `m.normal` points away from the area. A brush that rags an edge, such as `chip`, rags the ring's outer edge.
 - `m.s` runs from 0 at the contour's start. When the outline traces one shape, the start is the shape's contour position (see `shapes`): a `rect`'s ring starts at its top-left corner and a `circle`'s at 3 o'clock, and a brush that rags its ends, such as `bristle`, rags the seam there. When it traces several areas, such as a stroke beside a fill or a parent with children, their union is traced and each contour starts at its own first point.
 - A stage's `reach:` grows the ring: the node's bounds, its bake tiles, and the outline's reach grow by the widest reach on the sides the ring draws on. `sides:`, a `mask` under the line, and the erase inside translucent areas apply to a brushed ring as to a plain one.
-- A stage narrowed to `on:fill` has no slot on a ring and is E0362 at `brush:`.
+- A stage narrowed to `on:fill` has no slot on a ring and is E0362 at `brush:`. So is a stage that reads `m.below`: the ring is drawn offscreen, with no backdrop.
 - A brushed outline is raster-only: `profile:svg` bakes the node to a PNG tile, and `profile:vector` reports E0209 with the feature `brush outline`.
 
 ## Seeds and determinism

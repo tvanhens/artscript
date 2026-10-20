@@ -729,3 +729,51 @@ fn a_finish_brushes_its_outlines_from_its_parameters_and_seeds_each_line_apart()
     assert_ne!(rings[0][0].stage.seed, rings[1][0].stage.seed, "two outlines in one finish seed apart");
     assert_eq!(outline_brushes(&s, "b")[0][0].stage.uniforms[0], ("strength".to_string(), UniformValue::Float(0.5)));
 }
+
+const SMUDGE: &str = "\
+brush smudge k:.5
+  sksl \"\"\"
+    float4 shade(Mark m) {
+      return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * k), cover(m.edge, m));
+    }
+  \"\"\"
+";
+
+const SMUDGE_LIB: (&str, &str) = ("lib/brushes.ramo", SMUDGE);
+
+#[test]
+fn a_brush_that_reads_below_marks_its_stages_and_runs_in_a_stack_with_one_that_does_not() {
+    let s = ok(
+        "@target t.png 100x100\nuse brushes { dry smudge }\nrect 40x40 at:50,50 fill:#ff0000 brush:smudge name:a\n\
+         rect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:[dry smudge] name:b\n",
+        &[("lib/brushes.ramo", &format!("{DRY}{SMUDGE}"))],
+    );
+    assert!(marks(&s, "a")[0].stage.program.reads_below());
+    assert!(shape(&s, "a").reads_below());
+    let b = marks(&s, "b");
+    assert!(!b[0].stage.program.reads_below() && b[1].stage.program.reads_below());
+    assert!(ribbon(&s, "b").reads_below());
+}
+
+#[test]
+fn an_outline_on_a_node_whose_brush_reads_below_is_e0362_at_the_fx_line() {
+    let d = first("@target t.png 100x100\nuse brushes { smudge }\nrect 40x40 at:50,50 fill:#ff0000 brush:smudge name:a\n  fx outline 3\n", &[SMUDGE_LIB], "E0362");
+    assert!(d.message.contains("`fx outline` on a node whose brush reads `m.below`"), "{d}");
+    assert_eq!(d.span.line, 4, "{d}");
+    let d = first("@target t.png 100x100\nuse brushes { smudge }\nlayer ink brush:smudge\n  rect 40x40 at:50,50 fill:#ff0000 name:a\n    fx outline 3\n", &[SMUDGE_LIB], "E0362");
+    assert_eq!(d.span.line, 5, "an inherited brush reports at the node's own outline: {d}");
+    ok("@target t.png 100x100\nuse brushes { smudge }\nlayer ink\n  rect 40x40 at:50,50 fill:#ff0000 brush:smudge name:a\n  fx outline 3\n", &[SMUDGE_LIB]);
+}
+
+#[test]
+fn an_outline_brush_that_reads_below_is_e0362_at_the_key() {
+    let d = first("@target t.png 100x100\nuse brushes { smudge }\nrect 40x40 at:50,50 fill:#ff0000 name:a\n  fx outline 3 brush:smudge\n", &[SMUDGE_LIB], "E0362");
+    assert!(d.message.contains("`brush:` on `fx outline` reads `m.below`"), "{d}");
+    assert_eq!(col(&d), (4, 16), "{d}");
+    let d = first(
+        "@target t.png 100x100\nuse brushes { dry smudge }\nrect 40x40 at:50,50 fill:#ff0000 name:a\n  fx outline 3 brush:[dry smudge]\n",
+        &[("lib/brushes.ramo", &format!("{DRY}{SMUDGE}"))],
+        "E0362",
+    );
+    assert!(d.message.contains("stage 2 of `brush:` (`smudge`)"), "{d}");
+}

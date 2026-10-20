@@ -138,6 +138,11 @@ impl Fill {
     pub fn reach(&self) -> f32 {
         self.marks.iter().map(|m| m.reach).fold(0.0, f32::max)
     }
+
+    /// Whether a stage reads `m.below`, the pixels already drawn under the node.
+    pub fn reads_below(&self) -> bool {
+        self.marks.iter().any(|m| m.stage.program.reads_below())
+    }
 }
 
 /// One brush stage over a fill. `m.uv`, `m.s`, `m.u` run along `dir_deg` across the geometry's
@@ -198,11 +203,21 @@ impl Ribbon {
     pub fn reach(&self) -> f32 {
         ribbon_reach(&self.marks)
     }
+
+    /// Whether a stage reads `m.below`, the pixels already drawn under the node.
+    pub fn reads_below(&self) -> bool {
+        ribbon_reads_below(&self.marks)
+    }
 }
 
 /// The farthest any of `marks` may paint past the ribbon's edge, in local units.
 pub fn ribbon_reach(marks: &[RibbonMark]) -> f32 {
     marks.iter().map(|m| m.reach).fold(0.0, f32::max)
+}
+
+/// Whether a stage of `marks` reads `m.below`.
+pub fn ribbon_reads_below(marks: &[RibbonMark]) -> bool {
+    marks.iter().any(|m| m.stage.program.reads_below())
 }
 
 /// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the
@@ -481,6 +496,13 @@ impl Shape {
         let fill = self.fill.as_ref().map_or(0.0, Fill::reach);
         let stroke = self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).map_or(0.0, Ribbon::reach);
         fill.max(stroke)
+    }
+
+    /// Whether a brush stage on the fill or the stroke reads `m.below`. Such a shape's paint
+    /// is computed over the pixels already drawn under it, so it cannot be drawn offscreen.
+    pub fn reads_below(&self) -> bool {
+        self.fill.as_ref().is_some_and(Fill::reads_below)
+            || self.stroke.as_ref().and_then(|s| s.ribbon.as_ref()).is_some_and(Ribbon::reads_below)
     }
 }
 

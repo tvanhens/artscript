@@ -1,12 +1,14 @@
 //! Canvas walk. A node that needs isolation, a mask, an effect, or a non-default composite is
 //! drawn into a layer. A soft clip draws into layers that start from the canvas below, so its
-//! children still blend with it. Effects see the clipped and masked content.
+//! children still blend with it. Effects see the clipped and masked content. A shape whose
+//! brush reads `m.below` is drawn by [`draw_below`], into one layer that starts from the
+//! backdrop.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
+use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Ribbon, Scene, Shape, Stroke};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -17,6 +19,7 @@ use crate::gpu::{self, Backend};
 use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
+use crate::mark::{self, Ink, Mode};
 use crate::paint::{blend_mode, color4, content_paint, dithered};
 
 pub struct SceneIndex<'a> {
@@ -255,7 +258,11 @@ pub fn draw_node(
     canvas.concat(&node.transform);
     let world = parent_world * node.transform;
 
-    if needs_layer(node) {
+    if let NodeKind::Shape(shape) = &node.kind
+        && shape.reads_below()
+    {
+        draw_below(canvas, node, shape, ctx, world, &parent_world, &parent_to_px)?;
+    } else if needs_layer(node) {
         if let Some(steps) = effects::layer_steps(&node.effects, &FxEnv { ctx, world })? {
             let reach = reach_px(node, ctx, &parent_world, &parent_to_px, &steps);
             paint_layer_steps(canvas, node, ctx, world, reach, steps)?;
@@ -286,6 +293,98 @@ pub fn draw_node(
 
     canvas.restore();
     Ok(())
+}
+
+/// A shape whose fill or stroke reads `m.below`. Its paint is computed over the real backdrop
+/// and must still land alone in one layer, so that `a:`, `blend:`, `fx`, a mask and a clip
+/// apply to it as to any node. The layer opens with a copy of the backdrop, the slots that
+/// read below are drawn into it as blenders that return their own output
+/// ([`mark::initialize`]), and the rest of the copy is cleared. The stamps and children then
+/// draw into the same layer, which already isolates them. The hard clip applies when the
+/// layer restores, and the soft clip and mask apply to the layer, so none of them reaches into
+/// its draws. An `fx outline` would draw the node offscreen, where there is no backdrop: eval
+/// reports it as E0362, so here it is an error and never a wrong backdrop.
+fn draw_below(
+    canvas: &Canvas,
+    node: &Node,
+    shape: &Shape,
+    ctx: &DrawCtx<'_>,
+    world: Matrix,
+    parent_world: &Matrix,
+    parent_to_px: &Matrix,
+) -> Result<(), RenderError> {
+    let env = FxEnv { ctx, world };
+    if effects::layer_steps(&node.effects, &env)?.is_some() {
+        return Err(RenderError::AtNode {
+            origin: node.origin.clone(),
+            message: "`fx outline` on a node whose brush reads `m.below` draws it offscreen, where it has no backdrop".into(),
+        });
+    }
+    let hard = node.clip.as_ref().filter(|c| c.feather <= 0.0);
+    let soft = node.clip.as_ref().filter(|c| c.feather > 0.0);
+    if let Some(clip) = hard {
+        canvas.save();
+        canvas.clip_path(&clip.path, clip_op(clip), true);
+    }
+    let bounds = reach_px(node, ctx, parent_world, parent_to_px, &[]).and_then(|reach| {
+        let px_to_local = canvas.local_to_device_as_3x3().invert()?;
+        Some(px_to_local.map_rect(Rect::from(reach)).0)
+    });
+    let mut paint = Paint::default();
+    paint.set_anti_alias(true);
+    paint.set_alpha_f(node.opacity.clamp(0.0, 1.0));
+    paint.set_blend_mode(blend_mode(node.blend));
+    if let Some(filter) = effects::chain(&node.effects, &env)? {
+        paint.set_image_filter(filter);
+    }
+    let mut rec = SaveLayerRec::default().paint(&paint).flags(SaveLayerFlags::INIT_WITH_PREVIOUS);
+    if let Some(bounds) = &bounds {
+        rec = rec.bounds(bounds);
+    }
+    canvas.save_layer(&rec);
+    draw_shape_below(canvas, shape, ctx, world, &node.origin)?;
+    if let Some(clip) = soft {
+        apply_clip_mask(canvas, clip)?;
+    }
+    if let Some(mask) = &node.mask {
+        apply_mask(canvas, mask, ctx, world)?;
+    }
+    canvas.restore();
+    if hard.is_some() {
+        canvas.restore();
+    }
+    Ok(())
+}
+
+/// The paint of a shape whose fill or stroke reads `m.below`, as its own output over the
+/// backdrop the layer holds, then its stamps and children. A slot that reads below is collected
+/// and drawn by [`mark::initialize`]. A plain fill under a stroke that reads below is drawn
+/// first, so the stroke sees it, and put back under the stroke's output with `DstOver` after
+/// the clear. A plain stroke over a fill that read below draws on top as it would anywhere.
+fn draw_shape_below(canvas: &Canvas, shape: &Shape, ctx: &DrawCtx<'_>, world: Matrix, origin: &str) -> Result<(), RenderError> {
+    let fill = shape.fill.as_ref();
+    let stroke = shape.stroke.as_ref();
+    let fill_below = fill.is_some_and(Fill::reads_below);
+    let stroke_below = stroke.and_then(|s| s.ribbon.as_ref()).is_some_and(Ribbon::reads_below);
+    let plain_fill_under_stroke = fill.filter(|_| !fill_below && stroke_below);
+    let mut draws = Vec::new();
+    if let Some(fill) = plain_fill_under_stroke {
+        draw_fill(canvas, shape, fill, ctx, origin, &mut Mode::Over)?;
+    }
+    if let Some(fill) = fill.filter(|_| fill_below) {
+        draw_fill(canvas, shape, fill, ctx, origin, &mut Mode::Collect(&mut draws))?;
+    }
+    if let Some(stroke) = stroke.filter(|_| stroke_below) {
+        draw_stroke(canvas, shape, stroke, ctx, origin, &mut Mode::Collect(&mut draws))?;
+    }
+    mark::initialize(canvas, &draws, origin)?;
+    if let Some(fill) = plain_fill_under_stroke {
+        draw_fill(canvas, shape, fill, ctx, origin, &mut Mode::Under)?;
+    }
+    if let Some(stroke) = stroke.filter(|_| !stroke_below) {
+        draw_stroke(canvas, shape, stroke, ctx, origin, &mut Mode::Over)?;
+    }
+    draw_parts(canvas, shape, ctx, world, origin)
 }
 
 fn paint_layer_steps(
@@ -439,12 +538,7 @@ fn draw_clipped(
     let soft = node.clip.as_ref().filter(|c| c.feather > 0.0);
     if let Some(clip) = hard {
         canvas.save();
-        let op = if clip.invert {
-            ClipOp::Difference
-        } else {
-            ClipOp::Intersect
-        };
-        canvas.clip_path(&clip.path, op, true);
+        canvas.clip_path(&clip.path, clip_op(clip), true);
     }
     let wrapped = soft.is_some() || node.mask.is_some();
     if soft.is_some() {
@@ -474,6 +568,10 @@ fn draw_clipped(
         canvas.restore();
     }
     Ok(())
+}
+
+fn clip_op(clip: &Clip) -> ClipOp {
+    if clip.invert { ClipOp::Difference } else { ClipOp::Intersect }
 }
 
 /// Replaces the backdrop `dst` with `S`, such that `S` drawn over `dst` gives `src`: the
@@ -527,30 +625,10 @@ fn draw_shape(
 ) -> Result<(), RenderError> {
     let paint_shape = |canvas: &Canvas| -> Result<(), RenderError> {
         if let Some(fill) = &shape.fill {
-            if fill.marks.is_empty() {
-                let paint =
-                    dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
-                canvas.draw_path(&shape.geometry, &paint);
-            } else {
-                crate::mark::draw_area(canvas, &shape.geometry, fill, ctx, origin, crate::mark::Ink::Paint)?;
-            }
+            draw_fill(canvas, shape, fill, ctx, origin, &mut Mode::Over)?;
         }
         if let Some(stroke) = &shape.stroke {
-            match (&stroke.ribbon, &stroke.ink) {
-                (None, Some(ink)) => {
-                    let paint =
-                        dithered(content_paint(&stroke.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
-                    canvas.draw_path(ink, &paint);
-                }
-                (None, None) => {
-                    let paint = dithered(
-                        content_paint(&stroke.paint, shape.blur, Some(stroke))?,
-                        &canvas.local_to_device_as_3x3(),
-                    )?;
-                    canvas.draw_path(&shape.geometry, &paint);
-                }
-                (Some(ribbon), _) => crate::mark::draw_ribbon(canvas, &shape.geometry, &stroke.paint, ribbon, ctx, origin)?,
-            }
+            draw_stroke(canvas, shape, stroke, ctx, origin, &mut Mode::Over)?;
         }
         Ok(())
     };
@@ -559,11 +637,46 @@ fn draw_shape(
         return paint_shape(canvas);
     }
 
-    // The layer keeps the stamps' and children's blend modes off the pixels below the shape. The
-    // clip is never the painted alpha, so a fill:none or translucent shape still shows the
-    // children. Stamps are not clipped: a leaf spills past its stem.
+    // The layer keeps the stamps' and children's blend modes off the pixels below the shape.
     canvas.save_layer(&SaveLayerRec::default());
     paint_shape(canvas)?;
+    draw_parts(canvas, shape, ctx, world, origin)?;
+    canvas.restore();
+    Ok(())
+}
+
+fn draw_fill(canvas: &Canvas, shape: &Shape, fill: &Fill, ctx: &DrawCtx<'_>, origin: &str, mode: &mut Mode<'_>) -> Result<(), RenderError> {
+    if !fill.marks.is_empty() {
+        return mark::draw_area(canvas, &shape.geometry, fill, ctx, origin, Ink::Paint, mode);
+    }
+    let mut paint = dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
+    if let Mode::Under = mode {
+        paint.set_blend_mode(BlendMode::DstOver);
+    }
+    canvas.draw_path(&shape.geometry, &paint);
+    Ok(())
+}
+
+fn draw_stroke(canvas: &Canvas, shape: &Shape, stroke: &Stroke, ctx: &DrawCtx<'_>, origin: &str, mode: &mut Mode<'_>) -> Result<(), RenderError> {
+    if let Some(ribbon) = &stroke.ribbon {
+        return mark::draw_ribbon(canvas, &shape.geometry, &stroke.paint, ribbon, ctx, origin, mode);
+    }
+    let (path, stroked) = match &stroke.ink {
+        Some(ink) => (ink, None),
+        None => (&shape.geometry, Some(stroke)),
+    };
+    let mut paint = dithered(content_paint(&stroke.paint, shape.blur, stroked)?, &canvas.local_to_device_as_3x3())?;
+    if let Mode::Under = mode {
+        paint.set_blend_mode(BlendMode::DstOver);
+    }
+    canvas.draw_path(path, &paint);
+    Ok(())
+}
+
+/// The shape's stamps, then its children under their clip. The clip is never the painted
+/// alpha, so a fill:none or translucent shape still shows the children. Stamps are not
+/// clipped: a leaf spills past its stem.
+fn draw_parts(canvas: &Canvas, shape: &Shape, ctx: &DrawCtx<'_>, world: Matrix, origin: &str) -> Result<(), RenderError> {
     for stamp in &shape.stamps {
         draw_node(canvas, stamp, ctx, world)?;
     }
@@ -576,14 +689,10 @@ fn draw_shape(
     match child_clip(shape) {
         ChildClip::Path(path) => {
             canvas.clip_path(&path, ClipOp::Intersect, true);
-            draw_children()?;
+            draw_children()
         }
-        ChildClip::Coverage(fill) => {
-            crate::mark::with_coverage(canvas, &shape.geometry, fill, ctx, origin, draw_children)?;
-        }
+        ChildClip::Coverage(fill) => mark::with_coverage(canvas, &shape.geometry, fill, ctx, origin, draw_children),
     }
-    canvas.restore();
-    Ok(())
 }
 
 enum ChildClip<'a> {

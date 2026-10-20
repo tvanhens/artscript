@@ -2445,6 +2445,18 @@ impl<'a> Evaluator<'a> {
             .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key, a.seed()?);
+        // The outline rasterizes the node offscreen, where a brush has no backdrop to read.
+        if let NodeKind::Shape(shape) = &node.kind
+            && shape.reads_below()
+            && node.effects.iter().any(|e| matches!(e.op, ramose_ir::EffectOp::Outline { width, .. } if width > 0.0))
+            && let Some(site) = sites.iter().find(|s| s.line.op == "outline").or(sites.first())
+        {
+            let f = fail("E0362", "`fx outline` on a node whose brush reads `m.below`")
+                .note("the outline draws the node offscreen, where its brush has no backdrop to read")
+                .fix("outline a parent instead, or use a brush that does not read `m.below`");
+            self.report(f, site.scope.file(), site.line.span, &key.to_string());
+            return Err(Fail::reported());
+        }
         self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
         let z = self.finish_node(&mut node, &a)?;
         if let Some(r) = record {
