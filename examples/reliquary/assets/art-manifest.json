@@ -37,6 +37,19 @@
     {
       "anchors": {},
       "checks": [],
+      "hash": "4021ed6ab20df256",
+      "line": 4,
+      "matrix": {},
+      "path": "arch/sun_cage.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/arch/sun_cage.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
       "hash": "4fcd3b36677d97e9",
       "line": 4,
       "matrix": {},
