@@ -159,6 +159,19 @@
     {
       "anchors": {},
       "checks": [],
+      "hash": "e6d2e043408313e2",
+      "line": 4,
+      "matrix": {},
+      "path": "monster/eel.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/eel.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
       "hash": "41f96644b4002e65",
       "line": 4,
       "matrix": {},
