@@ -1,0 +1,90 @@
+# Foreground bone pier in shade. Gouache, one key from the upper right.
+# The sole is local y = 0. The shaft runs through the top of the canvas.
+
+@target fg/pier.png 280x760 viewport bg:none
+
+use paint { sculpt ink }
+use parts { contact crust }
+
+let stone = sculpt(scale:1.55 depth:.82 planes:.66 glossk:.1 strength:.6)
+
+def cracked_pier
+  layer shadow_layer
+    contact 116 at:4,1 name:shadow
+
+  layer wound_layer
+    curve -14,20 18,4 10,-22 -16,-18 -22,8 closed tension:0 at:0,-408 fill:p.bone.0 brush:stone(depth:.94 scale:1.05 glossk:.06) name:wound
+      ellipse 12,7 at:6,-8 fill:p.bone.2 a:.46 name:face_lit
+      curve 0,6 -2,-8 8,-16 stroke:p.bone.2,2.2 a:.55 name:facet
+      fx outline 4 brush:ink color:p.ink
+
+  layer base_layer
+    curve -100,0 -108,-16 -92,-44 -62,-72 66,-68 98,-40 94,-14 82,0 closed fill:p.bone.0 brush:stone(scale:1.75 depth:.86) name:plinth
+      ellipse 48,13 at:32,-22 fill:p.bone.2 a:.26 name:lit
+      ellipse 72,15 at:-18,-6 fill:p.ink a:.4 name:toe
+      curve -36,-16 8,-8 46,-22 stroke:p.ink,2.8 name:crack
+      curve -98,-6 -90,-28 -74,-46 stroke:p.bone.0,6 a:.7 name:chip
+      each k in 0..6
+        circle 1.1+rand(0 1.8) at:rand(-70 74),rand(-48 -8) fill:p.ink a:.55 name:pore
+          circle .55 at:.35,-.4 fill:p.bone.2 a:.4 name:speck
+      fx outline 8 brush:ink(center:0,-34) color:p.ink
+
+  layer shaft_layer
+    subtract fill:p.bone.1 brush:stone name:shaft
+      curve -76,-50 -86,-130 -72,-220 -84,-310 -68,-430 -80,-540 -66,-650 -74,-760 -62,-840 64,-840 76,-750 68,-640 80,-530 60,-470 74,-390 70,-280 78,-170 66,-54 closed
+      curve -108,-316 -26,-338 8,-396 -4,-456 -96,-468 -128,-372 closed tension:0
+      fx outline 9 brush:ink(center:6,-420) color:p.ink
+    inside @shaft
+      ellipse 78,150 at:-22,-120 fill:p.ink a:.3 name:shade_lo
+      ellipse 64,110 at:-16,-390 fill:p.ink a:.24 name:shade_mid
+      ellipse 34,360 at:-46,-400 fill:p.bone.0 a:.5 name:shade_band
+      ellipse 46,90 at:36,-150 fill:p.bone.2 a:.28 name:lit_lo
+      ellipse 32,80 at:40,-560 fill:p.bone.2 a:.24 name:lit_hi
+      ellipse 24,16 at:32,-78 fill:p.bone.2 a:.32 name:lip
+      curve -24,-80 -30,-280 -18,-480 -26,-680 stroke:p.bone.0,9 a:.4 brush:stone(scale:.45) name:flute
+      curve 28,-90 34,-300 22,-520 30,-700 stroke:p.bone.2,3.2 a:.38 brush:stone(scale:.35) name:arrise
+      curve 8,-78 18,-210 6,-340 16,-520 8,-680 stroke:p.ink,[2 4.4 2.2 4.8 1.8] brush:stone(scale:.3 depth:.95) name:rift
+      curve -8,-150 -2,-230 14,-300 stroke:p.ink,2.2 a:.85 name:crack_b
+      curve -16,-360 2,-330 14,-286 stroke:p.ink,3.4 name:break_crack
+      curve 16,-500 26,-580 12,-660 stroke:p.ink,2.6 name:crack_c
+      each i, y in [-250 -560 -650]
+        curve -52,y 0,y-4 56,y+3 stroke:p.ink,5 a:.4 blur:1.1 name:course
+      each k in 0..16
+        circle 1+rand(0 2.3) at:rand(-44 50),rand(-100 -680) fill:p.ink a:.55 name:pore
+          circle .6 at:.4,-.45 fill:p.bone.2 a:.35 name:speck
+      each k in 0..5
+        ellipse 3.2,1.4 at:rand(18 52),rand(-110 -660) rot:rand(-36 28) fill:p.bone.3 a:.5 name:chip
+      circle 3.4 at:12,-232 fill:p.moss.2 brush:stone(scale:.32 depth:.35) name:tuft
+        circle 1.1 at:-.4,-.8 fill:p.moss.3 name:tip
+      each k in 0..4
+        circle 1.3+rand(0 1.5) at:12+rand(-7 8),-236+rand(-9 10) fill:pick([p.moss.1 p.moss.2 p.moss.3]) brush:stone(scale:.28 depth:.4) name:tuft_bit
+
+  layer ring_layer
+    each i, band in [-168 -528 -656]
+      if i == 0
+        curve 6,11 46,4 92,-1 70,-13 14,-11 at:0,band stroke:p.bone.0,18 brush:stone(scale:.75 depth:.76) name:collar
+          fx outline 5 brush:ink color:p.ink
+      else
+        curve -62,14 0,18 66,13 at:0,band stroke:p.ink,8 a:.4 blur:1.4 name:undercut
+        curve -86,13 -76,-15 78,-17 92,12 74,16 -80,14 closed at:0,band fill:p.bone.0 brush:stone(scale:.85 depth:.78) name:collar
+          ellipse 26,7 at:24,-5 fill:p.bone.2 a:.36 name:lit
+          fx outline 6 brush:ink color:p.ink
+
+  layer break_layer
+    curve -34,18 22,17 30,0 4,-26 -42,-2 closed tension:0 at:-70,-18 fill:p.bone.1 brush:stone(scale:.9 depth:.76) name:shard
+      ellipse 16,6 at:-4,-6 fill:p.bone.2 a:.3 name:lit
+      curve -14,6 -2,-8 -12,-18 stroke:p.ink,2.4 name:crack
+      curve -8,2 14,-6 fill:none stamp:crust(spacing:12) name:shard_salt
+      fx outline 5 brush:ink color:p.ink
+    curve 8,12 -30,18 -46,0 -22,-16 14,-8 closed tension:0 at:-70,-316 fill:p.bone.1 brush:stone(scale:.8 depth:.74) name:flake
+      ellipse 12,5 at:-6,-1 fill:p.bone.2 a:.3 name:lit
+      curve -12,4 -2,-8 stroke:p.ink,2.2 name:crack
+      fx outline 5 brush:ink color:p.ink
+    curve -62,-2 -14,2 12,-4 fill:none stamp:crust(spacing:13) name:sole_salt
+    curve -46,-64 6,-72 30,-62 fill:none stamp:crust(spacing:14) name:plinth_salt
+    curve -58,-322 -28,-338 -6,-326 fill:none stamp:crust(spacing:12) name:bite_salt
+
+let sole = 700
+cracked_pier at:140,sole name:pier
+assert @pier.bottom-sole in -8..20
+assert @pier.top < -8
