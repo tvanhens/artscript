@@ -9,7 +9,7 @@ allowed-tools: Bash(ramose *) Bash(npx --yes ramose *)
 
 ramose is a declarative language for procedural art. You write `.ramo` files. `ramose build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source gives the same bytes on the same machine and backend. GPU output can differ from CPU output and between machines.
 
-When the user runs `/ramose` with a request, that request is the art to draw or the change to make. With no request, ask what to draw.
+When the user runs `$ramose:ramose` in Codex or `/ramose` in Claude Code with a request, that request is the art to draw or the change to make. With no request, ask what to draw.
 
 ## Before you draw
 
@@ -36,10 +36,10 @@ When the user runs `/ramose` with a request, that request is the art to draw or 
 
 Repeat until the art is right:
 
-1. Write a new `.ramo` file with the Write tool and change one with the Edit tool. Do not edit with `sed`, `python`, or a shell heredoc.
+1. Write or change `.ramo` files with the host's file editing tools. Use `apply_patch` in Codex or Write and Edit in Claude Code. Do not edit with `sed`, `python`, or a shell heredoc.
 2. Run `ramose check`. Run ramose commands on their own or joined with `&&`, never with `;`, `echo $?`, or other shell plumbing, because the tool already reports the exit code. Fix every error and warning before you continue. Exit codes: 1 compile error, 2 a failed `assert`, 3 warnings only.
 3. Run `ramose build --only '<glob>'` for the piece you changed. The glob matches the entry file or an output path, for example `--only 'art/lamp.ramo'` or `--only 'props/lamp*'`. Repeat `--only` to build several pieces, or use `{a,b}`, for example `--only 'art/{lamp,desk}.ramo'`. A glob that matches no target is an error, and `*` does not cross `/`, so use `**` for that.
-4. Open the PNG with the Read tool and look at it. Compare it to the request. Look for parts outside the canvas, shading that spills outside its shape, a missing outline, a face that is off-center, and colors that are too close to each other.
+4. Open the PNG with the host's image viewer, such as `view_image` in Codex or Read in Claude Code, and look at it. Compare it to the request. Look for parts outside the canvas, shading that spills outside its shape, a missing outline, a face that is off-center, and colors that are too close to each other.
 5. Run `ramose fmt` on the files you changed.
 
 Never report a piece as done before you have looked at its rendered PNG. For a GIF, also build a still of a mid-animation frame (`t:` on a PNG target) when the motion matters.
