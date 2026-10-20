@@ -49,6 +49,7 @@ One struct serves both slots. On a fill the frame is the geometry's bounds rotat
 | `pressure`, `angle`, `tilt`, `velocity` | 1, `dir`, 0 and 1 | the node's channels at `s` |
 | `seed` | the stage's seed, 0..255 | the same |
 | `paint` | the straight rgba the pixel would have had: the fill at that pixel for the first stage, the previous stage's result after that | the same, from the stroke's paint |
+| `below` | the straight rgba already drawn under the pixel in the node's group, as the backdrop a `blend:` on the node would composite with; see The backdrop | the same, with the node's own fill included |
 | `px` | local units per device pixel | the same |
 
 `normal` and `edge` together shade a form. This brush lights a bevel from the upper left. It mixes the paint toward white where the edge faces `toward` and toward black where it faces away, within `depth` units of the edge:
