@@ -49,6 +49,7 @@ enum Ty {
     Taper,
     Radii,
     Corners,
+    Warp,
     Size,
     Color,
     Paint,
@@ -171,6 +172,7 @@ const COMMON: &[Key] = &[
     ("scale", Ty::Scale, 3),
     ("skew", Ty::Skew, 1),
     ("pivot", Ty::Vec, 1),
+    ("warp", Ty::Warp, 1),
     ("a", Ty::Unit, 4),
     ("blend", Ty::Blend, 2),
     ("z", Ty::Z, 2),
@@ -1012,10 +1014,31 @@ impl<'u, 'd> Gen<'u, 'd> {
             }
             Ty::Radius => self.radius_part(),
             Ty::Corners => self.corners(),
+            Ty::Warp => self.warp(),
             Ty::Time => self.num_lit(Ty::Time),
             t if t.base() == Base::Num => self.number(t, d),
             t if t.base() == Base::Vec => self.vector(t, d),
             t => self.word(t),
+        }
+    }
+
+    fn warp(&mut self) -> String {
+        let stage = |g: &mut Self| match g.n(0, 2) {
+            0 => format!("cylinder({})", g.lit(4, 120)),
+            1 => format!("cylinder({} axis:{})", g.lit(4, 120), g.word(Ty::Axis)),
+            _ => {
+                let pts: Vec<String> = (0..4).map(|_| format!("{},{}", g.lit(-20, 120), g.lit(-20, 120))).collect();
+                format!("corners({})", pts.join(" "))
+            }
+        };
+        match self.n(0, 3) {
+            0 => "none".into(),
+            1 => {
+                let n = self.n(1, 3);
+                let stages: Vec<String> = (0..n).map(|_| stage(self)).collect();
+                format!("[{}]", stages.join(" "))
+            }
+            _ => stage(self),
         }
     }
 
