@@ -1,0 +1,84 @@
+# Gouache offering bowl. One key, upper right. Feet on y = 0.
+# Wide verdigris vessel, powder ash in the mouth, one buried coal.
+
+@target prop/offering.png 240x180 bg:none
+
+use paint { sculpt ink }
+use parts { contact ember }
+
+stamp crumb spacing:5
+  circle .85+rand(0 1.5) at:rand(-1.6 1.6),rand(-1.4 1.4) fill:pick([p.ash.1 p.ash.2 p.ash.3 p.ash.4]) a:.5+rand(0 .45) name:bit
+
+def offering_bowl
+  anchor feet 0,0
+  contact 70 name:ground
+
+  subtract fill:p.verd.2 brush:sculpt(scale:1.02 depth:.78 planes:.66 glossk:.24 strength:.64) name:shell
+    curve -86,-92 -84,-66 -68,-38 -48,-18 -34,-8 -26,0 28,0 36,-8 50,-20 70,-40 86,-66 90,-94 62,-106 22,-112 0,-114 -26,-110 -62,-102 closed
+    circle 7 at:-90,-86
+    fx outline 5 brush:ink color:p.ink
+  inside @shell
+    ellipse 52,40 at:-32,-44 fill:p.verd.0 a:.48 name:shade
+    ellipse 28,16 at:-24,-24 fill:p.ink a:.3 blur:3 name:belly
+    ellipse 36,24 at:34,-60 fill:p.verd.4 a:.4 blur:3 name:bloom
+    ellipse 22,14 at:-48,-52 fill:p.verd.0 a:.4 name:oxide
+    curve 18,-72 48,-58 64,-40 36,-32 8,-50 closed fill:p.verd.3 brush:sculpt(scale:.55 glossk:.34 depth:.55) name:patina
+      ellipse 12,4 at:42,-54 fill:p.verd.5 a:.45
+    curve 40,-74 50,-66 46,-58 stroke:p.bone.4,2.1 name:flake_metal
+    curve 38,-74 48,-66 44,-58 stroke:p.ink,1.15 a:.85 name:flake
+    curve -64,-40 -6,-30 46,-34 74,-46 stroke:p.verd.0,2.8 a:.82 name:groove
+    curve -60,-38 -4,-28 44,-32 70,-44 stroke:p.verd.5,1.15 a:.5 name:groove_lit
+    curve -44,-32 -52,-18 -42,-8 stroke:p.verd.1,3.4 taper:.1,1 a:.9 name:drip
+    curve -42,-32 -50,-18 -40,-10 stroke:p.verd.4,1.2 taper:.2 a:.6 name:drip_edge
+    curve -36,-62 -44,-44 -32,-28 stroke:p.ink,1.8 a:.8 name:crack
+    curve -34,-60 -42,-42 -30,-28 stroke:p.rim,.75 a:.45 name:crack_wet
+    curve -12,-9 0,-5 14,-8 stroke:p.verd.0,1.8 a:.8 name:foot_ring
+    curve -10,-7 2,-4 14,-6 stroke:p.verd.4,.9 a:.45 name:foot_ring_lit
+    ellipse 18,4 at:-6,-4 fill:p.verd.0 a:.4 name:sole_shade
+    ellipse 10,3 at:8,-6 fill:p.verd.4 a:.5 name:sole_lit
+    each i in 0..8
+      circle 1.2+rand(0 1.6) at:-12+rand(-46 62),-26+rand(-40 10) fill:p.verd.0 a:.72 name:pit
+        circle .5 at:.4,-.45 fill:p.verd.4 a:.5
+    each i in 0..3
+      ellipse 2.4,1.4 at:-30+i*22,-48+i*4 rot:rand(-30 30) fill:p.ink a:.55 name:pit_wide
+    each i in 0..7
+      circle 1.3 at:-44+i*12,-68+abs(i-3)*.5 fill:p.ink a:.65 name:punch
+        circle .45 at:.35,-.4 fill:p.verd.5 a:.9
+    circle 3 at:56,-52 fill:p.verd.1 brush:sculpt(scale:.26 glossk:.7) name:rivet
+      circle 1 at:.6,-.65 fill:p.shine
+    poly 4 r:1.7 at:8,-5 rot:18 fill:p.bone.5 name:salt_a
+    poly 4 r:1.3 at:1,-4 rot:-24 fill:p.bone.4 name:salt_b
+    poly 3 r:1.15 at:12,-6 rot:40 fill:p.shine a:.85 name:salt_c
+
+  curve -28,-104 0,-112 30,-104 stroke:p.verd.0,4 a:.5 brush:sculpt(scale:.35 depth:.7) name:far_inner
+  curve -6,-110 18,-114 42,-106 stroke:p.verd.5,2.2 a:.7 name:far_lit
+  ellipse 48,12 at:0,-98 fill:p.verd.0 brush:sculpt(lo:p.ink hi:p.verd.1 depth:.84 glossk:.05 planes:.28 scale:.5) name:well
+  curve -38,-96 -34,-106 -16,-116 0,-120 18,-112 30,-102 36,-92 24,-86 -6,-84 -26,-88 closed fill:p.ash.2 brush:sculpt(hi:p.ash.3 lo:p.ash.0 glossk:.02 depth:.32 planes:.22 scale:.55) name:ash
+    ellipse 14,5 at:-14,-102 fill:p.ash.1 a:.7 name:lump
+    ellipse 10,4 at:6,-98 fill:p.ash.0 a:.5 name:hollow
+    ellipse 8,3 at:-2,-112 fill:p.ash.4 a:.4 name:crest
+    curve -16,-98 -2,-102 12,-98 stroke:p.ash.0,1.2 a:.8 name:crust_a
+    curve -8,-108 6,-104 16,-110 stroke:p.ink,1.1 a:.6 name:crust_b
+  ellipse 8,3.2 at:-14,-100 fill:p.ash.0 a:.8 name:cinder
+  curve -7,1 -8,-6 -2,-11 6,-8 9,-2 6,3 0,4 -5,2 closed at:8,-106 fill:p.amber.1 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.48 planes:.32 glossk:.58 scale:.34) name:ember
+    circle 3.4 at:2.2,-3.2 fill:p.amber.5 name:core
+    circle 1.4 at:3.1,-4.2 fill:p.shine name:hot
+    ellipse 5,2 at:-1.2,2.2 fill:p.amber.0 a:.9 name:crust
+    fx glow 7 color:p.amber.4 a:.7 strength:1.3
+    fx outline 1.5 brush:ink color:p.ink
+  ellipse 16,5 at:8,-100 fill:p.ash.1 brush:sculpt(hi:p.ash.3 lo:p.ash.0 glossk:.02 scale:.25) name:bury
+  curve -22,-106 -18,-114 -14,-108 stroke:p.bone.5,1.35 name:splinter
+    curve -21,-105 -17,-113 -13,-107 stroke:p.shine,.55 a:.7 name:splinter_lit
+  curve -24,-110 -2,-118 16,-110 fill:none stamp:crumb(spacing:4) name:ridge
+  curve -62,-96 -26,-86 22,-84 64,-94 56,-100 18,-92 -22,-92 -56,-102 closed fill:p.verd.3 brush:sculpt(scale:.48 glossk:.44 depth:.6) name:near_lip
+    ellipse 14,3 at:26,-90 fill:p.verd.5 a:.65 name:lip_sheen
+    fx outline 2.5 brush:ink color:p.ink
+  ellipse 2.4,1.2 at:-78,-84 rot:16 fill:p.bone.4 name:chip_face
+  curve -18,-100 -2,-94 16,-100 fill:none stamp:crumb(spacing:4) name:crust_bits
+  curve -10,-88 12,-84 32,-90 fill:none stamp:crumb(spacing:5) name:spill
+  ellipse 10,4 at:2,-116 fill:p.ash.3 a:.18 blur:3 name:wisp
+  curve 1,-2 6,-10 2,-16 at:12,-108 fill:none stamp:ember(spacing:8) name:sparks
+
+offering_bowl at:120,150 name:bowl
+assert inside(@bowl canvas margin:12)
+assert @bowl.bottom-@bowl.feet.y in -8..16
