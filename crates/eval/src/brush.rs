@@ -36,6 +36,11 @@ impl BrushDecl {
             MainKind::Ribbon => 1,
         }]
     }
+
+    /// Whether the body reads `m.below`. The same body is under both mains.
+    pub fn reads_below(&self) -> bool {
+        self.programs[0].reads_below()
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -313,7 +318,8 @@ impl Evaluator<'_> {
         }
         let area = Program::assemble(MainKind::Area, &decl_params, &block.text);
         // The body is the same text under both mains, so the area check reports its errors once.
-        // The ribbon main is checked too, so render never meets a program eval did not.
+        // The ribbon main and both blender frames are checked too, so render never meets a program
+        // eval did not.
         let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
         if let Err(errs) = artscript_brush::check(&area) {
             // SkSL stops at the first bad uniform line, so each param is compiled alone to report
@@ -346,6 +352,10 @@ impl Evaluator<'_> {
         } else if let Err(errs) = artscript_brush::check(&ribbon) {
             errors.extend(errs.into_iter().map(|e| {
                 (fail("E0360", format!("SkSL on a stroke: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
+            }));
+        } else if let Err(errs) = artscript_brush::check_blender(&area).and_then(|()| artscript_brush::check_blender(&ribbon)) {
+            errors.extend(errs.into_iter().map(|e| {
+                (fail("E0360", format!("SkSL over a backdrop: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
             }));
         }
         if !errors.is_empty() {

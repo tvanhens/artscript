@@ -336,6 +336,17 @@ impl Evaluator<'_> {
                             self.report(f, sc.file(), span, &key.to_string());
                             return Err(Fail::reported());
                         }
+                        if let Some((i, b)) = stack.iter().enumerate().find(|(_, b)| b.decl.reads_below()) {
+                            let what = if stack.len() == 1 {
+                                "`brush:` on `fx outline` reads `m.below`, and a ring is drawn offscreen with no backdrop".to_string()
+                            } else {
+                                format!("stage {} of `brush:` (`{}`) reads `m.below`, and a ring is drawn offscreen with no backdrop", i + 1, b.decl.name)
+                            };
+                            let f = fail("E0362", what).fix("use a brush that does not read `m.below` on the outline");
+                            let span = named.iter().find(|n| n.key == "brush").map_or(line.span, |n| n.span);
+                            self.report(f, sc.file(), span, &key.to_string());
+                            return Err(Fail::reported());
+                        }
                         self.ribbon_marks(&stack, &at.line, at.seed, seed_file)
                     }
                 };

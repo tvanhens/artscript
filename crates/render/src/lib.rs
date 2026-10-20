@@ -30,6 +30,9 @@ pub struct Unsupported {
 pub enum RenderError {
     /// Under `Profile::Vector`, every node that uses a raster-only feature.
     NotVector(Vec<Unsupported>),
+    /// Under `Profile::Svg`, every node whose brush reads `m.below`: a baked tile has no
+    /// backdrop, so such a node cannot bake.
+    NoBackdrop(Vec<Unsupported>),
     Skia(String),
     /// A failure inside one node, reported at that node's `file:line` instead of the target.
     AtNode { origin: String, message: String },

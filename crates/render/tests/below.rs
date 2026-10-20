@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use artscript_brush::{MainKind, Program, UniformKind};
 use artscript_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
-use artscript_render::{Backend, RenderError, gpu_available, render_png};
+use artscript_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
 use common::{color, effect, pixel, red, scene, solid, stamp};
 
 /// Mixes the paint halfway toward the backdrop, weighted by the backdrop's alpha, so a pixel
@@ -232,4 +232,18 @@ fn an_outline_on_a_node_whose_brush_reads_below_is_a_render_error_not_a_wrong_ba
     node.effects.push(effect(EffectOp::Outline { width: 2.0, color: red(), sides: Sides::ALL, mask: None, brush: vec![] }));
     let err = render_png(&scene(80.0, 80.0, vec![backdrop(), node]), 1.0, Backend::Cpu).unwrap_err();
     assert!(matches!(err, RenderError::AtNode { .. }), "{err:?}");
+}
+
+#[test]
+fn svg_refuses_to_bake_a_node_whose_brush_reads_below_under_both_profiles() {
+    let s = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(HALF_BELOW, 1)])]);
+    let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
+    assert_eq!(census, ["a brush fill", "a brush below"]);
+    assert!(matches!(render_svg(&s, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(RenderError::NotVector(_))));
+    match render_svg(&s, artscript_ir::Profile::Svg, 1.0, Backend::Cpu) {
+        Err(RenderError::NoBackdrop(list)) => assert_eq!(list.len(), 1, "{list:?}"),
+        other => panic!("{other:?}"),
+    }
+    let plain = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(PLAIN, 1)])]);
+    assert!(render_svg(&plain, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).is_ok(), "a brush that reads nothing still bakes");
 }
