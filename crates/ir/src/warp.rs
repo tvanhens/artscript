@@ -75,6 +75,10 @@ pub enum CornersError {
     Concave,
 }
 
+/// How far toward the horizon a padded box may reach, as a fraction of the way from a corner
+/// that maps to the horizon behind it.
+const HORIZON_STOP: f32 = 0.5;
+
 /// The unit square's corners in the same order as a quad.
 const UNIT: [Point; 4] = [
     Point { x: 0.0, y: 0.0 },
@@ -143,8 +147,8 @@ impl Corners {
     }
 
     /// Shrinks `within` toward `src`, which maps by construction, until every corner is in front
-    /// of the horizon. The shrink stops halfway to the horizon so the farthest corner still maps
-    /// to a finite point instead of running off.
+    /// of the horizon. The shrink stops at [`HORIZON_STOP`] of the way so the farthest corner
+    /// still maps to a finite point instead of running off.
     fn visible(&self, src: Rect, within: Rect) -> Rect {
         let m = self.matrix(src);
         let t = src
@@ -153,7 +157,11 @@ impl Corners {
             .zip(within.to_quad(None))
             .map(|(&a, b)| {
                 let (w0, w1) = (depth(&m, a), depth(&m, b));
-                if w1 > 0.0 { 1.0 } else { 0.5 * w0 / (w0 - w1) }
+                if w1 > 0.0 {
+                    1.0
+                } else {
+                    HORIZON_STOP * w0 / (w0 - w1)
+                }
             })
             .fold(1.0_f32, f32::min);
         let mix = |a: f32, b: f32| a + (b - a) * t;
@@ -229,8 +237,7 @@ impl Cylinder {
 
     fn map_path(&self, path: &Path, tol: f32) -> Path {
         let flat = clip_to(path, self.visible(path.compute_tight_bounds()));
-        // A chord of length `s` on the cylinder sags `s^2 / 8r` from the surface.
-        let step = (8.0 * self.r * tol).sqrt();
+        let step = self.chord_step(tol);
         let mut out = PathBuilder::new();
         out.set_fill_type(path.fill_type());
         for (points, closed) in flatten(&flat, step, tol) {
@@ -244,6 +251,12 @@ impl Cylinder {
             out.add_polygon(&mapped, closed);
         }
         out.detach()
+    }
+
+    /// The longest chord whose sag from the surface stays within `tol`: a chord of length `s`
+    /// sags `s^2 / 8r`.
+    fn chord_step(&self, tol: f32) -> f32 {
+        (8.0 * self.r * tol).sqrt()
     }
 
     fn visible(&self, within: Rect) -> Rect {

@@ -84,7 +84,6 @@ pub enum Value {
     Brush(Rc<BrushVal>),
     /// A `stamp` declaration with its parameter values, placement and set name bound.
     Stamp(Rc<StampVal>),
-    /// One `warp:` stage, `corners(...)` or `cylinder(...)`, bound to a box when a node uses it.
     Warp(Rc<WarpStage>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.

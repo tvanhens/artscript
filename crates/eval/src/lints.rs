@@ -875,8 +875,6 @@ pub fn hidden_child(
     out
 }
 
-/// Content a `cylinder` stage hides past its visible half: one report per node and stage, with
-/// the radius that would show all of it.
 pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
     let level = manifest.lint_level("warp-cut");
     fn nodes<'n>(n: &'n Node, out: &mut Vec<&'n Node>) {
@@ -937,8 +935,6 @@ pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Ve
     out
 }
 
-/// Every node by path with the place of its parent frame, mask nodes included, as render indexes
-/// them for effects that read another node.
 fn index<'n>(nodes: &'n [Node], parent: &Place, out: &mut HashMap<&'n str, (&'n Node, Place)>) {
     for n in nodes {
         index_node(n, parent, out);

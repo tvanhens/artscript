@@ -425,12 +425,12 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
 }
 
 /// How close a flattened silhouette stays to a warped curve, in canvas units.
-pub(crate) const TOL: f32 = 0.1;
+pub(crate) const FLATTEN_TOL: f32 = 0.1;
 
 pub fn silhouette(node: &Node, parent_world: &Place) -> Path {
     let world = parent_world.inner_node(node);
     match &node.kind {
-        NodeKind::Shape(s) => world.map_path(&s.clip(), TOL),
+        NodeKind::Shape(s) => world.map_path(&s.clip(), FLATTEN_TOL),
         NodeKind::Group { children, .. } => {
             let parts: Vec<Path> = children
                 .iter()

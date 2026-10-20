@@ -5461,7 +5461,7 @@ impl<'a> Evaluator<'a> {
         let NodeKind::Shape(shape) = &node.kind else { unreachable!("one_shape checked the kind") };
         let [from, to] = fractions;
         let contour = geom::edge(&shape.geometry, r.record.seam, from, to);
-        let placed = r.record.parent_world.inner_node(node).map_path(&contour, crate::scope::TOL);
+        let placed = r.record.parent_world.inner_node(node).map_path(&contour, crate::scope::FLATTEN_TOL);
         Ok(sc.world.unmap_path(&placed))
     }
 

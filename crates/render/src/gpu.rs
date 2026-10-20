@@ -90,7 +90,6 @@ pub(crate) fn surface(backend: Backend, size: impl Into<ISize>) -> Option<Surfac
     }
 }
 
-/// `image` with mip levels, so minified sampling under `MipmapMode::Linear` reads them.
 pub(crate) fn mipmapped(backend: Backend, image: Image) -> Result<Image, RenderError> {
     let with_levels = match backend {
         Backend::Cpu => image.with_default_mipmaps(),

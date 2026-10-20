@@ -1,7 +1,3 @@
-//! `warp:`: the `corners` and `cylinder` values, the warped box and silhouette, what parts
-//! inside a warped node read, anchors and the rig, anims, the `warp-cut` lint, and the
-//! diagnostics each failure lands on.
-
 use ramose_ir::Scene;
 
 use crate::{Evaluation, Project, evaluate, plan};
@@ -13,7 +9,6 @@ fn close(got: (f32, f32), want: (f64, f64), tol: f64) {
     assert!(dx.abs() < tol && dy.abs() < tol, "{got:?} != {want:?}");
 }
 
-/// Where a probe named `name` landed: the canvas point its `at:` read.
 fn probe(s: &Scene, name: &str) -> (f32, f32) {
     at(node(s, name))
 }

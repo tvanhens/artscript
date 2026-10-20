@@ -99,7 +99,6 @@ pub fn with_stamps(host: &mut Node, stamps: Vec<Node>, children: Vec<Node>) {
     }
 }
 
-/// One checked area-brush stage from its `shade` body.
 pub fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
     let program = Program::assemble(MainKind::Area, &params, body);
@@ -115,7 +114,6 @@ pub fn mark(stage: Stage, reach: f32) -> AreaMark {
     AreaMark { stage, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach }
 }
 
-/// A shape whose fill is `paint` shaded by `marks`.
 pub fn brushed(path: &str, geometry: Path, paint: Paint, marks: Vec<AreaMark>) -> Node {
     let mut node = solid(path, geometry, red());
     if let NodeKind::Shape(shape) = &mut node.kind {

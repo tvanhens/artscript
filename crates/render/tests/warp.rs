@@ -1,6 +1,3 @@
-//! `warp:` on a node: the content lands through the warp, effects follow the warped silhouette,
-//! renders stay deterministic, and both kinds are raster-only.
-
 mod common;
 
 use common::{brushed, circle_at, color, effect, mark, red, scene, solid, stage};
@@ -49,7 +46,6 @@ impl Raster {
         self.at(p.x.floor() as i32, p.y.floor() as i32)
     }
 
-    /// The box of every pixel with any alpha, as a rect over pixel edges.
     fn painted_box(&self) -> Option<Rect> {
         let mut found: Option<Rect> = None;
         for y in 0..self.h {
@@ -66,17 +62,14 @@ impl Raster {
         found
     }
 
-    /// `[start, end)` of each run of pixels on row `y` with alpha above one half.
     fn runs(&self, y: i32) -> Vec<(i32, i32)> {
         runs_of((0..self.w).map(|x| self.at(x, y)[3]))
     }
 
-    /// The same down column `x`.
     fn column_runs(&self, x: i32) -> Vec<(i32, i32)> {
         runs_of((0..self.h).map(|y| self.at(x, y)[3]))
     }
 
-    /// How many pixels of row `y`, from `from` to `to`, have a partial alpha.
     fn partial(&self, y: i32, from: i32, to: i32) -> usize {
         (from..to)
             .filter(|&x| (16..240).contains(&self.at(x, y)[3]))
@@ -131,7 +124,6 @@ fn centroid(quad: [(f32, f32); 4]) -> Point {
     sum * 0.25
 }
 
-/// `p` moved `by` units toward (positive) or away from `anchor`.
 fn toward(p: Point, anchor: Point, by: f32) -> Point {
     let d = anchor - p;
     p + d * (by / d.length())
@@ -176,7 +168,6 @@ fn a_cylinder_compresses_stripes_toward_its_edges_and_hides_the_back() {
     }
     let mut node = solid("label", stripes.snapshot(), red());
     node.transform = Matrix::translate((100.0, 50.0));
-    // Half the visible circumference is 78.5, so the stripes at +-90 face away.
     let node = warped(node, &[cylinder(50.0)]);
     let png = render_png(&scene(200.0, 100.0, vec![node]), 2.0, Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
@@ -403,7 +394,6 @@ fn fx_outline_rings_the_warped_quad_and_not_the_flat_rect() {
     assert_eq!(img.at(43, 50)[3], 0, "no ring around the flat rect's edge");
 }
 
-/// The box of the `index`th `<image>` tag in `svg`.
 fn image_box(svg: &str, index: usize) -> Rect {
     let attrs = &svg[svg.match_indices("<image").nth(index).unwrap().0..];
     let num = |name: &str| -> f32 {
