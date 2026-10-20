@@ -1,0 +1,68 @@
+# Gouache bone stair. One key, upper right. Each step is a vertebra.
+# The sole of the lowest step is y = 0. The flight climbs up and to the right.
+
+@target arch/stair.png 480x540 bg:none pivot:@stair.feet
+
+use paint { sculpt ink }
+use parts { contact crust }
+
+def vertebra_stair
+  anchor feet 0,0
+  contact 54 name:shade
+  each i in 0..6
+    let x = i*58
+    let y = -68-i*62
+    let tone = if i == 5 then p.bone.4 else if i == 0 then p.bone.2 else p.bone.3
+    group at:x,y
+      if i == 5
+        curve -70,-4 -70,20 -68,40 -46,56 -18,64 4,54 22,38 30,20 18,8 26,12 14,2 6,-8 -8,-16 -28,-22 -52,-26 -70,-4 closed tension:0 round:3 fill:tone brush:sculpt(scale:1.05 depth:.5 planes:.68 plump:.58 glossk:.22 rimk:.9) name:centrum
+          fx outline 5 brush:ink color:p.ink
+      else if i == 0
+        curve -72,0 -70,24 -66,46 -44,60 -12,68 16,66 40,52 58,28 60,6 42,-16 8,-22 -24,-18 -50,-26 -72,0 closed tension:0 round:5 fill:tone brush:sculpt(scale:1.1 depth:.56 planes:.66 plump:.6 glossk:.18 rimk:.9) name:centrum
+          fx outline 5 brush:ink color:p.ink
+      else
+        curve -70,-4 -70,22 -66,42 -44,58 -16,66 10,58 36,42 56,18 58,-2 40,-18 6,-24 -22,-18 -50,-26 -70,-4 closed tension:0 round:4 fill:tone brush:sculpt(scale:1.05 depth:.52 planes:.68 plump:.58 glossk:.2 rimk:.9) name:centrum
+          fx outline 5 brush:ink color:p.ink
+      inside @centrum
+        ellipse 46,12 at:-16,-14 fill:p.bone.5 a:.55 blur:3 name:tread
+        ellipse 16,8 at:8,-16 fill:p.bone.6 a:.35 blur:2 name:glint
+        ellipse 28,32 at:-48,16 fill:p.bone.0 a:.42 blur:3 name:riser
+        ellipse 11,7 at:-32,8 fill:p.ink a:.82 name:canal
+          ellipse 5,3 at:2,-1 fill:p.bone.0 a:.45 name:canal_well
+        curve -38,4 -32,2 -26,5 stroke:p.bone.4,1.5 a:.55 name:canal_lip
+        curve -40,-18 -8,-14 14,-20 stroke:p.bone.6,2 a:.5 name:endplate
+        curve -24,4 2,16 20,8 stroke:p.bone.5,1.2 a:.3 name:grain_a
+        curve -18,24 6,32 16,22 stroke:p.bone.0,1.4 a:.32 name:grain_b
+        curve -4,12 14,26 28,16 stroke:p.ink,3.2 a:.75 name:fissure
+        ellipse 8,3 at:-6+mod(i*5 20),20+mod(i*3 12) rot:-18+i*6 fill:p.bone.0 a:.8 name:gouge
+        circle 3.2 at:6,34 fill:p.ink a:.6 name:pore
+        each k in 0..5
+          circle .8+rand(0 1.6) at:rand(-40 32),rand(0 40) fill:p.ink a:.48 name:pit
+        if i < 5
+          ellipse 26,9 at:4,-10 fill:p.ink a:.4 blur:2 name:seat
+        if i == 1
+          circle 3.4 at:12,22 fill:p.moss.2 brush:sculpt(scale:.3) name:moss
+          circle 2.2 at:16,24 fill:p.moss.3 brush:sculpt(scale:.26) name:moss_b
+          circle 1.5 at:9,25 fill:p.moss.1 name:moss_c
+        if i == 2
+          curve -16,2 4,20 18,10 8,32 stroke:p.ink,4.2 a:.8 name:split
+        if i == 3
+          ellipse 22,6 at:0,16 rot:-20 fill:p.verd.1 a:.46 brush:sculpt(scale:.4) name:stain
+          ellipse 11,3.2 at:14,8 rot:-52 fill:p.verd.3 brush:sculpt(scale:.28 glossk:.4) name:nail
+        if i == 5
+          curve 0,-6 12,6 6,18 18,12 16,22 2,12 closed fill:p.bone.0 a:.92 name:marrow
+          curve 4,-2 14,8 12,18 stroke:p.bone.5,2.4 a:.85 name:lip
+      if i == 5
+        curve 46,-12 64,-28 82,-10 78,4 60,8 44,-2 closed tension:0 round:3 fill:p.bone.4 brush:sculpt(scale:.4 depth:.5 glossk:.34 plump:.7) name:shard
+          ellipse 7,3 at:66,-18 fill:p.bone.6 a:.75 name:facet
+          curve 52,-8 68,-2 stroke:p.bone.0,1.5 a:.7 name:shard_crack
+          fx outline 3 brush:ink color:p.ink
+      curve -6,16 12,26 24,18 fill:none stamp:crust(spacing:8) name:salt
+      if i == 5
+        curve 2,0 12,10 8,18 fill:none stamp:crust(spacing:6) name:chip_salt
+      if i == 2
+        curve -14,6 6,18 16,12 fill:none stamp:crust(spacing:7) name:seam_salt
+
+vertebra_stair at:92,498 name:stair
+assert inside(@stair canvas margin:12)
+assert @stair.bottom-@stair.feet.y in -8..16
