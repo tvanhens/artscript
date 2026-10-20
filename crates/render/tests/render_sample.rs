@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use ramose_ir::{
     Blend, Color, Effect, EffectInput, EffectOp, Field, Matrix, Node, NodeKind, NoiseKind, Paint, Path,
-    Point, Scene, Shape, Stop,
+    Point, Scene, Shape, Stop, Warp,
 };
 use skia_safe::PathBuilder;
 use ramose_render::{Backend, render_png};
@@ -156,6 +156,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
         path: path.into(),
         origin: "sample:1".into(),
         transform: Matrix::new_identity(),
+        warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
         clip: None,

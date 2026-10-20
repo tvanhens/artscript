@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use ramose_ir::{
     Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke,
+    Point, Rect, Shape, Stroke, Warp,
 };
 use ramose_syntax::ast::{
     self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
@@ -669,6 +669,7 @@ pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: No
         path,
         origin,
         transform,
+        warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
         clip: None,
