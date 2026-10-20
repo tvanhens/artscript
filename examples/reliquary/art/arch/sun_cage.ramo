@@ -1,0 +1,169 @@
+# Gouache, one key from the upper right. Bone ribs close on a blazing sun.
+# The thick bars are in front of the fire. The thin ones sit behind it. Smoke is ash.
+
+@target arch/sun_cage.png 440x500 bg:none
+
+use paint { sculpt ink }
+use parts { ember }
+
+def sun_cage
+  layer rear_layer
+    curve -128,-116 -36,-150 54,-142 124,-108 stroke:p.bone.2,6 brush:sculpt(scale:.46 depth:.82) name:rib_back_crown
+      fx outline 3 brush:ink color:p.ink
+    curve -156,-108 -178,-46 -166,-6 stroke:p.bone.1,6 brush:sculpt(scale:.44 depth:.84) name:rib_back_west
+      fx outline 3 brush:ink color:p.ink
+    curve -160,28 -154,82 -144,126 stroke:p.bone.1,5 brush:sculpt(scale:.44 depth:.84) name:rib_back_west_b
+      fx outline 3 brush:ink color:p.ink
+    ellipse 7,3.4 rot:22 at:-172,10 fill:p.bone.3 brush:sculpt(scale:.26) name:flake
+      ellipse 2.6,1 at:1.1,-.5 fill:p.bone.5 name:lit
+      fx outline 3 brush:ink color:p.ink
+    curve 142,-96 172,-18 164,58 146,122 stroke:p.bone.2,6 brush:sculpt(scale:.46 depth:.8) name:rib_back_east
+      fx outline 3 brush:ink color:p.ink
+    curve -118,132 -8,156 86,150 132,128 stroke:p.bone.1,5 brush:sculpt(scale:.44 depth:.84) name:rib_back_foot
+      fx outline 3 brush:ink color:p.ink
+    curve -166,-24 -48,-32 36,-18 118,-8 stroke:p.bone.1,5 brush:sculpt(scale:.4 depth:.84) name:rib_back_slit
+      fx outline 3 brush:ink color:p.ink
+    curve -148,24 -10,16 96,28 stroke:p.bone.0,5 brush:sculpt(scale:.4 depth:.86) name:rib_back_low
+      fx outline 3 brush:ink color:p.ink
+
+  layer spine_layer
+    curve 6,-148 16,-90 12,-20 18,48 12,112 4,150 -12,142 -16,100 -18,30 -16,-28 -14,-92 -4,-144 closed at:-160,4 fill:p.bone.1 brush:sculpt(scale:.7 depth:.78) name:spine
+      ellipse 6,32 at:6,-48 fill:p.bone.4 a:.38 name:lit
+      ellipse 7,30 at:-7,40 fill:p.bone.0 a:.4 name:shade
+      curve 1,-18 -1,34 2,90 stroke:p.ink,2.4 a:.75 name:fissure
+      circle 3 at:1,16 fill:p.ink a:.6 name:pit_a
+      circle 2.4 at:-2,62 fill:p.ink a:.55 name:pit_b
+      circle 2.6 at:3,-64 fill:p.ink a:.5 name:pit_c
+      fx outline 5 brush:ink color:p.ink
+
+  layer sun_layer
+    circle 78 fill:p.amber.3 a:.22 blur:7 name:corona
+    circle 52 fill:p.amber.4 brush:sculpt(lo:p.amber.1 hi:p.amber.6 depth:.48 planes:.28 glossk:.35 scale:1.05 strength:.55) name:disk
+      circle 14 at:6,-6 fill:p.amber.5 name:mantle
+      circle 8 at:12,-14 fill:p.amber.6 name:core
+      circle 3.2 at:16,-18 fill:p.shine name:hot
+      fx glow 16 color:p.amber.4 a:.75 strength:1.55
+    curve 4,-24 22,-28 60,-14 66,-6 30,-4 12,-12 closed fill:p.amber.5 brush:sculpt(lo:p.amber.2 hi:p.shine depth:.12 planes:.08 glossk:.55 scale:.42 strength:.4) name:flare_lick
+      circle 3.4 at:50,-14 fill:p.shine name:lick_hot
+      fx glow 10 color:p.amber.5 a:.7 strength:1.5
+    curve -2,24 16,38 42,30 18,20 closed fill:p.amber.5 brush:sculpt(lo:p.amber.2 hi:p.amber.6 depth:.18 planes:.12 glossk:.4 scale:.4) name:flare_low
+      fx glow 8 color:p.amber.5 a:.45 strength:1.25
+
+  layer front_layer
+    curve -162,-70 -100,-86 -20,-82 60,-74 108,-60 98,-36 55,-40 -20,-36 -100,-42 -154,-48 closed at:0,-3 fill:p.bone.5 brush:sculpt(scale:.58) jitter:2.3,26 name:rib_u
+      ellipse 22,5 at:22,-68 fill:p.bone.6 a:.7 name:ridge
+      ellipse 14,5 at:-28,-46 fill:p.bone.0 a:.4 name:shade
+      curve -24,-58 8,-64 36,-56 stroke:p.ink,3.6 a:.88 name:crack
+      circle 3.2 at:-48,-58 fill:p.ink a:.62 name:pit
+      ellipse 11,4 at:-6,-46 fill:p.amber.0 a:.36 name:sear
+      fx outline 5 brush:ink color:p.ink
+    ellipse 12,4.2 rot:-16 at:28,-78 fill:p.bone.5 brush:sculpt(scale:.32) name:lip
+      fx outline 3 brush:ink color:p.ink
+    curve -158,-8 -80,-4 0,-2 70,2 102,8 94,20 58,18 0,16 -80,14 -150,6 closed at:0,4 fill:p.bone.4 brush:sculpt(scale:.52) jitter:2,28 name:rib_mid
+      ellipse 16,4 at:22,-2 fill:p.bone.5 a:.48 name:ridge
+      circle 2.8 at:-36,6 fill:p.ink a:.58 name:pit
+      curve -16,2 14,6 40,4 stroke:p.ink,2.2 a:.65 name:crack
+      fx outline 5 brush:ink color:p.ink
+    curve -154,22 -70,26 10,28 75,34 104,42 94,58 65,54 10,52 -70,50 -146,40 closed at:0,18 fill:p.bone.4 brush:sculpt(scale:.55) jitter:2.2,30 name:rib_m
+      ellipse 16,4.5 at:24,32 fill:p.bone.5 a:.45 name:ridge
+      curve -18,36 12,42 44,38 stroke:p.ink,3.4 a:.85 name:crack
+      circle 3 at:-24,40 fill:p.ink a:.6 name:pit
+      fx outline 5 brush:ink color:p.ink
+    curve -148,56 -70,58 16,60 86,70 76,98 8,102 -74,96 -140,84 closed at:0,18 fill:p.bone.3 brush:sculpt(scale:.56) jitter:2.2,32 name:rib_low
+      ellipse 14,4 at:20,64 fill:p.bone.5 a:.36 name:ridge
+      ellipse 8,3.5 at:-30,78 fill:p.bone.0 a:.4 name:shade
+      circle 3.4 at:4,80 fill:p.ink a:.6 name:pit
+      each i in 0..4
+        poly 4 r:.7+rand(0 1.4) rot:rand(0 80) at:-20+i*16+rand(-3 3),88+rand(-3 4) fill:p.bone.6 a:.7 brush:sculpt(scale:.16) name:crust
+      fx outline 5 brush:ink color:p.ink
+    curve -152,8 -78,30 4,54 76,84 stroke:p.bone.3,[16 24 22 8] at:0,10 brush:sculpt(scale:.5) name:rib_brace
+      circle 3 at:-78,30 fill:p.ink a:.55 name:pit
+      curve -40,18 0,40 36,62 stroke:p.ink,2.4 a:.7 name:crack
+      fx outline 5 brush:ink color:p.ink
+
+  layer sternum_layer
+    curve -22,-128 10,-134 24,-46 18,36 26,108 8,128 -18,120 -26,48 -24,-36 -14,-110 closed at:114,6 fill:p.bone.4 brush:sculpt(scale:.74 depth:.72) jitter:2.1,34 name:sternum
+      ellipse 9,26 at:8,-48 fill:p.bone.5 a:.5 name:lit
+      ellipse 8,24 at:-10,46 fill:p.bone.0 a:.34 name:shade
+      ellipse 7,18 at:-14,-6 fill:p.amber.0 a:.42 name:scorch
+      curve -2,-48 2,4 -1,58 stroke:p.ink,3.8 a:.88 name:crack
+      circle 6 at:5,16 fill:p.moss.2 brush:sculpt(lo:p.moss.0 hi:p.moss.4 scale:.35 depth:.4) name:moss
+        circle 3.6 at:3.4,-2.2 fill:p.moss.4 name:leaf
+        circle 2.8 at:-3,2 fill:p.moss.3 name:leaf_b
+        circle 2 at:1.2,3.2 fill:p.moss.4 name:leaf_c
+      each i in 0..5
+        circle .9+rand(0 1.5) at:rand(-8 10),-70+i*32+rand(-4 4) fill:p.ink a:.55 name:pit
+      fx outline 6 brush:ink color:p.ink
+    rect 38x12 r:5 at:112,-36 fill:p.verd.3 brush:sculpt(scale:.36 glossk:.52) name:band_high
+      rect 30x4 r:2 at:0,-3 fill:p.verd.5 a:.55 name:lit
+      fx outline 3 brush:ink color:p.ink
+    circle 2.8 at:96,-36 fill:p.verd.1 brush:sculpt(scale:.22 glossk:.65) name:nail_high_l
+      circle .85 at:.5,-.5 fill:p.shine name:catch
+    circle 2.8 at:128,-36 fill:p.verd.5 brush:sculpt(scale:.22 glossk:.65) name:nail_high_r
+      circle .85 at:.45,-.5 fill:p.shine name:catch
+    rect 34x11 r:4 at:116,48 fill:p.verd.2 brush:sculpt(scale:.34 glossk:.48) name:band_low
+      rect 26x3.5 r:2 at:0,-2.5 fill:p.verd.4 a:.5 name:lit
+      fx outline 3 brush:ink color:p.ink
+    circle 2.5 at:102,48 fill:p.verd.1 brush:sculpt(scale:.2 glossk:.6) name:nail_low_l
+      circle .75 at:.4,-.45 fill:p.shine name:catch
+    circle 2.5 at:130,48 fill:p.verd.4 brush:sculpt(scale:.2 glossk:.6) name:nail_low_r
+      circle .75 at:.4,-.4 fill:p.shine name:catch
+    ellipse 18,12 rot:-18 at:120,8 fill:p.verd.2 brush:sculpt(scale:.4 glossk:.46) name:plate
+      ellipse 7,3.5 at:4,-3 fill:p.verd.5 a:.6 name:lit
+      circle 1.8 at:5,-3 fill:p.verd.0 name:nail
+        circle .55 at:.35,-.35 fill:p.shine name:catch
+      circle 1.6 at:-4,3.5 fill:p.verd.0 name:nail_b
+        circle .5 at:.3,-.3 fill:p.shine name:catch
+      fx outline 3 brush:ink color:p.ink
+    curve 0,0 16,2 26,-6 at:138,-16 stroke:p.bone.2,5.5 brush:sculpt(scale:.32) name:hook
+      fx outline 3 brush:ink color:p.ink
+    curve 0,0 14,7 22,1 at:136,58 stroke:p.bone.2,4.5 brush:sculpt(scale:.3) name:hook_b
+      fx outline 3 brush:ink color:p.ink
+
+  layer joint_layer
+    each i in 0..7
+      ellipse 16+rand(0 5),12+rand(0 3) at:-146,-128+i*40 fill:p.bone.4 brush:sculpt(scale:.36) jitter:.8,20 name:knuckle
+        ellipse 6,3 at:4,-2.2 fill:p.bone.5 a:.7 name:lit
+        circle 2.2 at:-3.5,2.6 fill:p.ink a:.55 name:pit
+        if i == 3
+          curve -6,0 0,4 6,1 stroke:p.ink,1.8 name:chip
+        fx outline 4 brush:ink color:p.ink
+      curve 0,0 -13+rand(-2 2),-2 -20-rand(0 8),rand(-4 5) at:-160,-128+i*40 stroke:p.bone.2,5 brush:sculpt(scale:.28) name:spur
+        fx outline 3 brush:ink color:p.ink
+    curve -26,-4 -8,-16 16,-12 30,2 12,13 -14,14 -28,4 closed at:-4,-104 fill:p.bone.4 brush:sculpt(scale:.48) jitter:1.2,24 name:boss
+      ellipse 12,5 at:8,-4 fill:p.bone.6 a:.55 name:lit
+      ellipse 9,3.5 at:-4,5 fill:p.ash.2 a:.45 name:soot
+      circle 2.2 at:2,2 fill:p.ink a:.5 name:pit
+      fx outline 5 brush:ink color:p.ink
+    circle 7.5 at:2,-132 fill:none stroke:p.bone.3,4 brush:sculpt(scale:.28) name:ring
+      fx outline 3 brush:ink color:p.ink
+    curve -48,-6 -10,-16 32,-8 50,6 18,16 -28,14 -50,4 closed at:4,124 fill:p.bone.2 brush:sculpt(scale:.56) jitter:1.3,28 name:sacrum
+      ellipse 16,5 at:12,-4 fill:p.bone.5 a:.4 name:lit
+      each i in 0..7
+        poly 4 r:.8+rand(0 1.8) rot:rand(0 90) at:rand(-28 30),rand(-4 8) fill:pick([p.bone.5 p.bone.6 p.shine]) a:.62+rand(0 .3) brush:sculpt(scale:.15) name:salt
+      fx outline 5 brush:ink color:p.ink
+
+  layer find_layer
+    curve 64,96 58,112 52,126 stroke:p.bone.1,2.4 brush:sculpt(scale:.22) name:filament
+    ellipse 16,6 rot:-38 at:46,136 fill:p.bone.5 brush:sculpt(scale:.3) jitter:.8,14 name:splinter
+      ellipse 5,1.6 at:2,-1 fill:p.bone.6 name:lit
+      circle 1.3 at:-3,1 fill:p.ink a:.55 name:pit
+      fx outline 3 brush:ink color:p.ink
+
+  layer air_layer
+    ellipse 34,13 at:-32,-166 fill:p.ash.3 a:.24 blur:9 name:smoke_a
+    ellipse 20,9 at:24,-174 fill:p.ash.4 a:.2 blur:7 name:smoke_b
+    ellipse 18,8 at:-6,-148 fill:p.ash.4 a:.22 blur:6 name:smoke_c
+    ellipse 14,6 at:42,-144 fill:p.ash.3 a:.16 blur:5 name:smoke_d
+    ellipse 16,7 at:-54,-140 fill:p.ash.3 a:.14 blur:5 name:smoke_e
+    curve -24,-126 4,-152 28,-144 10,-124 fill:none stamp:ember name:sparks
+    curve 22,-30 48,-16 36,6 fill:none stamp:ember(spacing:20) name:sparks_slit
+    circle 5.5 at:-18,-158 fill:p.amber.4 a:.4 blur:2.4 name:haze_a
+    circle 2.6 at:-18,-158 fill:p.shine name:spark_a
+    circle 4.5 at:14,-146 fill:p.amber.3 a:.35 blur:2 name:haze_b
+    circle 2.1 at:14,-146 fill:p.amber.6 name:spark_b
+    circle 4 at:34,-136 fill:p.amber.4 a:.3 blur:1.8 name:haze_c
+    circle 1.8 at:34,-136 fill:p.amber.5 name:spark_c
+
+sun_cage at:50%,50% name:cage
+assert inside(@cage canvas margin:12)
