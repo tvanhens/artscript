@@ -751,7 +751,7 @@ impl Ring<'_> {
         let (spine, contours) = ring_contours(&area, self.width, px);
         let ribbon = Ribbon { marks: self.brush.to_vec(), contours, taper: [0.0, 0.0] };
         let paint = IrPaint::Solid(Color { a: 1.0, ..self.color });
-        mark::draw_ribbon(canvas, &spine, &paint, &ribbon, self.ctx, self.origin)
+        mark::draw_ribbon(canvas, &spine, &paint, &ribbon, self.ctx, self.origin, &mut mark::Mode::Over)
     }
 }
 
@@ -965,7 +965,7 @@ fn brush_kept(
     let reach = fill.reach();
     let bounds = geometry.compute_tight_bounds().with_outset((reach, reach));
     kept_pixels(bounds, local_to_px, false, |canvas| {
-        mark::draw_area(canvas, geometry, fill, ctx, origin, Ink::Coverage)
+        mark::draw_area(canvas, geometry, fill, ctx, origin, Ink::Coverage, &mut mark::Mode::Over)
     })
 }
 
