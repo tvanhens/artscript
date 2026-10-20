@@ -8,6 +8,7 @@ use ramose_syntax::ast::{
 use ramose_syntax::{Diagnostic, Severity};
 
 use crate::identity::PositionalUses;
+use crate::place::Place;
 use crate::project::{LintLevel, Manifest};
 use crate::targets;
 
@@ -613,7 +614,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
         fn node(
             &mut self,
             n: &'n Node,
-            parent: Matrix,
+            parent: &Place,
             kept: Option<Rect>,
             mut site: Option<&'n str>,
         ) -> bool {
@@ -623,11 +624,11 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
             match &n.kind {
                 NodeKind::Shape(_) => self.measure(n, parent, kept, site),
                 NodeKind::Group { children, .. } => {
-                    let world = parent * n.transform;
+                    let world = parent.inner_node(n);
                     let mut inner = kept;
                     let mut drawn = true;
                     for r in n.kept_bounds() {
-                        let r = world.map_rect(r).0;
+                        let r = world.map_rect(r);
                         match &mut inner {
                             Some(k) => drawn &= k.intersect(r),
                             None => inner = Some(r),
@@ -636,7 +637,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
                     let mut hit = false;
                     if drawn {
                         for c in children {
-                            hit |= self.node(c, world, inner, site);
+                            hit |= self.node(c, &world, inner, site);
                         }
                     }
                     hit || (!n.effects.is_empty() && self.measure(n, parent, kept, site))
@@ -647,14 +648,14 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
         fn measure(
             &mut self,
             n: &'n Node,
-            parent: Matrix,
+            parent: &Place,
             kept: Option<Rect>,
             site: Option<&'n str>,
         ) -> bool {
-            let Some(b) = n.outer_bounds(&parent, self.find) else {
+            let Some(b) = n.outer_bounds(&parent.flat(), self.find) else {
                 return false;
             };
-            let mut b = parent.map_rect(b).0;
+            let mut b = parent.map_rect(b);
             if let Some(k) = kept
                 && !b.intersect(k)
             {
@@ -670,8 +671,8 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
         }
     }
     let mut paths = HashMap::new();
-    index(&scene.children, Matrix::new_identity(), &mut paths);
-    let find = |p: &str| paths.get(p).copied();
+    index(&scene.children, &Place::identity(), &mut paths);
+    let find = |p: &str| paths.get(p).map(|(n, place)| (*n, place.flat()));
     let mut walk = Walk {
         canvas,
         entry: file,
@@ -679,7 +680,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
         hits: Vec::new(),
     };
     for c in &scene.children {
-        walk.node(c, Matrix::new_identity(), None, None);
+        walk.node(c, &Place::identity(), None, None);
     }
     let hits = walk.hits;
     for (path, origin, b, site) in hits {
@@ -762,14 +763,14 @@ pub fn hidden_child(
         by_key: HashMap<(&'n str, Option<&'n str>), usize>,
     }
     impl<'n> Walk<'n, '_> {
-        fn node(&mut self, n: &'n Node, parent: Matrix, mut site: Option<&'n str>) {
+        fn node(&mut self, n: &'n Node, parent: &Place, mut site: Option<&'n str>) {
             if source_span(&n.origin, "").0 == self.entry {
                 site = Some(&n.origin);
             }
             if !self.clips.is_empty()
-                && let Some(b) = n.outer_bounds(&parent, self.find)
+                && let Some(b) = n.outer_bounds(&parent.flat(), self.find)
             {
-                let bounds = parent.map_rect(b).0;
+                let bounds = parent.map_rect(b);
                 let next = self.lines.len();
                 let i = *self
                     .by_key
@@ -795,28 +796,28 @@ pub fn hidden_child(
                     return;
                 }
             }
-            let world = parent * n.transform;
+            let world = parent.inner_node(n);
             let NodeKind::Shape(s) = &n.kind else {
                 for c in n.descendants() {
-                    self.node(c, world, site);
+                    self.node(c, &world, site);
                 }
                 return;
             };
             // Stamps are the shape's ink and spill past it; only the children are clipped.
             for c in &s.stamps {
-                self.node(c, world, site);
+                self.node(c, &world, site);
             }
-            let r = world.map_rect(s.clip().compute_tight_bounds()).0;
+            let r = world.map_rect(s.clip().compute_tight_bounds());
             self.clips.push((r, n.path.as_str()));
             for c in &s.children {
-                self.node(c, world, site);
+                self.node(c, &world, site);
             }
             self.clips.pop();
         }
     }
     let mut paths = HashMap::new();
-    index(&scene.children, Matrix::new_identity(), &mut paths);
-    let find = |p: &str| paths.get(p).copied();
+    index(&scene.children, &Place::identity(), &mut paths);
+    let find = |p: &str| paths.get(p).map(|(n, place)| (*n, place.flat()));
     let mut walk = Walk {
         entry: file,
         find: &find,
@@ -825,7 +826,7 @@ pub fn hidden_child(
         by_key: HashMap::new(),
     };
     for c in &scene.children {
-        walk.node(c, Matrix::new_identity(), None);
+        walk.node(c, &Place::identity(), None);
     }
     let mut out = Vec::new();
     for line in walk.lines {
@@ -872,24 +873,24 @@ pub fn hidden_child(
     out
 }
 
-/// Every node by path with its parent's world transform, mask nodes included, as render indexes
+/// Every node by path with the place of its parent frame, mask nodes included, as render indexes
 /// them for effects that read another node.
-fn index<'n>(nodes: &'n [Node], parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
+fn index<'n>(nodes: &'n [Node], parent: &Place, out: &mut HashMap<&'n str, (&'n Node, Place)>) {
     for n in nodes {
         index_node(n, parent, out);
     }
 }
 
-fn index_node<'n>(n: &'n Node, parent: Matrix, out: &mut HashMap<&'n str, (&'n Node, Matrix)>) {
-    out.insert(n.path.as_str(), (n, parent));
-    let world = parent * n.transform;
+fn index_node<'n>(n: &'n Node, parent: &Place, out: &mut HashMap<&'n str, (&'n Node, Place)>) {
+    out.insert(n.path.as_str(), (n, parent.clone()));
+    let world = parent.inner_node(n);
     if let Some(mask) = &n.mask
         && let MaskSource::Nodes(inner) = &mask.source
     {
-        index(inner, world, out);
+        index(inner, &world, out);
     }
     for c in n.descendants() {
-        index_node(c, world, out);
+        index_node(c, &world, out);
     }
 }
 

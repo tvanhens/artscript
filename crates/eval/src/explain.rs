@@ -3,8 +3,9 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use ramose_ir::{Effect, EffectOp, MaskSource, Matrix, Node, NodeKind, Paint, Rect, Scene};
+use ramose_ir::{Effect, EffectOp, MaskSource, Node, NodeKind, Paint, Rect, Scene};
 
+use crate::place::Place;
 use crate::value::num;
 
 fn paint(p: &Paint) -> String {
@@ -54,7 +55,7 @@ fn bounds_text(b: Rect) -> String {
 }
 
 /// `stamp` labels a node that sits in its host's `stamps`; any other node is labelled by its kind.
-fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String, stamp: bool) {
+fn walk(n: &Node, parent: &Place, depth: usize, seeded: &BTreeSet<String>, out: &mut String, stamp: bool) {
     let pad = "  ".repeat(depth);
     let kind = match &n.kind {
         _ if stamp => "stamp",
@@ -64,7 +65,7 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
     };
     let _ = write!(out, "{pad}{}  {kind}", n.path);
     if let Some(b) = n.bounds() {
-        let _ = write!(out, "  {}", bounds_text(parent.map_rect(b).0));
+        let _ = write!(out, "  {}", bounds_text(parent.map_rect(b)));
     }
     if let NodeKind::Shape(s) = &n.kind {
         if let Some(f) = &s.fill {
@@ -102,21 +103,21 @@ fn walk(n: &Node, parent: Matrix, depth: usize, seeded: &BTreeSet<String>, out: 
         out.push_str("  seed");
     }
     let _ = writeln!(out, "  ({})", n.origin);
-    let world = parent * n.transform;
+    let world = parent.inner_node(n);
     for mask in n.masks() {
         if let MaskSource::Nodes(nodes) = &mask.source {
             for c in nodes {
-                walk(c, world, depth + 1, seeded, out, false);
+                walk(c, &world, depth + 1, seeded, out, false);
             }
         }
     }
     if let NodeKind::Shape(s) = &n.kind {
         for set in s.stamps.chunk_by(|a, b| set_of(&a.path) == set_of(&b.path)) {
-            fold(set, world, depth + 1, seeded, out);
+            fold(set, &world, depth + 1, seeded, out);
         }
     }
     for c in n.descendants().skip(stamps_of(n)) {
-        walk(c, world, depth + 1, seeded, out, false);
+        walk(c, &world, depth + 1, seeded, out, false);
     }
 }
 
@@ -134,7 +135,7 @@ fn set_of(path: &str) -> &str {
 
 /// One set of stamps. A run of three or more prints as one line with the set's bounds, then its
 /// first and last stamp in full, so a 400-leaf vine stays readable.
-fn fold(set: &[Node], world: Matrix, depth: usize, seeded: &BTreeSet<String>, out: &mut String) {
+fn fold(set: &[Node], world: &Place, depth: usize, seeded: &BTreeSet<String>, out: &mut String) {
     if set.len() <= 2 {
         for c in set {
             walk(c, world, depth, seeded, out, true);
@@ -146,7 +147,7 @@ fn fold(set: &[Node], world: Matrix, depth: usize, seeded: &BTreeSet<String>, ou
     let index = |n: &Node| n.path.rsplit_once('.').map_or("", |(_, i)| i).to_string();
     let _ = write!(out, "{pad}{}.{}..{}  stamp x{}", set_of(&first.path), index(first), index(last), set.len());
     if let Some(b) = ramose_ir::union_bounds(set) {
-        let _ = write!(out, "  {}", bounds_text(world.map_rect(b).0));
+        let _ = write!(out, "  {}", bounds_text(world.map_rect(b)));
     }
     let _ = writeln!(out, "  ({})", first.origin);
     walk(first, world, depth, seeded, out, true);
@@ -160,7 +161,7 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     }
     out.push('\n');
     for c in &scene.children {
-        walk(c, Matrix::new_identity(), 0, seeded, &mut out, false);
+        walk(c, &Place::identity(), 0, seeded, &mut out, false);
     }
     out
 }

@@ -17,6 +17,7 @@ mod lints;
 mod motion;
 mod order;
 mod paint;
+mod place;
 pub mod project;
 mod range;
 mod scope;

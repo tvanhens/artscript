@@ -4,13 +4,14 @@
 
 use std::rc::Rc;
 
-use ramose_ir::{Effect, EffectInput, EffectOp, Matrix, Point, Rect, Sides};
+use ramose_ir::{Effect, EffectInput, EffectOp, Point, Rect, Sides};
 use ramose_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
 use crate::brush::Slot;
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, unknown_key};
 use crate::identity::{self, Key};
+use crate::place::Place;
 use crate::scope::{FinishDef, Module};
 use crate::value::{Value, num};
 
@@ -116,7 +117,7 @@ pub(crate) struct FxSite<'s> {
     pub scope: &'s Scope,
     pub ordinal: u32,
     pub frame: Rect,
-    pub world: Matrix,
+    pub world: Place,
 }
 
 /// Where one `fx` line's seeds come from: the node's key, the line's own key under it, and the
@@ -173,7 +174,7 @@ impl Evaluator<'_> {
         let feather = self.eval_args(&[], &site.line.named, site.scope, 0)?.num("feather").unwrap_or(0.0) as f32;
         self.begin_seed(file, mask_key.clone());
         let origin = format!("{file}:{}:{}", line.span.line, line.span.col);
-        self.lower_mask(&line.mask, feather, site.scope, site.frame, site.world, mask_key, &origin)
+        self.lower_mask(&line.mask, feather, site.scope, site.frame, &site.world, mask_key, &origin)
     }
 
     /// The finish's lines, in order, evaluated in its module with its params bound. The params'

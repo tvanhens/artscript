@@ -10,6 +10,7 @@ use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
 use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, RegionKind};
+use crate::place::{Place, inverse};
 use crate::value::Value;
 
 pub struct Module {
@@ -180,15 +181,16 @@ pub struct FnDef {
     pub span: Span,
 }
 
-/// A node (or anchor) as created so far, with the transform from its parent to the canvas.
+/// A node (or anchor) as created so far, with the place of its parent frame on the canvas.
 #[derive(Clone)]
 pub struct Record {
     pub name: String,
     pub path: String,
     pub key: Key,
-    pub parent_world: Matrix,
+    pub parent_world: Place,
     pub node: Option<Node>,
-    /// Canvas position of an anchor.
+    /// An anchor's position in the parent frame. Its canvas point is read through
+    /// `parent_world`, so a warp filled later or a grid shift moves it.
     pub anchor: Option<Point>,
     /// The node's `at:` in its parent's coordinates (for suggested fixes).
     pub at: (f64, f64),
@@ -203,6 +205,13 @@ pub struct Record {
     /// Where contour position 0 lies on this shape, as a fraction of its total contour length
     /// from the geometry's own start, before `jitter:`.
     pub seam: f64,
+}
+
+impl Record {
+    /// `None` when the record is a node, or its anchor is behind a warp.
+    pub fn anchor_canvas(&self) -> Option<Point> {
+        self.parent_world.map_point(self.anchor?)
+    }
 }
 
 /// One stamp set a node placed: its name and one record per stamp, index by position.
@@ -236,31 +245,32 @@ pub enum Extent {
 
 impl RefVal {
     pub fn bounds(&self) -> Option<Rect> {
-        self.bounds_in(&Matrix::new_identity())
+        self.bounds_in(&Place::identity())
     }
 
-    /// Bounds in the coordinates that `view` maps canvas coordinates into.
-    pub fn bounds_in(&self, view: &Matrix) -> Option<Rect> {
+    /// Bounds in the frame `view` places, read back through its affine steps.
+    pub fn bounds_in(&self, view: &Place) -> Option<Rect> {
+        let back = inverse(&view.flat());
         if let Extent::Outer(r) = self.extent {
-            return Some(view.map_rect(r).0);
+            return Some(back.map_rect(r).0);
         }
         if let Some(c) = self.canvas {
-            return Some(view.map_rect(c).0);
+            return Some(back.map_rect(c).0);
         }
-        if let Some(p) = self.record.anchor {
-            let p = view.map_point(p);
+        if self.record.anchor.is_some() {
+            let p = back.map_point(self.record.anchor_canvas()?);
             return Some(Rect::from_xywh(p.x, p.y, 0.0, 0.0));
         }
         let local = self.record.node.as_ref()?.bounds()?;
-        Some((*view * self.record.parent_world).map_rect(local).0)
+        Some(self.record.parent_world.map_rect_then(local, &back))
     }
 
-    pub fn geom_bounds_in(&self, view: &Matrix) -> Option<Rect> {
+    pub fn geom_bounds_in(&self, view: &Place) -> Option<Rect> {
         if self.canvas.is_some() || self.record.anchor.is_some() || self.extent != Extent::Visual {
             return self.bounds_in(view);
         }
         let node = self.record.node.as_ref()?;
-        geom_bounds(node, &(*view * self.record.parent_world))
+        geom_bounds(node, &self.record.parent_world, &inverse(&view.flat()))
     }
 
     /// Union of the node's shape geometries in canvas coordinates.
@@ -390,7 +400,7 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
     if private_scope && r.record.name.starts_with('_') {
         return;
     }
-    if let Some(p) = r.record.anchor {
+    if let Some(p) = r.record.anchor_canvas() {
         out.insert(r.label.clone(), (p.x as f64, p.y as f64));
     }
     let private_scope = match &r.record.inner {
@@ -414,10 +424,13 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
     }
 }
 
-pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
-    let world = *parent_world * node.transform;
+/// How close a flattened silhouette stays to a warped curve, in canvas units.
+pub(crate) const TOL: f32 = 0.1;
+
+pub fn silhouette(node: &Node, parent_world: &Place) -> Path {
+    let world = parent_world.inner_node(node);
     match &node.kind {
-        NodeKind::Shape(s) => s.clip().make_transform(&world),
+        NodeKind::Shape(s) => world.map_path(&s.clip(), TOL),
         NodeKind::Group { children, .. } => {
             let parts: Vec<Path> = children
                 .iter()
@@ -429,15 +442,15 @@ pub fn silhouette(node: &Node, parent_world: &Matrix) -> Path {
     }
 }
 
-fn geom_bounds(node: &Node, parent_world: &Matrix) -> Option<Rect> {
-    let world = *parent_world * node.transform;
+/// The box of the node's geometry under `after`, which maps the canvas into the reader's frame.
+fn geom_bounds(node: &Node, parent_world: &Place, after: &Matrix) -> Option<Rect> {
+    let world = parent_world.inner_node(node);
     match &node.kind {
-        NodeKind::Shape(s) => {
-            (!s.geometry.is_empty()).then(|| world.map_rect(s.geometry.compute_tight_bounds()).0)
-        }
+        NodeKind::Shape(s) => (!s.geometry.is_empty())
+            .then(|| world.map_rect_then(s.geometry.compute_tight_bounds(), after)),
         NodeKind::Group { children, .. } => children
             .iter()
-            .filter_map(|c| geom_bounds(c, &world))
+            .filter_map(|c| geom_bounds(c, &world, after))
             .reduce(|mut a, b| {
                 a.join(b);
                 a

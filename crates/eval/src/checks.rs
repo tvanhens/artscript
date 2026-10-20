@@ -55,7 +55,7 @@ fn nudge(r: &RefVal, dx: f64, dy: f64, owner: &crate::identity::Key) -> Option<S
     if !r.record.key.is_stable() {
         return Some("add name:".into());
     }
-    let inv = r.record.parent_world.invert()?;
+    let inv = r.record.parent_world.flat().invert()?;
     let d = inv.map_vector(Vector::new(dx as f32, dy as f32));
     let (x, y) = (r.record.at.0 + d.x as f64, r.record.at.1 + d.y as f64);
     let addr = r
@@ -91,7 +91,7 @@ impl Evaluator<'_> {
             Some(Ok(v)) => v.num().unwrap_or(0.5),
             _ => 0.5,
         };
-        let center = sc.world.map_point((sc.frame.center_x(), sc.frame.center_y()));
+        let center = sc.world.flat().map_point((sc.frame.center_x(), sc.frame.center_y()));
         let saved = self.check.replace(CheckState {
             tol,
             notes: Vec::new(),
