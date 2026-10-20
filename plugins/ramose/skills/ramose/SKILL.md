@@ -28,7 +28,7 @@ When the user runs `/ramose` with a request, that request is the art to draw or 
    - `anim` t, key, anim, play, node keys, explain
    - `checks` assert, expect, measurements, check functions, rule
    - `cli` commands, flags, docs topics, exit codes
-   - `craft` structure a piece, layers and names, shading, outline, ground shadow, margin
+   - `craft` structure a piece, layers and names, choose a style, light and value, tools for each style
    - `manifest` ramose.toml tables and keys, project defaults, lint levels
 3. Find the project root: the nearest `ramose.toml`. If there is none, run `ramose init` in the folder where the art belongs, then delete the starter `art/hello.ramo`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
 

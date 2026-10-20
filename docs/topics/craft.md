@@ -1,4 +1,4 @@
-# craft: structure a piece, layers and names, shading, outline, ground shadow, margin
+# craft: structure a piece, layers and names, choose a style, light and value, tools for each style
 
 Structure a piece:
 
@@ -11,8 +11,10 @@ Structure a piece:
 
 Make it look finished:
 
+- Choose the style first: the one the request names, or the style of the art already in the project, else the one that best serves the subject and its use (an icon that reads small, a scene that sets a mood). State it in one line before you draw, and draw every part in it.
+- In every style, hold these. One light with one direction, and every shadow, highlight, and glow agrees with it. A full range of values, with the strongest contrast at the focal point. Forms that overlap, and a silhouette that reads when filled flat. A setting that fits the subject, such as a ground, a sky, or a backdrop, in place of an empty canvas. A margin of about 5% around the piece.
 - Nest highlights, shadows, and texture under the shape they belong to. A child is clipped to its parent, so the shading stays inside the form.
-- Shade each main fill with `brush:form` after `use std/brushes { form }`. It lights the shape from the upper left as a rounded volume, from the fill's own color, so a head, body, or cap reads as solid.
-- Finish a main form with `fx outline` as its last effect. Add `fx rim` for a light band and `fx grain` for texture.
-- Add a soft ground shadow: a flat ellipse in a dark color with a low `a:` and a large `blur:`, under the piece.
-- Leave a margin of about 5% of the canvas around the piece.
+- Match the tools to the style. The bundled ones are `use std/brushes { dry chip bristle form }` and `use std/stamps { dots ticks leaves }`.
+  - Clean vector or sticker: crisp fills, shading as hard-edged lighter and darker shapes or `brush:form` on a fill, `fx outline` as a main form's last effect, and a soft ground shadow (a dark ellipse with a low `a:` and a large `blur:`).
+  - Painterly, such as watercolor, gouache, or oil: few or no outlines. Write a brush for the medium and put it on every painted form; `ramose docs brushes` shows how, and the std brushes are a starting point. A watercolor brush rags the edge, pools pigment darker along it, granulates the wash, and blooms softly, and its washes go on translucent, pale first and darker on top. A gouache or oil brush lays opaque strokes with bristle streaks.
+  - Flat graphic: bold shapes, three to five colors, no shading, and no outline or one even weight.
