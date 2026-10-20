@@ -6,16 +6,18 @@
 
 ## One-time setup
 
-Add an automation token as the repository secret `NPM_TOKEN`.
+1. Add an npm automation token as the repository secret `NPM_TOKEN`.
+2. Add a fine-grained personal access token with read and write access to contents and pull requests as `RELEASE_PLEASE_TOKEN`. With `GITHUB_TOKEN`, GitHub runs no checks on the release PR.
 
-The `ramose` name on npm first held a graph database, which published 0.2.0 and 0.3.0. The first CLI release must be 0.4.0 or later. `publish.mjs` stops before it publishes anything when the version is below `latest`.
+The `ramose` name on npm first held a graph database, which published 0.2.0 and 0.3.0. `.release-please-manifest.json` starts at 0.3.0, so the first CLI release is 0.4.0 or later. `publish.mjs` stops before it publishes anything when the version is below `latest`.
 
 ## Cut a release
 
-1. Bump `version` in `[workspace.package]` of the root `Cargo.toml` and merge.
-2. Tag the merge commit `vX.Y.Z` and push the tag.
+release-please keeps a release PR open on `main`. It reads the Conventional Commit titles since the last release, picks the next version, bumps `[workspace.package]` in `Cargo.toml`, and writes `CHANGELOG.md`. The `release` workflow then refreshes `Cargo.lock` on that PR.
 
-The `release` workflow builds every platform, smoke-tests each package with npm and bun, then publishes the platform packages and `ramose` last. It fails if the tag differs from the Cargo version. Rerunning a half-failed release skips the versions already published.
+Merge the release PR. release-please tags `vX.Y.Z` and creates the GitHub release. The same run builds every platform, smoke-tests each package with npm and bun, then publishes the platform packages and `ramose` last. Rerunning a half-failed release skips the versions already published.
+
+While the version is below 1.0.0, a `feat` bumps the minor version, and a breaking change also bumps only the minor version.
 
 ## Add a platform
 
