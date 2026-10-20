@@ -1,0 +1,14 @@
+palette orchard
+  ramp hide #3a2832 7 hue:10
+  ramp blood #8e2438 5
+  ramp bronze #8a6232 7 hue:-8
+  ramp bone #e6d3b4 5
+  ramp gold #e4b15c 5
+  ramp leaf #2c6a44 5
+  ramp fruit #a33a48 5
+  ramp water #100c10 #1a3e3c 6
+  ramp styx #146e68 5 hue:-6
+  color ink #120c10
+  color shine #fff1d2
+  color rim #f0c27a
+  color backdrop #161014

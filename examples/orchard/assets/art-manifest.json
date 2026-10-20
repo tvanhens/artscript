@@ -1,0 +1,18 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "09933d8f770f6051",
+      "line": 9,
+      "matrix": {},
+      "path": "beast/ash_hart.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/beast/ash_hart.ramo",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

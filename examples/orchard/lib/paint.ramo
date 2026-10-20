@@ -1,0 +1,51 @@
+# Volumetric shading for the ash hart. Light comes from the upper left.
+brush sculpt sun:-.55,-.85 lo:p.ink hi:p.shine rimc:p.rim depth:.72 glossk:.28 rimk:.42 wrap:.1 strength:.48 scale:1 plump:1 planes:.55 broad:.3
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float2 hb = float2(m.len, m.width) * .5;
+    float2 q = m.uv / hb;
+    float ql = max(length(q), .001);
+    float e = clamp(m.edge / (min(m.len, m.width) * .5 * plump + .001), 0, 1);
+    float z = sqrt(e * (2 - e));
+    float3 n = normalize(float3(q / ql * (1 - z), z));
+    float3 L = normalize(float3(sun, .7));
+    float R = min(hb.x, hb.y);
+    float th = atan(m.uv.y, m.uv.x) * R;
+    float2 sc = float2(th / (40 * scale), m.edge / (9 * scale));
+    float lin = fbm(float2(m.uv.x / (40 * scale), m.uv.y / (9 * scale)) + o, 4) - .5;
+    float streak = mix(lin, fbm(sc + o, 4) - .5, smoothstep(.15, .5, ql));
+    float blot = fbm(m.uv / (70 * scale) + o * 1.3, 3) - .5;
+    float diff = clamp(dot(n, L) * (1 - wrap) + wrap + broad * dot(q, normalize(sun)) * .5 - broad * .15 + strength * (streak * .3 + blot * .35), 0, 1);
+    float x = diff * 4;
+    float band = (floor(x) + smoothstep(.3, .7, fract(x))) / 4;
+    diff = mix(diff, band, planes);
+    float3 base = m.paint.rgb;
+    float3 sh = mix(base, lo.rgb, depth);
+    float3 hl = mix(base, hi.rgb, .4);
+    float3 c = mix(sh, base, smoothstep(.05, .5, diff));
+    c = mix(c, hl, smoothstep(.62, 1, diff));
+    float3 H = normalize(L + float3(0, 0, 1));
+    float spec = pow(max(dot(n, H), 0), 30) * glossk * (.5 + streak * 2);
+    c += hi.rgb * max(spec, 0);
+    float back = max(0, dot(q / ql, -normalize(sun)));
+    c = mix(c, rimc.rgb, rimk * pow(1 - z, 2.5) * back);
+    float edge = m.edge - streak * 3 * scale;
+    return float4(clamp(c, 0, 1), cover(edge, m));
+  }
+  """
+
+# Ink contour, thin toward the light, heavy in shadow.
+brush ink center:0,0 sun:-.55,-.85 thin:.28 heavy:1 dryk:.4 scale:1
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float2 r = m.p - center;
+    float side = dot(r / max(length(r), .001), -normalize(sun));
+    float n = fbm(float2(m.s / (50 * scale), 0) + o, 3);
+    float w = mix(thin, heavy, smoothstep(-.6, .7, side)) * (.8 + .4 * n);
+    float e = m.edge - (1 - w) * m.width * .5;
+    float dry = smoothstep(.25, .45, fbm(float2(m.s / (9 * scale), m.v * 4) + o * 2, 3));
+    return float4(m.paint.rgb, cover(e, m) * mix(1, dry, dryk * (1 - side) * .5));
+  }
+  """

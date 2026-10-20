@@ -1,0 +1,155 @@
+# The ash hart, funerary stag of the Last Orchard.
+# The image must show a profile stag facing left, standing in black water on a near-black ground.
+# Hide is ash-dark above the knee. The cannon bones and hooves are bare bone.
+# Antlers are bronze and taller than the head. The forward tine carries a laurel, and one leaf of it is gold.
+# A split pomegranate is set in the chest, above the foreleg. One seed is teal and glowing. The other seeds are garnet.
+# Each eye is a small gold coin with a vertical slit.
+# Light comes from the upper left. A gold rim catches the right edge. Every major form has an ink contour.
+
+@target beast/ash_hart.png 1024x1024 bg:#161014
+
+use paint { sculpt ink }
+use parts { leaf shank hoof }
+
+finish plated a:.4
+  fx rim 4 dir:1,-1 color:p.rim a:a
+  fx grain .035 scale:1.3
+
+stamp ash spacing:6 h:22
+  curve 0,0 rand(-3 4),0-h*(.5+.7*rand(0 1)) stroke:pick([p.hide.0 p.hide.1 p.gold.1]),2.4 taper:0,1 rot:-tangent+rand(-16 12) a:.8 name:wisp
+
+layer chamber
+  rect 1024x1024 at:512,512 fill:radial(p.water.2 p.backdrop at:.34,.4 r:760) name:ground
+    circle 240 at:-180,-150 fill:none stroke:p.gold.1,2.5 dash:9,15 a:.38 name:halo
+    circle 188 at:-180,-150 fill:none stroke:p.gold.2,1.2 dash:3,12 a:.5 name:halo_in
+    ellipse 360,200 at:-200,-120 fill:p.gold.1 a:.06 blur:64 blend:soft_light name:coin_wash
+    ellipse 680,260 at:-360,-420 fill:p.ink a:.5 blur:70
+    ellipse 620,240 at:400,-450 fill:p.ink a:.48 blur:70
+    ellipse 520,180 at:-420,470 fill:p.ink a:.4 blur:50
+    ellipse 480,160 at:460,480 fill:p.ink a:.38 blur:50
+
+layer water
+  rect 1024x1024 at:512,512 fill:none name:water_clip
+    ellipse 780,70 at:20,398 fill:p.water.3 name:pool
+      ellipse 180,18 at:-160,-4 fill:p.styx.3 a:.35 blur:8 name:seed_glint
+      ellipse 90,10 at:-200,6 fill:p.gold.2 a:.3 blur:3
+      ellipse 70,8 at:180,8 fill:p.bone.3 a:.25 blur:3
+      ellipse 460,8 at:10,-16 fill:p.gold.1 a:.22 blur:1 name:horizon
+    ellipse 700,22 at:20,392 fill:p.ink a:.5 blur:6
+    circle 12 at:-230,418 fill:p.gold.3 name:obol_l
+      circle 4.2 at:1,-1 fill:p.ink
+      ellipse 6,2 at:-2,-3 fill:p.shine a:.75
+    circle 10 at:250,424 fill:p.gold.2 name:obol_r
+      circle 3.4 fill:p.ink
+      ellipse 5,1.6 at:-1,-2 fill:p.shine a:.6
+    ellipse 360,14 at:0,430 fill:p.ink a:.35 blur:4 name:contact
+
+layer legs_far
+  shank 430,640 455,770 w1:14 w2:8 tone:p.hide.1 name:far_front_upper
+  shank 455,770 440,900 w1:8 w2:5 tone:p.bone.1 name:far_front_cannon
+  hoof w:11 tone:p.bone.0 at:440,900 rot:4 name:far_front_hoof
+  shank 780,650 840,780 w1:15 w2:8 tone:p.hide.1 name:far_hind_upper
+  shank 840,780 800,906 w1:8 w2:5 tone:p.bone.1 name:far_hind_cannon
+  hoof w:11 tone:p.bone.0 at:800,906 rot:-8 name:far_hind_hoof
+  fx adjust light:-.22 sat:-.2
+
+layer body
+  curve 300,520 360,430 500,400 680,418 800,470 860,560 840,650 740,690 560,676 400,640 320,580 closed tension:.4 fill:p.hide.2 brush:sculpt(scale:1.2 depth:.76 glossk:.16) name:barrel
+    ellipse 180,36 at:560,650 fill:p.ink a:.5 blur:16 name:belly
+    ellipse 120,50 at:400,600 fill:p.ink a:.35 blur:14
+    ellipse 200,46 at:520,440 fill:p.hide.5 a:.4 blur:18 name:back_light
+    each i in 0..6
+      curve 0,0 rand(-16 8),rand(14 30) at:rand(430 760),rand(480 620) stroke:p.hide.5,1.2 taper:.45 a:.4 name:scratch
+    fx plated a:.5
+    fx outline 7 color:p.ink
+  copy @barrel fill:none stroke:p.ink,14 brush:ink(center:560,540 thin:.32) name:barrel_ink
+
+layer neck
+  curve 280,360 250,450 320,560 460,520 490,410 410,310 360,280 closed tension:.35 fill:p.hide.1 brush:sculpt(scale:.75 depth:.72) name:throat
+    ellipse 60,28 at:330,490 fill:p.ink a:.4 blur:10
+    fx plated a:.4
+    fx outline 6 color:p.ink
+  curve 370,310 450,370 530,430 590,440 fill:none stamp:ash(h:48) name:crest
+
+layer legs_front
+  shank 360,640 330,780 w1:24 w2:12 tone:p.hide.3 name:near_front_upper
+  shank 330,780 318,910 w1:11 w2:6 tone:p.bone.3 name:near_front_cannon
+  ellipse 16,5 at:330,780 fill:p.bronze.3 name:front_ring
+    fx outline 2 color:p.ink
+  hoof w:15 tone:p.bone.2 at:318,910 rot:6 name:near_front_hoof
+
+layer chest_fruit
+  circle 62 at:300,545 fill:p.fruit.2 brush:sculpt(hi:p.fruit.4 lo:p.blood.0 scale:.65 glossk:.4 depth:.55) name:heart
+    curve -4,-46 2,-4 6,36 stroke:p.fruit.0,5 name:cleft
+    ellipse 30,40 at:8,4 fill:p.blood.0 name:flesh
+    each i, s in [-18,12,5.5 -4,16,6 12,10,4.5 -10,-4,4.5 8,-12,4.5 1,2,5]
+      circle s.2 at:s.0,s.1 fill:p.blood.3 name:seed
+        circle s.2*.35 at:-1,-1 fill:p.shine a:.5
+    circle 7.5 at:1,3 fill:p.styx.4 name:living
+      circle 2.6 at:-1.2,-1.4 fill:p.shine a:.85
+      fx glow 16 color:p.styx.3 a:.9 strength:1.6
+    star 5 r:14 inner:.4 at:0,-52 rot:12 fill:p.leaf.1 name:calyx
+      fx outline 2 color:p.ink
+    fx plated a:.4
+    fx outline 5 color:p.ink
+  circle 74 at:300,545 fill:none stroke:p.bronze.3,5 name:peytral
+  circle 84 at:300,545 fill:none stroke:p.gold.2,1.6 a:.75 name:peytral_line
+
+layer head
+  curve 92,360 108,318 175,278 270,248 360,242 418,292 412,368 330,418 200,424 118,400 closed tension:.18 fill:p.hide.3 brush:sculpt(scale:.7 depth:.58 glossk:.2) name:skull
+    ellipse 78,34 at:145,368 fill:p.hide.1 name:snout
+    ellipse 26,14 at:118,362 fill:p.hide.0 name:nostril
+      ellipse 9,4 at:-4,-2 fill:p.ink
+    curve 118,378 186,404 268,392 stroke:p.ink,2.2 a:.8 name:mouth
+    ellipse 80,28 at:250,300 fill:p.hide.5 a:.22 blur:8
+    ellipse 15,12 at:248,304 fill:p.gold.3 name:eye
+      ellipse 3,11 fill:p.ink name:slit
+      ellipse 5,2 at:-3,-3 rot:-16 fill:p.shine a:.9
+      circle 20 fill:none stroke:p.gold.1,1.5 a:.8
+      fx glow 9 color:p.gold.3 a:.5
+    fx plated a:.5
+    fx outline 6 color:p.ink
+  copy @skull fill:none stroke:p.ink,11 brush:ink(center:240,330 thin:.3) name:skull_ink
+  curve 348,300 390,210 430,230 400,320 closed tension:.35 fill:p.hide.2 brush:sculpt(scale:.35) name:ear
+    curve 370,290 400,230 422,242 stroke:p.hide.0,6 a:.7
+    fx outline 3 color:p.ink
+
+layer antler_near
+  curve 338,322 312,268 248,214 222,186 258,174 322,246 332,186 340,120 352,64 366,32 380,66 408,84 426,66 406,104 388,150 418,176 432,160 398,198 386,260 402,314 368,330 closed tension:.16 fill:p.bronze.3 brush:sculpt(lo:p.bronze.0 hi:p.gold.3 scale:.55 glossk:.45 depth:.5 planes:.3) name:rack
+    curve 300,250 250,188 stroke:p.gold.3,3 a:.7
+    curve 340,200 368,40 stroke:p.gold.2,3.5 a:.55
+    fx plated a:.55
+    fx outline 4 color:p.ink
+  leaf w:20 h:34 at:228,196 rot:-55 tone:p.leaf.3 name:laurel_a
+  leaf w:16 h:28 at:250,176 rot:-12 tone:p.leaf.2 name:laurel_b
+  leaf w:15 h:26 at:208,214 rot:-82 tone:p.leaf.1 name:laurel_c
+  leaf w:14 h:24 at:246,160 rot:16 tone:p.gold.3 name:laurel_gold
+
+layer legs_hind
+  shank 730,655 810,800 w1:26 w2:13 tone:p.hide.2 name:near_hind_upper
+  shank 810,800 768,914 w1:12 w2:6 tone:p.bone.2 name:near_hind_cannon
+  ellipse 18,5 at:810,800 rot:22 fill:p.bronze.3 name:hind_ring
+    fx outline 2 color:p.ink
+  hoof w:16 tone:p.bone.2 at:768,914 rot:-14 name:near_hind_hoof
+
+layer tail_layer
+  curve 830,500 900,470 910,540 860,575 820,545 closed tension:.35 fill:p.hide.1 brush:sculpt(scale:.4) name:brush_tail
+    fx outline 4 color:p.ink
+  curve 860,490 910,450 920,510 fill:none stamp:ash(h:26 spacing:6) name:tail_ash
+
+layer motes
+  each i, m in [160,150,2.4 480,90,2 620,160,2.2 140,520,1.8 900,420,2 560,240,1.6 80,360,1.5]
+    circle m.2 at:m.0,m.1 fill:p.gold.4 name:ember
+      fx glow 9 color:p.gold.3 a:.7
+
+layer wash
+  rect 1024x1024 at:512,512 fill:none name:wash_clip
+    ellipse 300,200 at:-250,-180 fill:p.gold.2 a:.08 blur:50 blend:soft_light name:key
+    ellipse 240,300 at:320,40 fill:p.ink a:.25 blur:40 blend:multiply name:falloff
+
+assert inside(@barrel canvas margin:24)
+assert inside(@skull canvas margin:16)
+assert inside(@heart canvas margin:16)
+assert overlaps(@heart @barrel)
+assert overlaps(@skull @throat)
+assert overlaps(@rack @skull)

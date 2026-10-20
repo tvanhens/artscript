@@ -1,0 +1,26 @@
+use paint { sculpt }
+
+# A laurel blade, tip up.
+def leaf w:18 h:34 tone:p.leaf.2
+  curve 0,h*.4 0-w*.55,h*.05 0-w*.2,0-h*.4 0,0-h*.55 w*.2,0-h*.4 w*.55,h*.05 closed fill:tone brush:sculpt(scale:.35 glossk:.12 depth:.45 planes:.35) name:blade
+    curve 0,h*.28 0,0-h*.42 stroke:shade(tone -2),1.4
+    fx outline 2 color:p.ink
+
+# A limb segment from a to b. w1 is the root half-width, w2 the tip.
+def shank a:0,0 b:0,80 w1:22 w2:12 tone:p.hide.2
+  let d = b-a
+  let len = sqrt(d.x*d.x+d.y*d.y)
+  let nx = 0-d.y/len
+  let ny = d.x/len
+  let m = a+d*.45
+  let wm = (w1+w2)*.52
+  curve a.x+nx*w1,a.y+ny*w1 m.x+nx*wm,m.y+ny*wm b.x+nx*w2,b.y+ny*w2 b.x-nx*w2,b.y-ny*w2 m.x-nx*wm,m.y-ny*wm a.x-nx*w1,a.y-ny*w1 closed fill:tone brush:sculpt(lo:p.ink hi:p.shine scale:.5 glossk:.22 depth:.7) name:bone
+    circle w1*1.5 at:a fill:p.ink a:.4 blur:w1*.45
+    curve a.x+nx*w1*.35,a.y+ny*w1*.35 m.x+nx*wm*.4,m.y+ny*wm*.4 b.x+nx*w2*.3,b.y+ny*w2*.3 stroke:p.shine,w1*.12 a:.28 blur:1.5
+    fx outline 4 color:p.ink
+
+# A cloven hoof, opening downward, rooted at the origin.
+def hoof w:15 tone:p.bone.1
+  curve 0-w,0 0-w*.85,w*1.15 0-w*.15,w*1.45 0,w*.55 w*.15,w*1.45 w*.85,w*1.15 w,0 closed fill:tone brush:sculpt(lo:p.hide.0 hi:p.bone.4 scale:.35 glossk:.2 depth:.55) name:cap
+    curve 0,w*.15 0,w*1.15 stroke:p.ink,1.6
+    fx outline 3 color:p.ink
