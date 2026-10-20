@@ -617,7 +617,7 @@ def main() -> int:
         env = claude_env(config if isolated else None, binary.parent)
         subprocess.run([str(binary), "init"], cwd=project, check=True, env=env, capture_output=True)
         (project / "art/hello.ramo").unlink()
-        shutil.copytree(ROOT / "skills/ramose", project / ".claude/skills/ramose")
+        shutil.copytree(ROOT / "plugins/ramose/skills/ramose", project / ".claude/skills/ramose")
         state: dict = {}
         for step in steps:
             print(f"step {step.id} ...", file=sys.stderr, flush=True)

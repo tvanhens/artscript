@@ -6,7 +6,7 @@
     uv run bench/ab.py --arm base=../base:../base/target/release/ramose --arm new=.:target/release/ramose -n 5
     uv run bench/ab.py --report bench/ab-out        # re-aggregate an earlier run
 
-An arm is NAME=ROOT:BINARY. ROOT is a checkout whose skills/ramose is under test, and BINARY is the ramose it runs.
+An arm is NAME=ROOT:BINARY. ROOT is a checkout whose plugins/ramose/skills/ramose is under test, and BINARY is the ramose it runs.
 Every arm must carry the same bench/artbench.py, so only the skill and the binary differ.
 """
 

@@ -69,7 +69,7 @@ fn docs_prints_the_card_then_named_topics_in_order() {
 
 #[test]
 fn the_skill_lists_every_topic_with_its_summary() {
-    let skill = fs::read_to_string(docs_dir().join("../skills/ramose/SKILL.md")).unwrap();
+    let skill = fs::read_to_string(docs_dir().join("../plugins/ramose/skills/ramose/SKILL.md")).unwrap();
     for entry in fs::read_dir(docs_dir().join("topics")).unwrap() {
         let path = entry.unwrap().path();
         let name = path.file_stem().unwrap().to_string_lossy().into_owned();
