@@ -1,0 +1,114 @@
+# Gouache bone ruin. One key, upper right. Ink heavy on the shadow side.
+# Feet sit on local y=0 and the shafts grow up, negative y. The call below
+# lowers that origin so the preview holds the whole colonnade.
+
+@target arch/colonnade.png 340x680 bg:none
+
+use paint { sculpt ink }
+use parts { contact crust }
+
+def colonnade
+  layer shade_layer
+    contact 50 at:-96,1 name:left_foot
+    contact 54 at:98,1 name:right_foot
+
+  layer left_layer
+    curve -148,0 -154,-14 -132,-30 -126,-58 -134,-156 -124,-176 -118,-250 -138,-286 -122,-312 -126,-400 -112,-444 -90,-478 -70,-460 -54,-498 -46,-452 -42,-340 -36,-188 -28,-166 -40,-148 -36,-60 -22,-28 -16,-10 -26,0 closed fill:p.bone.2 brush:sculpt(scale:1.65 depth:.84 planes:.72 strength:.64) name:left_shaft
+      ellipse 32,150 at:-108,-230 fill:p.ink a:.32 blur:14 name:left_shade
+      ellipse 18,110 at:-64,-260 fill:p.bone.5 a:.36 blur:10 name:left_lit
+      curve -112,-78 -114,-210 -110,-380 stroke:p.ink,6 a:.72 name:flute_a
+      curve -106,-78 -108,-210 -104,-380 stroke:p.bone.5,2 a:.55 name:flute_a_lit
+      curve -86,-74 -86,-220 -84,-390 stroke:p.ink,5 a:.62 name:flute_b
+      curve -80,-74 -80,-220 -78,-390 stroke:p.bone.5,1.8 a:.5 name:flute_b_lit
+      curve -64,-80 -64,-230 -66,-400 stroke:p.ink,4.5 a:.5 name:flute_c
+      curve -58,-80 -58,-230 -60,-400 stroke:p.bone.5,1.5 a:.4 name:flute_c_lit
+      curve -130,-100 -128,-220 -122,-340 stroke:p.ink,12 a:.28 blur:4 name:shade_edge
+      curve -98,-96 -86,-150 -96,-210 -78,-280 stroke:p.ink,4.5 a:.85 name:fissure
+      curve -92,-96 -80,-150 -90,-210 -72,-280 stroke:p.bone.5,1.6 a:.6 name:fissure_lit
+      curve -64,-130 -54,-190 -66,-250 stroke:p.ink,2.6 a:.7 name:crack
+      curve -104,-420 -92,-452 -74,-470 -60,-456 -50,-486 -52,-450 -70,-430 -96,-408 closed fill:p.bone.1 brush:sculpt(scale:.6 depth:.6 planes:.5) name:left_break
+        each i in 0..6
+          circle 1.5+rand(0 2) at:-78+rand(-20 22),-448+rand(-16 14) fill:p.ink a:.8 name:cell
+            circle .7 at:.4,-.4 fill:p.bone.5 a:.65
+      each i in 0..6
+        circle 1.2+rand(0 1.6) at:-86+rand(-24 26),-90-i*46 fill:p.ink a:.5 name:pore
+          circle .55 at:.35,-.3 fill:p.bone.5 a:.5
+      fx outline 7 brush:ink(center:-86,-250) color:p.ink
+    curve -98,-110 -104,-200 -78,-230 -52,-200 -56,-120 -74,-96 closed fill:p.bone.4 brush:sculpt(scale:.8 depth:.5 planes:.55 glossk:.2) name:facing
+      curve -86,-130 -78,-170 -70,-150 stroke:p.ink,2.2 a:.75 name:facing_crack
+      fx outline 3 brush:ink(center:-76,-160) color:p.ink
+    circle 5.5 at:-134,-290 fill:p.moss.1 brush:sculpt(scale:.3 depth:.4 planes:.35) name:moss
+      circle 3.2 at:4,-2 fill:p.moss.3
+      circle 2.4 at:-3,3 fill:p.moss.2
+      circle 2 at:1,4 fill:p.moss.0
+
+  layer arch_layer
+    curve -118,-378 -80,-408 -44,-432 -10,-448 6,-442 14,-472 4,-504 -22,-496 -58,-468 -96,-434 -122,-400 closed fill:p.bone.3 brush:sculpt(scale:1.1 depth:.62 planes:.6 strength:.5) name:arch
+      curve -96,-390 -62,-418 -28,-442 stroke:p.bone.0,9 a:.4 blur:2 name:soffit
+      curve -72,-400 -60,-452 stroke:p.bone.0,4.5 name:joint_a
+      curve -66,-396 -54,-448 stroke:p.bone.5,1.7 a:.6 name:joint_a_lit
+      curve -40,-424 -28,-478 stroke:p.bone.0,4 name:joint_b
+      curve -34,-420 -22,-474 stroke:p.bone.5,1.5 a:.55 name:joint_b_lit
+      curve -8,-450 10,-458 6,-496 -8,-490 closed fill:p.bone.0 brush:sculpt(scale:.35 depth:.4 planes:.3) name:fracture
+        each i in 0..4
+          circle 1.2+rand(0 1.3) at:0+rand(-6 6),-474+rand(-12 10) fill:p.ink a:.85 name:cell
+            circle .55 at:.3,-.3 fill:p.bone.4 a:.6
+      ellipse 16,12 at:-24,-470 fill:p.bone.5 a:.4 blur:4 name:arch_lit
+      fx outline 6 brush:ink(center:-48,-450) color:p.ink
+
+  layer right_layer
+    curve 36,0 30,-14 52,-30 48,-62 40,-158 38,-176 50,-192 46,-330 52,-450 38,-500 56,-538 78,-520 96,-562 118,-536 134,-492 140,-380 146,-184 152,-166 144,-150 138,-58 154,-28 158,-10 148,0 closed fill:p.bone.3 brush:sculpt(scale:1.55 depth:.78 planes:.7 strength:.58) name:right_shaft
+      ellipse 34,160 at:62,-250 fill:p.ink a:.28 blur:14 name:right_shade
+      ellipse 22,140 at:112,-270 fill:p.bone.5 a:.34 blur:10 name:right_lit
+      curve 64,-76 62,-220 66,-400 stroke:p.ink,6 a:.7 name:flute_a
+      curve 70,-76 68,-220 72,-400 stroke:p.bone.5,2 a:.55 name:flute_a_lit
+      curve 90,-72 90,-230 88,-420 stroke:p.ink,5 a:.58 name:flute_b
+      curve 96,-72 96,-230 94,-420 stroke:p.bone.5,1.8 a:.48 name:flute_b_lit
+      curve 116,-70 118,-240 114,-430 stroke:p.ink,4.5 a:.48 name:flute_c
+      curve 122,-70 124,-240 120,-430 stroke:p.bone.6,2 a:.55 name:flute_c_lit
+      curve 132,-90 136,-240 128,-400 stroke:p.bone.6,6 a:.4 blur:2 name:lit_edge
+      curve 76,-108 88,-180 70,-260 92,-350 78,-430 stroke:p.ink,5 a:.8 name:fissure
+      curve 82,-108 94,-180 76,-260 98,-350 84,-430 stroke:p.bone.5,1.8 a:.55 name:fissure_lit
+      curve 56,-160 66,-230 58,-300 stroke:p.ink,2.4 a:.65 name:crack
+      curve 44,-492 60,-530 80,-516 98,-554 120,-530 134,-494 122,-478 90,-486 58,-476 closed fill:p.bone.1 brush:sculpt(scale:.6 depth:.55 planes:.5) name:right_break
+        each i in 0..7
+          circle 1.4+rand(0 2.1) at:90+rand(-32 30),-514+rand(-18 16) fill:p.ink a:.75 name:cell
+            circle .65 at:.4,-.35 fill:p.bone.5 a:.6
+      each i in 0..6
+        circle 1.2+rand(0 1.6) at:94+rand(-32 32),-96-i*52 fill:p.ink a:.46 name:pore
+          circle .5 at:.3,-.3 fill:p.bone.5 a:.5
+      fx outline 7 brush:ink(center:96,-280) color:p.ink
+    rect 104x32 r:12 at:96,-418 fill:p.verd.2 brush:sculpt(scale:.45 glossk:.7 depth:.52 planes:.5) name:ring
+      ellipse 26,8 at:22,-8 fill:p.verd.5 a:.8
+      rect 92x7 at:0,9 r:3 fill:p.verd.0 a:.88
+      circle 9 at:18,2 fill:p.bone.3 name:wear
+        circle 3.6 at:1.2,-1.2 fill:p.bone.5 a:.8
+      circle 3.3 at:-40,-1 fill:p.verd.0 name:rivet_l
+        circle 1.15 at:.55,-.6 fill:p.shine
+      circle 3.3 at:38,1 fill:p.verd.0 name:rivet_r
+        circle 1.15 at:.5,-.55 fill:p.shine
+      curve -36,2 6,0 20,3 stroke:p.verd.0,2 a:.8 name:seam
+      fx outline 4 brush:ink(center:0,0) color:p.ink
+
+  layer debris_layer
+    curve 8,1 4,-18 12,-74 24,-92 40,-78 44,-20 34,2 closed fill:p.bone.3 brush:sculpt(scale:.65 depth:.74 planes:.6) name:fallen
+      curve 18,-14 16,-46 22,-72 stroke:p.ink,3 a:.75 name:crack
+      curve 30,-18 34,-44 stroke:p.ink,2 a:.65 name:crack_b
+      ellipse 12,7 at:28,-80 fill:p.bone.0 name:break_face
+        circle 1.4 at:-2,-1 fill:p.ink name:cell_a
+        circle 1.1 at:3,1 fill:p.ink name:cell_b
+      fx outline 4 brush:ink(center:24,-46) color:p.ink
+
+  layer salt_layer
+    curve -126,-410 -112,-444 -90,-478 -70,-460 -54,-498 -48,-456 fill:none stamp:crust(spacing:6) name:left_salt
+    curve -10,-448 6,-442 14,-472 4,-504 fill:none stamp:crust(spacing:5) name:arch_salt
+    curve 38,-500 56,-538 78,-520 96,-562 118,-536 134,-492 fill:none stamp:crust(spacing:6) name:right_salt
+    poly 4 r:11 at:112,-524 rot:28 fill:p.bone.6 brush:sculpt(scale:.22 glossk:.95 depth:.28 planes:.2) name:crystal
+      poly 3 r:3.2 at:1.4,-1.6 rot:-20 fill:p.shine a:.95
+      circle 1.3 at:2.2,-2.4 fill:p.shine
+      fx outline 2.4 brush:ink(center:0,0) color:p.ink
+
+let feet = 624
+colonnade at:170,feet name:columns
+assert inside(@columns canvas margin:12)
+assert @columns.bottom-feet in -8..16
