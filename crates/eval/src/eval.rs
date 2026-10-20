@@ -1887,7 +1887,8 @@ impl<'a> Evaluator<'a> {
                     fail("E0320", "`warp:` has nothing to warp: the node draws nothing")
                         .fix("give the node geometry or children, or remove `warp:`")
                 })?;
-                Warp::resolve(&stages, reference).map_err(|WarpError::Empty(i)| {
+                let pinned = warp::pinned_in(&stages, &node.transform)?;
+                Warp::resolve(&pinned, reference).map_err(|WarpError::Empty(i)| {
                     fail(
                         "E0320",
                         format!(

@@ -25,18 +25,23 @@ fn sin(x: f64) -> f64 {
 const QUAD: &str = "corners(84,22 140,22 150,54 74,54)";
 
 #[test]
-fn corners_place_the_ink_box_on_the_quad_and_at_moves_it() {
+fn corners_pin_the_ink_box_where_the_points_are_written_whatever_the_node_s_own_keys() {
     let s = scene(&format!(
         "@target t.png 200x100\n\
-         rect 40x24 at:0,0 stroke:#000000,2 warp:{QUAD} name:side\n\
+         rect 40x24 stroke:#000000,2 warp:{QUAD} name:side\n\
          circle 1 at:@side.left,@side.top name:tl\n\
          circle 1 at:@side.right,@side.bottom name:br\n\
-         rect 40x24 at:60,0 stroke:#000000,2 warp:{QUAD} name:moved\n\
-         circle 1 at:@moved.left,@moved.top name:mtl\n"
+         rect 40x24 at:60,0 rot:30 scale:2 stroke:#000000,2 warp:{QUAD} name:moved\n\
+         circle 1 at:@moved.left,@moved.top name:mtl\n\
+         circle 1 at:@moved.right,@moved.bottom name:mbr\n\
+         group at:50,0 name:box\n  rect 40x24 at:0,0 warp:{QUAD} name:inner\n\
+         circle 1 at:@box.left,@box.top name:gtl\n"
     ));
     close(probe(&s, "tl"), (74.0, 22.0), 1e-3);
     close(probe(&s, "br"), (150.0, 54.0), 1e-3);
-    close(probe(&s, "mtl"), (134.0, 22.0), 1e-3);
+    close(probe(&s, "mtl"), (74.0, 22.0), 1e-3);
+    close(probe(&s, "mbr"), (150.0, 54.0), 1e-3);
+    close(probe(&s, "gtl"), (124.0, 22.0), 1e-3);
 }
 
 #[test]

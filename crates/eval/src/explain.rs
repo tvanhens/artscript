@@ -89,7 +89,7 @@ fn walk(n: &Node, parent: &Place, depth: usize, seeded: &BTreeSet<String>, out: 
         }
     }
     if !n.warp.is_none() {
-        let stages: Vec<_> = n.warp.stages().iter().map(|s| s.kind).collect();
+        let stages = crate::warp::written(n.warp.stages().iter().map(|s| s.kind), &n.transform);
         let _ = write!(out, "  warp:{}", stack_text(&stages));
     }
     if n.opacity < 1.0 {
