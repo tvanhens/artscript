@@ -1,5 +1,5 @@
 [package]
-name = "artscript-brush"
+name = "ramose-brush"
 version.workspace = true
 edition.workspace = true
 

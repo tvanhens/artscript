@@ -7,9 +7,9 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use artscript_ir::{Blend, Matrix, Node, NodeKind, Paint, Point};
-use artscript_syntax::Severity;
-use artscript_syntax::ast::{DefItem, Expr, Named, Scene, Span};
+use ramose_ir::{Blend, Matrix, Node, NodeKind, Paint, Point};
+use ramose_syntax::Severity;
+use ramose_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
 use crate::brush::{CHANNEL_KEYS, Spine};
 use crate::color::Rgba;
@@ -149,7 +149,7 @@ struct Site {
     len: f64,
     pos: P,
     tangent_deg: f64,
-    knot: artscript_ir::Knot,
+    knot: ramose_ir::Knot,
 }
 
 /// What `paint_shape` hands the placer about the host.
@@ -670,7 +670,7 @@ impl StampFrame<'_> {
             names.clone(),
             Lookup::own(names),
             Pending::empty(),
-            artscript_ir::Rect::new_empty(),
+            ramose_ir::Rect::new_empty(),
             *self.host.world * place,
             self.sc.depth + 1,
         );
@@ -733,7 +733,7 @@ fn bind_site(env: &mut Vec<(String, Value)>, site: &Site, paint: Value) {
 /// A gradient's color at `p`, with the stops interpolated as render does; `None` for a field,
 /// whose values only render knows.
 pub(crate) fn sample(paint: &Paint, p: P) -> Option<Rgba> {
-    let at = |stops: &[artscript_ir::Stop], t: f32| {
+    let at = |stops: &[ramose_ir::Stop], t: f32| {
         let t = t.clamp(0.0, 1.0);
         let i = stops.partition_point(|s| s.pos <= t);
         let c = if i == 0 {
@@ -744,7 +744,7 @@ pub(crate) fn sample(paint: &Paint, p: P) -> Option<Rgba> {
             let (a, b) = (stops[i - 1], stops[i]);
             let f = ((t - a.pos) / (b.pos - a.pos).max(1e-9)).clamp(0.0, 1.0);
             let mix = |x: f32, y: f32| x + (y - x) * f;
-            artscript_ir::Color { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b), a: mix(a.color.a, b.color.a) }
+            ramose_ir::Color { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b), a: mix(a.color.a, b.color.a) }
         };
         Some(Rgba::from_ir(c))
     };
@@ -779,7 +779,7 @@ fn count_of(name: &str, v: &Value) -> R<u32> {
 
 /// A `slot` or `anchor` line in a stamp block, with its span.
 fn forbidden_line(s: &Scene) -> Option<(&'static str, Span)> {
-    use artscript_syntax::ast::SceneKind;
+    use ramose_syntax::ast::SceneKind;
     match &s.kind {
         SceneKind::Slot { .. } => Some(("a `slot`", s.span)),
         SceneKind::Draw(d) if d.verb == "anchor" => Some(("an `anchor`", s.span)),
@@ -792,7 +792,7 @@ fn forbidden_line(s: &Scene) -> Option<(&'static str, Span)> {
 /// The bound stamp names a `let` or `each` line rebinds. The channel-reader check scans the
 /// block for these names, so a shadow would make it read a channel the block never sees.
 fn rebinds(s: &Scene) -> Vec<&str> {
-    use artscript_syntax::ast::SceneKind;
+    use ramose_syntax::ast::SceneKind;
     let names: Vec<&str> = match &s.kind {
         SceneKind::Let { name, .. } => vec![name],
         SceneKind::Each { index, var, .. } => index.iter().chain([var]).map(String::as_str).collect(),

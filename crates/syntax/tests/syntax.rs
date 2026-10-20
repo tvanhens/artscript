@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::PathBuf;
 
-use artscript_syntax::ast::{
+use ramose_syntax::ast::{
     BinOp, CheckKind, DeclKind, Draw, DrawBody, DrawItem, Expr, File, Item, Mask, SceneKind, Span,
     UnOp,
 };
-use artscript_syntax::{format, format_source, parse};
+use ramose_syntax::{format, format_source, parse};
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
@@ -96,11 +96,11 @@ fn leaf(verb: &str, args: Vec<Expr>) -> SceneKind {
     })
 }
 
-fn errors(src: &str) -> Vec<artscript_syntax::Diagnostic> {
+fn errors(src: &str) -> Vec<ramose_syntax::Diagnostic> {
     parse(src).expect_err(src)
 }
 
-fn one_error(src: &str) -> artscript_syntax::Diagnostic {
+fn one_error(src: &str) -> ramose_syntax::Diagnostic {
     let errs = errors(src);
     assert_eq!(errs.len(), 1, "{src}: {errs:?}");
     errs.into_iter().next().unwrap()
@@ -109,21 +109,21 @@ fn one_error(src: &str) -> artscript_syntax::Diagnostic {
 #[test]
 fn doc_fixtures_parse_and_round_trip() {
     let cases = [
-        ("language_palette.art", "\"garden\"", "\"f3a2a6\""),
-        ("language_curve.art", "\"curve\"", "\"peach\""),
-        ("language_eye.art", "\"eye\"", "\"iris\""),
-        ("language_checks.art", "\"level\"", "\"eye_l\""),
-        ("mvp_palette.art", "\"dusk\"", "\"oklch\""),
-        ("mvp_eye.art", "\"palette/dusk\"", "\"fff\""),
-        ("mvp_hero.art", "\"chars/hero.svg\"", "\"arm_r\""),
-        ("mvp_water.art", "\"water\"", "\"ripple\""),
-        ("mvp_brush.art", "\"scuff\"", "float4 shade"),
-        ("mvp_light.art", "\"sun\"", "\"ambient\""),
-        ("mvp_body.art", "\"body\"", "\"torso\""),
-        ("mvp_tunic.art", "\"tunic\"", "\"torso\""),
-        ("mvp_villager.art", "\"villager\"", "\"hat\""),
-        ("mvp_face.art", "\"face\"", "\"eye_l\""),
-        ("mvp_icons.art", "\"icon_grid\"", "\"subject\""),
+        ("language_palette.ramo", "\"garden\"", "\"f3a2a6\""),
+        ("language_curve.ramo", "\"curve\"", "\"peach\""),
+        ("language_eye.ramo", "\"eye\"", "\"iris\""),
+        ("language_checks.ramo", "\"level\"", "\"eye_l\""),
+        ("mvp_palette.ramo", "\"dusk\"", "\"oklch\""),
+        ("mvp_eye.ramo", "\"palette/dusk\"", "\"fff\""),
+        ("mvp_hero.ramo", "\"chars/hero.svg\"", "\"arm_r\""),
+        ("mvp_water.ramo", "\"water\"", "\"ripple\""),
+        ("mvp_brush.ramo", "\"scuff\"", "float4 shade"),
+        ("mvp_light.ramo", "\"sun\"", "\"ambient\""),
+        ("mvp_body.ramo", "\"body\"", "\"torso\""),
+        ("mvp_tunic.ramo", "\"tunic\"", "\"torso\""),
+        ("mvp_villager.ramo", "\"villager\"", "\"hat\""),
+        ("mvp_face.ramo", "\"face\"", "\"eye_l\""),
+        ("mvp_icons.ramo", "\"icon_grid\"", "\"subject\""),
     ];
     for (name, left, right) in cases {
         let src = read(name);
@@ -142,7 +142,7 @@ fn doc_fixtures_parse_and_round_trip() {
 
 #[test]
 fn mvp_targets_reject_reserved_alias() {
-    let src = read("mvp_targets.art");
+    let src = read("mvp_targets.ramo");
     let errs = parse(&src).expect_err("alias `t` is reserved");
     assert!(
         errs.iter().all(|e| e.code == "E0105" && e.fix.is_some()),

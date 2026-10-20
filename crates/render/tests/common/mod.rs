@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use artscript_ir::{Blend, Color, Effect, EffectInput, EffectOp, Matrix, Node, NodeKind, Paint, Path, Scene, Shape};
+use ramose_ir::{Blend, Color, Effect, EffectInput, EffectOp, Matrix, Node, NodeKind, Paint, Path, Scene, Shape};
 use skia_safe::{AlphaType, ColorType, Data, Image, ImageInfo};
 
 pub fn scene(w: f32, h: f32, children: Vec<Node>) -> Scene {
@@ -19,7 +19,7 @@ pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
             geometry,
-            fill: Some(artscript_ir::Fill::plain(Paint::Solid(fill))),
+            fill: Some(ramose_ir::Fill::plain(Paint::Solid(fill))),
             stroke: None,
             blur: 0.0,
             stamps: vec![],

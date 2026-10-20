@@ -4,8 +4,8 @@
 
 use std::rc::Rc;
 
-use artscript_ir::{Effect, EffectInput, EffectOp, Matrix, Point, Rect, Sides};
-use artscript_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
+use ramose_ir::{Effect, EffectInput, EffectOp, Matrix, Point, Rect, Sides};
+use ramose_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
 use crate::brush::Slot;
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
@@ -169,7 +169,7 @@ impl Evaluator<'_> {
     /// The mask under an `fx outline` line, in the node's frame like its node mask, with the
     /// line's `feather:` on it. Its fields seed from the mask's own key, so the ring breaks up
     /// the same way on every build and differently from any other mask.
-    fn outline_mask(&mut self, line: &MaskLine, site: &FxSite<'_>, file: &str, mask_key: &Key) -> R<Option<artscript_ir::Mask>> {
+    fn outline_mask(&mut self, line: &MaskLine, site: &FxSite<'_>, file: &str, mask_key: &Key) -> R<Option<ramose_ir::Mask>> {
         let feather = self.eval_args(&[], &site.line.named, site.scope, 0)?.num("feather").unwrap_or(0.0) as f32;
         self.begin_seed(file, mask_key.clone());
         let origin = format!("{file}:{}:{}", line.span.line, line.span.col);
@@ -278,7 +278,7 @@ impl Evaluator<'_> {
             self.eval_args(args, &plain_named, sc, 0)?
         };
         let alpha = a.num("a").unwrap_or(1.0);
-        let color = |default: Rgba| -> R<artscript_ir::Color> {
+        let color = |default: Rgba| -> R<ramose_ir::Color> {
             let c = match a.get("color") {
                 Some(v) => v.color().ok_or_else(|| fail("E0320", "`color:` expects a color"))?.rgba,
                 None => default,

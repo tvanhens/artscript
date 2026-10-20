@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow"]
 # ///
-"""Token benchmark and quality eval for the artscript skill: one create plus three edits through `claude -p`."""
+"""Token benchmark and quality eval for the ramose skill: one create plus three edits through `claude -p`."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ STEP_TIMEOUT_S = 15 * 60
 COST_TOLERANCE = 0.02
 COST_WARN_RATIO = 1.5
 JUDGE_DROP = 2
-ALLOWED_TOOLS = "Bash(artscript *),Read,Write,Edit,Glob,Grep,Skill"
+ALLOWED_TOOLS = "Bash(ramose *),Read,Write,Edit,Glob,Grep,Skill"
 
 
 @dataclass(frozen=True)
@@ -188,7 +188,7 @@ class StepResult:
 class Report:
     model: str
     claude_version: str
-    artscript_commit: str
+    ramose_commit: str
     auth: str
     steps: list[StepResult]
     totals: dict
@@ -200,9 +200,9 @@ def sh(project: Path, *args: str, env: dict | None = None) -> subprocess.Complet
     return subprocess.run(args, cwd=project, env=env, capture_output=True, text=True)
 
 
-def artscript_ok(*sub: str) -> CheckFn:
+def ramose_ok(*sub: str) -> CheckFn:
     def run(project: Path, state: dict) -> tuple[bool, str]:
-        r = sh(project, "artscript", *sub, env=state["env"])
+        r = sh(project, "ramose", *sub, env=state["env"])
         text = (r.stdout + r.stderr).strip()
         return r.returncode == 0, text if len(text) <= 1400 else f"{text[:700]}\n...\n{text[-700:]}"
 
@@ -321,14 +321,14 @@ def c_gif_moves(project: Path, state: dict) -> tuple[bool, str]:
     return distinct >= 2, f"{distinct} distinct frames"
 
 
-BUILD = Check("build", artscript_ok("build"))
-CHECK = Check("check", artscript_ok("check"))
+BUILD = Check("build", ramose_ok("build"))
+CHECK = Check("check", ramose_ok("check"))
 
 STEPS = (
     Step(
         "create",
-        "Use artscript to draw a cute chibi mushroom character for a game: a red cap with white spots, a cream stem, "
-        "and a simple happy face. Put it in `art/mushroom.art` with a 512x512 transparent PNG target `mushroom.png` "
+        "Use ramose to draw a cute chibi mushroom character for a game: a red cap with white spots, a cream stem, "
+        "and a simple happy face. Put it in `art/mushroom.ramo` with a 512x512 transparent PNG target `mushroom.png` "
         "and an SVG target `mushroom.svg`. Build it.",
         (
             CHECK,
@@ -363,7 +363,7 @@ STEPS = (
     ),
 )
 
-FMT = Check("fmt-clean", artscript_ok("fmt", "--check"))
+FMT = Check("fmt-clean", ramose_ok("fmt", "--check"))
 
 RUBRIC = (
     "You are judging one image from an art-generation benchmark. The user request was:\n\n{prompt}\n\n"
@@ -474,7 +474,7 @@ def to_json(report: Report) -> dict:
 
 
 def slim(doc: dict) -> dict:
-    keep = ("model", "artscript_commit", "totals")
+    keep = ("model", "ramose_commit", "totals")
     out = {k: doc[k] for k in keep}
     out["steps"] = [
         {
@@ -533,7 +533,7 @@ def summary(doc: dict) -> str:
     lines = [MARKER, "## artbench", ""]
     verdict = "REGRESSION" if cmp["regressed"] else "FAIL" if failed else "PASS"
     note = "" if cmp["baseline"] else f" ({cmp.get('skipped', 'no baseline')}, nothing compared)"
-    lines += [f"**{verdict}**{note}. model `{doc['model']}`, claude {doc['claude_version']}, artscript `{doc['artscript_commit'][:9]}`, auth `{doc['auth']}`.", ""]
+    lines += [f"**{verdict}**{note}. model `{doc['model']}`, claude {doc['claude_version']}, ramose `{doc['ramose_commit'][:9]}`, auth `{doc['auth']}`.", ""]
     lines += [
         "| step | checks | judge | input | cache write | cache read | output | cost USD in / write / read / out | turns | time |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -582,17 +582,17 @@ def git_commit() -> str:
     return r.stdout.strip() or "unknown"
 
 
-def resolve_artscript(path: str | None) -> Path:
+def resolve_ramose(path: str | None) -> Path:
     if path:
         return Path(path).resolve()
-    subprocess.run(["cargo", "build", "--release", "-p", "artscript"], cwd=ROOT, check=True)
-    return ROOT / "target/release/artscript"
+    subprocess.run(["cargo", "build", "--release", "-p", "ramose"], cwd=ROOT, check=True)
+    return ROOT / "target/release/ramose"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", default="claude-opus-5-5")
-    ap.add_argument("--artscript")
+    ap.add_argument("--ramose")
     ap.add_argument("--steps")
     ap.add_argument("--out", default=str(ROOT / "bench/out"))
     ap.add_argument("--write-baseline", action="store_true")
@@ -603,7 +603,7 @@ def main() -> int:
     if unknown:
         ap.error(f"unknown steps {sorted(unknown)}")
     steps = [s for s in STEPS if s.id in wanted]
-    binary = resolve_artscript(args.artscript)
+    binary = resolve_ramose(args.ramose)
     out = Path(args.out).resolve()
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
@@ -616,8 +616,8 @@ def main() -> int:
         project.mkdir(), scratch.mkdir(), config.mkdir()
         env = claude_env(config if isolated else None, binary.parent)
         subprocess.run([str(binary), "init"], cwd=project, check=True, env=env, capture_output=True)
-        (project / "art/hello.art").unlink()
-        shutil.copytree(ROOT / "skills/artscript", project / ".claude/skills/artscript")
+        (project / "art/hello.ramo").unlink()
+        shutil.copytree(ROOT / "skills/ramose", project / ".claude/skills/ramose")
         state: dict = {}
         for step in steps:
             print(f"step {step.id} ...", file=sys.stderr, flush=True)

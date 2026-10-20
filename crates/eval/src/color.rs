@@ -47,8 +47,8 @@ impl Rgba {
         Rgba { a, ..self }
     }
 
-    pub fn to_ir(self) -> artscript_ir::Color {
-        artscript_ir::Color {
+    pub fn to_ir(self) -> ramose_ir::Color {
+        ramose_ir::Color {
             r: self.r as f32,
             g: self.g as f32,
             b: self.b as f32,
@@ -56,7 +56,7 @@ impl Rgba {
         }
     }
 
-    pub fn from_ir(c: artscript_ir::Color) -> Rgba {
+    pub fn from_ir(c: ramose_ir::Color) -> Rgba {
         Rgba {
             r: c.r as f64,
             g: c.g as f64,

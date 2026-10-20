@@ -30,73 +30,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 
 [[package]]
-name = "artscript"
-version = "0.1.0"
-dependencies = [
- "artscript-eval",
- "artscript-ir",
- "artscript-render",
- "artscript-syntax",
- "color_quant",
- "gif 0.13.3",
- "png",
- "resvg",
- "serde",
- "serde_json",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "artscript-brush"
-version = "0.1.0"
-dependencies = [
- "skia-safe",
-]
-
-[[package]]
-name = "artscript-eval"
-version = "0.1.0"
-dependencies = [
- "artscript-brush",
- "artscript-ir",
- "artscript-render",
- "artscript-syntax",
- "serde",
- "serde_json",
- "skia-safe",
- "toml 0.8.23",
-]
-
-[[package]]
-name = "artscript-ir"
-version = "0.1.0"
-dependencies = [
- "artscript-brush",
- "skia-safe",
-]
-
-[[package]]
-name = "artscript-render"
-version = "0.1.0"
-dependencies = [
- "artscript-brush",
- "artscript-ir",
- "color_quant",
- "gif 0.13.3",
- "objc2",
- "objc2-metal",
- "roxmltree 0.20.0",
- "skia-safe",
-]
-
-[[package]]
-name = "artscript-syntax"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -575,6 +508,73 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fbf4db142a473a8d80c26bbf18454ed458bf8d26c8219c331daecfdbd079001"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "ramose"
+version = "0.1.0"
+dependencies = [
+ "color_quant",
+ "gif 0.13.3",
+ "png",
+ "ramose-eval",
+ "ramose-ir",
+ "ramose-render",
+ "ramose-syntax",
+ "resvg",
+ "serde",
+ "serde_json",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "ramose-brush"
+version = "0.1.0"
+dependencies = [
+ "skia-safe",
+]
+
+[[package]]
+name = "ramose-eval"
+version = "0.1.0"
+dependencies = [
+ "ramose-brush",
+ "ramose-ir",
+ "ramose-render",
+ "ramose-syntax",
+ "serde",
+ "serde_json",
+ "skia-safe",
+ "toml 0.8.23",
+]
+
+[[package]]
+name = "ramose-ir"
+version = "0.1.0"
+dependencies = [
+ "ramose-brush",
+ "skia-safe",
+]
+
+[[package]]
+name = "ramose-render"
+version = "0.1.0"
+dependencies = [
+ "color_quant",
+ "gif 0.13.3",
+ "objc2",
+ "objc2-metal",
+ "ramose-brush",
+ "ramose-ir",
+ "roxmltree 0.20.0",
+ "skia-safe",
+]
+
+[[package]]
+name = "ramose-syntax"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

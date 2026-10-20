@@ -1,4 +1,4 @@
-"""Token counts of each artscript entry file (plus the libraries it imports) against the chibi
+"""Token counts of each ramose entry file (plus the libraries it imports) against the chibi
 Python source that drew the same piece.
 
     uv run --with tiktoken python scripts/tokens.py
@@ -23,7 +23,7 @@ def count(path: Path) -> int:
 def imports(art: Path) -> list[Path]:
     libs = []
     for m in re.finditer(r"^use (\S+)", art.read_text(), re.M):
-        lib = PROJECT / "lib" / f"{m.group(1)}.art"
+        lib = PROJECT / "lib" / f"{m.group(1)}.ramo"
         if lib.exists():
             libs.append(lib)
     return libs
@@ -50,7 +50,7 @@ def cryptic_names(art: Path) -> list[str]:
 
 rows = []
 cryptic = {}
-for art in sorted((PROJECT / "art").rglob("*.art")):
+for art in sorted((PROJECT / "art").rglob("*.ramo")):
     if bad := cryptic_names(art):
         cryptic[art.relative_to(PROJECT / "art")] = bad
     rel = art.relative_to(PROJECT / "art").with_suffix(".py")
@@ -62,7 +62,7 @@ for art in sorted((PROJECT / "art").rglob("*.art")):
     rows.append((str(rel.with_suffix("")), own, libs, count(py)))
 
 if not rows:
-    sys.exit("no artscript ports with a matching chibi source")
+    sys.exit("no ramose ports with a matching chibi source")
 
 print(f"{'piece':32} {'art':>6} {'+libs':>6} {'python':>7} {'ratio':>6}")
 for name, own, libs, py in rows:
@@ -70,7 +70,7 @@ for name, own, libs, py in rows:
 tot_own = sum(r[1] for r in rows)
 tot_py = sum(r[3] for r in rows)
 print(f"{'total':32} {tot_own:6} {'':6} {tot_py:7} {tot_py / tot_own:6.2f}x")
-print("ratio = python tokens / artscript entry-file tokens (o200k_base). Shared libraries are")
+print("ratio = python tokens / ramose entry-file tokens (o200k_base). Shared libraries are")
 print("listed separately because, like the chibi toolkit, they are written once per project.")
 if cryptic:
     for art, bad in cryptic.items():

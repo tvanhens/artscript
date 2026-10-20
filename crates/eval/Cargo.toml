@@ -1,5 +1,5 @@
 [package]
-name = "artscript-eval"
+name = "ramose-eval"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 skia-safe.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-artscript-syntax.workspace = true
-artscript-ir.workspace = true
-artscript-brush.workspace = true
+ramose-syntax.workspace = true
+ramose-ir.workspace = true
+ramose-brush.workspace = true
 toml = "0.8"
 
 [dev-dependencies]
-artscript-render.workspace = true
+ramose-render.workspace = true

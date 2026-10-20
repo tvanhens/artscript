@@ -3,8 +3,8 @@
 
 use std::collections::BTreeSet;
 
-use artscript_ir::{Node, NodeKind, Paint, Scene};
-use artscript_syntax::Diagnostic;
+use ramose_ir::{Node, NodeKind, Paint, Scene};
+use ramose_syntax::Diagnostic;
 
 use crate::explain::explain;
 
@@ -26,7 +26,7 @@ stamp probe spacing:25
   rect s,len at:0,u*10 fill:#000000 name:r
 ";
 
-const LIB: (&str, &str) = ("lib/garden.art", GARDEN);
+const LIB: (&str, &str) = ("lib/garden.ramo", GARDEN);
 
 fn ok(src: &str) -> Scene {
     let ev = run_with(src, &[LIB]);
@@ -46,7 +46,7 @@ fn stamps<'a>(s: &'a Scene, path: &str) -> &'a [Node] {
     &shape(s, path).stamps
 }
 
-fn solid(n: &Node) -> artscript_ir::Color {
+fn solid(n: &Node) -> ramose_ir::Color {
     match &n.kind {
         NodeKind::Shape(s) => match s.fill.as_ref().map(|f| &f.paint) {
             Some(Paint::Solid(c)) => *c,
@@ -70,7 +70,7 @@ fn a_stamp_draws_its_block_once_per_site_under_the_host_and_replaces_the_default
     let first = &line.stamps[0];
     assert_eq!(first.path, "line.dots.0");
     assert!(matches!(first.kind, NodeKind::Group { isolate: false, .. }), "a stamp with no blend inside is a plain group");
-    assert_eq!(first.origin, "lib/garden.art:9:1");
+    assert_eq!(first.origin, "lib/garden.ramo:9:1");
     assert_eq!(first.descendants().map(|n| n.path.as_str()).collect::<Vec<_>>(), ["line.dots.0.circle~1"]);
     assert!(paths(&s).contains(&"line.dots.19.circle~1".to_string()));
     let inked = shape(&s, "inked");
@@ -355,7 +355,7 @@ fn a_warning_in_a_block_keeps_the_set_going_and_is_reported_once() {
 fn an_unnamed_host_whose_block_names_parts_is_one_e0312_at_the_host() {
     let ds = errors("@target t.png 200x100\nuse garden { leaves }\ncurve 0,50 100,50 stroke:#000000,2 stamp:leaves\n");
     let got: Vec<(&str, &str, u32)> = ds.iter().map(|d| (d.code.as_str(), d.file.as_str(), d.span.line)).collect();
-    assert_eq!(got, [("E0312", "art/t.art", 3)], "{}", show(&ds));
+    assert_eq!(got, [("E0312", "art/t.ramo", 3)], "{}", show(&ds));
 }
 
 #[test]

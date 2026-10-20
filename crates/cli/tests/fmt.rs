@@ -4,8 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-fn artscript(dir: &Path, args: &[&str]) -> Output {
-    Command::new(env!("CARGO_BIN_EXE_artscript"))
+fn ramose(dir: &Path, args: &[&str]) -> Output {
+    Command::new(env!("CARGO_BIN_EXE_ramose"))
         .args(args)
         .current_dir(dir)
         .output()
@@ -21,11 +21,11 @@ fn text(o: &Output) -> String {
 }
 
 fn project(tag: &str, files: &[(&str, &str)]) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("artscript-fmt-{tag}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ramose-fmt-{tag}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
     fs::write(
-        dir.join("artscript.toml"),
+        dir.join("ramose.toml"),
         "[project]\nname = \"fmt\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
     )
     .unwrap();
@@ -43,9 +43,9 @@ fn project(tag: &str, files: &[(&str, &str)]) -> PathBuf {
 fn unknown_flags_are_usage_errors_and_write_nothing() {
     let dir = project(
         "flags",
-        &[("art/a.art", "let n = 0.50\n\nlet b = cx-40,884\n")],
+        &[("art/a.ramo", "let n = 0.50\n\nlet b = cx-40,884\n")],
     );
-    let before = fs::read(dir.join("art/a.art")).unwrap();
+    let before = fs::read(dir.join("art/a.ramo")).unwrap();
     for args in [
         vec!["fmt", "--help"],
         vec!["fmt", "--check", "--bogus"],
@@ -55,7 +55,7 @@ fn unknown_flags_are_usage_errors_and_write_nothing() {
         vec!["build", "--help"],
         vec!["fmt", "-h"],
     ] {
-        let out = artscript(&dir, &args);
+        let out = ramose(&dir, &args);
         assert_eq!(out.status.code(), Some(1), "{args:?}\n{}", text(&out));
         let err = String::from_utf8_lossy(&out.stderr);
         assert!(err.contains("usage:"), "{args:?}\n{err}");
@@ -64,20 +64,20 @@ fn unknown_flags_are_usage_errors_and_write_nothing() {
             "{args:?}\n{err}"
         );
         assert_eq!(
-            fs::read(dir.join("art/a.art")).unwrap(),
+            fs::read(dir.join("art/a.ramo")).unwrap(),
             before,
             "{args:?} wrote the file"
         );
     }
 
-    let empty = std::env::temp_dir().join(format!("artscript-fmt-init-{}", std::process::id()));
+    let empty = std::env::temp_dir().join(format!("ramose-fmt-init-{}", std::process::id()));
     let _ = fs::remove_dir_all(&empty);
     fs::create_dir_all(&empty).unwrap();
-    let out = artscript(&empty, &["init", "--help"]);
+    let out = ramose(&empty, &["init", "--help"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     assert!(String::from_utf8_lossy(&out.stderr).contains("usage:"));
     assert!(
-        !empty.join("artscript.toml").exists(),
+        !empty.join("ramose.toml").exists(),
         "init --help created a project"
     );
 }
@@ -87,34 +87,34 @@ fn fmt_check_lists_files_and_file_args_limit_the_write() {
     let dir = project(
         "check",
         &[
-            ("art/a.art", "let n = 0.50\n"),
-            ("art/b.art", "let n = 1\n"),
+            ("art/a.ramo", "let n = 0.50\n"),
+            ("art/b.ramo", "let n = 1\n"),
         ],
     );
-    let b_before = fs::read(dir.join("art/b.art")).unwrap();
+    let b_before = fs::read(dir.join("art/b.ramo")).unwrap();
 
-    let check = artscript(&dir, &["fmt", "--check"]);
+    let check = ramose(&dir, &["fmt", "--check"]);
     assert_eq!(check.status.code(), Some(1), "{}", text(&check));
-    assert_eq!(String::from_utf8_lossy(&check.stdout), "art/a.art\n");
+    assert_eq!(String::from_utf8_lossy(&check.stdout), "art/a.ramo\n");
     assert_eq!(
-        fs::read_to_string(dir.join("art/a.art")).unwrap(),
+        fs::read_to_string(dir.join("art/a.ramo")).unwrap(),
         "let n = 0.50\n"
     );
-    assert_eq!(fs::read(dir.join("art/b.art")).unwrap(), b_before);
+    assert_eq!(fs::read(dir.join("art/b.ramo")).unwrap(), b_before);
 
-    let one = artscript(&dir, &["fmt", "--check", "art/b.art"]);
+    let one = ramose(&dir, &["fmt", "--check", "art/b.ramo"]);
     assert_eq!(one.status.code(), Some(0), "{}", text(&one));
     assert!(one.stdout.is_empty(), "{}", text(&one));
 
-    let write = artscript(&dir, &["fmt", "art/a.art"]);
+    let write = ramose(&dir, &["fmt", "art/a.ramo"]);
     assert_eq!(write.status.code(), Some(0), "{}", text(&write));
     assert_eq!(
-        fs::read_to_string(dir.join("art/a.art")).unwrap(),
+        fs::read_to_string(dir.join("art/a.ramo")).unwrap(),
         "let n = .5\n"
     );
-    assert_eq!(fs::read(dir.join("art/b.art")).unwrap(), b_before);
+    assert_eq!(fs::read(dir.join("art/b.ramo")).unwrap(), b_before);
 
-    let again = artscript(&dir, &["fmt", "--check"]);
+    let again = ramose(&dir, &["fmt", "--check"]);
     assert_eq!(again.status.code(), Some(0), "{}", text(&again));
     assert!(again.stdout.is_empty(), "{}", text(&again));
 }

@@ -2,7 +2,7 @@
 
 use std::rc::Rc;
 
-use artscript_syntax::ast::{DeclKind, Expr, File, Named, Span};
+use ramose_syntax::ast::{DeclKind, Expr, File, Named, Span};
 
 use crate::eval::{Evaluator, R, Scope, fail};
 use crate::lints::walk_expr;

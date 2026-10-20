@@ -1,4 +1,4 @@
-"""Rename a palette and top-level identifiers in one .art file.
+"""Rename a palette and top-level identifiers in one .ramo file.
 
 usage: python3 scripts/rename_idents.py FILE PALETTE_OLD=PALETTE_NEW [entry_old=entry_new ...] [--let old=new ...]
 

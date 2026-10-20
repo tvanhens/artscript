@@ -1,8 +1,8 @@
-# lib/rules/icons.art
+# lib/rules/icons.ramo
 rule icon_grid subject:@self size:64
   assert inside(subject canvas margin:size * .0625)
   assert on_grid(subject 2)
   expect stroke_widths(subject) == [2]
 
-# art/ui/icons.art
+# art/ui/icons.ramo
 assert icon_grid(@icon)

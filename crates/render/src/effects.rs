@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 
-use artscript_ir::{
+use ramose_ir::{
     Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Knot, Mask, MaskSource, Node, NodeKind,
     Paint as IrPaint, Path, Ribbon, RibbonContour, RibbonMark, Shape, Sides, Stroke, ribbon_reach,
 };
@@ -17,9 +17,10 @@ use skia_safe::paint::{Cap, Join, Style};
 use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
-    BlendMode, Canvas, Color4f, ColorMatrix, ContourMeasureIter, Data, IRect, Image, ImageFilter,
-    ImageInfo, Matrix, Paint, PathBuilder, PathOp, PictureRecorder, Point, Rect, RoundOut,
-    RuntimeEffect, SamplingOptions, TileMode, color_filters, image_filters, path_utils, surfaces,
+    BlendMode, Canvas, Color4f, ColorMatrix, ContourMeasureIter, Data, FilterMode, IRect, Image,
+    ImageFilter, ImageInfo, Matrix, MipmapMode, Paint, PathBuilder, PathOp, PictureRecorder, Point,
+    Rect, RoundOut, RuntimeEffect, SamplingOptions, TileMode, color_filters, image_filters,
+    path_utils, surfaces,
 };
 
 use crate::RenderError;
@@ -160,15 +161,7 @@ fn inner(
     input: Option<ImageFilter>,
 ) -> Result<Option<ImageFilter>, RenderError> {
     // CSS inset: offset (0, 6) darkens the top, because the shifted alpha leaves the top uncovered.
-    let c = color4(color);
-    let band = shader_on(
-        EDGE_SKSL,
-        "child",
-        &[("off", &[dx, dy]), ("color", &[c.r, c.g, c.b, c.a])],
-        input.clone(),
-        dx.abs().max(dy.abs()),
-        false,
-    )?;
+    let band = tint(uncovered(&input, (dx, dy))?, color)?;
     let band = maybe_blur(band, blur)?;
     Ok(Some(req(
         "inner composite",
@@ -192,22 +185,13 @@ fn rim(
         (dir.x / len, dir.y / len)
     };
     // Two inward offsets, weighted like pen.rim_light, so the band is brightest at the edge.
-    let far = (-dx * width, -dy * width);
-    let near = (-dx * width * 0.45, -dy * width * 0.45);
-    let c = color4(color);
-    let band = shader_on(
-        RIM_SKSL,
-        "child",
-        &[
-            ("offFar", &[far.0, far.1]),
-            ("offNear", &[near.0, near.1]),
-            ("color", &[c.r, c.g, c.b, c.a]),
-        ],
-        input.clone(),
-        width,
-        false,
+    let far = uncovered(&input, (-dx * width, -dy * width))?;
+    let near = uncovered(&input, (-dx * width * 0.45, -dy * width * 0.45))?;
+    let band = req(
+        "rim band",
+        image_filters::arithmetic(0.0, 0.6, 0.4, 0.0, true, near, far, None),
     )?;
-    let band = maybe_blur(band, width * 0.4)?;
+    let band = maybe_blur(tint(band, color)?, width * 0.4)?;
     Ok(Some(req(
         "rim composite",
         image_filters::blend(BlendMode::SrcATop, input, band, None),
@@ -225,17 +209,32 @@ fn grain(
     }
     let (lo, hi) = ((seed & 0xffff) as f32, (seed >> 16) as f32);
     let scale = if scale == 0.0 { 0.0001 } else { scale };
-    Ok(Some(shader_on(
-        GRAIN_SKSL,
-        "child",
-        &[
-            ("strength", &[strength]),
-            ("scale", &[scale]),
-            ("seed", &[lo, hi]),
-        ],
-        input,
-        0.0,
-        true,
+    let effect = RuntimeEffect::make_for_shader(GRAIN_NOISE_SKSL, None).map_err(RenderError::Skia)?;
+    let mut builder = RuntimeShaderBuilder::new(effect);
+    for (name, data) in [("scale", &[scale][..]), ("seed", &[lo, hi])] {
+        builder
+            .set_uniform_float(name, data)
+            .map_err(|err| RenderError::Skia(err.to_string()))?;
+    }
+    let noise = builder
+        .make_shader(&Matrix::default())
+        .ok_or_else(|| RenderError::Skia("grain noise".into()))?;
+    let noise = req("grain noise", image_filters::shader(noise, None))?;
+    let overlay = RuntimeEffect::make_for_blender(GRAIN_BLEND_SKSL, None)
+        .map_err(RenderError::Skia)?
+        .make_blender(Data::new_copy(&strength.to_ne_bytes()), None)
+        .ok_or_else(|| RenderError::Skia("grain blender".into()))?;
+    let grained = req(
+        "grain",
+        image_filters::blend(overlay, input.clone(), noise, None),
+    )?;
+    // Skia cannot tell that the blender keeps transparent pixels transparent, so it would run the
+    // endless noise over the whole clip. SrcIn against the input's alpha, raised to opaque wherever
+    // the input shows, bounds the result to the input and leaves its pixels as they are.
+    let shows = scale_alpha(input, 255.0)?;
+    Ok(Some(req(
+        "grain bounds",
+        image_filters::blend(BlendMode::SrcIn, shows, grained, None),
     )?))
 }
 
@@ -331,25 +330,28 @@ fn node_filter(path: &str, env: &FxEnv<'_>) -> Result<Option<ImageFilter>, Rende
     req("node picture", image_filters::picture(picture, None)).map(Some)
 }
 
-fn shader_on(
-    sksl: &str,
-    child: &str,
-    uniforms: &[(&str, &[f32])],
-    input: Option<ImageFilter>,
-    sample_radius: f32,
-    restrict: bool,
-) -> Result<ImageFilter, RenderError> {
-    let effect = RuntimeEffect::make_for_shader(sksl, None).map_err(RenderError::Skia)?;
-    let mut builder = RuntimeShaderBuilder::new(effect);
-    for (name, data) in uniforms {
-        builder
-            .set_uniform_float(name, data)
-            .map_err(|err| RenderError::Skia(err.to_string()))?;
-    }
+/// The input where the input shifted by `off` does not cover it.
+fn uncovered(input: &Option<ImageFilter>, off: (f32, f32)) -> Result<ImageFilter, RenderError> {
+    // An offset filter would round `off` to whole pixels and step the band along a curve.
+    let shifted = req(
+        "edge offset",
+        image_filters::matrix_transform(
+            &Matrix::translate(off),
+            SamplingOptions::new(FilterMode::Linear, MipmapMode::None),
+            input.clone(),
+        ),
+    )?;
     req(
-        "runtime shader",
-        image_filters::runtime_shader_with_options(&builder, sample_radius, child, input, restrict),
+        "edge band",
+        image_filters::blend(BlendMode::SrcOut, shifted, input.clone(), None),
     )
+}
+
+/// `color` at the band's alpha times the color's own.
+fn tint(band: ImageFilter, color: Color) -> Result<ImageFilter, RenderError> {
+    let filter = color_filters::blend_with_color_space(color4(color), None, BlendMode::SrcIn)
+        .ok_or_else(|| RenderError::Skia("band color".into()))?;
+    req("band color", image_filters::color_filter(filter, band, None))
 }
 
 fn color_effect(sksl: &str) -> Result<RuntimeEffect, RenderError> {
@@ -360,36 +362,7 @@ fn req(what: &str, filter: Option<ImageFilter>) -> Result<ImageFilter, RenderErr
     filter.ok_or_else(|| RenderError::Skia(what.into()))
 }
 
-const EDGE_SKSL: &str = r#"
-uniform shader child;
-uniform float2 off;
-uniform float4 color;
-half4 main(float2 p) {
-    half a = child.eval(p).a;
-    half s = child.eval(p - off).a;
-    half cov = a * (1.0 - s) * color.a;
-    return half4(color.rgb * cov, cov);
-}
-"#;
-
-const RIM_SKSL: &str = r#"
-uniform shader child;
-uniform float2 offFar;
-uniform float2 offNear;
-uniform float4 color;
-half4 main(float2 p) {
-    half a = child.eval(p).a;
-    half far = a * (1.0 - child.eval(p - offFar).a);
-    half near = a * (1.0 - child.eval(p - offNear).a);
-    half band = 0.6 * far + 0.4 * near;
-    half cov = band * color.a;
-    return half4(color.rgb * cov, cov);
-}
-"#;
-
-const GRAIN_SKSL: &str = r#"
-uniform shader child;
-uniform float strength;
+const GRAIN_NOISE_SKSL: &str = r#"
 uniform float scale;
 uniform float2 seed;
 
@@ -413,27 +386,34 @@ float perlin2(float2 p, float2 sd) {
     float n = mix(mix(n00, n10, u.x), mix(n01, n11, u.x), u.y);
     return n * 1.41421356;
 }
-half3 overlay3(half3 cb, half3 cs) {
-    half3 lo = 2.0 * cs * cb;
-    half3 hi = 1.0 - 2.0 * (1.0 - cs) * (1.0 - cb);
-    return half3(cb.r < 0.5 ? lo.r : hi.r, cb.g < 0.5 ? lo.g : hi.g, cb.b < 0.5 ? lo.b : hi.b);
-}
 half4 main(float2 p) {
-    half4 src = child.eval(p);
-    if (src.a <= 0.001) {
-        return src;
-    }
     float n = perlin2(p / scale, seed) * 0.5
         + perlin2(p / (scale * 2.0), seed + float2(17.0, 3.0)) * 0.25
         + perlin2(p / (scale * 4.0), seed + float2(43.0, 9.0)) * 0.125;
     // Chibi divides this sum by its peak. The peak on a flat shape is about 0.58,
     // and 0.875 (the weight sum) left the grain at about two thirds of that swing.
     n = n / 0.58;
-    float gray = clamp(0.5 + 0.5 * n, 0.0, 1.0);
-    float ga = min(1.0, 2.0 * strength);
-    half3 straight = src.rgb / src.a;
-    half3 mixed = mix(straight, overlay3(straight, half3(gray)), ga);
-    return half4(mixed * src.a, src.a);
+    return half4(half3(clamp(0.5 + 0.5 * n, 0.0, 1.0)), 1.0);
+}
+"#;
+
+/// `src` is the opaque noise gray and `dst` the input.
+const GRAIN_BLEND_SKSL: &str = r#"
+uniform float strength;
+
+half3 overlay3(half3 cb, half3 cs) {
+    half3 lo = 2.0 * cs * cb;
+    half3 hi = 1.0 - 2.0 * (1.0 - cs) * (1.0 - cb);
+    return half3(cb.r < 0.5 ? lo.r : hi.r, cb.g < 0.5 ? lo.g : hi.g, cb.b < 0.5 ? lo.b : hi.b);
+}
+half4 main(half4 src, half4 dst) {
+    if (dst.a <= 0.001) {
+        return dst;
+    }
+    half ga = min(1.0, 2.0 * strength);
+    half3 straight = dst.rgb / dst.a;
+    half3 mixed = mix(straight, overlay3(straight, src.rgb), ga);
+    return half4(mixed * dst.a, dst.a);
 }
 "#;
 

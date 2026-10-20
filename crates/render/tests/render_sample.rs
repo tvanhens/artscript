@@ -3,12 +3,12 @@ mod common;
 use std::fs;
 use std::path::PathBuf;
 
-use artscript_ir::{
+use ramose_ir::{
     Blend, Color, Effect, EffectInput, EffectOp, Field, Matrix, Node, NodeKind, NoiseKind, Paint, Path,
     Point, Scene, Shape, Stop,
 };
 use skia_safe::PathBuilder;
-use artscript_render::{Backend, render_png};
+use ramose_render::{Backend, render_png};
 use common::pixel;
 
 #[test]
@@ -71,7 +71,7 @@ fn body(hi: Color, lo: Color, ink: Color) -> Node {
     node.effects = vec![
         fx(EffectOp::Rim { width: 16.0, dir: Point::new(1.0, 1.0), color: Color { r: 1.0, g: 0.96, b: 0.9, a: 0.85 } }),
         fx(EffectOp::Grain { strength: 0.07, scale: 1.6, seed: 11 }),
-        fx(EffectOp::Outline { width: 2.5, color: ink, sides: artscript_ir::Sides::ALL, mask: None, brush: vec![] }),
+        fx(EffectOp::Outline { width: 2.5, color: ink, sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }),
     ];
     node
 }
@@ -163,7 +163,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
             geometry,
-            fill: Some(artscript_ir::Fill::plain(fill)),
+            fill: Some(ramose_ir::Fill::plain(fill)),
             stroke: None,
             blur: 0.0,
             stamps: vec![],

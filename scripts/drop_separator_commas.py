@@ -1,5 +1,5 @@
-"""Rewrites `f(a, b)`, `[a, b]` and `{ a, b }` to space-separated form in .art files and in
-artscript code inside markdown (fenced blocks and inline backticks). Tight commas (`14,0`) stay."""
+"""Rewrites `f(a, b)`, `[a, b]` and `{ a, b }` to space-separated form in .ramo files and in
+ramose code inside markdown (fenced blocks and inline backticks). Tight commas (`14,0`) stay."""
 
 import re
 import sys

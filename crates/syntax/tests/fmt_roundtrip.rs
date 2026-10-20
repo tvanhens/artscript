@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use artscript_syntax::{format_source, parse};
+use ramose_syntax::{format_source, parse};
 
 fn art_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = fs::read_dir(dir) else {
@@ -13,7 +13,7 @@ fn art_files(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             art_files(&path, out);
-        } else if path.extension().is_some_and(|e| e == "art") {
+        } else if path.extension().is_some_and(|e| e == "ramo") {
             out.push(path);
         }
     }

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use artscript_ir::Profile;
-use artscript_syntax::Diagnostic;
-use artscript_syntax::ast::{Directive, Expr, File, Span, UnOp};
+use ramose_ir::Profile;
+use ramose_syntax::Diagnostic;
+use ramose_syntax::ast::{Directive, Expr, File, Span, UnOp};
 
 use crate::project::Project;
 use crate::value::num;
@@ -125,7 +125,7 @@ pub fn plan(project: &Project) -> Plan {
     let mut diagnostics = Vec::new();
     let mut entries = Vec::new();
     for (path, src) in &project.files {
-        let file = match artscript_syntax::parse(src) {
+        let file = match ramose_syntax::parse(src) {
             Ok(f) => f,
             Err(errs) => {
                 if !project.is_lib_file(path) || src.contains("@target") {
@@ -429,7 +429,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
         .into_iter()
         .map(|matrix| {
             let name = |scale: f32| {
-                let (w, h) = artscript_ir::pixel_size(size.0, size.1, scale);
+                let (w, h) = ramose_ir::pixel_size(size.0, size.1, scale);
                 interpolate(&raw_path, |var| match var {
                     "scale" => Some(num(f64::from(scale))),
                     "w" => Some(w.to_string()),
@@ -566,7 +566,7 @@ mod tests {
     #[test]
     fn matrix_expands_with_interpolated_paths_and_scales() {
         let p = project(&[(
-            "art/k.art",
+            "art/k.ramo",
             "@target chars/knight-{armor}-{team}.png 128x128 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\nrect 10x10\n",
         )]);
         let plan = plan(&p);
@@ -598,7 +598,7 @@ mod tests {
     }
 
     fn output_paths(target: &str) -> Vec<String> {
-        let p = project(&[("art/k.art", &format!("{target}\nrect 1\n"))]);
+        let p = project(&[("art/k.ramo", &format!("{target}\nrect 1\n"))]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
         plan.jobs
@@ -657,7 +657,7 @@ mod tests {
 
     #[test]
     fn colliding_sized_names_are_a_duplicate_output() {
-        let p = project(&[("art/k.art", "@target i_{h}.png 8x8 scale:.4,.5\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@target i_{h}.png 8x8 scale:.4,.5\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics.iter().any(|d| d.code == "E0202"),
@@ -670,7 +670,7 @@ mod tests {
     fn a_w_or_h_axis_collides_with_the_size_placeholders() {
         for axis in ["w", "h"] {
             let p = project(&[(
-                "art/k.art",
+                "art/k.ramo",
                 &format!("@target t_{{{axis}}}.png 8x8 each {axis}:[1 2]\nrect 1\n"),
             )]);
             let plan = plan(&p);
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn an_unknown_path_variable_is_still_e0207() {
-        let p = project(&[("art/k.art", "@target t_{x}.png 8x8\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@target t_{x}.png 8x8\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics.iter().any(|d| d.code == "E0207"),
@@ -697,7 +697,7 @@ mod tests {
     #[test]
     fn a_png_bakes_at_its_highest_scale_and_an_svg_never_below_one() {
         let bake = |target: &str| {
-            let p = project(&[("art/k.art", &format!("{target}\nrect 1\n"))]);
+            let p = project(&[("art/k.ramo", &format!("{target}\nrect 1\n"))]);
             plan(&p).jobs[0].bake_scale
         };
         assert_eq!(bake("@target t.png 8x8 scale:.5"), 0.5);
@@ -709,7 +709,7 @@ mod tests {
     #[test]
     fn a_gif_writes_one_output_per_scale_and_bakes_at_the_highest() {
         let p = project(&[(
-            "art/k.art",
+            "art/k.ramo",
             "@target t.gif 8x8 scale:.5,2 bg:#ffffff\nrect 1\n",
         )]);
         let plan = plan(&p);
@@ -724,7 +724,7 @@ mod tests {
 
     #[test]
     fn a_non_list_after_an_axis_stays_an_axis() {
-        let p = project(&[("art/k.art", "@target t.png 8x8 each a:[x] b:oops\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@target t.png 8x8 each a:[x] b:oops\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics
@@ -739,7 +739,7 @@ mod tests {
     #[test]
     fn a_known_key_after_each_stays_a_target_key() {
         let p = project(&[(
-            "art/k.art",
+            "art/k.ramo",
             "@target t.png 8x8 each a:[x] clip:go fps:12\nrect 1\n",
         )]);
         let plan = plan(&p);
@@ -752,23 +752,23 @@ mod tests {
     #[test]
     fn duplicate_outputs_are_e0202_naming_both_lines() {
         let p = project(&[
-            ("art/a.art", "@target x.png 8x8\nrect 1x1\n"),
-            ("art/b.art", "\n@target x.png 8x8\nrect 1x1\n"),
+            ("art/a.ramo", "@target x.png 8x8\nrect 1x1\n"),
+            ("art/b.ramo", "\n@target x.png 8x8\nrect 1x1\n"),
         ]);
         let plan = plan(&p);
         assert_eq!(plan.diagnostics.len(), 1);
         let d = &plan.diagnostics[0];
         assert_eq!(
             (d.code.as_str(), d.file.as_str(), d.span.line),
-            ("E0202", "art/b.art", 2)
+            ("E0202", "art/b.ramo", 2)
         );
-        assert_eq!(d.notes, ["first declared at art/a.art:1"]);
+        assert_eq!(d.notes, ["first declared at art/a.ramo:1"]);
         assert_eq!(plan.jobs.len(), 1);
     }
 
     #[test]
     fn targets_under_a_lib_root_are_e0203() {
-        let p = project(&[("lib/x.art", "@target x.png 8x8\nrect 1x1\n")]);
+        let p = project(&[("lib/x.ramo", "@target x.png 8x8\nrect 1x1\n")]);
         let plan = plan(&p);
         assert_eq!(plan.diagnostics[0].code, "E0203");
         assert!(plan.jobs.is_empty());

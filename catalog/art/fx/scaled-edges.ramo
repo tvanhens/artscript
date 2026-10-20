@@ -1,0 +1,15 @@
+# A row of four red circles on paper, each drawn as circle 8 at scale:3, so each is 48 px across, centered at x 32, 96, 160, 224 and y 40.
+# 1. No effect: a flat red circle with a crisp 1 px edge, for reference.
+# 2. fx grain .3 scale:1.5: light pink and darker red blotches a few px across, sharp at the pixel level (the noise is drawn at scale 3, not enlarged), and the same crisp edge as cell 1.
+# 3. fx rim 3 dir:1,1: a pale lavender band about 9 px wide along the lower-right inside edge, and the same crisp edge as cell 1.
+# 4. fx inner 0,3 blur:1 in ink at a:.7: a dark ink-purple crescent along the top inside edge, about 9 px deep at the top and thinning to nothing along the sides, and the same crisp edge as cell 1.
+# No cell has a soft or blurred outer edge, and nothing is drawn outside the circles.
+@target fx/scaled-edges.png 256x80
+
+circle 8 at:32,40 scale:3 fill:p.red
+circle 8 at:96,40 scale:3 fill:p.red name:grained
+  fx grain .3 scale:1.5
+circle 8 at:160,40 scale:3 fill:p.red
+  fx rim 3 dir:1,1
+circle 8 at:224,40 scale:3 fill:p.red
+  fx inner 0,3 blur:1 color:p.ink a:.7

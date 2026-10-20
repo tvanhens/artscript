@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 
-use artscript_brush::Seeds;
-use artscript_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
+use ramose_brush::Seeds;
+use ramose_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut,
     RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders,
@@ -277,14 +277,14 @@ fn fold(draws: &[Draw], over: &[usize], memo: &mut HashMap<Vec<usize>, Blender>,
 }
 
 thread_local! {
-    /// The paint shader of every blender draw. See `artscript_brush::ENCODE`.
-    static ENCODER: Shader = RuntimeEffect::make_for_shader(artscript_brush::ENCODE, None)
+    /// The paint shader of every blender draw. See `ramose_brush::ENCODE`.
+    static ENCODER: Shader = RuntimeEffect::make_for_shader(ramose_brush::ENCODE, None)
         .expect("encoder compiles")
         .make_shader(Data::new_empty(), &[], None)
         .expect("encoder shader");
     /// Stage 0's `u_prev` over a non-solid base paint, read at the decoded device pixel.
     static ADAPTER: RuntimeEffect = RuntimeEffect::make_for_blender(
-        format!("{}uniform shader p;\nhalf4 main(half4 src, half4 dst) {{ return p.eval(u_decode(src)); }}\n", artscript_brush::DECODE),
+        format!("{}uniform shader p;\nhalf4 main(half4 src, half4 dst) {{ return p.eval(u_decode(src)); }}\n", ramose_brush::DECODE),
         None,
     )
     .expect("base adapter compiles");
@@ -380,7 +380,7 @@ impl<'a> Frame<'a> {
         };
         let last = stages.len() - 1;
         for (i, (stage, mark)) in stages.iter().enumerate() {
-            let effect = if blend { artscript_brush::blender(&stage.program) } else { artscript_brush::effect(&stage.program) };
+            let effect = if blend { ramose_brush::blender(&stage.program) } else { ramose_brush::effect(&stage.program) };
             let effect = effect.map_err(|e| internal(origin, e))?;
             let mut u = Uniforms::new(&effect);
             u.set(origin, "u_dtl", &mat9(&self.dtl))?;

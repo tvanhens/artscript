@@ -6,9 +6,9 @@ mod common;
 
 use std::sync::Arc;
 
-use artscript_brush::{MainKind, Program, UniformKind};
-use artscript_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
-use artscript_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
+use ramose_brush::{MainKind, Program, UniformKind};
+use ramose_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
+use ramose_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
 use common::{color, effect, pixel, red, scene, solid, stamp};
 
 /// Mixes the paint halfway toward the backdrop, weighted by the backdrop's alpha, so a pixel
@@ -21,7 +21,7 @@ const PLAIN: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.e
 
 fn stage(kind: MainKind, body: &str, seed: u32) -> Stage {
     let program = Program::assemble(kind, &[] as &[(String, UniformKind)], body);
-    artscript_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
     Stage { program: Arc::new(program), uniforms: vec![], seed }
 }
 
@@ -31,20 +31,20 @@ fn area(body: &str, seed: u32) -> AreaMark {
 
 const SQUARE: skia_safe::Rect = skia_safe::Rect { left: 20.0, top: 20.0, right: 60.0, bottom: 60.0 };
 
-fn gold() -> artscript_ir::Color {
+fn gold() -> ramose_ir::Color {
     color(232, 179, 58, 255)
 }
 
-fn blue() -> artscript_ir::Color {
+fn blue() -> ramose_ir::Color {
     color(79, 127, 224, 255)
 }
 
 /// The gold backdrop every scene here draws first: a rect past the square on every side.
-fn backdrop() -> artscript_ir::Node {
+fn backdrop() -> ramose_ir::Node {
     solid("back", Path::rect(skia_safe::Rect::from_ltrb(10.0, 10.0, 70.0, 70.0), None), gold())
 }
 
-fn brushed(path: &str, paint: artscript_ir::Color, marks: Vec<AreaMark>) -> artscript_ir::Node {
+fn brushed(path: &str, paint: ramose_ir::Color, marks: Vec<AreaMark>) -> ramose_ir::Node {
     let mut node = solid(path, Path::rect(SQUARE, None), red());
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Fill { paint: Paint::Solid(paint), marks });
@@ -55,7 +55,7 @@ fn brushed(path: &str, paint: artscript_ir::Color, marks: Vec<AreaMark>) -> arts
 /// A ribbon of constant half width along the square's one contour.
 fn ribbon(body: &str, half_width: f32) -> Ribbon {
     let len = 160.0;
-    let knot = |s: f32| artscript_ir::Knot { s, half_width, pressure: 1.0, angle: 0.0, tilt: 0.0, velocity: 1.0 };
+    let knot = |s: f32| ramose_ir::Knot { s, half_width, pressure: 1.0, angle: 0.0, tilt: 0.0, velocity: 1.0 };
     Ribbon {
         marks: vec![RibbonMark { stage: stage(MainKind::Ribbon, body, 9), reach: 0.0 }],
         contours: vec![RibbonContour { len, closed: true, knots: vec![knot(0.0), knot(len)] }],
@@ -63,13 +63,13 @@ fn ribbon(body: &str, half_width: f32) -> Ribbon {
     }
 }
 
-fn with_stroke(mut node: artscript_ir::Node, paint: artscript_ir::Color, ribbon: Option<Ribbon>) -> artscript_ir::Node {
+fn with_stroke(mut node: ramose_ir::Node, paint: ramose_ir::Color, ribbon: Option<Ribbon>) -> ramose_ir::Node {
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.stroke = Some(Stroke {
             paint: Paint::Solid(paint),
             width: 8.0,
-            cap: artscript_ir::Cap::Round,
-            join: artscript_ir::Join::Round,
+            cap: ramose_ir::Cap::Round,
+            join: ramose_ir::Join::Round,
             dash: vec![],
             ink: None,
             ribbon,
@@ -78,18 +78,18 @@ fn with_stroke(mut node: artscript_ir::Node, paint: artscript_ir::Color, ribbon:
     node
 }
 
-fn with_child(mut parent: artscript_ir::Node, child: artscript_ir::Node) -> artscript_ir::Node {
+fn with_child(mut parent: ramose_ir::Node, child: ramose_ir::Node) -> ramose_ir::Node {
     if let NodeKind::Shape(shape) = &mut parent.kind {
         shape.children.push(child);
     }
     parent
 }
 
-fn band() -> artscript_ir::Node {
+fn band() -> ramose_ir::Node {
     solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(43, 36, 64, 255))
 }
 
-fn mix(a: artscript_ir::Color, b: artscript_ir::Color, t: f32) -> [u8; 3] {
+fn mix(a: ramose_ir::Color, b: ramose_ir::Color, t: f32) -> [u8; 3] {
     [a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t].map(|v| (v * 255.0).round() as u8)
 }
 
@@ -100,7 +100,7 @@ fn assert_rgb(got: [u8; 4], want: [u8; 3], what: &str) {
     }
 }
 
-fn render(nodes: Vec<artscript_ir::Node>) -> Vec<u8> {
+fn render(nodes: Vec<ramose_ir::Node>) -> Vec<u8> {
     render_png(&scene(80.0, 80.0, nodes), 1.0, Backend::Cpu).unwrap()
 }
 
@@ -120,11 +120,11 @@ fn a_brush_reads_the_pixels_already_drawn_under_the_node_and_renders_the_same_by
 
 #[test]
 fn inside_an_isolated_group_the_backdrop_is_only_what_the_group_drew() {
-    let group = stamp("g", artscript_ir::Matrix::new_identity(), vec![brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
+    let group = stamp("g", ramose_ir::Matrix::new_identity(), vec![brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
     let png = render(vec![backdrop(), group]);
     assert_eq!(pixel(&png, 40, 40), [79, 127, 224, 255], "the gold is outside the group, so m.below is transparent");
     let inner = solid("g.back", Path::rect(skia_safe::Rect::from_ltrb(10.0, 10.0, 70.0, 70.0), None), gold());
-    let group = stamp("g", artscript_ir::Matrix::new_identity(), vec![inner, brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
+    let group = stamp("g", ramose_ir::Matrix::new_identity(), vec![inner, brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
     let png = render_png(&scene(80.0, 80.0, vec![group]), 1.0, Backend::Cpu).unwrap();
     assert_rgb(pixel(&png, 40, 40), mix(blue(), gold(), 0.5), "gold drawn inside the group is seen");
 }
@@ -211,7 +211,7 @@ fn the_gpu_agrees_with_the_cpu_and_repeats_itself() {
     let node = with_child(with_stroke(fill, blue(), Some(ribbon(HALF_BELOW, 4.0))), band());
     let mut faint = brushed("b", blue(), vec![area(HALF_BELOW, 3)]);
     faint.opacity = 0.5;
-    faint.transform = artscript_ir::Matrix::translate((5.0, 5.0));
+    faint.transform = ramose_ir::Matrix::translate((5.0, 5.0));
     let s = scene(80.0, 80.0, vec![backdrop(), node, faint]);
     let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
     let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();
@@ -239,11 +239,11 @@ fn svg_refuses_to_bake_a_node_whose_brush_reads_below_under_both_profiles() {
     let s = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(HALF_BELOW, 1)])]);
     let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a brush fill", "a brush below"]);
-    assert!(matches!(render_svg(&s, artscript_ir::Profile::Vector, 1.0, Backend::Cpu), Err(RenderError::NotVector(_))));
-    match render_svg(&s, artscript_ir::Profile::Svg, 1.0, Backend::Cpu) {
+    assert!(matches!(render_svg(&s, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(RenderError::NotVector(_))));
+    match render_svg(&s, ramose_ir::Profile::Svg, 1.0, Backend::Cpu) {
         Err(RenderError::NoBackdrop(list)) => assert_eq!(list.len(), 1, "{list:?}"),
         other => panic!("{other:?}"),
     }
     let plain = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(PLAIN, 1)])]);
-    assert!(render_svg(&plain, artscript_ir::Profile::Svg, 1.0, Backend::Cpu).is_ok(), "a brush that reads nothing still bakes");
+    assert!(render_svg(&plain, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).is_ok(), "a brush that reads nothing still bakes");
 }
