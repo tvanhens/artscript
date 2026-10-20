@@ -7322,6 +7322,7 @@ fn unknown_word_off_is_silent() {
 
 mod brush;
 mod stamp;
+mod warp;
 
 #[test]
 fn edge_to_the_end_of_an_open_curve_is_one_piece() {

@@ -34,6 +34,15 @@ impl Place {
         Place(links)
     }
 
+    /// A warp applied before everything here, and the cell that fills it.
+    pub fn inner_warp(&self) -> (Place, Rc<OnceCell<Warp>>) {
+        let cell = Rc::new(OnceCell::new());
+        let mut links = Vec::with_capacity(self.0.len() + 1);
+        links.push(Link::Warp(cell.clone()));
+        links.extend(self.0.iter().cloned());
+        (Place(links), cell)
+    }
+
     /// `node`'s content frame, with this as its parent frame: its resolved warp, then its
     /// transform.
     pub fn inner_node(&self, node: &Node) -> Place {

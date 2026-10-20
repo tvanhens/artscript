@@ -7,6 +7,7 @@ use ramose_ir::{Effect, EffectOp, MaskSource, Node, NodeKind, Paint, Rect, Scene
 
 use crate::place::Place;
 use crate::value::num;
+use crate::warp::stack_text;
 
 fn paint(p: &Paint) -> String {
     let ends = |stops: &[ramose_ir::Stop]| match (stops.first(), stops.last()) {
@@ -86,6 +87,10 @@ fn walk(n: &Node, parent: &Place, depth: usize, seeded: &BTreeSet<String>, out: 
         if !s.stamps.is_empty() {
             let _ = write!(out, "  stamps:{}", s.stamps.len());
         }
+    }
+    if !n.warp.is_none() {
+        let stages: Vec<_> = n.warp.stages().iter().map(|s| s.kind).collect();
+        let _ = write!(out, "  warp:{}", stack_text(&stages));
     }
     if n.opacity < 1.0 {
         let _ = write!(out, "  a:{}", num(n.opacity as f64));

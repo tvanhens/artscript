@@ -3,7 +3,7 @@
 use std::fmt;
 use std::rc::Rc;
 
-use ramose_ir::Field;
+use ramose_ir::{Field, WarpStage};
 
 use crate::brush::BrushVal;
 use crate::stamp::StampVal;
@@ -12,6 +12,7 @@ use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
 use crate::range::Range;
 use crate::scope::{AliasDef, Component, FnDef, Module, Palette, RefVal, RuleDef};
+use crate::warp::stage_text;
 
 /// One coordinate: canvas units or a percent of the current frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -83,6 +84,8 @@ pub enum Value {
     Brush(Rc<BrushVal>),
     /// A `stamp` declaration with its parameter values, placement and set name bound.
     Stamp(Rc<StampVal>),
+    /// One `warp:` stage, `corners(...)` or `cylinder(...)`, bound to a box when a node uses it.
+    Warp(Rc<WarpStage>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.
     Unseen,
@@ -109,6 +112,7 @@ pub enum Kind {
     Fn,
     Brush,
     Stamp,
+    Warp,
     Unseen,
 }
 
@@ -133,6 +137,7 @@ impl fmt::Display for Kind {
             Kind::Fn => "a function",
             Kind::Brush => "a brush",
             Kind::Stamp => "a stamp",
+            Kind::Warp => "a warp",
             Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
@@ -162,6 +167,7 @@ impl Value {
             Value::Fn(_) => Kind::Fn,
             Value::Brush(_) => Kind::Brush,
             Value::Stamp(_) => Kind::Stamp,
+            Value::Warp(_) => Kind::Warp,
             Value::Unseen => Kind::Unseen,
         }
     }
@@ -172,7 +178,7 @@ impl Value {
         a == b
             || matches!(other, Value::None)
             || matches!(self, Value::None)
-            || matches!((a, b), (Kind::Component, Kind::Word) | (Kind::List, Kind::Range) | (Kind::Range, Kind::List))
+            || matches!((a, b), (Kind::Component, Kind::Word) | (Kind::List, Kind::Range) | (Kind::Range, Kind::List) | (Kind::Warp, Kind::List))
             || (a == Kind::Color && b == Kind::Field)
             || (a == Kind::Vector && b == Kind::Number)
     }
@@ -321,6 +327,7 @@ impl Value {
             Value::Fn(f) => f.name.clone(),
             Value::Brush(b) => format!("brush {}", b.decl.name),
             Value::Stamp(s) => format!("stamp {}", s.decl.name),
+            Value::Warp(w) => stage_text(w),
             Value::Unseen => "unseen".into(),
         }
     }
@@ -444,6 +451,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::Fn(x), Value::Fn(y)) => Rc::ptr_eq(x, y),
         (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Stamp(x), Value::Stamp(y)) => Rc::ptr_eq(x, y),
+        (Value::Warp(x), Value::Warp(y)) => x == y,
         (Value::Range(x), Value::Range(y)) => x == y,
         (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {

@@ -10,6 +10,7 @@ use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
 use crate::value::{Arith, Col, Coord, Value, arith};
+use crate::warp;
 
 fn wrap_period(v: &Value) -> Option<[f32; 2]> {
     match v.pair()? {
@@ -330,6 +331,8 @@ impl Evaluator<'_> {
                     ridged: func == "ridged",
                 }))
             }
+            "corners" => warp::corners(&a, &nm)?,
+            "cylinder" => warp::cylinder(&a, named)?,
             "concat" => {
                 if a.len() < 2 {
                     return Err(fail("E0320", "`concat` joins two or more lists")
@@ -363,6 +366,7 @@ impl Evaluator<'_> {
                     .note("math: min max abs clamp lerp sqrt floor round sin cos atan2 mod polar rand pick")
                     .note("color: shade lit mix fade line oklch ramp grad radial conic")
                     .note("fields: simplex perlin worley value fbm ridged")
+                    .note("warps: corners cylinder")
                     .note("lists: concat")
                     .fix("check the spelling"));
             }

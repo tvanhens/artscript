@@ -25,6 +25,7 @@ mod seed;
 mod stamp;
 pub mod targets;
 mod value;
+mod warp;
 
 use std::collections::{BTreeMap, BTreeSet};
 

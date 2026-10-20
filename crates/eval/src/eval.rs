@@ -1,13 +1,13 @@
 //! The evaluator: modules and declarations, the drawing statements, components with slots and
 //! patches, and expressions. Produces the scene IR described in `ramose-ir`.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use ramose_ir::{
     Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke, Warp,
+    Point, Rect, Shape, Stroke, Warp, WarpError,
 };
 use ramose_syntax::ast::{
     self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
@@ -38,6 +38,7 @@ use crate::scope::{
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
+use crate::warp;
 
 /// An evaluation failure, turned into a [`Diagnostic`] at the statement that caused it.
 #[derive(Debug)]
@@ -80,7 +81,7 @@ const MEASURES: &[&str] = &[
     "x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area",
 ];
 const NODE_KEYS: &[&str] = &[
-    "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
+    "at", "rot", "scale", "skew", "pivot", "warp", "a", "blend", "z", "name", "style", "feather",
 ];
 
 /// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
@@ -108,7 +109,7 @@ const PAINT_KEYS: &[&str] = &[
 ];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend", "warp",
 ];
 
 /// A shape's geometry, the authored points of each contour, whether it is closed, and the point
@@ -678,6 +679,17 @@ pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: No
         effects: Vec::new(),
         kind,
     }
+}
+
+/// The frame a node's content draws in: `m` under the parent and, when the line sets `warp:`,
+/// a warp link that `finish_node` fills once the body closes.
+fn content_place(parent: &Place, a: &Args, m: Matrix) -> (Place, Option<Rc<OnceCell<Warp>>>) {
+    let place = parent.inner(m);
+    if a.get("warp").is_none() {
+        return (place, None);
+    }
+    let (place, cell) = place.inner_warp();
+    (place, Some(cell))
 }
 
 /// A grid cell's offset is a translation, so it changes every measurement but a size.
@@ -1856,8 +1868,41 @@ impl<'a> Evaluator<'a> {
         Ok((m, at))
     }
 
-    /// Opacity, blend and z order shared by every node.
-    fn finish_node(&mut self, node: &mut Node, a: &Args) -> R<f64> {
+    /// The warp, opacity, blend and z order shared by every node. The warp binds to the node's
+    /// content box, known only now that the body has closed, and fills `pending` so the records
+    /// placed inside read through it from here on.
+    fn finish_node(
+        &mut self,
+        node: &mut Node,
+        a: &Args,
+        sc: &Scope,
+        pending: Option<Rc<OnceCell<Warp>>>,
+    ) -> R<f64> {
+        if let Some(v) = a.get("warp") {
+            let stages = warp::warp_stack(v, sc)?;
+            let warp = if stages.is_empty() {
+                Warp::default()
+            } else {
+                let reference = node.reference_box().ok_or_else(|| {
+                    fail("E0320", "`warp:` has nothing to warp: the node draws nothing")
+                        .fix("give the node geometry or children, or remove `warp:`")
+                })?;
+                Warp::resolve(&stages, reference).map_err(|WarpError::Empty(i)| {
+                    fail(
+                        "E0320",
+                        format!(
+                            "`{}` has nothing left to map: the stage before it hides all of the content",
+                            warp::stage_text(&stages[i])
+                        ),
+                    )
+                    .fix("use a larger cylinder radius, or narrower content")
+                })?
+            };
+            if let Some(cell) = pending {
+                cell.set(warp.clone()).expect("a node's warp is resolved once");
+            }
+            node.warp = warp;
+        }
         if let Some(op) = a.num("a") {
             node.opacity = op.clamp(0.0, 1.0) as f32;
         }
@@ -2214,7 +2259,7 @@ impl<'a> Evaluator<'a> {
             sc.style.clone()
         };
         let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
-        let world = sc.world.inner(m);
+        let (world, warp_cell) = content_place(&sc.world, &a, m);
         let mut node;
         let mut record = None;
         let body_frame;
@@ -2428,7 +2473,7 @@ impl<'a> Evaluator<'a> {
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key, a.seed()?);
         self.mask(&mut node, &a, body.mask(), sc, body_frame, &world, &key)?;
-        let z = self.finish_node(&mut node, &a)?;
+        let z = self.finish_node(&mut node, &a, sc, warp_cell)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
         }
@@ -3715,7 +3760,7 @@ impl<'a> Evaluator<'a> {
                 }
             }
         }
-        let world = sc.world.inner(m);
+        let (world, warp_cell) = content_place(&sc.world, &node_args, m);
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
         call_sc.palette = palette.clone();
@@ -3825,7 +3870,7 @@ impl<'a> Evaluator<'a> {
             .collect();
         node.effects = self.lower_fx(&sites, &key, f, node_args.seed()?);
         self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, &world, &key)?;
-        let z = self.finish_node(&mut node, &node_args)?;
+        let z = self.finish_node(&mut node, &node_args, sc, warp_cell)?;
         rec.borrow_mut().node = Some(node.clone());
         *inst.record.borrow_mut() = Some(rec.clone());
         self.run_checks(&checks);
@@ -4151,7 +4196,7 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
-        let world = sc.world.inner(m);
+        let (world, warp_cell) = content_place(&sc.world, &a, m);
         let mapped = inverse(&m).map_rect(sc.frame).0;
         // Centered on the slot origin, because content with no `at:` defaults to the frame center.
         let local_frame = size_box(mapped.width() as f64, mapped.height() as f64);
@@ -4233,7 +4278,7 @@ impl<'a> Evaluator<'a> {
                 children,
             },
         );
-        let z = self.finish_node(&mut node, &a)?;
+        let z = self.finish_node(&mut node, &a, sc, warp_cell)?;
         if let Some(rec) = placed {
             rec.borrow_mut().node = Some(node.clone());
         }
