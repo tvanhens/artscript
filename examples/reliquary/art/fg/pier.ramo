@@ -6,9 +6,8 @@
 use paint { sculpt ink }
 use parts { contact crust }
 
-let stone = sculpt(scale:1.55 depth:.82 planes:.66 glossk:.1 strength:.6)
-
 def cracked_pier
+  let stone = sculpt(scale:1.55 depth:.82 planes:.66 glossk:.1 strength:.6)
   layer shadow_layer
     contact 116 at:4,1 name:shadow
 
