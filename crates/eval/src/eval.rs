@@ -2330,7 +2330,6 @@ impl<'a> Evaluator<'a> {
             node.clip = clip;
             body_frame = inner.frame;
         } else {
-            let inner_world = &world;
             let mut operand_frame = None;
             let explicit = a.seed()?;
             let mut seam = 0.0;
@@ -2344,7 +2343,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
                     operand_frame = Some(local_frame);
-                    let mut inner = sc.child(key.clone(), local_frame, inner_world.clone());
+                    let mut inner = sc.child(key.clone(), local_frame, world.clone());
                     branch_fx = Some(inner.collect_branch_fx());
                     inner.operand_of = Some(Rc::new(OperandOf {
                         verb: verb.to_string(),
@@ -2450,7 +2449,7 @@ impl<'a> Evaluator<'a> {
             };
             body_frame = operand_frame.unwrap_or(gb);
             if operand_frame.is_none() && body.scenes().next().is_some() {
-                let mut inner = sc.child(key.clone(), gb, inner_world.clone());
+                let mut inner = sc.child(key.clone(), gb, world.clone());
                 inner.style = child_style;
                 branch_fx = Some(inner.collect_branch_fx());
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
