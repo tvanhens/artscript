@@ -1,0 +1,79 @@
+# A bone crown that fell onto its side. The band is the upright bar.
+# The tines lie to the right. The third one snapped, and the tip rests on the ground.
+# Amber is two inlays in the band and the chip that fell out of the break.
+# Soles on y = 0. The room key stays upper right.
+
+@target prop/crown.png 260x150 bg:none
+
+use paint { sculpt ink }
+use parts { contact crust }
+
+def fallen_crown
+  layer shadow_layer
+    contact 36 at:-52,1 name:cast
+    contact 16 at:44,1 name:shard_cast
+
+  layer back_layer
+    curve -76.9,-102.4 -56.1,-106 -49.8,-99.6 -48,-95.6 20.7,-100 -47,-85.8 -47.9,-81.5 -45.9,-76 64.9,-82 -44.6,-63.5 -45.6,-59.1 -45.1,-54.9 -25.3,-54.2 -44.2,-46.6 -45.2,-42.2 -43.5,-39.6 51.3,-43.9 -42.2,-27 -43.3,-24.1 14.5,-24.5 -44.8,-11.2 -54.1,-6 -66.8,-6.1 -73.3,-40.7 -76.9,-75.6 closed fill:p.bone.1 brush:sculpt(scale:1.35 depth:.84 planes:.7 glossk:.1) name:back
+      fx outline 3 brush:ink(center:-16,-54) color:p.ink
+
+  layer crown_layer
+    curve -70.9,-96.4 -50.1,-100 -43.8,-93.6 -42,-89.6 26.7,-94 -41,-79.8 -41.9,-75.5 -39.9,-70 70.9,-76 -38.6,-57.5 -39.6,-53.1 -39.1,-48.9 -19.3,-48.2 -38.2,-40.6 -39.2,-36.2 -37.5,-33.6 57.3,-37.9 -36.2,-21 -37.3,-18.1 20.5,-18.5 -38.8,-5.2 -48.1,0 -60.8,-.1 -67.3,-34.7 -70.9,-69.6 closed tension:.16 fill:p.bone.3 brush:sculpt(scale:1.05 depth:.7 planes:.62 glossk:.18) name:crown_body
+      curve -64,-92 -52,-96 -48,-18 -58,-4 -68,-28 -70,-70 closed fill:p.bone.4 brush:sculpt(scale:.55 depth:.6 planes:.5 glossk:.22) name:band_face
+        fx outline 2.5 brush:ink(center:-58,-50) color:p.ink
+      ellipse 16,7 at:-52,-86 fill:p.bone.5 a:.38 blur:2 name:sheen
+      ellipse 18,5 at:-58,-8 fill:p.bone.0 a:.4 blur:2 name:sole
+      circle 3.3 at:-56,-78 fill:p.amber.3 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.22 planes:.16 glossk:.64 scale:.4) name:inlay_hi
+        circle 1.3 at:.6,-.7 fill:p.amber.5
+        circle .45 at:1,-1 fill:p.shine
+        fx glow 5 color:p.amber.4 a:.5 strength:1.15
+      circle 3.5 at:-54,-34 fill:p.amber.2 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.22 planes:.16 glossk:.6 scale:.4) name:inlay_lo
+        circle 1.4 at:.6,-.8 fill:p.amber.5
+        circle .5 at:1,-1.1 fill:p.shine
+        curve -2.2,-1.2 .2,.6 2.2,-.8 stroke:p.amber.0,.9 a:.75 name:flaw
+        fx glow 5 color:p.amber.4 a:.48 strength:1.1
+      curve -62,-70 -50,-72 stroke:p.bone.0,1.7 a:.55 name:seam_hi
+      curve -60,-50 -46,-52 stroke:p.bone.0,1.7 a:.5 name:seam_mid
+      curve -58,-22 -44,-24 stroke:p.bone.0,1.6 a:.5 name:seam_lo
+      curve -34,-86 2,-90 18,-92 stroke:p.bone.5,1.8 a:.55 name:ridge_hi
+      curve -32,-68 16,-72 52,-74 stroke:p.bone.5,2 a:.5 name:ridge_long
+      curve -32,-34 8,-36 40,-37 stroke:p.bone.5,1.7 a:.45 name:ridge_mid
+      curve -34,-15 -4,-16 12,-17 stroke:p.bone.5,1.5 a:.4 name:ridge_low
+      curve 2,-73 26,-75 46,-74 stroke:p.bone.0,1.4 a:.5 name:scratch
+      ellipse 7,3 at:-41,-82 fill:p.bone.0 a:.45 name:crotch_a
+      ellipse 6,2.6 at:-40,-60 fill:p.bone.0 a:.4 name:crotch_b
+      ellipse 6,2.4 at:-39,-42 fill:p.bone.0 a:.4 name:crotch_c
+      circle 2.1 at:-58,-58 fill:p.ink a:.7 name:pit_band
+        circle .7 at:.5,-.4 fill:p.bone.5 a:.7
+      circle 1.8 at:8,-73 fill:p.ink a:.6 name:pit_long
+      circle 1.7 at:24,-37 fill:p.ink a:.55 name:pit_mid
+      circle 1.6 at:-48,-18 fill:p.ink a:.55 name:pit_low
+      circle 1.5 at:40,-75 fill:p.ink a:.5 name:pit_tip
+      each i in 0..6
+        circle 1+rand(0 1.2) at:rand(-62 48),rand(-88 -10) fill:p.ink a:.45 name:pore
+      curve -18,-47 -32,-40 -46,-24 -56,-8 stroke:p.ink,2.2 a:.8 name:stress
+      ellipse 6.5,3.2 at:-24,-48 rot:-4 fill:p.bone.6 name:break
+        curve -3,0 0,1.2 3,.2 stroke:p.bone.4,1 a:.85 name:facet
+      circle 2.05 at:-30,-46 fill:p.ink name:socket
+        circle .65 at:.4,-.45 fill:p.bone.5 a:.75
+      circle 1.5 at:-41,-28 fill:p.moss.2 a:.8 name:moss
+        circle .7 at:.8,.4 fill:p.moss.3
+      fx grain .03 scale:1.2
+      fx outline 4.5 brush:ink(center:-8,-50) color:p.ink
+    curve -66,1 -52,2 -40,0 fill:none stamp:crust name:salt
+
+  layer front_layer
+    curve 16,-1 28,-7 48,-14 60,-5 46,2 24,2 closed fill:p.bone.3 brush:sculpt(scale:.65 depth:.66 planes:.58 glossk:.22) name:shard
+      ellipse 5.5,2.6 at:22,-2 rot:18 fill:p.bone.6 name:break
+      curve 30,-7 42,-11 52,-7 stroke:p.bone.5,1.3 a:.6 name:ridge
+      circle 1.3 at:40,-5 fill:p.ink a:.5 name:pit
+      fx outline 3.5 brush:ink(center:38,-6) color:p.ink
+    circle 1.25 at:1,-3 fill:p.amber.4 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.18 planes:.14 glossk:.7 scale:.28) name:chip
+      circle .45 at:.25,-.3 fill:p.amber.6
+      circle .22 at:.4,-.45 fill:p.shine
+      fx glow 2.4 color:p.amber.4 a:.34 strength:1
+
+let ground = 128
+fallen_crown at:130,ground name:crown
+assert inside(@crown canvas margin:10)
+assert @crown.bottom-ground in -8..16
