@@ -182,7 +182,15 @@ assert inside(@body canvas margin:24)
 
 ## Get started
 
-ramose builds with stable Rust.
+Install a prebuilt binary for macOS (arm64, x64), Linux glibc (x64, arm64), or Windows x64:
+
+```sh
+npm install -g ramose
+bun add -g ramose
+npx ramose init
+```
+
+Elsewhere, build from source with stable Rust.
 
 ```sh
 cargo install --git https://github.com/tvanhens/ramose ramose
