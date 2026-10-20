@@ -6,7 +6,7 @@
 
 ## One-time setup
 
-1. On npmjs.com, add a GitHub Actions trusted publisher to `ramose` and to each `ramose-<key>` package: user `tvanhens`, repository `ramose`, workflow `release.yml`, no environment, with "Allow npm publish" checked. npm sets up a trusted publisher only for a package that already exists, so publish a placeholder `0.0.0` of each new package by hand first.
+1. Log in with `npm login` and run `node npm/bootstrap.mjs`. npm trusts a publisher only for a package that exists, so the script publishes a `0.0.0` placeholder of each missing package. Then it trusts `release.yml` in `tvanhens/ramose` to publish every package. It needs npm 11.15.0 or later and 2FA on your account. Run it again after you add a platform.
 2. Add a fine-grained personal access token with read and write access to contents and pull requests as `RELEASE_PLEASE_TOKEN`. With `GITHUB_TOKEN`, GitHub runs no checks on the release PR.
 
 The `ramose` name on npm first held a graph database, which published 0.2.0 and 0.3.0. `.release-please-manifest.json` starts at 0.3.0, so the first CLI release is 0.4.0 or later. `publish.mjs` stops before it publishes anything when the version is below `latest`.
@@ -21,7 +21,7 @@ While the version is below 1.0.0, a `feat` bumps the minor version, and a breaki
 
 ## Add a platform
 
-Add one row to `platforms.json`: `key`, `package` (`ramose-<key>`), `os`, `cpu`, `libc` for Linux, Rust `target`, GitHub `runner`, and `exe`. Nothing else lists platforms.
+Add one row to `platforms.json`: `key`, `package` (`ramose-<key>`), `os`, `cpu`, `libc` for Linux, Rust `target`, GitHub `runner`, and `exe`. Nothing else lists platforms. Then run `node npm/bootstrap.mjs` so the new package exists and trusts `release.yml`.
 
 ## Check locally
 
