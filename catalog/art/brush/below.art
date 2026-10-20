@@ -1,0 +1,58 @@
+# m.below reads the pixels already drawn under a node, 256x128 on paper, two rows of three cells.
+# The brush smudge, declared in this file, mixes the paint halfway toward what is under it,
+# weighted by that backdrop's alpha, so over paper or gold the color is the mean of the two and
+# over nothing (inside a fresh layer) the paint stays as it is. Every brushed square is blue
+# p.blue.2 and every backdrop square is gold p.gold.2.
+# Row 1 (y 32). Cell 1 (x 16..88): a gold square at x 16..64 and a smudged blue square at
+# x 40..88 over its right half. The blue square's left half, over gold, is an even olive green
+# (half blue, half gold); its right half, over paper, is an even pale blue; the gold square's
+# left part stays gold. Cell 2 (x 101..173): the same two squares, but the blue one is inside a
+# layer and the gold one is not. The blue square is plain blue over both halves: the layer
+# starts from nothing, so the brush sees no gold and no paper. Cell 3 (x 189..245): a gold
+# square at x 193..241 with a smudged blue stroke 8 wide on its edge. The inner half of the
+# stroke, over the fill, is olive green; the outer half, over paper, is pale blue; the gold
+# inside stays gold.
+# Row 2 (y 96). Cell 4 (x 16..88): the squares of cell 1 with an ink band 12 tall across the
+# middle of the blue square as its child. The band is solid ink over both halves and stops at
+# the blue square's edges; the blue square around it reads as in cell 1. Cell 5 (x 101..173):
+# the squares of cell 1 with the blue square at a:.5. The blue square is half as strong: its
+# left half is gold tinted a little toward blue, its right half paper tinted a little toward
+# blue. Cell 6 (x 181..253): the squares of cell 1 with brush:[smudge dim], where dim, also
+# declared here, keeps 60% of the color it is handed. The whole stack runs over the backdrop
+# once smudge reads it, so the left half is cell 1's olive darkened to 60% and the right half
+# is cell 1's pale blue darkened to 60%; dim darkens the mix, not the blue alone.
+# Every edge is antialiased; nothing is drawn outside its squares.
+@target brush/below.png 256x128
+
+brush smudge k:.5
+  sksl """
+  float4 shade(Mark m) {
+    return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * k), cover(m.edge, m));
+  }
+  """
+
+brush dim
+  sksl """
+  float4 shade(Mark m) {
+    return float4(m.paint.rgb * .6, cover(m.edge, m));
+  }
+  """
+
+rect 48 at:40,32 fill:p.gold.2
+rect 48 at:64,32 fill:p.blue.2 brush:smudge name:over_gold
+
+rect 48 at:125,32 fill:p.gold.2
+layer fresh
+  rect 48 at:149,32 fill:p.blue.2 brush:smudge name:in_layer
+
+rect 48 at:217,32 fill:p.gold.2 stroke:p.blue.2,8 brush:smudge(on:stroke) name:edge
+
+rect 48 at:40,96 fill:p.gold.2
+rect 48 at:64,96 fill:p.blue.2 brush:smudge name:with_child
+  rect 72,12 fill:p.ink
+
+rect 48 at:125,96 fill:p.gold.2
+rect 48 at:149,96 fill:p.blue.2 brush:smudge a:.5 name:faint
+
+rect 48 at:205,96 fill:p.gold.2
+rect 48 at:229,96 fill:p.blue.2 brush:[smudge dim] name:stacked
