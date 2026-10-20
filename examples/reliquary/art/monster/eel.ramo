@@ -1,0 +1,126 @@
+# A pale segmented eel, coiled as one animal. The belly sits on local y = 0.
+# Gouache, one key from the upper right. The lantern is the only amber.
+
+@target monster/eel.png 440x260 bg:none
+
+use paint { sculpt ink }
+use parts { contact eye ember }
+
+def marrow_eel
+  layer shadow_layer
+    contact 78 at:36,0 name:shadow
+
+  layer rear_layer
+    curve -178,-78 -162,-116 -118,-156 -58,-180 8,-190 72,-184 122,-164 152,-136 166,-104 156,-86 132,-108 96,-132 36,-146 -28,-144 -86,-128 -132,-100 -160,-76 -176,-64 -178,-78 closed fill:p.flesh.1 brush:sculpt(lo:p.flesh.0 hi:p.flesh.4 depth:.84 glossk:.26 planes:.58 scale:1.08 strength:.6 rimk:.6 plump:1.05) name:rear
+      each k, sp in [-120,-128,42 -66,-158,24 -8,-174,2 52,-176,-16 108,-156,-36]
+        curve 0,-24 1,0 -1,22 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.0,4 a:.78 name:crease
+        curve 3,-22 2.6,0 2.2,20 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.5,1.3 a:.62 name:lit
+      curve -100,-140 -28,-160 44,-166 100,-148 stroke:p.flesh.0,1.5 a:.6 name:lateral
+      ellipse 52,14 at:68,-166 rot:-18 fill:p.shine a:.58 blur:1.4 name:wet
+        ellipse 16,4.5 at:12,-2.2 fill:p.shine a:.85 name:speck
+      ellipse 28,16 at:-70,-120 fill:p.flesh.0 a:.34 blur:2.5 name:shade
+      ellipse 38,16 rot:-28 at:114,-142 fill:p.flesh.0 a:.78 name:marrow_well
+      ellipse 32,12 rot:-28 at:114,-142 fill:p.bone.6 brush:sculpt(lo:p.bone.4 hi:p.shine depth:.06 planes:.04 scale:.26 glossk:.2) name:marrow
+        curve -13,.6 0,1.6 14,.2 stroke:p.ink,2.8 name:cleft
+        curve -11,-2.4 0,-1.2 12,-2 stroke:p.bone.6,1.7 name:lip
+        circle 1.8 at:8,-2.8 fill:p.shine name:glint
+      each i in 0..5
+        circle 1.6+rand(0 1.1) at:-24+rand(-60 80),-150+rand(-14 16) fill:p.flesh.0 a:.7 name:pit
+          circle .55 at:.4,-.45 fill:p.flesh.4 a:.55
+      each i in 0..3
+        curve 0,0 rand(-14 -5),rand(-4 4) rand(-20 -10),rand(-2 6) at:-60+i*32,-160 stroke:p.flesh.0,1.15 a:.5 name:scratch
+      fx outline 5.5 brush:ink color:p.ink
+    curve 108,-150 150,-146 172,-116 174,-82 152,-66 136,-84 150,-116 132,-140 104,-146 closed fill:p.flesh.1 brush:sculpt(lo:p.flesh.0 hi:p.flesh.4 depth:.8 glossk:.24 planes:.55 scale:.9) name:elbow_r
+      curve 148,-120 156,-96 146,-78 stroke:p.flesh.0,3.2 a:.7 name:crease
+      fx outline 4.5 brush:ink color:p.ink
+    curve -78,-158 -92,-180 -66,-176 -52,-156 -70,-158 closed fill:p.flesh.2 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.55 glossk:.38 planes:.4 scale:.5) name:fin_a
+      curve -80,-164 -76,-174 -66,-166 stroke:p.flesh.5,1 a:.55 name:ray
+      fx outline 2.4 brush:ink color:p.ink
+    curve -16,-176 -24,-200 2,-190 12,-168 -8,-172 closed fill:p.flesh.3 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.5 glossk:.46 planes:.36 scale:.48) name:fin_b
+      curve -12,-178 -8,-192 0,-180 stroke:p.flesh.5,1 a:.6 name:ray
+      fx outline 2.4 brush:ink color:p.ink
+    curve 40,-180 34,-202 62,-190 70,-166 50,-172 closed fill:p.flesh.4 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.44 glossk:.54 planes:.34 scale:.46) name:fin_c
+      ellipse 7,2.4 at:50,-186 rot:-14 fill:p.shine a:.5 blur:1 name:wet
+      fx outline 2.4 brush:ink color:p.ink
+    curve 92,-168 100,-188 120,-172 116,-152 98,-158 closed fill:p.flesh.3 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.5 glossk:.42 planes:.38 scale:.48) name:fin_d
+      fx outline 2.4 brush:ink color:p.ink
+    curve -154,-92 -176,-74 -168,-52 -144,-64 -150,-86 closed fill:p.flesh.1 brush:sculpt(lo:p.flesh.0 hi:p.flesh.4 depth:.72 glossk:.2 planes:.46 scale:.55) name:anal
+      curve -162,-80 -160,-66 -152,-72 stroke:p.flesh.0,1.1 a:.5 name:ray
+      fx outline 2.6 brush:ink color:p.ink
+
+  layer mid_layer
+    curve 138,-128 162,-112 170,-82 156,-54 108,-40 40,-36 -36,-44 -96,-66 -128,-96 -124,-122 -78,-132 -12,-136 56,-130 104,-122 138,-128 closed fill:p.flesh.2 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.68 glossk:.4 planes:.5 scale:.95 strength:.58 rimk:.58 plump:1.04) name:mid
+      each k, sp in [-72,-108,34 -14,-116,6 42,-114,-10 90,-116,-24]
+        curve 0,-22 1,0 0,20 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.0,3.8 a:.78 name:crease
+        curve 3.1,-20 2.7,0 2.3,18 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.5,1.3 a:.6 name:lit
+      curve -70,-124 -8,-128 52,-124 108,-116 stroke:p.ink,12 a:.26 blur:3 name:tuck
+      ellipse 38,11 at:62,-112 rot:-14 fill:p.shine a:.4 blur:1.5 name:wet
+        ellipse 11,3.2 at:9,-1.4 fill:p.shine a:.75 name:speck
+      curve -8,-100 12,-112 30,-98 stroke:p.flesh.0,1.8 a:.8 name:scar
+      each i in 0..4
+        circle 1.5+rand(0 1.2) at:-4+rand(-58 72),-100+rand(-16 16) fill:p.flesh.0 a:.62 name:pit
+          circle .5 at:.35,-.4 fill:p.flesh.5 a:.5
+      fx outline 5 brush:ink color:p.ink
+    curve -112,-104 -146,-90 -156,-62 -138,-38 -110,-46 -104,-70 -96,-92 -112,-104 closed fill:p.flesh.2 brush:sculpt(lo:p.flesh.0 hi:p.flesh.5 depth:.74 glossk:.3 planes:.5 scale:.7) name:elbow_l
+      curve -136,-78 -132,-58 -118,-46 stroke:p.flesh.0,3.2 a:.7 name:crease
+      fx outline 4 brush:ink color:p.ink
+
+  layer belly_layer
+    curve -128,-28 -140,-50 -96,-68 -28,-74 48,-70 112,-56 150,-36 162,-16 132,-4 74,0 22,0 -28,-6 -78,-16 -128,-28 closed fill:p.flesh.3 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.6 glossk:.5 planes:.5 scale:.88 strength:.62 rimk:.62 plump:1.06) name:belly
+      each k, sp in [-78,-36,70 -28,-28,84 24,-22,92 72,-26,86 114,-36,68]
+        curve 0,-20 1,0 0,16 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.0,3.6 a:.7 name:ring
+        curve 2.6,-18 2.3,0 2,14 at:sp.0,sp.1 rot:sp.2 stroke:p.flesh.5,1.25 a:.6 name:ring_lit
+      curve -70,-58 -8,-64 56,-58 108,-44 stroke:p.ink,10 a:.2 blur:3.4 name:tuck
+      ellipse 52,13 at:66,-38 rot:-14 fill:p.shine a:.42 blur:1.6 name:wet
+        ellipse 15,4 at:12,-1.6 fill:p.shine a:.78 name:speck
+      ellipse 36,14 at:-48,-24 fill:p.flesh.0 a:.3 blur:2 name:shade
+      curve -58,-14 -4,-6 42,-3 stroke:p.rim,1.8 a:.5 name:cool
+      each k in 0..6
+        curve -7,-2 0,-6 7,-1 at:-36+k*22,-40 rot:-12 stroke:p.flesh.4,1.2 a:.5 name:scale
+      each i in 0..5
+        circle 1.5+rand(0 1.3) at:6+rand(-60 60),-32+rand(-16 12) fill:p.flesh.0 a:.55 name:pit
+          circle .45 at:.3,-.35 fill:p.shine a:.45
+      fx outline 5.5 brush:ink color:p.ink
+    curve 118,-40 146,-22 168,-34 158,-54 134,-52 114,-42 closed fill:p.flesh.3 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.54 glossk:.42 planes:.4 scale:.48) name:pec
+      curve 128,-44 142,-32 154,-42 stroke:p.flesh.0,1.2 a:.55 name:ray
+      curve 132,-40 144,-30 154,-40 stroke:p.flesh.5,.85 a:.5 name:ray_lit
+      fx outline 2.6 brush:ink color:p.ink
+
+  layer head_layer
+    curve 96,-22 122,-42 160,-66 196,-82 214,-70 204,-90 174,-100 140,-96 112,-78 90,-54 80,-32 96,-22 closed fill:p.flesh.4 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.54 glossk:.52 planes:.46 scale:.7 strength:.6 rimk:.52 plump:1.04) name:head
+      eye 7 at:168,-82 tone:p.flesh.4 name:eye
+      ellipse 18,11 at:132,-64 rot:-26 fill:p.flesh.2 brush:sculpt(lo:p.flesh.0 hi:p.flesh.5 depth:.48 scale:.42 glossk:.26) name:gill
+        curve -6,2 0,6 7,1 stroke:p.ink,1.8 a:.8 name:slit
+        curve -4,-3 2,-6 7,-2 stroke:p.flesh.5,.9 a:.55 name:slit_lit
+      ellipse 9,2.6 at:196,-74 rot:-16 fill:p.ink name:mouth
+        ellipse 3.4,1.1 at:.5,-.3 fill:p.flesh.1 a:.6 name:maw
+      curve 188,-72 202,-78 210,-72 stroke:p.flesh.5,.9 a:.75 name:lip
+      circle 1.6 at:202,-80 fill:p.ink name:naris
+        circle .45 at:.3,-.35 fill:p.flesh.5
+      ellipse 18,6 at:176,-90 rot:-18 fill:p.shine a:.42 blur:1.3 name:wet
+        ellipse 5,1.8 at:4,-.8 fill:p.shine a:.78 name:speck
+      fx outline 4.5 brush:ink color:p.ink
+    curve 188,-66 194,-50 188,-38 stroke:p.flesh.3,[2.4 1.4 .45] brush:sculpt(lo:p.flesh.0 hi:p.flesh.5 scale:.3 depth:.4 glossk:.34) name:barbel
+      fx outline 2 brush:ink color:p.ink
+    curve 170,-64 166,-50 174,-40 stroke:p.flesh.2,[1.9 1.15 .4] brush:sculpt(lo:p.flesh.0 hi:p.flesh.4 scale:.28 depth:.46) name:barbel_short
+      fx outline 1.8 brush:ink color:p.ink
+
+  layer lure_layer
+    curve 158,-96 146,-118 154,-142 146,-160 140,-164 150,-144 142,-118 152,-98 164,-92 closed fill:p.flesh.4 brush:sculpt(lo:p.flesh.0 hi:p.shine depth:.48 glossk:.46 planes:.4 scale:.45) name:whisker
+      curve 154,-108 150,-128 152,-150 stroke:p.flesh.5,1.1 a:.55 name:tendon
+      fx outline 2.4 brush:ink color:p.ink
+    circle 13 at:144,-172 fill:p.bone.2 brush:sculpt(lo:p.bone.0 hi:p.bone.5 depth:.42 planes:.55 scale:.4 glossk:.28) name:lantern
+      circle 8 fill:p.amber.3 brush:sculpt(lo:p.amber.1 hi:p.shine depth:.12 planes:.1 glossk:.8 scale:.3 strength:.48) name:flame
+        circle 4.2 at:1.6,-1.8 fill:p.amber.6 name:core
+        circle 1.6 at:2.3,-2.5 fill:p.shine name:hot
+      curve -8,-1 0,-8 8,0 stroke:p.bone.1,2.4 name:rib
+      curve -7,4.5 0,9 7,4 stroke:p.bone.0,2 name:rib_low
+      curve -6,-3 1,-6 7,-1 stroke:p.bone.6,1.2 a:.85 name:rib_lit
+      fx glow 8 color:p.amber.4 a:.82 strength:1.65
+      fx outline 2.6 brush:ink color:p.ink
+    curve 132,-166 140,-186 152,-182 162,-166 fill:none stamp:ember(spacing:11) name:sparks
+
+let feet = 218
+marrow_eel at:206,feet name:eel
+assert inside(@eel canvas margin:12)
+assert @eel.bottom-feet in -8..16
