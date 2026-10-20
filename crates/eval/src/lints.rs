@@ -7,7 +7,7 @@ use ramose_syntax::ast::{
 };
 use ramose_syntax::{Diagnostic, Severity};
 
-use crate::identity::PositionalUses;
+use crate::identity::{PositionalUses, Site};
 use crate::place::Place;
 use crate::project::{LintLevel, Manifest};
 use crate::targets;
@@ -933,6 +933,26 @@ pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Ve
         }
     }
     out
+}
+
+/// An anchor a warp hides has no canvas point, so the rig leaves it out.
+pub fn hidden_anchors(hidden: &[(String, Site)], manifest: &Manifest) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("warp-cut");
+    hidden
+        .iter()
+        .filter_map(|(label, site)| {
+            let d = diag(
+                level,
+                "L0108",
+                site.span,
+                format!("anchor `{label}` is behind a warp, so the manifest leaves it out"),
+            )?;
+            Some(
+                d.in_file(site.file.to_string())
+                    .with_fix("move the anchor inside the warp's visible half, or widen the warp"),
+            )
+        })
+        .collect()
 }
 
 fn index<'n>(nodes: &'n [Node], parent: &Place, out: &mut HashMap<&'n str, (&'n Node, Place)>) {

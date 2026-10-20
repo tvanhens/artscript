@@ -9,7 +9,7 @@ use ramose_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
-use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, Region, RegionKind};
+use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, Region, RegionKind, Site};
 use crate::place::{Place, inverse};
 use crate::value::Value;
 
@@ -213,6 +213,13 @@ impl Record {
     pub fn anchor_canvas(&self) -> Option<Point> {
         self.parent_world.map_point(self.anchor?)
     }
+
+    /// Where the statement that made this record was written.
+    pub fn site(&self) -> Option<Site> {
+        let home = self.home.as_ref()?.upgrade()?;
+        let site = home.borrow().region().decl(self.decl?).site.clone();
+        Some(site)
+    }
 }
 
 /// One stamp set a node placed: its name and one record per stamp, index by position.
@@ -379,8 +386,15 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
 
 /// Every anchor the file placed, by the path an author writes after `@`, in canvas units. A `_`
 /// name inside a def or slot fill is private to it, so neither it nor anything under it appears.
-pub fn placed_anchors(top: &Rc<RefCell<Names>>) -> BTreeMap<String, (f64, f64)> {
-    let mut out = BTreeMap::new();
+#[derive(Default)]
+pub struct Anchors {
+    pub placed: BTreeMap<String, (f64, f64)>,
+    /// Anchors a warp puts out of sight, which the rig leaves out.
+    pub hidden: Vec<(String, Site)>,
+}
+
+pub fn placed_anchors(top: &Rc<RefCell<Names>>) -> Anchors {
+    let mut out = Anchors::default();
     anchors_in(&top.borrow(), None, &[], "", false, &mut out);
     out
 }
@@ -393,7 +407,7 @@ fn anchors_in(
     prefix: &[u32],
     label: &str,
     private_scope: bool,
-    out: &mut BTreeMap<String, (f64, f64)>,
+    out: &mut Anchors,
 ) {
     let region = names.region();
     for name in region.names_in(scope) {
@@ -428,9 +442,18 @@ fn anchors_in(
     }
 }
 
-fn collect_anchors(r: &RefVal, out: &mut BTreeMap<String, (f64, f64)>) {
-    if let Some(p) = r.record.anchor_canvas() {
-        out.insert(r.label.clone(), (p.x as f64, p.y as f64));
+fn collect_anchors(r: &RefVal, out: &mut Anchors) {
+    if r.record.anchor.is_some() {
+        match r.record.anchor_canvas() {
+            Some(p) => {
+                out.placed.insert(r.label.clone(), (p.x as f64, p.y as f64));
+            }
+            None => {
+                if let Some(site) = r.record.site() {
+                    out.hidden.push((r.label.clone(), site));
+                }
+            }
+        }
     }
     if let Some(inner) = &r.record.inner {
         let private_scope = inner.borrow().region().kind != RegionKind::File;

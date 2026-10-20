@@ -247,9 +247,10 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
             None
         }
     });
+    let anchors = scope::placed_anchors(&sc.names);
     let rig = Rig {
         pivot,
-        anchors: scope::placed_anchors(&sc.names),
+        anchors: anchors.placed,
     };
     let scene = Scene {
         width: job.size.0,
@@ -288,6 +289,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     }
     placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
     placement.extend(lints::warp_cut(&scene, &project.manifest, &job.source));
+    placement.extend(lints::hidden_anchors(&anchors.hidden, &project.manifest));
     stamp_target(job, &mut placement);
     diagnostics.extend(placement);
     Evaluation {
