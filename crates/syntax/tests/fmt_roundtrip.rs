@@ -140,6 +140,7 @@ fn fmt_round_trip_preserves_ast() {
         "curve x-w*.05,h*.18 x+w*.05,-h*.18\n".to_string(),
         "let x = (k - (lines - 1)/2)*w*.22\n".to_string(),
         "let a = 1\n\n\nlet b = 2\n".to_string(),
+        "rect 40x24 warp:[cylinder(40 axis:x) corners(84,22 140,22 150,54 74,54)] name:side\n".to_string(),
     ];
     for f in &files {
         inline.push(fs::read_to_string(f).unwrap_or_else(|e| panic!("{}: {e}", f.display())));

@@ -18,6 +18,7 @@ use crate::fx::FxSite;
 use crate::geom::P;
 use crate::identity::{self, Key, Lookup, Name, Names, Pending};
 use crate::lints::{body_idents, walk_scene};
+use crate::place::Place;
 use crate::scope::{Module, Record, RowRecord};
 use crate::value::{Col, Value};
 
@@ -158,7 +159,7 @@ pub(crate) struct Host<'a> {
     /// The host's `seed:`.
     pub explicit: Option<u64>,
     /// Canvas from the host's local frame.
-    pub world: &'a Matrix,
+    pub world: &'a Place,
     /// The `stamp:` key on the host's own line, or `None` when inherited.
     pub own_site: Option<Span>,
     /// The host statement, for the unstable-name report.
@@ -605,7 +606,7 @@ impl Evaluator<'_> {
         let ordinals = fx_ordinals(frame.decl.body.iter().filter_map(DefItem::fx), frame.decl.body.iter().filter_map(DefItem::scene));
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body.frame, world: body.world })
+            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body.frame, world: body.world.clone() })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill, None);
         self.run_checks(&checks);
@@ -613,7 +614,7 @@ impl Evaluator<'_> {
             path: path.clone(),
             key,
             copies: vec![site.i],
-            parent_world: *frame.host.world,
+            parent_world: frame.host.world.clone(),
             node: Some(node.clone()),
             anchor: None,
             at: site.pos,
@@ -671,7 +672,7 @@ impl StampFrame<'_> {
             Lookup::own(names),
             Pending::empty(),
             ramose_ir::Rect::new_empty(),
-            *self.host.world * place,
+            self.host.world.inner(place),
             self.sc.depth + 1,
         );
         let mut env: Vec<(String, Value)> = self.decl.params.iter().map(|(k, _)| k.clone()).zip(self.set.params.iter().cloned()).collect();

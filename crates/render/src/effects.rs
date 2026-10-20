@@ -842,6 +842,15 @@ fn gather(
     if let Some(mask) = &node.mask {
         local = mask_regions(local, mask, &local_to_px, ctx)?;
     }
+    if !node.warp.is_none() {
+        // Half a device pixel after the warp's largest magnification, so a bent contour's
+        // chords stay under a pixel where the ring is drawn.
+        let stretch = node.warp.reference().map_or(1.0, |r| node.warp.max_stretch(r));
+        let tol = 0.5 / (mark::device_scale(&local_to_px) * stretch);
+        for region in &mut local {
+            region.path = node.warp.map_path(&region.path, tol);
+        }
+    }
     for region in local {
         out.push(Region {
             path: region.path.with_transform(&here),

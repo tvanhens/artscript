@@ -59,6 +59,12 @@ mod metal {
     pub fn to_raster(image: &skia_safe::Image) -> Option<skia_safe::Image> {
         CTX.with(|c| image.make_raster_image(c.borrow_mut().as_mut()?, None))
     }
+
+    /// `with_default_mipmaps` leaves a Metal texture without mip levels; a new texture
+    /// allocated with them is what samples through them.
+    pub fn mipmapped(image: &skia_safe::Image) -> Option<skia_safe::Image> {
+        CTX.with(|c| image.new_texture_image(c.borrow_mut().as_mut()?, gpu::Mipmapped::Yes))
+    }
 }
 
 /// Whether this machine can render on the GPU backend.
@@ -82,6 +88,17 @@ pub(crate) fn surface(backend: Backend, size: impl Into<ISize>) -> Option<Surfac
         #[cfg(not(target_os = "macos"))]
         Backend::Gpu => None,
     }
+}
+
+pub(crate) fn mipmapped(backend: Backend, image: Image) -> Result<Image, RenderError> {
+    let with_levels = match backend {
+        Backend::Cpu => image.with_default_mipmaps(),
+        #[cfg(target_os = "macos")]
+        Backend::Gpu => metal::mipmapped(&image),
+        #[cfg(not(target_os = "macos"))]
+        Backend::Gpu => None,
+    };
+    with_levels.ok_or_else(|| RenderError::Skia("mipmaps".into()))
 }
 
 /// The final image of a surface, read back to CPU memory so it can be encoded or read.

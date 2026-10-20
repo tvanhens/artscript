@@ -17,6 +17,7 @@ mod lints;
 mod motion;
 mod order;
 mod paint;
+mod place;
 pub mod project;
 mod range;
 mod scope;
@@ -24,6 +25,7 @@ mod seed;
 mod stamp;
 pub mod targets;
 mod value;
+mod warp;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -245,9 +247,10 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
             None
         }
     });
+    let anchors = scope::placed_anchors(&sc.names);
     let rig = Rig {
         pivot,
-        anchors: scope::placed_anchors(&sc.names),
+        anchors: anchors.placed,
     };
     let scene = Scene {
         width: job.size.0,
@@ -285,6 +288,8 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         placement = lints::off_canvas(&scene, &project.manifest, &job.source);
     }
     placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
+    placement.extend(lints::warp_cut(&scene, &project.manifest, &job.source));
+    placement.extend(lints::hidden_anchors(&anchors.hidden, &project.manifest));
     stamp_target(job, &mut placement);
     diagnostics.extend(placement);
     Evaluation {
@@ -677,7 +682,7 @@ struct Agg {
 }
 
 fn folded_lint(code: &str) -> bool {
-    matches!(code, "L0102" | "L0104" | "L0105")
+    matches!(code, "L0102" | "L0104" | "L0105" | "L0108")
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.

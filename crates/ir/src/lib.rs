@@ -11,6 +11,12 @@ pub use ramose_brush::UniformValue;
 pub use skia_safe::{Matrix, Path, Point, Rect};
 
 mod retained;
+pub mod warp;
+
+pub use warp::{Axis, Corners, CornersError, Cylinder, Placer, Warp, WarpError, WarpStage};
+
+/// Local units a bent outline may stray from its true image when a box is measured through it.
+const PLACE_TOL: f32 = 0.05;
 
 /// sRGB, 0..1, straight (not premultiplied) alpha.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -81,8 +87,11 @@ pub struct Node {
     pub path: String,
     /// Source location `file:line:col` for diagnostics and `explain`.
     pub origin: String,
-    /// Local to parent.
+    /// Local to parent, applied after `warp`.
     pub transform: Matrix,
+    /// Applied to everything this node draws, before `transform`. Children, clips, masks and
+    /// stamps follow it; effects run after it; brushes and fields sample before it.
+    pub warp: Warp,
     pub opacity: f32,
     pub blend: Blend,
     /// Clip in this node's local coordinates (from `inside @x` / `outside @x`).
@@ -536,15 +545,84 @@ impl Node {
         first.iter().chain(then)
     }
 
-    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] through the
-    /// transform. Effects are ignored; see [`Node::outer_bounds`] for the extent they draw.
+    /// Visual bounds in this node's parent coordinates: [`Node::local_bounds`] placed through
+    /// the warp and the transform. Effects are ignored; see [`Node::outer_bounds`] for the
+    /// extent they draw.
     pub fn bounds(&self) -> Option<Rect> {
-        self.local_bounds().map(|local| self.transform.map_rect(local).0)
+        self.local_bounds().map(|local| self.place_rect(local))
     }
 
-    /// Visual bounds in this node's own coordinates: geometry plus half the stroke width and
-    /// the stamps, union of children for groups, cut to [`Node::kept_bounds`]. Effects are
-    /// ignored.
+    /// The box stage 0 of a warp maps: the node's ink box in its own frame before any clip or
+    /// mask cuts it (the shape's own bounds, or the box of a group's children). `None` when the
+    /// node has no content. Eval calls it once, when the node's body closes, to resolve the warp.
+    pub fn reference_box(&self) -> Option<Rect> {
+        match &self.kind {
+            NodeKind::Shape(s) => shape_bounds(s),
+            NodeKind::Group { children, .. } => union_bounds(children),
+        }
+    }
+
+    /// Content frame to parent: through the warp, then `transform`. The one owner of that
+    /// composition.
+    pub fn place_rect(&self, local: Rect) -> Rect {
+        if self.warp.is_none() {
+            return self.transform.map_rect(local).0;
+        }
+        // The warped outline is a quad or a bent band, so its box is taken after the
+        // transform, where boxing the local result first would grow it under a rotation.
+        self.place_path(&Path::rect(local, None), PLACE_TOL)
+            .compute_tight_bounds()
+    }
+
+    pub fn place_path(&self, local: &Path, tol: f32) -> Path {
+        self.warp.map_path(local, tol).with_transform(&self.transform)
+    }
+
+    /// `None` for a point the warp hides.
+    pub fn place_point(&self, local: Point) -> Option<Point> {
+        self.warp.map_point(local).map(|p| self.transform.map_point(p))
+    }
+
+    /// Parent units per content unit, at most: the transform's scale times the warp's largest
+    /// magnification over the reference box.
+    pub fn place_scale(&self) -> f32 {
+        let stretch = self.warp.reference().map_or(1.0, |r| self.warp.max_stretch(r));
+        transform_scale(&self.transform) * stretch
+    }
+
+    /// The pre-warp drawn extent in the content frame: the ink grown by the shape's `blur:`,
+    /// joined with what the stamps draw, cut to [`Node::kept_bounds`]. Render sizes a warped
+    /// node's flat offscreen with it; [`Node::outer_bounds`] warps it and folds the effects.
+    pub fn content_reach<'n>(
+        &self,
+        world: &Matrix,
+        find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+    ) -> Option<Rect> {
+        self.content_reach_in(world, find, &mut vec![self.path.clone()])
+    }
+
+    fn content_reach_in<'n>(
+        &self,
+        world: &Matrix,
+        find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
+        visiting: &mut Vec<String>,
+    ) -> Option<Rect> {
+        let outer_of = |nodes: &[Node], visiting: &mut Vec<String>| {
+            join_all(nodes.iter().map(|c| c.outer(world, find, visiting)).collect::<Vec<_>>())
+        };
+        let content = match &self.kind {
+            NodeKind::Shape(s) => join(
+                grow(shape_ink(s), blur_reach(s.blur, 1.0)),
+                outer_of(&s.stamps, visiting),
+            ),
+            NodeKind::Group { children, .. } => outer_of(children, visiting),
+        };
+        content.and_then(|r| self.cut_to_kept(r))
+    }
+
+    /// Visual bounds in this node's own content frame, before the warp: geometry plus half the
+    /// stroke width and the stamps, union of children for groups, cut to [`Node::kept_bounds`].
+    /// Effects are ignored.
     pub fn local_bounds(&self) -> Option<Rect> {
         let local = match &self.kind {
             NodeKind::Shape(s) => shape_bounds(s),
@@ -602,25 +680,16 @@ impl Node {
         Some(self.transform.map_rect(local?).0)
     }
 
-    /// Folds the effect chain the way render's `effects::chain` does. A positive outline ends
-    /// a chain segment: after it, `self` is the outlined layer and earlier `as:` names are gone.
+    /// Folds the effect chain the way render's `effects::chain` does, over the warped content,
+    /// in the frame `transform` places. A positive outline ends a chain segment: after it,
+    /// `self` is the outlined layer and earlier `as:` names are gone.
     fn outer_local<'n>(
         &self,
         world: &Matrix,
         find: &dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
         visiting: &mut Vec<String>,
     ) -> Option<Rect> {
-        let outer_of = |nodes: &[Node], visiting: &mut Vec<String>| {
-            join_all(nodes.iter().map(|c| c.outer(world, find, visiting)).collect::<Vec<_>>())
-        };
-        let content = match &self.kind {
-            NodeKind::Shape(s) => join(
-                grow(shape_ink(s), blur_reach(s.blur, 1.0)),
-                outer_of(&s.stamps, visiting),
-            ),
-            NodeKind::Group { children, .. } => outer_of(children, visiting),
-        };
-        let mut source = content.and_then(|r| self.cut_to_kept(r));
+        let mut source = self.content_reach_in(world, find, visiting).map(|r| self.warp.map_rect(r));
         let mut current = source;
         let mut named: HashMap<&str, Option<Rect>> = HashMap::new();
         let mut env = InputEnv {
@@ -634,6 +703,7 @@ impl Node {
             {
                 let (width, sides) = (*width + ribbon_reach(brush), *sides);
                 let traced = self.local_ink().map(|r| {
+                    let r = self.warp.map_rect(r);
                     let reach = |on: bool| if on { width } else { 0.0 };
                     Rect::new(
                         r.left - reach(sides.left),
@@ -714,14 +784,16 @@ pub fn union_bounds(nodes: &[Node]) -> Option<Rect> {
     join_all(nodes.iter().map(Node::bounds).collect::<Vec<_>>())
 }
 
-/// Each node's [`Node::local_ink`] through its transform, joined.
+/// Each node's [`Node::local_ink`] placed in its parent, joined.
 fn union_ink(nodes: &[Node]) -> Option<Rect> {
-    join_all(
-        nodes
-            .iter()
-            .map(|c| Some(c.transform.map_rect(c.local_ink()?).0))
-            .collect::<Vec<_>>(),
-    )
+    join_all(nodes.iter().map(|c| Some(c.place_rect(c.local_ink()?))).collect::<Vec<_>>())
+}
+
+/// The most parent units one local unit spans under `m`, at least 1.
+pub fn transform_scale(m: &Matrix) -> f32 {
+    let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
+    let sy = (m.scale_y() * m.scale_y() + m.skew_x() * m.skew_x()).sqrt();
+    sx.max(sy).max(1.0)
 }
 
 /// Geometry plus half the stroke width, plus what the brush marks may paint past it, joined
@@ -884,6 +956,7 @@ mod tests {
             path: path.into(),
             origin: String::new(),
             transform: Matrix::new_identity(),
+            warp: Warp::default(),
             opacity: 1.0,
             blend: Blend::Normal,
             clip: None,
@@ -898,6 +971,46 @@ mod tests {
                 children: Vec::new(),
             })),
         }
+    }
+
+    #[test]
+    fn a_warped_node_measures_the_warped_box_and_its_effects_follow_it() {
+        let quad = [
+            Point::new(412.0, 180.0),
+            Point::new(530.0, 196.0),
+            Point::new(526.0, 330.0),
+            Point::new(408.0, 322.0),
+        ];
+        let mut side = shape_node("side", Path::rect(Rect::from_xywh(0.0, 0.0, 40.0, 200.0), None), Vec::new());
+        side.transform = Matrix::translate((100.0, 0.0));
+        side.warp = Warp::resolve(&[WarpStage::Corners(Corners::try_new(quad).unwrap())], side.reference_box().unwrap())
+            .unwrap();
+        side.effects.push(Effect {
+            op: EffectOp::Glow { radius: 2.0, color: Color { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }, strength: 1.0 },
+            input: EffectInput::Previous,
+            name: None,
+        });
+        let near = |r: Rect, want: Rect| {
+            (r.left - want.left).abs() < 1e-2
+                && (r.top - want.top).abs() < 1e-2
+                && (r.right - want.right).abs() < 1e-2
+                && (r.bottom - want.bottom).abs() < 1e-2
+        };
+        let quad_box = Rect::new(508.0, 180.0, 630.0, 330.0);
+        assert!(near(side.bounds().unwrap(), quad_box), "{:?}", side.bounds());
+        assert_eq!(side.local_bounds(), Some(Rect::from_xywh(0.0, 0.0, 40.0, 200.0)));
+        let reach = blur_reach(2.0, 1.0).unwrap();
+        let outer = side.outer_bounds(&Matrix::new_identity(), &|_| None).unwrap();
+        assert!(near(outer, quad_box.with_outset((reach, reach))), "{outer:?}");
+        let flat = side.content_reach(&Matrix::new_identity(), &|_| None).unwrap();
+        assert_eq!(flat, Rect::from_xywh(0.0, 0.0, 40.0, 200.0));
+        assert!(side.place_scale() > 1.0);
+        let group = Node {
+            kind: NodeKind::Group { isolate: false, children: vec![side] },
+            ..shape_node("book", Path::new(), Vec::new())
+        };
+        assert!(near(group.bounds().unwrap(), quad_box), "{:?}", group.bounds());
+        assert!(near(group.reference_box().unwrap(), quad_box));
     }
 
     #[test]

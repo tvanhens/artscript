@@ -12,6 +12,7 @@ mod ribbon;
 mod sdf;
 mod svg;
 mod text;
+mod warp;
 
 use ramose_ir::{Profile, Scene};
 

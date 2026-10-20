@@ -59,8 +59,10 @@ fn features_of(node: &Node, out: &mut Vec<Unsupported>) {
     paint_features(node, out);
 }
 
-/// What covers the node's whole content: its blend, mask, and effects.
 fn node_features(node: &Node, out: &mut Vec<Unsupported>) {
+    for stage in node.warp.stages() {
+        push(out, node, stage.feature());
+    }
     if node.blend == Blend::Erase {
         push(out, node, "blend erase");
     }

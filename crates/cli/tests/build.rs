@@ -684,6 +684,32 @@ fn a_bad_target_profile_is_e0206_on_every_format() {
 }
 
 #[test]
+fn a_warped_node_is_e0209_under_profile_vector_and_a_tile_under_profile_svg() {
+    let dir = std::env::temp_dir().join(format!("ramose-cli-warp-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::write(
+        dir.join("ramose.toml"),
+        "[project]\nname = \"warp\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[lint]\nraw-color = \"off\"\n",
+    )
+    .unwrap();
+    let art = "@target w.svg 64x64 profile:{profile}\nrect 20x12 fill:#ff0000 warp:corners(10,10 54,14 50,52 12,48) name:pin\nrect 20x12 at:32,32 fill:#0000ff warp:cylinder(10 axis:x) name:bent\n";
+    fs::write(dir.join("art/main.ramo"), art.replace("{profile}", "vector")).unwrap();
+    let out = ramose(&dir, &["build"]);
+    let err = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(err.contains("E0209") && err.contains("pin: warp corners") && err.contains("bent: warp cylinder"), "{err}");
+    assert!(!dir.join("assets/w.svg").exists(), "{err}");
+    fs::write(dir.join("art/main.ramo"), art.replace("{profile}", "svg")).unwrap();
+    let out = ramose(&dir, &["build"]);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let svg = fs::read_to_string(dir.join("assets/w.svg")).unwrap();
+    assert_eq!(svg.matches("<image ").count(), 2, "{svg}");
+    assert!(svg.contains("x=\"10\" y=\"10\" width=\"44\" height=\"42\""), "the pinned tile covers the quad box: {svg}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_manifest_profile_still_applies_to_raster_targets() {
     let dir = std::env::temp_dir().join(format!("ramose-cli-mprofile-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);

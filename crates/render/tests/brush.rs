@@ -6,32 +6,9 @@ mod common;
 use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
-use ramose_ir::{AreaMark, EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
+use ramose_ir::{EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
 use ramose_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
-use common::{color, effect, pixel, red, scene, solid, stamp, with_stamps};
-
-fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
-    let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
-    let program = Program::assemble(MainKind::Area, &params, body);
-    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    Stage {
-        program: Arc::new(program),
-        uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
-        seed,
-    }
-}
-
-fn mark(stage: Stage, reach: f32) -> AreaMark {
-    AreaMark { stage, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach }
-}
-
-fn brushed(path: &str, geometry: Path, paint: Paint, marks: Vec<AreaMark>) -> ramose_ir::Node {
-    let mut node = solid(path, geometry, red());
-    if let NodeKind::Shape(shape) = &mut node.kind {
-        shape.fill = Some(Fill { paint, marks });
-    }
-    node
-}
+use common::{brushed, color, effect, mark, pixel, red, scene, solid, stage, stamp, with_stamps};
 
 const IDENTITY: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n";
 const SQUARE: skia_safe::Rect = skia_safe::Rect { left: 20.0, top: 20.0, right: 60.0, bottom: 60.0 };

@@ -1,13 +1,13 @@
 //! The evaluator: modules and declarations, the drawing statements, components with slots and
 //! patches, and expressions. Produces the scene IR described in `ramose-ir`.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use ramose_ir::{
     Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke,
+    Point, Rect, Shape, Stroke, Warp, WarpError,
 };
 use ramose_syntax::ast::{
     self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
@@ -28,6 +28,7 @@ use crate::key::Ease;
 use crate::motion::{absolute_channel, offset_channel};
 use crate::order;
 use crate::paint::{key_color, to_paint};
+use crate::place::{Place, axis_scale, inverse};
 use crate::project::Project;
 use crate::range::Range;
 use crate::scope::{
@@ -37,6 +38,7 @@ use crate::scope::{
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
+use crate::warp;
 
 /// An evaluation failure, turned into a [`Diagnostic`] at the statement that caused it.
 #[derive(Debug)]
@@ -79,7 +81,7 @@ const MEASURES: &[&str] = &[
     "x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area",
 ];
 const NODE_KEYS: &[&str] = &[
-    "at", "rot", "scale", "skew", "pivot", "a", "blend", "z", "name", "style", "feather",
+    "at", "rot", "scale", "skew", "pivot", "warp", "a", "blend", "z", "name", "style", "feather",
 ];
 
 /// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
@@ -107,7 +109,7 @@ const PAINT_KEYS: &[&str] = &[
 ];
 /// Keys a boolean operand cannot use, because the boolean reads only its geometry.
 const OPERAND_IGNORES: &[&str] = &[
-    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend",
+    "fill", "stroke", "cap", "join", "dash", "taper", "blur", "brush", "pressure", "angle", "tilt", "stamp", "a", "blend", "warp",
 ];
 
 /// A shape's geometry, the authored points of each contour, whether it is closed, and the point
@@ -187,7 +189,7 @@ pub(crate) struct Scope {
     pub(crate) depth: u32,
     pub frame: Rect,
     /// Canvas from local coordinates.
-    pub world: Matrix,
+    pub world: Place,
     pub style: Rc<Vec<(String, Value)>>,
     pub palette: Option<Value>,
     pub inst: Option<Rc<Instance>>,
@@ -229,7 +231,7 @@ impl Scope {
         names
     }
 
-    fn child(&self, parent: Key, frame: Rect, world: Matrix) -> Scope {
+    fn child(&self, parent: Key, frame: Rect, world: Place) -> Scope {
         Scope {
             parent,
             parent_copies: Vec::new(),
@@ -265,7 +267,7 @@ impl Scope {
         lookup: Lookup,
         pending: Pending,
         frame: Rect,
-        world: Matrix,
+        world: Place,
         depth: u32,
     ) -> Scope {
         Scope {
@@ -682,6 +684,7 @@ pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: No
         path,
         origin,
         transform,
+        warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
         clip: None,
@@ -691,13 +694,20 @@ pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: No
     }
 }
 
+/// The frame a node's content draws in: `m` under the parent and, when the line sets `warp:`,
+/// a warp link that `finish_node` fills once the body closes.
+fn content_place(parent: &Place, a: &Args, m: Matrix) -> (Place, Option<Rc<OnceCell<Warp>>>) {
+    let place = parent.inner(m);
+    if a.get("warp").is_none() {
+        return (place, None);
+    }
+    let (place, cell) = place.inner_warp();
+    (place, Some(cell))
+}
+
 /// A grid cell's offset is a translation, so it changes every measurement but a size.
 fn moves(m: &str) -> bool {
     !matches!(m, "w" | "h" | "area")
-}
-
-fn inverse(m: &Matrix) -> Matrix {
-    m.invert().unwrap_or_default()
 }
 
 fn record_ids(names: &Rc<RefCell<Names>>) -> BTreeSet<usize> {
@@ -737,17 +747,9 @@ fn placed_tree(roots: &[Rc<RefCell<Record>>]) -> Vec<Rc<RefCell<Record>>> {
 
 /// Without `cell:`, `grid` learns its pitch from its first copy, then moves that copy's nodes.
 /// Records were placed before that move, so the same translation has to land on them.
-fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Matrix, t: &Matrix) {
-    let Some(inv) = base.invert() else {
-        return;
-    };
-    let shift = *base * *t * inv;
+fn shift_placed(roots: &[Rc<RefCell<Record>>], base: &Place, t: &Matrix) {
     for rec in placed_tree(roots) {
-        let mut r = rec.borrow_mut();
-        r.parent_world = shift * r.parent_world;
-        if let Some(p) = r.anchor {
-            r.anchor = Some(shift.map_point(p));
-        }
+        rec.borrow_mut().parent_world.shift(base, t);
     }
 }
 
@@ -885,13 +887,6 @@ fn resolve_size(
             Ok((Value::Size(Coord::Num(w), Coord::Num(h)), size_box(w, h)))
         }
     }
-}
-
-/// Parent units per local unit, along the more-stretched axis.
-fn axis_scale(m: &Matrix) -> f64 {
-    let sx = f64::from(m.scale_x()).hypot(f64::from(m.skew_y()));
-    let sy = f64::from(m.scale_y()).hypot(f64::from(m.skew_x()));
-    sx.max(sy)
 }
 
 fn each_items(it: Value) -> R<Vec<Value>> {
@@ -1456,7 +1451,7 @@ impl<'a> Evaluator<'a> {
             ids,
             depth: 0,
             frame: Rect::new_empty(),
-            world: Matrix::new_identity(),
+            world: Place::identity(),
             style: Rc::new(Vec::new()),
             palette: None,
             inst: None,
@@ -1886,8 +1881,42 @@ impl<'a> Evaluator<'a> {
         Ok((m, at))
     }
 
-    /// Opacity, blend and z order shared by every node.
-    fn finish_node(&mut self, node: &mut Node, a: &Args) -> R<f64> {
+    /// The warp, opacity, blend and z order shared by every node. The warp binds to the node's
+    /// content box, known only now that the body has closed, and fills `pending` so the records
+    /// placed inside read through it from here on.
+    fn finish_node(
+        &mut self,
+        node: &mut Node,
+        a: &Args,
+        sc: &Scope,
+        pending: Option<Rc<OnceCell<Warp>>>,
+    ) -> R<f64> {
+        if let Some(v) = a.get("warp") {
+            let stages = warp::warp_stack(v, sc)?;
+            let warp = if stages.is_empty() {
+                Warp::default()
+            } else {
+                let reference = node.reference_box().ok_or_else(|| {
+                    fail("E0320", "`warp:` has nothing to warp: the node draws nothing")
+                        .fix("give the node geometry or children, or remove `warp:`")
+                })?;
+                let pinned = warp::pinned_in(&stages, &node.transform)?;
+                Warp::resolve(&pinned, reference).map_err(|WarpError::Empty(i)| {
+                    fail(
+                        "E0320",
+                        format!(
+                            "`{}` has nothing left to map: the stage before it hides all of the content",
+                            warp::stage_text(&stages[i])
+                        ),
+                    )
+                    .fix("use a larger cylinder radius, or narrower content")
+                })?
+            };
+            if let Some(cell) = pending {
+                cell.set(warp.clone()).expect("a node's warp is resolved once");
+            }
+            node.warp = warp;
+        }
         if let Some(op) = a.num("a") {
             node.opacity = op.clamp(0.0, 1.0) as f32;
         }
@@ -1948,7 +1977,7 @@ impl<'a> Evaluator<'a> {
         sc: &Scope,
         decl: DeclId,
         key: &Key,
-        parent_world: Matrix,
+        parent_world: Place,
         node: Option<Node>,
         anchor: Option<Point>,
         at: (f64, f64),
@@ -2244,14 +2273,14 @@ impl<'a> Evaluator<'a> {
             sc.style.clone()
         };
         let (m, at) = self.transform(&a, default_at, frame, sc, verb != "repeat")?;
-        let world = sc.world * m;
+        let (world, warp_cell) = content_place(&sc.world, &a, m);
         let mut node;
         let mut record = None;
         let body_frame;
         let mut branch_fx = None;
         if group_like {
             let local_frame = self.child_frame(&a, animated, default_at, frame, sc, verb != "repeat")?;
-            let mut inner = sc.child(key.clone(), local_frame, world);
+            let mut inner = sc.child(key.clone(), local_frame, world.clone());
             inner.style = child_style;
             branch_fx = Some(inner.collect_branch_fx());
             let mut clip = None;
@@ -2264,8 +2293,7 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 self.outside_copy(&r, sc)?;
-                let to_local = inverse(&world);
-                let sil = r.silhouette().make_transform(&to_local);
+                let sil = world.unmap_path(&r.silhouette());
                 inner.frame = geom::bounds(&sil);
                 clip = Some(Clip {
                     path: sil,
@@ -2287,7 +2315,7 @@ impl<'a> Evaluator<'a> {
                     sc,
                     id,
                     &key,
-                    sc.world,
+                    sc.world.clone(),
                     Some(placeholder),
                     None,
                     at,
@@ -2316,7 +2344,6 @@ impl<'a> Evaluator<'a> {
             node.clip = clip;
             body_frame = inner.frame;
         } else {
-            let inner_world = world;
             let mut operand_frame = None;
             let explicit = a.seed()?;
             let mut seam = 0.0;
@@ -2330,7 +2357,7 @@ impl<'a> Evaluator<'a> {
                     };
                     let local_frame = self.child_frame(&a, animated, default_at, frame, sc, true)?;
                     operand_frame = Some(local_frame);
-                    let mut inner = sc.child(key.clone(), local_frame, inner_world);
+                    let mut inner = sc.child(key.clone(), local_frame, world.clone());
                     branch_fx = Some(inner.collect_branch_fx());
                     inner.operand_of = Some(Rc::new(OperandOf {
                         verb: verb.to_string(),
@@ -2343,7 +2370,7 @@ impl<'a> Evaluator<'a> {
                     let operands = self.eval_block_nodes(body.scenes(), &mut inner);
                     let sils: Vec<Path> = operands
                         .iter()
-                        .map(|n| crate::scope::silhouette(n, &Matrix::new_identity()))
+                        .map(|n| crate::scope::silhouette(n, &Place::identity()))
                         .collect();
                     (geom::boolean(op, &sils), Vec::new(), true, None)
                 }
@@ -2358,7 +2385,7 @@ impl<'a> Evaluator<'a> {
                     self.outside_copy(&r, sc)?;
                     seam = r.record.seam;
                     (
-                        r.silhouette().make_transform(&inverse(&sc.world)),
+                        sc.world.unmap_path(&r.silhouette()),
                         Vec::new(),
                         true,
                         None,
@@ -2420,7 +2447,7 @@ impl<'a> Evaluator<'a> {
                     sc,
                     id,
                     &key,
-                    sc.world,
+                    sc.world.clone(),
                     Some(node.clone()),
                     None,
                     at,
@@ -2436,7 +2463,7 @@ impl<'a> Evaluator<'a> {
             };
             body_frame = operand_frame.unwrap_or(gb);
             if operand_frame.is_none() && body.scenes().next().is_some() {
-                let mut inner = sc.child(key.clone(), gb, inner_world);
+                let mut inner = sc.child(key.clone(), gb, world.clone());
                 inner.style = child_style;
                 branch_fx = Some(inner.collect_branch_fx());
                 let kids = self.eval_block_nodes(body.scenes(), &mut inner);
@@ -2446,7 +2473,7 @@ impl<'a> Evaluator<'a> {
             }
         }
         let fill_key = first_fill(&node).unwrap_or(Rgba::GRAY);
-        let fx_scope = sc.child(key.clone(), sc.frame, world);
+        let fx_scope = sc.child(key.clone(), sc.frame, world.clone());
         let branch_fx = branch_fx.map(|fx| fx.take()).unwrap_or_default();
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &branch_fx, sc);
@@ -2455,7 +2482,7 @@ impl<'a> Evaluator<'a> {
         let ordinals = fx_ordinals(body.fx(), body.scenes());
         let sites: Vec<FxSite> = lines
             .iter()
-            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world })
+            .map(|(line, scope)| FxSite { line, scope, ordinal: ordinals[&line.span], frame: body_frame, world: world.clone() })
             .collect();
         node.effects = self.lower_fx(&sites, &key, fill_key, a.seed()?);
         // The outline rasterizes the node offscreen, where a brush has no backdrop to read.
@@ -2470,8 +2497,8 @@ impl<'a> Evaluator<'a> {
             self.report(f, site.scope.file(), site.line.span, &key.to_string());
             return Err(Fail::reported());
         }
-        self.mask(&mut node, &a, body.mask(), sc, body_frame, world, &key)?;
-        let z = self.finish_node(&mut node, &a)?;
+        self.mask(&mut node, &a, body.mask(), sc, body_frame, &world, &key)?;
+        let z = self.finish_node(&mut node, &a, sc, warp_cell)?;
         if let Some(r) = record {
             r.borrow_mut().node = Some(node.clone());
         }
@@ -2751,7 +2778,7 @@ impl<'a> Evaluator<'a> {
         mask: Option<&ast::Mask>,
         sc: &Scope,
         frame: Rect,
-        world: Matrix,
+        world: &Place,
         key: &Key,
     ) -> R<()> {
         let feather = a.num("feather").unwrap_or(0.0) as f32;
@@ -2774,20 +2801,20 @@ impl<'a> Evaluator<'a> {
         feather: f32,
         sc: &Scope,
         frame: Rect,
-        world: Matrix,
+        world: &Place,
         mask_key: &Key,
         origin: &str,
     ) -> R<Option<Mask>> {
         let source = match mask {
             ast::Mask::Block(body) => {
-                let mut inner = sc.child(mask_key.clone(), frame, world);
+                let mut inner = sc.child(mask_key.clone(), frame, world.clone());
                 Some(MaskSource::Nodes(self.eval_block_nodes(body, &mut inner)))
             }
             ast::Mask::Value(e) => match self.expr(e, sc)? {
                 Value::None => None,
                 Value::Ref(r) => {
                     self.outside_copy(&r, sc)?;
-                    let geometry = r.silhouette().make_transform(&inverse(&world));
+                    let geometry = world.unmap_path(&r.silhouette());
                     let shape = Shape {
                         geometry,
                         fill: Some(IrFill::plain(Paint::Solid(
@@ -2859,8 +2886,11 @@ impl<'a> Evaluator<'a> {
         };
         let value = self.expr(e, sc)?;
         if let Value::Ref(r) = &value {
-            return match (r.record.anchor, r.canvas) {
-                (Some(p), None) => Ok((p.x as f64, p.y as f64)),
+            return match (r.record.anchor.is_some(), r.canvas) {
+                (true, None) => {
+                    let p = r.record.anchor_canvas().ok_or_else(|| hidden_anchor(&r.label))?;
+                    Ok((p.x as f64, p.y as f64))
+                }
                 _ => Err(fail(
                     "E0206",
                     format!("`pivot:@{}` is a node, not a point", r.label),
@@ -2889,7 +2919,7 @@ impl<'a> Evaluator<'a> {
             Some(e) => self.expr(e, sc)?.vec2().unwrap_or((0.0, 0.0)),
             None => (0.0, 0.0),
         };
-        let p = sc.world.map_point(Point::new(at.0 as f32, at.1 as f32));
+        let p = Point::new(at.0 as f32, at.1 as f32);
         let key = sc.node_key(span);
         if let Some(id) = sc.decl_at(span) {
             let region = sc.names.borrow().region();
@@ -2902,7 +2932,7 @@ impl<'a> Evaluator<'a> {
                     &mut self.diags,
                 );
             }
-            self.place(sc, id, &key, sc.world, None, Some(p), at, None);
+            self.place(sc, id, &key, sc.world.clone(), None, Some(p), at, None);
         }
         Ok(())
     }
@@ -3014,7 +3044,7 @@ impl<'a> Evaluator<'a> {
                 * Matrix::rotate_deg((rot * fi) as f32);
             let mut inner = sc.iteration(span, i as u32);
             inner.env.push(("i".into(), Value::Num(fi)));
-            inner.world = sc.world * copy_m;
+            inner.world = sc.world.inner(copy_m);
             for mut node in self.eval_block_nodes(body.scenes(), &mut inner) {
                 node.transform = copy_m * node.transform;
                 out.push(node);
@@ -3055,7 +3085,7 @@ impl<'a> Evaluator<'a> {
                 let (t, nodes) = match pitch {
                     Some(p) => {
                         let t = cell_at(p, row, col);
-                        inner.world = sc.world * t;
+                        inner.world = sc.world.inner(t);
                         (t, self.eval_block_nodes(body.scenes(), &mut inner))
                     }
                     None => {
@@ -3231,7 +3261,7 @@ impl<'a> Evaluator<'a> {
         knots: &[Vec<P>],
         closed: bool,
         sc: &Scope,
-        world: &Matrix,
+        world: &Place,
         stroke_src: Option<&Expr>,
         key: &Key,
         named: &[Named],
@@ -3489,7 +3519,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
             let ink = tapered.then(|| {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
-                let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+                let px = (axis_scale(&world.flat()) * f64::from(self.job.bake_scale)).max(1e-6);
                 geom::ribbon_ink(&geometry, &ribbon, 0.75 / px)
             });
             return Ok((
@@ -3517,7 +3547,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), Vec::new());
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
-            let px = (axis_scale(world) * f64::from(self.job.bake_scale)).max(1e-6);
+            let px = (axis_scale(&world.flat()) * f64::from(self.job.bake_scale)).max(1e-6);
             let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
             // The gradient spans the ink, not the spine.
             let ob = geom::bounds(&outline);
@@ -3755,7 +3785,7 @@ impl<'a> Evaluator<'a> {
                 }
             }
         }
-        let world = sc.world * m;
+        let (world, warp_cell) = content_place(&sc.world, &node_args, m);
         let mut fills = Vec::new();
         let mut call_sc = sc.clone();
         call_sc.palette = palette.clone();
@@ -3783,7 +3813,7 @@ impl<'a> Evaluator<'a> {
             lookup,
             pending,
             box_frame,
-            world,
+            world.clone(),
             sc.depth + 1,
         );
         body_scope.env = env;
@@ -3810,7 +3840,7 @@ impl<'a> Evaluator<'a> {
                 sc,
                 id,
                 &key,
-                sc.world,
+                sc.world.clone(),
                 Some(placeholder),
                 None,
                 at,
@@ -3821,7 +3851,7 @@ impl<'a> Evaluator<'a> {
                     path: path.clone(),
                     key: key.clone(),
                     copies: Vec::new(),
-                    parent_world: sc.world,
+                    parent_world: sc.world.clone(),
                     node: Some(placeholder),
                     anchor: None,
                     at,
@@ -3848,7 +3878,7 @@ impl<'a> Evaluator<'a> {
             },
         );
         let f = first_fill(&node).unwrap_or(Rgba::GRAY);
-        let fx_scope = body_scope.child(key.clone(), body_scope.frame, world);
+        let fx_scope = body_scope.child(key.clone(), body_scope.frame, world.clone());
         let (def_fx, call_fx) = (def_fx.take(), call_fx.take());
         if let Some(of) = sc.operand_of.clone() {
             self.report_operand_fx(&of, &call_fx, sc);
@@ -3861,11 +3891,11 @@ impl<'a> Evaluator<'a> {
             .iter()
             .map(|l| (l, def_ordinals[&l.0.span]))
             .chain(call_lines.iter().map(|l| (l, def_ordinals.len() as u32 + call_ordinals[&l.0.span])))
-            .map(|((line, scope), ordinal)| FxSite { line, scope, ordinal, frame: call_sc.frame, world })
+            .map(|((line, scope), ordinal)| FxSite { line, scope, ordinal, frame: call_sc.frame, world: world.clone() })
             .collect();
         node.effects = self.lower_fx(&sites, &key, f, node_args.seed()?);
-        self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, world, &key)?;
-        let z = self.finish_node(&mut node, &node_args)?;
+        self.mask(&mut node, &node_args, block.mask(), &call_sc, call_sc.frame, &world, &key)?;
+        let z = self.finish_node(&mut node, &node_args, sc, warp_cell)?;
         rec.borrow_mut().node = Some(node.clone());
         *inst.record.borrow_mut() = Some(rec.clone());
         self.run_checks(&checks);
@@ -4194,7 +4224,7 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         }
         let (m, _) = self.transform(&a, (0.0, 0.0), sc.frame, sc, true)?;
-        let world = sc.world * m;
+        let (world, warp_cell) = content_place(&sc.world, &a, m);
         let mapped = inverse(&m).map_rect(sc.frame).0;
         // Centered on the slot origin, because content with no `at:` defaults to the frame center.
         let local_frame = size_box(mapped.width() as f64, mapped.height() as f64);
@@ -4255,7 +4285,7 @@ impl<'a> Evaluator<'a> {
                 sc,
                 id,
                 &key,
-                sc.world,
+                sc.world.clone(),
                 None,
                 None,
                 (0.0, 0.0),
@@ -4276,7 +4306,7 @@ impl<'a> Evaluator<'a> {
                 children,
             },
         );
-        let z = self.finish_node(&mut node, &a)?;
+        let z = self.finish_node(&mut node, &a, sc, warp_cell)?;
         if let Some(rec) = placed {
             rec.borrow_mut().node = Some(node.clone());
         }
@@ -4388,7 +4418,7 @@ impl<'a> Evaluator<'a> {
         }
         let key = sc.node_key(span);
         if let Some(id) = sc.decl_at(span) {
-            self.place(sc, id, &key, sc.world, None, None, (0.0, 0.0), None);
+            self.place(sc, id, &key, sc.world.clone(), None, None, (0.0, 0.0), None);
         }
         if self.verb_is_call(verb, sc) {
             return;
@@ -4401,7 +4431,7 @@ impl<'a> Evaluator<'a> {
     }
 
     fn collect_body(&mut self, draw: &Draw, sc: &Scope, key: &Key) {
-        let mut inner = sc.child(key.clone(), sc.frame, sc.world);
+        let mut inner = sc.child(key.clone(), sc.frame, sc.world.clone());
         let ordinals = fx_ordinals(draw.body.fx(), draw.body.scenes());
         for item in draw.body.items() {
             match item {
@@ -4412,11 +4442,11 @@ impl<'a> Evaluator<'a> {
                     mask: ast::Mask::Block(body),
                     ..
                 } => {
-                    let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
+                    let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world.clone());
                     self.collect_surface(body, &mut mask_sc, false);
                 }
                 DrawItem::Fx(f) if !f.mask_block().is_empty() => {
-                    let mut mask_sc = sc.child(key.fx_mask(ordinals[&f.span]), sc.frame, sc.world);
+                    let mut mask_sc = sc.child(key.fx_mask(ordinals[&f.span]), sc.frame, sc.world.clone());
                     self.collect_surface(f.mask_block(), &mut mask_sc, false);
                 }
                 _ => {}
@@ -4438,7 +4468,7 @@ impl<'a> Evaluator<'a> {
                 ..
             } = item
             {
-                let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world);
+                let mut mask_sc = sc.child(key.mask(), sc.frame, sc.world.clone());
                 self.collect_surface(body, &mut mask_sc, false);
             }
         }
@@ -5037,7 +5067,7 @@ impl<'a> Evaluator<'a> {
                     path: "canvas".into(),
                     key: Key::root(),
                     copies: Vec::new(),
-                    parent_world: Matrix::new_identity(),
+                    parent_world: Place::identity(),
                     node: None,
                     anchor: None,
                     at: (0.0, 0.0),
@@ -5400,8 +5430,8 @@ impl<'a> Evaluator<'a> {
     }
 
     /// Checks measure in canvas coordinates. Everything else reads a ref in the current local frame.
-    fn view(&self, sc: &Scope) -> Matrix {
-        if self.check.is_some() { Matrix::new_identity() } else { inverse(&sc.world) }
+    fn view(&self, sc: &Scope) -> Place {
+        if self.check.is_some() { Place::identity() } else { sc.world.clone() }
     }
 
     /// A position read from outside the first copy of a `grid` without `cell:` would not move
@@ -5457,24 +5487,26 @@ impl<'a> Evaluator<'a> {
         };
         self.outside_copy(r, sc)?;
         let NodeKind::Shape(shape) = &node.kind else { unreachable!("one_shape checked the kind") };
-        let to_local = inverse(&sc.world) * r.record.parent_world * node.transform;
         let [from, to] = fractions;
-        Ok(geom::edge(&shape.geometry, r.record.seam, from, to).make_transform(&to_local))
+        let contour = geom::edge(&shape.geometry, r.record.seam, from, to);
+        let placed = r.record.parent_world.inner_node(node).map_path(&contour, crate::scope::FLATTEN_TOL);
+        Ok(sc.world.unmap_path(&placed))
     }
 
     /// `at:@body.neck`: the anchor's position in the current local frame, the same point
     /// `at:@body.neck.x,@body.neck.y` reads.
     fn anchor_point(&mut self, r: &RefVal, sc: &Scope) -> R<(f64, f64)> {
-        let (Some(p), None) = (r.record.anchor, r.canvas) else {
+        if r.record.anchor.is_none() || r.canvas.is_some() {
             return Err(
                 fail("E0320", format!("`at:@{}` is a node, not a point", r.label)).fix(format!(
                     "name an anchor such as `at:@{0}.neck`, or write `at:@{0}.cx,@{0}.cy`",
                     r.label
                 )),
             );
-        };
+        }
         self.outside_copy(r, sc)?;
-        let p = self.view(sc).map_point(p);
+        let p = r.record.anchor_canvas().ok_or_else(|| hidden_anchor(&r.label))?;
+        let p = self.view(sc).unmap_point(p);
         let (x, y) = (f64::from(p.x), f64::from(p.y));
         self.note(format!("{} = {},{}", r.label, num(x), num(y)));
         Ok((x, y))
@@ -5509,13 +5541,13 @@ impl<'a> Evaluator<'a> {
                     .collect();
                 let nodes: HashMap<&str, (&Node, Matrix)> = records
                     .iter()
-                    .filter_map(|(p, rec)| Some((*p, (rec.node.as_ref()?, rec.parent_world))))
+                    .filter_map(|(p, rec)| Some((*p, (rec.node.as_ref()?, rec.parent_world.flat()))))
                     .collect();
                 let find = |p: &str| nodes.get(p).copied();
                 let local = node
-                    .outer_bounds(&r.record.parent_world, &find)
+                    .outer_bounds(&r.record.parent_world.flat(), &find)
                     .ok_or_else(no_ink)?;
-                r.record.parent_world.map_rect(local).0
+                r.record.parent_world.map_rect(local)
             }
         };
         Ok(RefVal {
@@ -6048,6 +6080,12 @@ fn family_error(label: &str, entries: &[RefVal], owner: &Key) -> Fail {
 
 fn is_paint_key(k: &str) -> bool {
     PAINT_KEYS.contains(&k)
+}
+
+/// An anchor past the visible half of a cylinder, or behind a corners horizon, has no canvas point.
+fn hidden_anchor(label: &str) -> Fail {
+    fail("E0320", format!("`@{label}` is hidden by the warp of the node that holds it"))
+        .fix("move the anchor onto the part of the content the warp shows")
 }
 
 pub(crate) fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
