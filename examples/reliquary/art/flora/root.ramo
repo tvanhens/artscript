@@ -1,0 +1,189 @@
+# A hanging copper root. The hook is the origin: a bone toggle at y = 0,
+# the copper growing down. Verdigris leaves, one glass bud.
+
+@target flora/root.png 200x480 bg:none
+
+use paint { sculpt ink }
+use parts { crust }
+
+def copper_root
+  layer rear_layer
+    curve -10,268 -34,300 -66,348 -70,398 -46,418 -20,384 -8,332 -4,286 closed fill:p.verd.0 brush:sculpt(scale:.9 depth:.82 planes:.72 strength:.62 glossk:.16) name:rear
+      ellipse 12,30 at:-42,360 rot:-16 fill:p.ink a:.4 name:shade
+      curve -50,330 -38,368 -28,402 stroke:p.verd.4,2.4 a:.55 name:lit
+      curve -46,340 -40,372 -32,390 stroke:p.ink,2 a:.7 name:crack
+      circle 2.4 at:-48,352 fill:p.verd.0 name:pit
+        circle 1 at:.6,-.5 fill:p.verd.3 name:lip
+      fx outline 5 brush:ink(center:-40,352 thin:.32) color:p.ink
+    curve -16,0 -12,-4 2,-1 8,0 2,2 -10,3 closed at:-26,156 rot:-20 fill:p.verd.3 brush:sculpt(scale:.4 depth:.58 planes:.5 glossk:.16) name:leaf_behind
+      curve -6,0 4,0 stroke:p.verd.0,1.1 name:rib
+      fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+
+  layer trunk_layer
+    curve -22,1 -32,52 -40,118 -28,182 -32,252 -36,318 -22,378 -16,428 -8,450 10,450 20,422 28,372 24,312 34,248 38,182 32,112 26,50 22,1 closed fill:p.verd.1 brush:sculpt(scale:.8 depth:.78 planes:.72 glossk:.34 strength:.7) name:tap
+      ellipse 20,140 at:-10,240 rot:8 fill:p.ink a:.3 name:shade_plane
+      ellipse 10,64 at:14,110 rot:-10 fill:p.verd.4 a:.28 name:lit_plane
+      curve -18,74 -4,66 14,68 18,78 8,86 -10,88 -18,80 closed fill:p.verd.2 brush:sculpt(scale:.5 depth:.64 planes:.7 glossk:.46) name:scale_a
+        curve -10,70 4,68 14,74 stroke:p.verd.5,1.6 name:lip
+        curve -14,82 -2,86 10,82 stroke:p.verd.0,2.2 name:seam
+      curve -14,128 2,120 18,124 16,136 2,144 -14,140 closed fill:p.verd.3 brush:sculpt(scale:.48 depth:.6 planes:.68 glossk:.44) name:scale_b
+        curve -8,124 6,122 14,128 stroke:p.verd.5,1.6 name:lip
+        curve -10,138 2,142 12,136 stroke:p.verd.0,2.2 name:seam
+        poly 3 r:2.4 rot:24 at:8,130 fill:p.verd.5 name:chip
+      curve -16,186 0,178 16,182 14,194 -2,202 -16,196 closed fill:p.verd.2 brush:sculpt(scale:.5 depth:.64 planes:.7 glossk:.42) name:scale_c
+        curve -8,182 4,180 12,186 stroke:p.verd.5,1.5 name:lip
+        curve -12,196 0,200 10,194 stroke:p.verd.0,2.1 name:seam
+      curve -14,258 2,250 16,254 12,266 -4,274 -16,266 closed fill:p.verd.2 brush:sculpt(scale:.48 depth:.66 planes:.7 glossk:.4) name:scale_d
+        curve -8,254 6,252 12,258 stroke:p.verd.5,1.5 name:lip
+        curve -10,268 0,272 8,266 stroke:p.verd.0,2 name:seam
+      curve -12,332 2,326 12,330 10,342 -2,348 -12,342 closed fill:p.verd.3 brush:sculpt(scale:.45 depth:.62 planes:.66 glossk:.4) name:scale_e
+        curve -6,330 4,328 10,332 stroke:p.verd.5,1.4 name:lip
+        curve -8,342 0,346 8,340 stroke:p.verd.0,2 name:seam
+      curve -8,40 -16,130 -8,220 -18,310 -8,390 stroke:p.verd.0,5 a:.5 brush:sculpt(scale:.55 depth:.86 lo:p.ink) name:groove
+      curve 4,88 -2,128 6,170 0,206 stroke:p.ink,2.3 a:.85 name:crack_a
+      curve -4,250 2,286 -2,324 stroke:p.ink,2 a:.75 name:crack_b
+      curve -6,36 -10,140 -2,230 stroke:p.verd.0,1.5 a:.55 name:fiber_a
+      curve 10,28 14,120 8,210 stroke:p.verd.4,1.4 a:.4 name:fiber_b
+      circle 3.1 at:2,104 fill:p.ink name:pit_a
+        circle 1.3 at:.8,-.9 fill:p.verd.4 name:lip
+      circle 2.7 at:-4,176 fill:p.ink name:pit_b
+        circle 1.1 at:.7,-.7 fill:p.verd.3 name:lip
+      circle 2.5 at:3,312 fill:p.ink name:pit_c
+        circle 1 at:.6,-.6 fill:p.verd.4 name:lip
+      circle 4.2 at:-12,206 fill:p.moss.3 brush:sculpt(scale:.28 depth:.48 planes:.4) name:moss_a
+      circle 3.2 at:-6,212 fill:p.moss.4 brush:sculpt(scale:.24 depth:.45) name:moss_b
+      circle 2.6 at:-14,214 fill:p.moss.2 brush:sculpt(scale:.22 depth:.5) name:moss_c
+      curve -3,198 1,214 5,230 2,234 -2,218 closed fill:p.bone.4 brush:sculpt(scale:.22 glossk:.28 depth:.4) name:splinter
+      curve 14,44 18,120 14,200 16,270 stroke:p.shine,2.2 a:.55 name:wet
+      curve -24,160 -28,240 -22,320 stroke:p.rim,2.2 a:.38 name:cool
+      ellipse 12,18 at:-14,160 rot:-16 fill:p.verd.0 a:.45 name:cast_l
+      ellipse 11,16 at:14,210 rot:14 fill:p.verd.0 a:.4 name:cast_r
+      ellipse 14,5 at:0,16 fill:p.ink a:.45 name:collar_shadow
+      fx outline 6 brush:ink(center:0,230 thin:.26) color:p.ink
+
+  layer joint_layer
+    ellipse 34,6 at:0,3 fill:p.bone.2 brush:sculpt(scale:.5 depth:.68 planes:.64 glossk:.22 strength:.62) name:peg
+      ellipse 11,2.1 at:8,-1.5 fill:p.bone.5 name:lit
+      ellipse 8,1.8 at:-10,1.5 fill:p.bone.0 a:.75 name:shade
+      circle 1.5 at:15,.3 fill:p.bone.0 name:pore
+      circle 1.2 at:-6,1 fill:p.bone.1 name:pore_b
+      fx outline 4 brush:ink(center:0,0 thin:.38) color:p.ink
+    curve -22,8 -24,20 24,20 22,8 12,13 -12,13 closed fill:p.verd.2 brush:sculpt(scale:.5 depth:.7 planes:.68 glossk:.4 strength:.64) name:clasp
+      ellipse 9,2.2 at:6,11 rot:-16 fill:p.verd.5 name:lit
+      circle 2.3 at:12,15 fill:p.verd.0 name:rivet
+        circle .7 at:.5,-.5 fill:p.shine
+      fx outline 4 brush:ink(center:0,14 thin:.32) color:p.ink
+    curve -18,4 -34,0 -48,12 -50,30 -36,34 -40,18 -26,12 -16,14 closed fill:p.verd.2 brush:sculpt(scale:.48 depth:.72 planes:.66 glossk:.36) name:bill
+      ellipse 5,2.2 at:-36,16 rot:-20 fill:p.verd.5 name:lit
+      fx outline 4 brush:ink(center:-34,16 thin:.32) color:p.ink
+    curve -28,10 -16,16 -6,12 fill:none stamp:crust name:salt_line
+    poly 4 r:4.2 rot:22 at:-24,10 fill:p.bone.5 brush:sculpt(scale:.28 glossk:.32) name:salt_a
+    poly 4 r:3 rot:-18 at:-16,16 fill:p.bone.6 brush:sculpt(scale:.24 glossk:.3) name:salt_b
+    poly 3 r:2.8 rot:36 at:-30,16 fill:p.bone.4 name:salt_c
+
+  layer growth_layer
+    curve -22,156 -46,172 -68,206 -72,242 -54,258 -32,240 -18,204 -14,166 closed fill:p.verd.1 brush:sculpt(scale:.7 depth:.74 planes:.68 glossk:.32 strength:.66) name:arm_l
+      curve -52,196 -40,188 -28,198 -30,212 -48,214 closed fill:p.verd.3 brush:sculpt(scale:.4 depth:.58 planes:.64 glossk:.4) name:scale
+        curve -46,194 -36,190 -30,196 stroke:p.verd.5,1.4 name:lip
+      curve -44,188 -38,214 -34,236 stroke:p.verd.0,3.5 a:.55 name:seam
+      circle 2.6 at:-50,224 fill:p.verd.0 name:pit
+        circle 1 at:.5,-.5 fill:p.verd.3 name:lip
+      fx outline 5 brush:ink(center:-42,206 thin:.3) color:p.ink
+    curve 18,190 42,200 64,230 68,268 50,290 28,274 16,238 12,206 closed fill:p.verd.2 brush:sculpt(scale:.7 depth:.72 planes:.66 glossk:.34 strength:.64) name:arm_r
+      curve 32,214 48,236 40,262 stroke:p.verd.0,3.5 a:.5 name:seam
+      ellipse 6,2.6 at:48,220 fill:p.verd.5 a:.75 name:lit
+      fx outline 5 brush:ink(center:40,240 thin:.3) color:p.ink
+    curve 6,348 26,366 44,398 38,428 20,420 8,384 closed fill:p.verd.1 brush:sculpt(scale:.6 depth:.74 planes:.66 glossk:.3) name:spur
+      ellipse 4.5,2.2 at:24,392 fill:p.verd.4 name:lit
+      fx outline 4 brush:ink(center:24,392 thin:.32) color:p.ink
+    curve -8,404 -22,424 -14,442 -2,436 4,414 closed fill:p.verd.1 brush:sculpt(scale:.5 depth:.72 planes:.64 glossk:.3) name:toe_l
+      fx outline 4 brush:ink(center:-10,424 thin:.34) color:p.ink
+    curve 2,408 16,426 12,444 0,436 -4,416 closed fill:p.verd.2 brush:sculpt(scale:.5 depth:.7 planes:.62 glossk:.32) name:toe_r
+      fx outline 4 brush:ink(center:8,428 thin:.34) color:p.ink
+    curve -12,424 -16,438 -10,446 stroke:p.verd.1,[11 9 8] taper:.2 brush:sculpt(scale:.35) name:rootlet_l
+    curve 12,426 14,440 10,448 stroke:p.verd.2,[10 9 8] taper:.2 brush:sculpt(scale:.35) name:rootlet_r
+
+    group at:-32,100 name:spray_l
+      curve -12,0 -8,-4.2 -1,-5 8,-2 13,0 8,2.4 -1,4.2 -8,3.2 closed at:2,-6 rot:-150 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.42 depth:.55 planes:.5 glossk:.2) name:leaf_l0
+        curve -6,0 6,0 stroke:p.verd.0,1.2 name:rib
+        ellipse 3.4,1.3 at:4,-1 fill:p.verd.5 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -12,0 -8,-4.2 -1,-5 8,-2 13,0 8,2.4 -1,4.2 -8,3.2 closed at:-8,2 rot:-112 fill:p.verd.5 brush:sculpt(lo:p.verd.0 hi:p.shine scale:.4 depth:.5 planes:.46 glossk:.22) name:leaf_l1
+        curve -6,0 6,0 stroke:p.verd.1,1.15 name:rib
+        ellipse 3.2,1.2 at:4,-.8 fill:p.shine a:.8 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -12,0 -8,-4 -1,-4.6 7,-1.6 12,0 7,2 -1,3.8 -8,3 closed at:-4,10 rot:-78 fill:p.verd.3 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.58 planes:.5 glossk:.16) name:leaf_l2
+        curve -5,0 5,0 stroke:p.verd.0,1.1 name:rib
+        ellipse 3,1.2 at:3,-.8 fill:p.verd.5 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -11,0 -7,-3.6 0,-4 7,-1.4 11,0 7,1.8 0,3.4 -7,2.8 closed at:8,4 rot:168 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.55 planes:.48 glossk:.18) name:leaf_l3
+        curve -5,0 5,0 stroke:p.verd.0,1.1 name:rib
+        ellipse 3,1.2 at:3,-.7 fill:p.verd.5 name:sheen
+        fx outline 2.1 brush:ink(center:0,0 thin:.4) color:p.ink
+
+    group at:-48,196 name:spray_arm
+      curve -12,0 -8,-4 -1,-4.8 8,-1.8 12,0 8,2.2 -1,4 -8,3.2 closed at:-4,-2 rot:-168 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.55 planes:.48 glossk:.18) name:leaf_m0
+        curve -5,0 5,0 stroke:p.verd.0,1.15 name:rib
+        ellipse 3.2,1.2 at:3,-.8 fill:p.verd.5 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -11,0 -7,-3.8 0,-4.2 7,-1.5 11,0 6,2 0,3.6 -7,2.8 closed at:-8,8 rot:-132 fill:p.verd.3 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.58 planes:.5 glossk:.16) name:leaf_m1
+        curve -5,0 5,0 stroke:p.verd.0,1.1 name:rib
+        ellipse 2.8,1.1 at:3,-.6 fill:p.verd.5 name:sheen
+        fx outline 2.1 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -10,0 -6,-3.4 1,-3.8 6,-1.2 10,0 6,1.6 1,3.2 -6,2.6 closed at:2,6 rot:150 fill:p.verd.5 brush:sculpt(lo:p.verd.0 hi:p.shine scale:.38 depth:.5 planes:.44 glossk:.2) name:leaf_m2
+        curve -4,0 4,0 stroke:p.verd.1,1 name:rib
+        ellipse 2.6,1 at:2,-.5 fill:p.shine a:.75 name:sheen
+        fx outline 2 brush:ink(center:0,0 thin:.42) color:p.ink
+
+    group at:34,206 name:spray_r
+      curve -12,0 -8,-4.2 -1,-5 8,-2 13,0 8,2.4 -1,4.2 -8,3.2 closed at:4,-8 rot:-28 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.42 depth:.54 planes:.48 glossk:.2) name:leaf_r0
+        curve -6,0 6,0 stroke:p.verd.0,1.2 name:rib
+        ellipse 3.4,1.3 at:4,-1 fill:p.verd.5 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -11,0 -7,-3.8 0,-4.4 7,-1.6 12,0 7,2 0,3.6 -7,3 closed at:12,-1 rot:18 fill:p.verd.5 brush:sculpt(lo:p.verd.0 hi:p.shine scale:.4 depth:.5 planes:.46 glossk:.22) name:leaf_r1
+        curve -5,0 5,0 stroke:p.verd.1,1.15 name:rib
+        ellipse 3,1.2 at:3,-.7 fill:p.shine a:.8 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -11,0 -7,-3.6 0,-4 6,-1.4 11,0 6,1.8 0,3.4 -7,2.8 closed at:6,8 rot:48 fill:p.verd.3 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.58 planes:.5 glossk:.16) name:leaf_r2
+        curve -5,0 5,0 stroke:p.verd.0,1.1 name:rib
+        ellipse 3,1.1 at:3,-.6 fill:p.verd.5 name:sheen
+        fx outline 2.1 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -10,0 -6,-3.2 1,-3.6 6,-1 10,0 6,1.6 1,3 -6,2.4 closed at:16,6 rot:-8 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.38 depth:.54 planes:.48 glossk:.18) name:leaf_r3
+        curve -4,0 4,0 stroke:p.verd.0,1 name:rib
+        ellipse 2.6,1 at:2,-.5 fill:p.verd.5 name:sheen
+        fx outline 2 brush:ink(center:0,0 thin:.42) color:p.ink
+
+    group at:-36,332 name:spray_low
+      curve -12,0 -8,-4 -1,-4.6 8,-1.6 12,0 8,2 -1,3.8 -8,3 closed at:-6,-2 rot:-150 fill:p.verd.4 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.56 planes:.48 glossk:.18) name:leaf_d0
+        curve -5,0 5,0 stroke:p.verd.0,1.15 name:rib
+        ellipse 3,1.2 at:3,-.7 fill:p.verd.5 name:sheen
+        fx outline 2.2 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -11,0 -7,-3.6 0,-4 7,-1.4 11,0 6,1.8 0,3.2 -7,2.6 closed at:-10,8 rot:-118 fill:p.verd.3 brush:sculpt(lo:p.verd.0 hi:p.verd.5 scale:.4 depth:.58 planes:.5 glossk:.16) name:leaf_d1
+        curve -5,0 4,0 stroke:p.verd.0,1.1 name:rib
+        ellipse 2.8,1.1 at:2,-.6 fill:p.verd.5 name:sheen
+        fx outline 2.1 brush:ink(center:0,0 thin:.4) color:p.ink
+      curve -10,0 -6,-3.2 1,-3.6 6,-1.2 10,0 6,1.6 1,3 -6,2.4 closed at:2,6 rot:168 fill:p.verd.5 brush:sculpt(lo:p.verd.0 hi:p.shine scale:.36 depth:.5 planes:.44 glossk:.2) name:leaf_d2
+        curve -4,0 4,0 stroke:p.verd.1,1 name:rib
+        ellipse 2.4,1 at:2,-.4 fill:p.shine a:.7 name:sheen
+        fx outline 2 brush:ink(center:0,0 thin:.42) color:p.ink
+
+    curve -7,0 -3,-3 5,0 -3,2.4 closed at:48,262 rot:-40 fill:p.verd.3 brush:sculpt(scale:.32 depth:.56) name:sepal_l
+      fx outline 1.8 brush:ink(center:0,0 thin:.45) color:p.ink
+    curve -7,0 -3,-3 5,0 -3,2.4 closed at:66,258 rot:18 fill:p.verd.4 brush:sculpt(scale:.32 depth:.54) name:sepal_r
+      fx outline 1.8 brush:ink(center:0,0 thin:.45) color:p.ink
+    curve -5,0 -2,-2.4 4,0 -2,2 closed at:56,256 rot:70 fill:p.verd.2 brush:sculpt(scale:.3 depth:.58) name:sepal_c
+      fx outline 1.8 brush:ink(center:0,0 thin:.45) color:p.ink
+    curve 40,248 50,256 56,264 stroke:p.verd.2,9 brush:sculpt(scale:.35 glossk:.42) name:pedicel
+    curve 0,-18 5,-16 10,-10 12,-2 11,8 7,16 3,20 0,22 -3,20 -7,16 -11,8 -12,-2 -10,-10 -5,-16 closed at:60,276 fill:p.glass.3 brush:sculpt(scale:.4 depth:.26 planes:.16 glossk:.78 hi:p.shine lo:p.glass.0 strength:.5) name:bud
+      ellipse 5,8 at:2,-1 fill:p.glass.5 brush:sculpt(scale:.26 glossk:.86 hi:p.shine depth:.14 planes:.08) name:heart
+      ellipse 2.3,4.2 at:-1.6,5 fill:p.glass.0 name:seed
+      curve 2,-9 6,-4 5,2 stroke:p.shine,1.6 a:.8 name:glint
+      circle 1.7 at:5,-8 fill:p.shine name:catch
+      fx outline 3 brush:ink(center:0,2 thin:.4) color:p.ink
+    circle 4.4 at:8,446 fill:p.tide.3 brush:sculpt(scale:.24 glossk:.82 hi:p.shine lo:p.tide.0 depth:.26 planes:.18) name:bead
+      circle 1.3 at:1.1,-1.3 fill:p.shine name:catch
+      fx outline 2 brush:ink(center:0,0 thin:.5) color:p.ink
+
+copper_root at:100,10.9 name:root
+assert inside(@root canvas margin:10)
+assert @root.top in -16..8
