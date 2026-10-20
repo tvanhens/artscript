@@ -351,3 +351,18 @@ fn content_past_the_visible_half_is_linted_once_with_a_radius_that_fits() {
         .count();
     assert_eq!(cuts, 1, "{}", show(&sampled.diagnostics));
 }
+
+#[test]
+fn an_anchor_a_warp_hides_warns_at_its_line() {
+    let ev = run_with(
+        "@target t.png 100x100\n\
+         group at:50,50 warp:cylinder(20) name:body\n\
+         \x20 rect 20x10\n\
+         \x20 anchor tip 40,0\n",
+        &[],
+    );
+    assert!(!ev.rig.anchors.contains_key("tip"), "{:?}", ev.rig.anchors);
+    let cut: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0108").collect();
+    assert_eq!(cut.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(cut[0].span.line, 4, "{}", show(&ev.diagnostics));
+}
