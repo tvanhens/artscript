@@ -1,0 +1,145 @@
+# A distant rose window. Bone tracery, rose glass, a sun swallowed by ribs.
+# The room's key stays upper right. Values stay inside the ramps: this is far away.
+
+@target bg/rose_window.png 560x680 bg:none
+
+use paint { sculpt ink }
+use parts { crust }
+
+def rose_window
+  let stone = sculpt(scale:1.65 depth:.5 planes:.4 strength:.42 lo:p.bone.0 hi:p.bone.5)
+  let band = sculpt(scale:1.15 depth:.52 planes:.44 strength:.44 lo:p.bone.0 hi:p.bone.5)
+  let rib_brush = sculpt(scale:.72 depth:.54 planes:.48 strength:.46 lo:p.bone.0 hi:p.bone.5)
+  let bone_rib = sculpt(scale:.62 depth:.6 planes:.56 strength:.5)
+  let nub = sculpt(scale:.42 depth:.5 planes:.5 strength:.44 lo:p.bone.0 hi:p.bone.5)
+  let glass_brush = sculpt(scale:1.55 depth:.38 planes:.26 strength:.3 lo:p.rose.0 hi:p.rose.4 glossk:.34)
+  let sun_brush = sculpt(scale:.75 depth:.22 planes:.18 strength:.34 glossk:.52 lo:p.amber.1 hi:p.amber.5 wrap:.3)
+  let pane_tone = [p.rose.3 p.rose.2 p.rose.2 p.rose.1 p.rose.1 p.rose.1 p.rose.1 p.rose.1 p.rose.2 p.rose.2 p.rose.3 p.rose.3]
+
+  layer surround_layer
+    curve -228,210 -234,150 -240,70 -228,-20 -196,-110 -140,-190 -72,-252 -22,-284 0,-300 24,-282 80,-246 150,-180 204,-100 232,-10 242,80 236,160 230,210 closed tension:.38 fill:p.bone.2 brush:stone name:hood
+      ellipse 78,24 at:78,-186 fill:p.bone.4 a:.42 blur:3 name:hood_sheen
+      ellipse 70,40 at:-156,24 fill:p.bone.0 a:.22 blur:4 name:hood_shade
+      curve -214,18 -186,52 -164,34 stroke:p.ink,2.4 a:.48 name:crack_haunch
+      curve -118,-214 -96,-176 -122,-140 stroke:p.ink,1.7 a:.4 name:crack_spandrel
+      curve 48,-198 28,-164 46,-132 stroke:p.bone.0,1.5 a:.32 name:crack_lit
+      each k in 0..9
+        circle 1.15+rand(0 1.7) at:polar(200+rand(-8 12) -124+k*28) fill:p.ink a:.38 name:pit
+      each k in 0..5
+        ellipse 2.6+rand(0 1.6),1.3 at:polar(214+rand(-5 6) -76+k*14) rot:-76+k*14 fill:p.bone.5 a:.36 name:chip
+      each k in 0..7
+        curve polar(194 -128+k*30) polar(232 -128+k*28) stroke:p.bone.0,1.8 a:.28 name:joint
+      fx outline 6 brush:ink color:p.ink a:.66
+    curve -198,158 -206,96 -198,16 -182,-52 -146,-122 -92,-178 -36,-214 0,-230 42,-208 100,-168 154,-112 190,-46 202,24 198,104 190,158 stroke:p.bone.3,10 brush:band name:mold
+      fx outline 3.5 brush:ink color:p.ink a:.58
+    curve -16,-258 0,-294 18,-254 8,-242 -14,-244 closed fill:p.bone.3 brush:nub name:keystone
+      ellipse 5,2 at:6,-270 fill:p.bone.5 a:.45 blur:1 name:key_sheen
+      fx outline 3 brush:ink color:p.ink a:.62
+
+  layer glass_layer
+    circle 154 fill:p.rose.2 brush:glass_brush name:glass
+      each i in 0..12
+        curve polar(56 i*30) polar(108 i*30-18) polar(148 i*30) polar(108 i*30+18) closed fill:pane_tone.{i} brush:glass_brush name:pane
+      ellipse 96,64 at:44,-32 fill:p.rose.4 a:.14 blur:8 name:glass_lit
+      ellipse 84,58 at:-30,34 fill:p.rose.0 a:.18 blur:8 name:glass_shade
+      curve polar(108 8) polar(124 15) polar(142 22) stroke:p.rose.0,1.6 a:.8 name:pane_crack
+      curve -7,4 8,5 2,-5 -6,-3 closed at:polar(124 15) fill:mix(p.rose.0 p.void .7) name:lost_glass
+
+  layer rear_layer
+    circle 40 fill:p.rose.0 name:well
+      circle 28 fill:mix(p.rose.0 p.void .22) name:well_core
+    curve -16,-46 -6,-48 4,-20 2,8 8,28 10,44 0,42 -6,16 -8,-8 -18,-28 closed fill:p.bone.1 brush:rib_brush name:rib_rear
+      ellipse 4,2 at:-6,-40 fill:p.bone.4 a:.35 name:rear_sheen
+      fx outline 3 brush:ink color:p.ink a:.52
+    curve 14,-38 28,-34 34,-8 30,18 24,36 16,32 22,8 26,-14 16,-32 closed fill:p.bone.1 brush:rib_brush name:rib_side
+      ellipse 6,2.4 at:26,-22 fill:p.bone.4 a:.32 name:side_sheen
+      fx outline 2.8 brush:ink color:p.ink a:.5
+
+  layer sun_layer
+    circle 28 fill:p.amber.3 brush:sun_brush name:sun_disc
+      circle 12 at:6,-6 fill:p.amber.5 name:sun_core
+      circle 3.6 at:12,-8 fill:p.shine a:.75 name:sun_glint
+      fx glow 13 color:p.amber.4 a:.46 strength:1.15
+
+  layer tracery_layer
+    each i in 0..12
+      if i != 4
+        curve polar(68 i*30) polar(150 i*30) stroke:p.bone.2,9 brush:rib_brush name:spoke
+          fx outline 3.2 brush:ink color:p.ink a:.62
+      else
+        curve polar(132 i*30) polar(152 i*30) stroke:p.bone.1,8 brush:rib_brush name:stub
+          fx outline 3 brush:ink color:p.ink a:.6
+        curve polar(92 i*30+8) polar(108 i*30-4) polar(116 i*30+12) polar(98 i*30+16) closed fill:p.bone.2 brush:bone_rib name:hanging
+          ellipse 3.5,1.6 at:polar(104 i*30+6) fill:p.bone.4 a:.4 name:hanging_sheen
+          fx outline 2.4 brush:ink color:p.ink a:.6
+    each i in 0..12
+      if i != 4
+        curve polar(146 i*30+4) polar(94+mod(i 3)*6 i*30+15) polar(146 i*30+26) stroke:p.bone.2,6.5 brush:rib_brush name:foil
+          fx outline 2.8 brush:ink color:p.ink a:.56
+      else
+        curve polar(146 i*30+4) polar(124 i*30+10) stroke:p.bone.1,6 brush:rib_brush name:foil_stub
+          fx outline 2.6 brush:ink color:p.ink a:.55
+    group name:oculus_group
+      subtract fill:p.bone.2 brush:band name:oculus
+        circle 64
+        circle 44
+      fx outline 4 brush:ink color:p.ink a:.64
+    inside @oculus
+      ellipse 16,5 at:polar(54 -42) rot:-42 fill:p.bone.4 a:.4 blur:1 name:oculus_sheen
+    group name:rim_group
+      subtract fill:p.bone.2 brush:band name:rim
+        circle 180
+        circle 146
+      fx outline 5 brush:ink color:p.ink a:.7
+    inside @rim
+      ellipse 44,8 at:polar(163 -48) rot:-48 fill:p.bone.4 a:.36 blur:1.4 name:rim_sheen
+      ellipse 28,7 at:polar(164 136) rot:136 fill:p.bone.0 a:.22 blur:1.2 name:rim_shade
+    each i in 0..12
+      if i != 4
+        circle 7.5 at:polar(164 i*30) fill:p.bone.3 brush:nub name:boss
+          circle 2 at:1.8,-2 fill:p.bone.5 a:.5 name:boss_glint
+          fx outline 2.4 brush:ink color:p.ink a:.55
+      else
+        circle 4.5 at:polar(168 i*30) fill:p.bone.1 brush:nub name:boss_chip
+          fx outline 2 brush:ink color:p.ink a:.5
+    curve -96,10 -36,20 10,22 52,6 64,18 20,38 -30,40 -90,22 closed fill:p.bone.2 brush:bone_rib name:rib_jaw
+      ellipse 14,4 at:18,26 fill:p.bone.5 a:.42 blur:1 name:jaw_sheen
+      fx outline 3.6 brush:ink color:p.ink a:.68
+    curve -74,-4 -24,-24 16,-22 40,-6 48,-16 24,-34 -20,-40 -70,-18 closed fill:p.bone.3 brush:bone_rib name:rib_brow
+      ellipse 12,3.2 at:8,-32 fill:p.bone.5 a:.45 blur:1 name:brow_sheen
+      fx outline 3.2 brush:ink color:p.ink a:.64
+    curve -86,34 -78,12 -52,0 -24,6 -16,18 -30,24 -56,16 -72,30 -90,40 closed fill:p.bone.2 brush:bone_rib name:rib_bite
+      ellipse 7,3 at:-58,12 fill:p.bone.4 a:.38 blur:.8 name:bite_sheen
+      fx outline 3 brush:ink color:p.ink a:.64
+    curve -26,8 -12,0 -8,12 -24,16 closed fill:p.bone.3 brush:bone_rib name:tooth
+      ellipse 3,1.4 at:-16,4 fill:p.bone.5 a:.55 name:tooth_sheen
+      fx outline 2.2 brush:ink color:p.ink a:.66
+
+  layer wall_layer
+    curve -238,174 238,174 238,292 -196,292 -228,270 -238,246 closed fill:p.bone.1 brush:sculpt(scale:1.85 depth:.42 planes:.34 strength:.36 lo:p.bone.0 hi:p.bone.4) name:breast
+      ellipse 90,16 at:72,204 fill:p.bone.3 a:.24 blur:3 name:breast_sheen
+      ellipse 70,22 at:-64,258 fill:p.bone.0 a:.18 blur:3 name:breast_shade
+      rect 400x2 at:6,228 fill:p.bone.0 a:.2 name:course_hi
+      rect 340x2 at:-16,264 fill:p.bone.0 a:.15 name:course_lo
+      curve -20,198 -48,234 -14,276 stroke:p.ink,2.1 a:.42 name:breast_crack
+      each k in 0..7
+        circle 1.1+rand(0 1.7) at:rand(-150 170),190+rand(0 78) fill:p.ink a:.32 name:pore
+      fx outline 5 brush:ink color:p.ink a:.6
+    curve -220,164 252,164 252,184 -240,184 -214,176 -226,166 closed fill:p.bone.3 brush:band name:sill
+      ellipse 70,4 at:80,168 fill:p.bone.5 a:.42 blur:1 name:sill_sheen
+      fx outline 3.5 brush:ink color:p.ink a:.64
+    curve -34,10 -38,-18 8,-24 40,-8 28,14 closed at:16,256 fill:p.bone.0 brush:nub name:scar
+      ellipse 10,3 at:10,-8 fill:p.bone.2 a:.35 name:scar_lip
+      fx outline 2.2 brush:ink color:p.ink a:.42
+    curve -18,-4 24,0 20,12 -4,16 -22,8 closed at:-74,190 fill:p.bone.2 brush:bone_rib name:shard
+      ellipse 8,2.5 at:6,-2 fill:p.bone.4 a:.45 blur:1 name:shard_sheen
+      fx outline 2.8 brush:ink color:p.ink a:.62
+    circle 4.6 at:-184,40 fill:p.moss.2 brush:nub name:moss_main
+      circle 1.6 at:1,-1.3 fill:p.moss.4 a:.6 name:moss_tip
+    circle 3.2 at:-172,50 fill:p.moss.1 brush:nub name:moss_side
+    circle 2.2 at:-190,52 fill:p.moss.3 brush:nub name:moss_dot
+    curve -210,166 -40,173 180,165 fill:none stamp:crust(spacing:30) name:sill_salt
+    curve -96,186 -72,196 -50,188 fill:none stamp:crust(spacing:9) name:shard_salt
+
+rose_window at:280,340 name:window
+assert inside(@window canvas margin:12)
