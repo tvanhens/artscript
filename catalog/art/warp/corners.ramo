@@ -1,0 +1,46 @@
+# warp:corners on paper, 256x128. Every quad corner is marked with a 2px ink dot drawn separately at the
+# same canvas point, so a correct pin puts each corner of the warped box exactly on a dot. Row 1 at y
+# about 38, row 2 at y about 98, left to right:
+# (1) x 40: the flat reference, a red 40x24 rect with a 2px ink stroke, no warp.
+# (2) the same rect pinned to a trapezoid, wider at the bottom: its ink box lands on the dots at
+# (84,22) (140,22) (150,54) (74,54). The stroke stays 2px and straight. A green 3px dot sits at
+# @pin.cx,@pin.top, the middle of the warped top edge at (112,22), because measurements report the
+# warped box.
+# (3) a group pinned to a slanted quad with dots at (172,18) (236,30) (228,60) (166,56): a gold 60x30
+# rect with an ink stroke and a blue circle at its center. The circle follows the warp and sits at the
+# center of the quad, so children follow the pin.
+# (4) x 22..70: a red rect with no stroke pinned to (26,86) (66,78) (70,112) (22,112) under fx outline 3:
+# the 3px ink ring follows the slanted quad, not the flat rect, because effects run after the warp.
+# (5) a blue rect written with at:60,0 scale:2 and corners (144,86) (184,86) (188,112) (140,112): the
+# points are in the parent's frame, so the node's own keys do not move the quad, and it lands on the
+# dots at exactly those points with the same 2px stroke as cell 2.
+# The .svg target uses profile:svg: a warped node is raster-only and bakes to a tile whose box is the
+# warped box, so every cell looks like the PNG's and no quad is cut off.
+@target warp/corners.png 256x128
+@target warp/corners.svg 256x128 profile:svg
+
+rect 40x24 at:40,36 fill:p.red stroke:p.ink,2
+
+rect 40x24 fill:p.red stroke:p.ink,2 warp:corners(84,22 140,22 150,54 74,54) name:pin
+circle 2 at:84,22 fill:p.ink
+circle 2 at:140,22 fill:p.ink
+circle 2 at:150,54 fill:p.ink
+circle 2 at:74,54 fill:p.ink
+circle 3 at:@pin.cx,@pin.top fill:p.green
+
+group at:200,40 warp:corners(172,18 236,30 228,60 166,56)
+  rect 60x30 fill:p.gold.3 stroke:p.ink,2
+  circle 8 fill:p.blue
+circle 2 at:172,18 fill:p.ink
+circle 2 at:236,30 fill:p.ink
+circle 2 at:228,60 fill:p.ink
+circle 2 at:166,56 fill:p.ink
+
+rect 40x24 fill:p.red warp:corners(26,86 66,78 70,112 22,112)
+  fx outline 3 color:p.ink
+
+rect 40x24 at:60,0 scale:2 fill:p.blue stroke:p.ink,2 warp:corners(144,86 184,86 188,112 140,112)
+circle 2 at:144,86 fill:p.ink
+circle 2 at:184,86 fill:p.ink
+circle 2 at:188,112 fill:p.ink
+circle 2 at:140,112 fill:p.ink

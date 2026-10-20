@@ -1,0 +1,32 @@
+# warp:[...] stacks, applied left to right, 256x96 on paper. Both cells start from the striped label
+# of cylinder_y: a pale gold 96x40 label with a 2px ink stroke and seven blue 4x32 stripes 12 apart,
+# in a group whose origin is the label's center. Each quad corner is marked with a 2px ink dot.
+# (1) x 64: [cylinder(40) corners(...)]. The label is wrapped first, then the box of the wrapped
+# label is pinned to the quad with dots at (24,18) (104,26) (100,78) (28,72). The stripes bunch up
+# toward the left and right sides as in cylinder_y, and the whole label leans with the quad: its
+# edges are straight lines through the dots.
+# (2) x 192: [corners(...) cylinder(40)], the same quad shape 128 to the right. The flat label is
+# pinned to the quad first, then the pinned quad is wrapped around a cylinder whose axis is the
+# vertical line through the group's origin at x 192. The stripes bunch up toward the sides, the
+# quad's slanted top and bottom edges bow slightly as the turn compresses their outer ends, and
+# the shape is about 67 wide instead of 80, so it no longer reaches the dots at (152,18) (232,26)
+# (228,78) (156,72), which sit outside it on the left and right.
+@target warp/stack.png 256x96
+
+group at:64,48 warp:[cylinder(40) corners(24,18 104,26 100,78 28,72)]
+  rect 96x40 fill:p.gold.4 stroke:p.ink,2
+  each i in 0..7
+    rect 4x32 at:-36+i*12,0 fill:p.blue
+circle 2 at:24,18 fill:p.ink
+circle 2 at:104,26 fill:p.ink
+circle 2 at:100,78 fill:p.ink
+circle 2 at:28,72 fill:p.ink
+
+group at:192,48 warp:[corners(152,18 232,26 228,78 156,72) cylinder(40)]
+  rect 96x40 fill:p.gold.4 stroke:p.ink,2
+  each i in 0..7
+    rect 4x32 at:-36+i*12,0 fill:p.blue
+circle 2 at:152,18 fill:p.ink
+circle 2 at:232,26 fill:p.ink
+circle 2 at:228,78 fill:p.ink
+circle 2 at:156,72 fill:p.ink

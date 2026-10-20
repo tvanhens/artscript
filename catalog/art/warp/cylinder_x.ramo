@@ -1,0 +1,22 @@
+# warp:cylinder with axis:x, 128x112 on paper. Two cells at y 56:
+# (1) x 32: the flat reference, a pale gold 40x96 label with a 2px ink stroke and seven blue 32x4
+# stripes 12 apart, the middle stripe on the label's center line.
+# (2) x 96: the same label wrapped on a cylinder of radius 40 whose axis is the horizontal line
+# through the label's center. The label is about 75 tall instead of 98: the stripes stay horizontal
+# and evenly 12 apart only at the center, and get closer together and thinner toward the top and
+# the bottom, where the surface turns away. The left and right edges stay straight vertical lines,
+# and the width is unchanged. The 2px top and bottom strokes are squeezed to under a pixel by the
+# turn, so they show as soft gray bands rather than crisp ink lines. A green 3px dot sits at @wrapped.cx,@wrapped.bottom, on the wrapped
+# label's bottom edge, because measurements report the warped box.
+@target warp/cylinder_x.png 128x112
+
+group at:32,56
+  rect 40x96 fill:p.gold.4 stroke:p.ink,2
+  each i in 0..7
+    rect 32x4 at:0,-36+i*12 fill:p.blue
+
+group at:96,56 warp:cylinder(40 axis:x) name:wrapped
+  rect 40x96 fill:p.gold.4 stroke:p.ink,2
+  each i in 0..7
+    rect 32x4 at:0,-36+i*12 fill:p.blue
+circle 3 at:@wrapped.cx,@wrapped.bottom fill:p.green
