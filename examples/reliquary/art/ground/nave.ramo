@@ -1,0 +1,120 @@
+# Gouache floor of a drowned nave. y = 0 is the waterline; the stones hang down.
+# One key, upper right. Amber is only the sun's reflection on the right.
+
+@target ground/nave.png 1440x260 bg:none
+
+use paint { sculpt ink }
+use parts { crust }
+
+def flag w:120 h:80 tone:p.bone.3 growth:0
+  rect w,h r:3 fill:tone brush:sculpt(scale:1.05 depth:.76 planes:.72) name:block
+    curve rand(-w*.1 w*.06),-h*.18 rand(-w*.04 w*.1),rand(-h*.02 h*.08) rand(-w*.02 w*.14),h*.22 stroke:p.ink,1.2+rand(0 .8) a:.66 name:crack
+    each i in 0..5
+      circle .7+rand(0 2) at:rand(-w*.22 w*.22),rand(-h*.16 h*.16) fill:p.bone.0 a:.48+rand(0 .35) name:pit
+    if growth > 0
+      circle 3.4 at:-5,3 fill:p.moss.2 name:moss
+        circle 1.4 at:.7,-.7 fill:p.moss.4
+      circle 2.1 at:5,6 fill:p.moss.1 name:tuft
+
+def nave_floor
+  layer floor_layer
+    curve -702,24 -490,26 -478,88 -506,150 -468,198 -560,214 -648,190 -694,156 -706,90 closed fill:p.bone.1 brush:sculpt(scale:1.1 depth:.78 planes:.74) name:bed_0
+      circle 2.2 at:-620,110 fill:p.bone.0 a:.7 name:pit_a
+      circle 1.5 at:-560,160 fill:p.ink a:.55 name:pit_b
+      curve -650,70 -590,120 -530,96 stroke:p.ink,1.6 a:.6 name:crack
+    curve -508,32 -328,30 -316,78 -348,130 -372,168 -440,156 -496,174 -514,100 closed fill:p.bone.2 brush:sculpt(scale:1 depth:.74 planes:.7) name:bed_1
+      circle 1.8 at:-420,90 fill:p.bone.0 a:.6 name:pit_a
+      curve -470,60 -420,100 -360,78 stroke:p.ink,1.4 a:.55 name:crack
+    curve -344,22 -144,26 -132,96 -168,160 -128,214 -210,226 -292,204 -338,170 -350,80 closed fill:p.bone.1 brush:sculpt(scale:1.15 depth:.78 planes:.74) name:bed_2
+      circle 2.4 at:-250,120 fill:p.bone.0 a:.65 name:pit_a
+      circle 1.4 at:-190,170 fill:p.ink a:.5 name:pit_b
+      curve -300,80 -230,140 -170,110 stroke:p.ink,1.7 a:.6 name:crack
+    curve -162,36 22,34 16,86 -8,124 18,152 -60,144 -130,160 -158,110 closed fill:p.bone.0 brush:sculpt(scale:.95 depth:.8 planes:.76) name:bed_3
+      circle 1.6 at:-70,90 fill:p.ink a:.55 name:pit_a
+    curve 4,24 214,22 222,90 188,150 214,206 130,222 48,208 12,160 0,80 closed fill:p.bone.2 brush:sculpt(scale:1.1 depth:.76 planes:.72) name:bed_4
+      circle 2 at:110,120 fill:p.bone.0 a:.6 name:pit_a
+      circle 1.3 at:60,170 fill:p.ink a:.5 name:pit_b
+      curve 40,70 100,130 170,96 stroke:p.ink,1.5 a:.55 name:crack
+    curve 196,28 368,30 362,92 334,140 374,180 300,166 236,186 208,140 192,70 closed fill:p.bone.3 brush:sculpt(scale:1 depth:.72 planes:.68) name:bed_5
+      circle 1.7 at:280,100 fill:p.bone.0 a:.55 name:pit_a
+      curve 240,70 290,120 340,86 stroke:p.ink,1.4 a:.5 name:crack
+    curve 352,20 544,24 534,100 508,156 552,200 450,212 380,190 356,140 346,70 closed fill:p.bone.2 brush:sculpt(scale:1.1 depth:.76 planes:.72) name:bed_6
+      circle 2.1 at:450,110 fill:p.bone.0 a:.6 name:pit_a
+      circle 1.4 at:500,160 fill:p.ink a:.5 name:pit_b
+      curve 400,64 470,120 530,90 stroke:p.ink,1.6 a:.55 name:crack
+    curve 526,32 702,28 696,84 664,128 706,164 620,152 556,172 530,120 520,64 closed fill:p.bone.4 brush:sculpt(scale:1 depth:.7 planes:.66 glossk:.32) name:bed_7
+      circle 1.6 at:620,90 fill:p.bone.0 a:.5 name:pit_a
+      curve 580,60 640,110 680,78 stroke:p.ink,1.3 a:.45 name:crack
+    flag 167 56 at:-618,28 tone:p.bone.2 name:cap_0
+    flag 155 44 at:-466,22 tone:p.bone.3 name:cap_1
+    flag 149 64 at:-322,32 tone:p.bone.1 growth:1 name:cap_2
+    flag 173 50 at:-168,25 tone:p.bone.3 name:cap_3
+    flag 189 42 at:4,21 tone:p.bone.2 name:cap_4
+    flag 153 60 at:168,30 tone:p.bone.4 name:cap_5
+    flag 167 46 at:320,23 tone:p.bone.3 name:cap_6
+    flag 159 68 at:474,34 tone:p.bone.4 name:cap_7
+    flag 159 52 at:626,26 tone:p.bone.5 name:cap_8
+    curve -660,56 -320,48 40,62 360,46 660,58 stroke:p.ink,5 a:.42 brush:sculpt(scale:.45 depth:.8 planes:.35) name:bed_joint
+    curve -250,0 -70,0 80,0 250,0 228,36 170,90 80,126 -10,138 -110,122 -196,86 -236,34 closed fill:mix(p.void p.pool .58) brush:sculpt(lo:p.void hi:p.tide.3 depth:.34 planes:.24 plump:.18 scale:1.8 glossk:.36 wrap:.22 strength:.5) name:basin
+      ellipse 88,20 at:8,82 fill:p.void a:.7 name:deep
+      ellipse 64,3.5 at:24,14 fill:p.tide.3 a:.28 name:skin
+      ellipse 34,3 at:108,16 fill:p.amber.3 a:.2 blend:screen name:pool_glint
+      curve -140,48 -20,56 100,42 stroke:p.bone.1,2.6 a:.3 name:drowned_0
+      curve -110,78 0,90 80,74 stroke:p.bone.0,2.2 a:.26 name:drowned_1
+      curve -160,70 -40,114 80,118 168,72 stroke:p.bone.2,6 a:.42 brush:sculpt(scale:.5 depth:.5) name:inner_lip
+      ellipse 12,3 at:-84,24 fill:p.rim a:.2 name:cool
+      each i in 0..4
+        circle 1.2+rand(0 1.6) at:rand(-130 140),rand(28 90) fill:p.ink a:.4 name:pit
+    flag 72 146 at:-238,73 tone:p.bone.2 name:jamb_l
+    flag 76 154 at:252,77 tone:p.bone.4 name:jamb_r
+    curve -118,-12 -40,-14 48,-11 108,-6 96,10 36,16 -48,14 -108,8 -122,0 closed at:6,144 fill:p.bone.3 brush:sculpt(scale:.85 depth:.7 planes:.66) name:sill
+      curve -62,1 -28,7 -4,2 stroke:p.ink,1.5 a:.55 name:crack
+      circle 1.4 at:-44,4 fill:p.bone.0 a:.6 name:pit
+      fx outline 4 brush:ink color:p.ink
+    rect 118x26 r:2 at:-390,104 rot:-9 fill:p.bone.3 brush:sculpt(scale:.7 depth:.68 planes:.6) name:slip_l
+      curve -20,1 12,5 32,-2 stroke:p.ink,1.4 a:.5 name:crack
+      fx outline 4 brush:ink color:p.ink
+    rect 128x24 r:2 at:420,92 rot:7 fill:p.bone.5 brush:sculpt(scale:.68 depth:.62 planes:.56 glossk:.34) name:slip_r
+      curve -16,0 18,4 36,-1 stroke:p.ink,1.3 a:.45 name:crack
+      fx outline 4 brush:ink color:p.ink
+    blob 7 at:-460,150 wobble:.45 seed:4 fill:p.bone.2 brush:sculpt(scale:.4 depth:.66) name:pebble_0
+      fx outline 2 brush:ink color:p.ink
+    blob 6 at:48,168 wobble:.4 seed:6 fill:p.bone.3 brush:sculpt(scale:.35) name:pebble_1
+      fx outline 2 brush:ink color:p.ink
+    blob 5 at:372,146 wobble:.5 seed:8 fill:p.bone.4 brush:sculpt(scale:.32 glossk:.28) name:pebble_2
+      fx outline 2 brush:ink color:p.ink
+    curve -520,16 -528,64 -510,120 stroke:p.ink,2 a:.6 name:joint_0
+    curve -86,18 -78,70 -96,130 stroke:p.ink,1.8 a:.55 name:joint_1
+    curve 248,16 260,58 242,112 stroke:p.bone.0,2.2 a:.5 name:joint_2
+    curve 575,18 566,72 584,128 stroke:p.ink,1.6 a:.48 name:joint_3
+    subtract at:-214,104 fill:p.verd.2 brush:sculpt(scale:.28 glossk:.4 depth:.55 planes:.45) name:ring
+      ellipse 4.2,11
+      ellipse 1.6,6
+      fx outline 2 brush:ink color:p.ink
+    curve -1,4 0,-14 3,-2 1,6 closed at:-184,118 fill:p.bone.5 brush:sculpt(scale:.32 glossk:.4 depth:.55) name:splinter
+      fx outline 2 brush:ink color:p.ink
+    poly 4 r:4.2 rot:22 at:556,24 fill:p.bone.5 brush:sculpt(scale:.26 glossk:.55 depth:.4) name:crystal
+      poly 4 r:1.6 at:.4,-.4 fill:p.bone.6 a:.8
+      fx outline 1.5 brush:ink color:p.ink
+    fx outline 6 brush:ink color:p.ink
+  layer lip_layer
+    rect 1388x5 at:0,2.5 fill:p.bone.4 name:waterline
+      fx outline 8 brush:ink(thin:.9 heavy:1.15) color:p.bone.4
+  layer salt_layer
+    curve -640,20 -560,16 -470,22 fill:none stamp:crust(spacing:7) name:brine_l
+    curve -180,18 -40,14 90,20 fill:none stamp:crust(spacing:9) name:brine_m
+    curve 240,16 420,12 600,18 680,14 fill:none stamp:crust(spacing:10) name:brine_r
+    curve -176,36 -150,62 -118,44 fill:none stamp:crust(spacing:6) name:pool_l
+    curve 150,34 186,58 214,40 fill:none stamp:crust(spacing:6) name:pool_r
+    curve -530,78 -504,118 -472,86 fill:none stamp:crust(spacing:6) name:joint_salt
+    curve 20,146 55,156 92,142 fill:none stamp:crust(spacing:6) name:sill_salt
+  layer gleam_layer
+    ellipse 150,2.4 at:530,6 fill:p.amber.3 a:.2 blend:screen name:amber_sheen
+    ellipse 72,1.8 at:500,4 fill:p.amber.4 a:.42 blend:add name:glint_0
+    ellipse 34,1.4 at:620,3.6 fill:p.amber.5 a:.36 blend:add name:glint_1
+    ellipse 18,1.2 at:410,4.4 fill:p.amber.4 a:.28 blend:add name:glint_2
+    ellipse 46,6 at:560,24 fill:p.amber.2 a:.16 blend:screen name:amber_fall
+
+nave_floor at:720,7.9992 name:floor
+assert inside(@floor canvas margin:8)
+assert @floor.top in -16..8
