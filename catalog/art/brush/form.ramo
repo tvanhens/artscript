@@ -1,0 +1,23 @@
+# The std form brush on filled shapes, 256x192, two rows of three on paper.
+# Row 1 (y 56), defaults: a red circle (x 48), a tall gold rounded rect (x 128), and a wide blue
+# ellipse (x 208). Each reads as one rounded volume lit from the upper left: a paler, warmer
+# version of its color toward the upper left, its own color in the middle, and a darker, cooler
+# shade toward the lower right, with a thin band of lighter reflected light just inside the
+# lower-right edge. The change from light to shadow is smooth, with no hard bands or blotches.
+# Row 2 (y 144), all on a red circle: sun:1,0 (x 48) puts the pale side on the right and the dark
+# side on the left, with the reflected band inside the left edge; shadow:0 lift:0 rim:0 (x 128) is a flat red disc with no shading; the default
+# brush with fx outline 3 (x 208) matches row 1's circle inside a clean, unbroken ink ring.
+# Nothing is drawn outside its shape. The .svg target uses profile:svg: brushed nodes are baked
+# into raster tiles, so each cell looks like the PNG's.
+@target brush/form.png 256x192
+@target brush/form.svg 256x192 profile:svg
+
+use std/brushes { form }
+
+circle 32 at:48,56 fill:p.red.2 brush:form name:circle
+rect 44x76 r:22 at:128,56 fill:p.gold.2 brush:form name:capsule
+ellipse 40,24 at:208,56 fill:p.blue.2 brush:form name:wide
+circle 32 at:48,144 fill:p.red.2 brush:form(sun:1,0) name:sun_right
+circle 32 at:128,144 fill:p.red.2 brush:form(shadow:0 lift:0 rim:0) name:flat
+circle 32 at:208,144 fill:p.red.2 brush:form name:outlined
+  fx outline 3 color:p.ink
