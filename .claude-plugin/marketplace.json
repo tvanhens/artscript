@@ -1,6 +1,6 @@
 {
   "name": "ramose",
-  "description": "The ramose plugin for Claude Code: procedural art from .ramo source.",
+  "description": "The ramose plugin for coding agents. Procedural art from .ramo source.",
   "owner": {
     "name": "Tyler van Hensbergen",
     "url": "https://github.com/tvanhens"

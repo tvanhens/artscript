@@ -217,19 +217,36 @@ ramose build
 
 ## Draw with a coding agent
 
-The ramose skill teaches an agent the language and the draw, check, build, and look loop. In Claude Code, install it as a plugin:
+The ramose skill teaches an agent the language and the draw, check, build, and look loop. Install the plugin for your agent.
+
+In Codex, run:
+
+```sh
+codex plugin marketplace add tvanhens/ramose
+codex plugin add ramose@ramose
+```
+
+Then ask for art in your project:
+
+```
+$ramose:ramose a 32x32 treasure chest icon with a gold trim
+```
+
+In Claude Code, run:
 
 ```
 /plugin install ramose --marketplace tvanhens/ramose
 ```
 
-On Claude Code before 2.1.275, run `/plugin marketplace add tvanhens/ramose`, then `/plugin install ramose@ramose`. For Codex, Cursor, and other agents that read skills, run `npx skills add tvanhens/ramose`.
+On Claude Code before 2.1.275, run `/plugin marketplace add tvanhens/ramose`, then `/plugin install ramose@ramose`.
 
 Then ask for art in your project:
 
 ```
 /ramose a 32x32 treasure chest icon with a gold trim
 ```
+
+For Cursor and other agents that read skills, run `npx skills add tvanhens/ramose`.
 
 The agent finds or creates `ramose.toml`, writes the `.ramo` source, builds it, and looks at the PNG before it reports back. It uses `ramose` from your PATH, and runs `npx --yes ramose` when the binary is not installed.
 
