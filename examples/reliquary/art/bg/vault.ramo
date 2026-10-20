@@ -1,0 +1,101 @@
+# Gouache bone, one key from the upper right. Semicircular vault ribs in side
+# view, smaller and higher as they recede left, warmer where the sun is.
+# Sun stays the brush default.
+
+@target bg/vault.png 1440x380 bg:none
+
+use paint { sculpt ink }
+
+def vault_ribs
+  layer shell_layer
+    curve -678,-164 -240,-156 160,-146 650,-124 636,96 470,86 280,64 80,46 -90,30 -270,16 -440,2 -580,-10 -668,-16 closed fill:grad(right p.bone.0 mix(p.bone.3 p.amber.2 .28)) brush:sculpt(scale:1.7 depth:.84 planes:.7 strength:.72) name:soffit
+      curve -460,-130 -220,-118 -40,-100 160,-86 360,-70 520,-56 stroke:p.ink,3.4 taper:.3 name:soffit_crack
+      curve 40,-78 90,-36 70,-4 stroke:p.ink,2.8 taper:.25 name:soffit_crack_b
+      each i, spot in [-520,-136 -280,-128 -40,-118 200,-108 420,-96 575,-84]
+        circle 3.1+mod(i 3)*.7 at:spot fill:p.bone.0 brush:sculpt(scale:.35 depth:.92 planes:.35) name:soffit_pit
+          circle .9 at:-.4,.5 fill:p.ink brush:sculpt(scale:.16 depth:.96) name:soffit_core
+      curve 200,-150 420,-134 600,-116 stroke:mix(p.bone.5 p.amber.2 .2),7 brush:sculpt(scale:1.1 depth:.28 glossk:.3 planes:.45) name:soffit_lip
+      fx outline 4.2 brush:ink(thin:.12 heavy:1.45 dryk:.48) color:p.ink
+    each k, x in [-486 -330 -160 22 210 400]
+      ellipse 78,26 at:x,-100+k*7 fill:if k < 3 then p.bone.0 else mix(p.bone.1 p.amber.1 .08) brush:sculpt(scale:1.05 depth:.9 planes:.62 strength:.6) name:spandrel
+        curve -16,2 6,8 2,14 stroke:p.ink,1.6 taper:.4 name:spandrel_crack
+        fx outline 2.2 brush:ink(thin:.2 heavy:1.2 dryk:.34) color:p.ink
+
+  layer ridge_layer
+    curve -620,-128 -300,-122 -20,-112 280,-96 560,-78 stroke:p.bone.2,13 taper:.18,.22 tension:.5 brush:sculpt(scale:1.35 depth:.76 planes:.7 glossk:.18 strength:.7) name:ridge
+      curve -480,-134 -140,-122 220,-104 500,-86 stroke:p.bone.5,3 brush:sculpt(scale:.4 depth:.18 glossk:.42) name:ridge_lip
+      circle 2 at:40,-112 fill:p.bone.0 brush:sculpt(scale:.16 depth:.9) name:ridge_pit
+      fx outline 3.6 brush:ink(thin:.18 heavy:1.24 dryk:.32) color:p.ink
+
+  layer far_layer
+    each k, x in [-470 -270 -60 160 390]
+      let hw = 62+k*8
+      let th = 10+k*1.3
+      let y = -28+k*8
+      let tone = if k < 2 then p.bone.0 else if k < 4 then p.bone.1 else p.bone.2
+      group at:x,y name:far_bay
+        curve -hw,0 -hw*.966,-hw*.259 -hw*.866,-hw*.5 -hw*.5,-hw*.866 0,-hw*1.04 hw*.5,-hw*.866 hw*.866,-hw*.5 hw*.966,-hw*.259 hw,0 stroke:tone,[th*.74 th*.88 th*1.02 th*1.08 th*1.14 th*1.08 th th*.86 th*.7] tension:.55 brush:sculpt(scale:.48 depth:.88-k*.02 planes:.66 glossk:.12 strength:.6) name:far_rib
+          ellipse th*.6,th*.24 at:hw*.32,-hw*.9 fill:shade(tone 2) brush:sculpt(scale:.2 depth:.16 glossk:.32 planes:.26) name:far_lip
+          fx outline 2.6 brush:ink(thin:.22 heavy:1.14 dryk:.28) color:p.ink
+        ellipse th*1.35,th*.42 at:0,-hw*1.04 fill:shade(tone 1) brush:sculpt(scale:.4 depth:.4 planes:.74 glossk:.1 plump:.45) name:far_boss
+          fx outline 2 brush:ink(thin:.24 heavy:1.1) color:p.ink
+
+  layer rib_layer
+    each k, x in [-545 -400 -245 -80 95 275 460]
+      let hw = 96+k*8
+      let th = 18+k*2.3
+      let y = -18+k*18
+      let tone = [p.bone.1 p.bone.1 p.bone.2 p.bone.2 p.bone.3 mix(p.bone.4 p.amber.1 .28) mix(p.bone.5 p.amber.2 .36)].{k}
+      group at:x,y name:bay
+        curve -hw,0 -hw*.966,-hw*.259 -hw*.866,-hw*.5 -hw*.5,-hw*.866 0,-hw*1.05 hw*.5,-hw*.866 hw*.866,-hw*.5 hw*.966,-hw*.259 hw,0 stroke:tone,[th*.72 th*.88 th*1.02 th*1.08 th*1.16 th*1.08 th th*.84 th*.68] tension:.55 brush:sculpt(scale:.95+k*.06 depth:.84-k*.03 planes:.74 glossk:.14+k*.02 plump:.82 strength:.8 rimk:.55-k*.03) jitter:1.3,36 name:rib
+          ellipse th*1.15,th*.4 at:hw*.32,-hw*.94 fill:shade(tone 2) brush:sculpt(scale:.55 depth:.2 glossk:.42 planes:.4) name:lip
+          ellipse th*.75,th*.32 at:-hw*.34,-hw*.9 fill:p.bone.0 brush:sculpt(scale:.45 depth:.82 planes:.4) name:shade_lip
+          circle 3.2+mod(k 3)*.6 at:-hw*.5,-hw*.866 fill:p.bone.0 brush:sculpt(scale:.3 depth:.94 planes:.25) name:pit
+            circle 1.1 at:-.45,.5 fill:p.ink brush:sculpt(scale:.16 depth:.96) name:pit_core
+          circle 2.8+mod(k+1 3)*.55 at:hw*.5,-hw*.866 fill:p.bone.0 brush:sculpt(scale:.3 depth:.94 planes:.25) name:pit_b
+            circle .95 at:-.4,.45 fill:p.ink brush:sculpt(scale:.16 depth:.96) name:pit_core
+          curve 0,-th*.24 0,th*.24 at:0,-hw*1.02 stroke:p.bone.0,2.4 name:joint
+          curve -th*.16,0 th*.16,0 at:-hw*.7,-hw*.35 rot:42 stroke:p.bone.0,2.1 name:joint_b
+          curve -th*.14,0 th*.14,0 at:hw*.68,-hw*.34 rot:48 stroke:p.bone.0,2 name:joint_c
+          curve -6,-2 12,8 26,18 at:-hw*.42,-hw*.72 rot:22+k*3 stroke:p.ink,3.1 taper:.2 name:crack
+          if k == 5
+            curve 0,0 12,4 22,12 at:hw*.22,-hw*.95 rot:-14 stroke:p.ink,2.6 taper:.2 name:crack_b
+          fx outline 4+k*.32 brush:ink(thin:.1 heavy:1.5 dryk:.5) color:p.ink
+        ellipse th*1.7,th*.36 at:0,-hw*1.04 fill:shade(tone 1) brush:sculpt(scale:.6 depth:.32 planes:.8 glossk:.08 plump:.28) name:boss
+          ellipse th*.4,th*.12 at:th*.14,-th*.05 fill:shade(tone 2) brush:sculpt(scale:.22 depth:.1 glossk:.28 plump:.4) name:boss_lit
+          circle th*.14 at:-th*.14,th*.06 fill:p.bone.0 brush:sculpt(scale:.14 depth:.88 plump:.6) name:boss_hole
+          if k == 5
+            circle th*.42 fill:p.verd.3 brush:sculpt(scale:.2 glossk:.62 depth:.32 planes:.3) name:rivet
+              circle th*.14 at:th*.08,-th*.1 fill:p.shine brush:sculpt(scale:.1 depth:.04 glossk:.84 hi:p.shine) name:rivet_catch
+              circle th*.08 at:-th*.12,th*.08 fill:p.verd.0 brush:sculpt(scale:.1 depth:.7) name:rivet_shade
+          fx outline 2.5 brush:ink(thin:.18 heavy:1.2 dryk:.3) color:p.ink
+        if k == 2
+          curve 0,0 5,14 1,30 at:-hw*.15,6 rot:-8 stroke:p.bone.2,th*.3 taper:.08,1 brush:sculpt(scale:.3 depth:.7 planes:.55) name:stump
+            fx outline 2.3 brush:ink(thin:.2 heavy:1.18) color:p.ink
+          curve 3,1 12,10 18,24 at:hw*.1,4 rot:8 stroke:p.bone.1,th*.18 taper:.1,1 brush:sculpt(scale:.26 depth:.74) name:splinter
+            fx outline 2 brush:ink(thin:.22 heavy:1.14) color:p.ink
+        if k == 6
+          circle 2.4 at:hw*.38,-hw*.72 fill:p.bone.5 brush:sculpt(scale:.22 depth:.25 glossk:.35 plump:.6) name:salt
+            circle .7 at:.3,-.4 fill:p.rim a:.45 brush:sculpt(scale:.12 depth:.1 glossk:.2) name:salt_wet
+          circle 1.7 at:hw*.52,-hw*.52 fill:p.bone.6 brush:sculpt(scale:.18 depth:.2 glossk:.4 plump:.55) name:salt_b
+          circle 1.5 at:hw*.24,-hw*.84 fill:mix(p.bone.6 p.shine .35) brush:sculpt(scale:.16 depth:.12 glossk:.45) name:salt_c
+          circle 4.5 at:hw*.22,-hw*.95 fill:p.amber.4 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.16 planes:.12 glossk:.66 scale:.34) name:resin
+            circle 1.4 at:.95,-1.05 fill:p.shine brush:sculpt(scale:.1 depth:.04 glossk:.86 hi:p.shine) name:resin_catch
+            fx glow 7 color:p.amber.3 a:.48 strength:1.05
+            fx outline 1.7 brush:ink(thin:.24 heavy:1.05) color:p.ink
+
+  layer find_layer
+    curve 0,0 3,11 -1,24 stroke:p.bone.2,3.8 taper:.1,1 brush:sculpt(scale:.26 depth:.72) at:-78,28 rot:-10 name:shard
+      fx outline 2.1 brush:ink(thin:.2 heavy:1.16) color:p.ink
+    curve 0,0 -4,9 -10,20 stroke:p.bone.1,3 taper:.08,1 brush:sculpt(scale:.24 depth:.76) at:-40,22 rot:12 name:shard_b
+      fx outline 1.9 brush:ink(thin:.22 heavy:1.12) color:p.ink
+    ellipse 120,36 at:-360,-78 fill:p.void a:.2 blend:multiply blur:4 name:west_shade
+    group at:-470,-36 name:moss_clump
+      circle 5.2 fill:p.moss.1 brush:sculpt(scale:.26 depth:.58 planes:.36) name:moss
+        circle 2 at:1,-.9 fill:p.moss.3 brush:sculpt(scale:.16 depth:.22) name:moss_lit
+      circle 3.1 at:5.2,1.4 fill:p.moss.2 brush:sculpt(scale:.2 depth:.5) name:moss_b
+      circle 1.8 at:-3.4,2.2 fill:p.moss.0 brush:sculpt(scale:.15 depth:.66) name:moss_c
+      fx outline 1.7 brush:ink(thin:.24 heavy:1.08) color:p.ink
+
+vault_ribs at:720,216 name:vault
+assert inside(@vault canvas margin:8)
