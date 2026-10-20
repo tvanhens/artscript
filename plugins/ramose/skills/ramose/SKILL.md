@@ -1,15 +1,19 @@
 ---
 name: ramose
 description: Draw, edit, and export artwork (sprites, icons, characters, props, animated GIFs) with the ramose CLI. Use when a project needs PNG, SVG, or GIF art made or changed, when the user mentions ramose or `.ramo` files, or when a repo has a `ramose.toml`.
+argument-hint: "[what to draw or change]"
+allowed-tools: Bash(ramose *) Bash(npx --yes ramose *)
 ---
 
 # ramose
 
 ramose is a declarative language for procedural art. You write `.ramo` files. `ramose build` renders every `@target` to PNG, SVG, or GIF. Builds are deterministic, so the same source gives the same bytes on the same machine and backend. GPU output can differ from CPU output and between machines.
 
+When the user runs `/ramose` with a request, that request is the art to draw or the change to make. With no request, ask what to draw.
+
 ## Before you draw
 
-1. Run `ramose --version`. If it fails, tell the user that the `ramose` binary must be on PATH, and stop.
+1. Run `ramose --version`. If it fails, run `npx --yes ramose --version`. If that works, write `npx --yes ramose` everywhere this skill writes `ramose`. If both fail, tell the user to install Node.js and run `npm install -g ramose`, and stop.
 2. Run `ramose docs <topic> [topic...]` once per session, naming every topic the task touches. Include `craft` when you draw a new piece or add a part. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
    - `targets` @target keys, entry files and libraries, use, the manifest palette p
    - `values` the values table, expressions, operators, functions, fn

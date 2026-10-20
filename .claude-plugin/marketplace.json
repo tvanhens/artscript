@@ -1,0 +1,15 @@
+{
+  "name": "ramose",
+  "description": "The ramose plugin for Claude Code: procedural art from .ramo source.",
+  "owner": {
+    "name": "Tyler van Hensbergen",
+    "url": "https://github.com/tvanhens"
+  },
+  "plugins": [
+    {
+      "name": "ramose",
+      "source": "./plugins/ramose",
+      "description": "Draw, edit, and export sprites, icons, and animated GIFs with the ramose CLI."
+    }
+  ]
+}
