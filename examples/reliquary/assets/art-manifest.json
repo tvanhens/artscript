@@ -3,6 +3,40 @@
     {
       "anchors": {},
       "checks": [],
+      "hash": "1494f4a7700cc226",
+      "line": 5,
+      "matrix": {},
+      "path": "arch/colonnade.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/arch/colonnade.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "stair.feet": [
+          92,
+          498
+        ]
+      },
+      "checks": [],
+      "hash": "3e2cca9f99c950e1",
+      "line": 4,
+      "matrix": {},
+      "path": "arch/stair.png",
+      "pivot": [
+        92,
+        498
+      ],
+      "scale": 1.0,
+      "source": "art/arch/stair.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
       "hash": "fab4577b8d8586a9",
       "line": 4,
       "matrix": {},
@@ -10,6 +44,19 @@
       "pivot": null,
       "scale": 1.0,
       "source": "art/fg/pier.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "dd8111f6a65ddc5b",
+      "line": 4,
+      "matrix": {},
+      "path": "flora/root.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/flora/root.ramo",
       "status": "pass",
       "target": null
     },
@@ -36,6 +83,130 @@
       "pivot": null,
       "scale": 1.0,
       "source": "art/ground/ledge.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a3d9d96fcfe3293a",
+      "line": 4,
+      "matrix": {},
+      "path": "ground/nave.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/ground/nave.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "page.sole": [
+          62,
+          186
+        ]
+      },
+      "checks": [],
+      "hash": "10fc70e0d53e4bf3",
+      "line": 4,
+      "matrix": {},
+      "path": "hero/page.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/hero/page.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "d29c7587781c0b11",
+      "line": 2,
+      "matrix": {},
+      "path": "monster/choir.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/choir.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "41f96644b4002e65",
+      "line": 4,
+      "matrix": {},
+      "path": "monster/hart.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/hart.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "pilgrim.feet": [
+          68,
+          198
+        ]
+      },
+      "checks": [],
+      "hash": "bf1729d1f1fe4f9c",
+      "line": 3,
+      "matrix": {},
+      "path": "monster/pilgrim.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/monster/pilgrim.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "candles.feet": [
+          130,
+          198
+        ]
+      },
+      "checks": [],
+      "hash": "60d58b0541c78f85",
+      "line": 3,
+      "matrix": {},
+      "path": "prop/candles.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/prop/candles.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "cc6781dcddf36d7f",
+      "line": 6,
+      "matrix": {},
+      "path": "prop/crown.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/prop/crown.ramo",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {
+        "bowl.feet": [
+          120,
+          150
+        ]
+      },
+      "checks": [],
+      "hash": "aca4a918b61f8dba",
+      "line": 4,
+      "matrix": {},
+      "path": "prop/offering.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/prop/offering.ramo",
       "status": "pass",
       "target": null
     },

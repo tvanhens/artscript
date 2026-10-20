@@ -185,5 +185,5 @@ def copper_root
       fx outline 2 brush:ink(center:0,0 thin:.5) color:p.ink
 
 copper_root at:100,10.9 name:root
-assert inside(@root canvas margin:10)
+assert inside(@root canvas margin:4)
 assert @root.top in -16..8

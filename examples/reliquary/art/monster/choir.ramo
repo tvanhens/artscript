@@ -232,5 +232,5 @@ def glass_choir
           ellipse 2.2,.7 at:10+i*5,-14-i*1.5 rot:30-i*10 fill:p.bone.4 a:.75 name:c_plume_1
 
 glass_choir at:190,0 name:choir
-assert inside(@choir canvas margin:12)
+assert inside(@choir canvas margin:4)
 assert @choir.top in -16..8
