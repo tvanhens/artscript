@@ -1,2 +1,7 @@
 frame	label	commit	file
 00	nave-empty	0011d79	timelapse/frames/00-nave-empty.png
+01	first-placement	9e6dae1	timelapse/frames/01-first-placement.png
+02	eel-in-pool	9e6dae1	timelapse/frames/02-eel-in-pool.png
+03	props-seated	9e6dae1	timelapse/frames/03-props-seated.png
+04	stair-climbs	9e6dae1	timelapse/frames/04-stair-climbs.png
+05	nave-set	9e6dae1	timelapse/frames/05-nave-set.png
