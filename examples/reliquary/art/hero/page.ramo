@@ -1,0 +1,90 @@
+# Gouache lantern page, side view, facing right. One key, upper right.
+# The def anchor is the sole. The body grows up, negative y.
+
+@target hero/page.png 160x220 bg:none
+
+use paint { sculpt ink }
+use parts { contact eye }
+
+def lantern_page
+  anchor sole 0,0
+  contact 42 at:2,1 name:shadow
+
+  curve -20,0 -22,-3 -16,-9 -10,-8 -6,-3 -5,0 closed fill:p.bone.2 brush:sculpt(scale:.4 depth:.74 planes:.72) name:boot_far
+    circle .9 at:-13,-3 fill:p.bone.5 name:salt_far
+    fx outline 2.1 brush:ink color:p.ink
+
+  curve -36,-8 -34,-28 -32,-52 -22,-76 -10,-84 -4,-58 -16,-28 -28,-12 closed fill:p.rose.1 brush:sculpt(scale:.55 depth:.82 planes:.7) name:trail
+    fx outline 2.1 brush:ink color:p.ink
+
+  rect 11x7 r:.4 at:22,-28 rot:-18 fill:p.bone.5 brush:sculpt(scale:.26 depth:.38 planes:.5) name:scrap
+    curve -3,0 3,.4 stroke:p.ink,.75 name:rule
+    fx outline 1.3 brush:ink color:p.ink
+
+  curve -22,-14 -24,-40 -18,-66 -10,-80 0,-84 8,-78 12,-60 14,-40 16,-22 10,-12 -4,-12 closed fill:p.rose.2 brush:sculpt(scale:.58 depth:.76 planes:.72) name:cloak
+    curve -16,-68 -12,-46 -18,-26 stroke:p.rose.0,3.2 a:.6 name:fold
+    ellipse 8,5 at:-12,-40 rot:-20 fill:p.rose.4 brush:sculpt(scale:.3 depth:.42) name:patch
+      curve -3,.3 0,.9 3,0 stroke:p.bone.5,.85 name:stitch
+      curve -2.4,-1.1 1,-.5 3.2,-1.3 stroke:p.bone.4,.65 name:stitch_b
+    ellipse 2.2,1.3 at:-8,-24 rot:18 fill:p.ink a:.8 name:hole
+    curve -11,-28 -7,-23 -10,-19 stroke:p.rose.0,1.1 name:tear
+    each i in 0..4
+      circle .5+rand(0 .45) at:-15+i*3,-20-rand(0 4) fill:p.bone.5 a:.8 name:grain
+    fx outline 2.8 brush:ink color:p.ink
+
+  curve 0,-74 8,-78 14,-58 16,-36 12,-16 2,-14 -2,-36 closed fill:p.rose.4 brush:sculpt(scale:.48 depth:.62 planes:.68) name:front
+    curve 2,-66 7,-44 5,-22 stroke:p.rose.5,1.6 a:.65 name:sheen
+    curve 1,-64 4,-42 3,-20 stroke:p.rose.1,2.6 a:.4 name:shade
+    fx outline 2.2 brush:ink color:p.ink
+
+  curve -6,-46 4,-42 14,-48 stroke:p.bone.3,3 brush:sculpt(scale:.24) name:belt
+  rect 4.5x3.6 r:.4 at:12,-45 fill:p.bone.4 brush:sculpt(scale:.2 glossk:.5) name:buckle
+    rect 1.8x1.6 fill:p.bone.1 name:slot
+
+  curve -12,-62 -18,-80 -12,-102 -2,-116 8,-128 18,-116 26,-102 28,-88 20,-74 10,-66 0,-62 closed fill:p.rose.3 brush:sculpt(scale:.48 depth:.68 planes:.7) name:hood
+    ellipse 8,10 at:4,-98 fill:p.rose.0 name:cowl
+    curve 8,-108 14,-112 18,-104 20,-96 16,-90 11,-86 8,-92 6,-102 closed fill:p.flesh.2 brush:sculpt(scale:.3 depth:.5 planes:.62) name:face
+      eye r:2.5 tone:p.amber.4 at:13,-100 name:gaze
+    curve 10,-114 18,-108 22,-100 stroke:p.rose.5,1.5 a:.7 brush:sculpt(scale:.24) name:brow
+    fx outline 2.5 brush:ink color:p.ink
+
+  curve 6,0 5,-4 8,-11 14,-13 22,-12 30,-8 35,-3 33,0 closed fill:p.bone.3 brush:sculpt(scale:.36 depth:.62 planes:.7) name:boot
+    curve 24,-6 32,-4 34,-2 stroke:p.bone.5,1.2 name:toe
+    curve 10,-1.1 31,-1 stroke:p.bone.1,1.5 name:welt
+    circle 1 at:20,-4 fill:p.bone.6 a:.85 name:salt
+    fx outline 2.2 brush:ink color:p.ink
+
+  curve 2,-74 14,-70 32,-60 50,-52 52,-44 40,-42 26,-50 8,-64 closed fill:p.rose.2 brush:sculpt(scale:.46 depth:.7 planes:.68) name:sleeve
+    fx outline 2.1 brush:ink color:p.ink
+
+  ellipse 5.5,4 at:46,-54 rot:-16 fill:p.rose.1 brush:sculpt(scale:.24 depth:.6) name:cuff
+
+  group name:lamp
+    rect 26x26 r:2 at:66,-52 fill:p.bone.3 brush:sculpt(scale:.38 glossk:.38 depth:.56 planes:.66) name:lantern
+      rect 15x15 at:0,1 fill:p.void name:pane
+        ellipse 6,6 at:1,-1 fill:p.amber.1 brush:sculpt(lo:p.amber.0 hi:p.amber.3 depth:.16 planes:.1 rimk:0 scale:.3) name:well
+        curve 0,-7 -2.4,-2 -3.2,2 -4.4,5.4 0,6.4 4.4,5 3.2,1.6 2.6,-2 closed fill:p.amber.5 brush:sculpt(lo:p.amber.3 hi:p.shine depth:.08 planes:.06 glossk:.45 rimk:0 scale:.24) name:flame
+          curve 0,-3.2 -.7,-.4 0,1.6 .8,-.6 closed fill:p.shine a:.92 name:tongue
+          circle 1.3 at:.7,-1.6 fill:p.shine name:core
+          fx glow 5 color:p.amber.4 a:.78 strength:1.4
+      rect 16x2.4 at:0,10 fill:p.bone.5 brush:sculpt(scale:.2) name:sill
+      ellipse 3,1.4 at:7,-8 fill:p.bone.6 a:.5 name:glint
+      circle 1.3 at:8,-8 fill:p.verd.3 brush:sculpt(scale:.16 glossk:.6) name:rivet
+        circle .35 at:.25,-.3 fill:p.shine
+      curve -9,6 -6,10 -4,7 stroke:p.ink,1.1 name:crack
+    rect 8x4 r:.8 at:66,-68 fill:p.bone.4 brush:sculpt(scale:.24 glossk:.32) name:cap
+    circle 2.3 at:66,-73 fill:none stroke:p.bone.5,1.7 brush:sculpt(scale:.2) name:ring
+    fx outline 2.3 brush:ink color:p.ink
+
+  ellipse 4.6,3.4 at:55,-53 fill:p.flesh.4 brush:sculpt(scale:.22 depth:.42 planes:.55) name:hand
+    curve -1.2,-.4 1.4,.6 stroke:p.flesh.1,.8 name:knuckle
+    fx outline 1.5 brush:ink color:p.ink
+
+  curve -35,-8 -37,-4 stroke:p.rose.3,.8 taper:0,1 brush:sculpt(scale:.16) name:thread
+  ellipse 4.2,1.5 at:78,-78 rot:-28 fill:p.ash.2 a:.16 blur:1.6 name:wisp
+  circle .55 at:69,-74 fill:p.amber.6 name:mote
+
+let stand = 186
+lantern_page at:62,stand name:page
+assert inside(@page canvas margin:8)
+assert @page.bottom-@page.sole.y in -8..16
