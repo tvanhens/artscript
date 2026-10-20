@@ -1,4 +1,4 @@
-# Two cells on paper in one row, 96px pitch. Each cell holds a blue 40x16 bar centered on the cell's center, with an anchor (`tip` in the first, `nose` in the second) 20 px along the bar from its center, and a red circle of radius 5 placed with `at:@bar1.tip` or `at:@bar2.nose`. The red circle must sit on the bar's tip end, wherever the bar's rotation put it.
+# Two cells on paper in one row, 96px pitch. Each cell holds a blue 40x16 bar centered on the cell's center, with an anchor (`tip` in the first, `nose` in the second) 20 px along the bar from its center, and a red circle of radius 5 placed with `at:@tip` or `at:@nose`. The groups are not part of the anchor's path. The red circle must sit on the bar's tip end, wherever the bar's rotation put it.
 # 1. The bar unrotated in the first cell: a horizontal blue bar with the red circle on its right end.
 # 2. The bar `rot:-60` in the second cell: the bar slants up to the right, and the red circle sits on its upper right end. This circle is drawn inside a moved group (`group at:96,0`), so the anchor is read through a moved frame. It must not drift off the bar's end.
 @target structure/at_anchor.png 192x96
@@ -7,11 +7,11 @@ group name:bar1 at:48,48
   rect 40x16 fill:p.blue
   anchor tip 20,0
 
-circle 5 at:@bar1.tip fill:p.red
+circle 5 at:@tip fill:p.red
 
 group name:bar2 at:144,48 rot:-60
   rect 40x16 fill:p.blue
   anchor nose 20,0
 
 group at:96,0
-  circle 5 at:@bar2.nose fill:p.red
+  circle 5 at:@nose fill:p.red

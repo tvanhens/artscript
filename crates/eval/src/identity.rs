@@ -244,23 +244,6 @@ impl Key {
         self.seed_root.as_ref().map_or(0, |r| r.segs)
     }
 
-    /// Loop indices after the last name or positional segment.
-    pub fn trailing_copies(&self) -> Vec<u32> {
-        let mut out = Vec::new();
-        for seg in self.segs.iter().rev() {
-            match seg {
-                Seg::Copy(i) => out.push(*i),
-                _ => break,
-            }
-        }
-        out.reverse();
-        out
-    }
-
-    pub fn copy_at(&self, depth: usize) -> Option<u32> {
-        self.trailing_copies().get(depth).copied()
-    }
-
     pub fn is_stable(&self) -> bool {
         self.segs
             .iter()
@@ -454,10 +437,16 @@ pub enum RegionKind {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct DeclId(usize);
 
+/// Verbs that draw a group node.
+const GROUPS: &[&str] = &["layer", "group", "inside", "outside", "mirror", "repeat", "grid"];
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NameKind {
-    /// A shape, structure verb, `copy`, or boolean, `layer x` and `group x` included.
-    Draw,
+    /// A shape, `copy`, `edge`, or a boolean. A path spells it: `thorax.sheen`.
+    Shape,
+    /// `layer x`, `group x`, or a named `inside`, `outside`, `mirror`, `repeat`, or `grid`.
+    /// Groups are transparent: they open no scope and no path spells them.
+    Group,
     /// A def call. A patch may hop through it.
     Instance,
     /// `slot x`. A patch may hop into its content.
@@ -467,7 +456,7 @@ pub enum NameKind {
 }
 
 impl NameKind {
-    pub fn opens_scope(self) -> bool {
+    pub fn opens_region(self) -> bool {
         matches!(self, NameKind::Instance | NameKind::Slot)
     }
 
@@ -485,8 +474,11 @@ pub struct NameDecl {
     /// than none makes a family.
     pub loops: Vec<Span>,
     arms: Vec<(Span, bool)>,
-    /// The nearest named draw above this one in the region. A final `*` matches on it.
+    /// The nearest named draw above this one in the region, a group included. A final `*`
+    /// matches on it.
     pub tree_parent: Option<DeclId>,
+    /// The nearest named shape above this one in the region, or `None` at the region root.
+    pub scope: Option<DeclId>,
     /// The component verb, when this decl is a call. A patch that hops through it
     /// while the call is off uses this to find the def's region.
     pub call: Option<Rc<str>>,
@@ -499,7 +491,8 @@ pub struct Region {
     /// `this file`, `` `eye` ``, or `` the `form:` fill ``, for messages.
     pub label: String,
     decls: Vec<NameDecl>,
-    by_name: BTreeMap<Name, Vec<DeclId>>,
+    /// Decls by the shape scope they sit in and their name.
+    by_name: BTreeMap<(Option<DeclId>, Name), Vec<DeclId>>,
     by_span: BTreeMap<Span, DeclId>,
     anon: Vec<(Rc<str>, Site)>,
 }
@@ -533,15 +526,29 @@ impl Region {
         self.by_span.get(&stmt).copied()
     }
 
-    /// Every decl with this name. More than one only across exclusive `if` arms, or after E0333.
+    /// Every decl with this name at the region root. More than one only across exclusive `if`
+    /// arms, or after E0333.
     pub fn lookup(&self, name: &str) -> &[DeclId] {
-        self.by_name.get(name).map(Vec::as_slice).unwrap_or(&[])
+        self.lookup_in(None, name)
     }
 
-    /// Declared names in source order, without repeats.
+    pub fn lookup_in(&self, scope: Option<DeclId>, name: &str) -> &[DeclId] {
+        let Some(name) = Name::parse(name) else {
+            return &[];
+        };
+        self.by_name
+            .get(&(scope, name))
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
     pub fn names(&self) -> Vec<&Name> {
+        self.names_in(None)
+    }
+
+    pub fn names_in(&self, scope: Option<DeclId>) -> Vec<&Name> {
         let mut out: Vec<&Name> = Vec::new();
-        for d in &self.decls {
+        for d in self.decls.iter().filter(|d| d.scope == scope) {
             if !out.contains(&&d.name) {
                 out.push(&d.name);
             }
@@ -549,15 +556,83 @@ impl Region {
         out
     }
 
+    /// The shapes from the region root down to `id`, `id` last.
+    pub fn chain(&self, id: DeclId) -> Vec<DeclId> {
+        let mut out = vec![id];
+        let mut up = self.decl(id).scope;
+        while let Some(p) = up {
+            out.push(p);
+            up = self.decl(p).scope;
+        }
+        out.reverse();
+        out
+    }
+
+    fn is_under(&self, id: DeclId, scope: Option<DeclId>) -> bool {
+        let mut up = self.decl(id).scope;
+        loop {
+            if up == scope {
+                return true;
+            }
+            match up {
+                Some(p) => up = self.decl(p).scope,
+                None => return false,
+            }
+        }
+    }
+
+    pub fn nested(&self, scope: Option<DeclId>, name: &str) -> Vec<DeclId> {
+        self.decl_ids()
+            .filter(|&id| {
+                let d = self.decl(id);
+                d.name.as_str() == name && d.scope != scope && self.is_under(id, scope)
+            })
+            .collect()
+    }
+
+    pub fn has_named_below(&self, id: DeclId, name: &str) -> bool {
+        self.decl_ids().any(|c| {
+            let mut up = self.decl(c).tree_parent;
+            while let Some(p) = up {
+                if p == id {
+                    return self.decl(c).name.as_str() == name;
+                }
+                up = self.decl(p).tree_parent;
+            }
+            false
+        })
+    }
+
+    /// `thorax.1.sheen.0`: the path to `id`, with `indices` handed to each shape's own loops in
+    /// order. Indices past the chain's loops are kept at the end.
+    pub fn spell(&self, id: DeclId, indices: &[u32]) -> String {
+        let mut parts = Vec::new();
+        let mut taken = 0;
+        let mut seen = 0;
+        for d in self.chain(id) {
+            let d = self.decl(d);
+            parts.push(d.name.to_string());
+            let own = d.loops.len() - seen;
+            seen = d.loops.len();
+            for i in indices.iter().skip(taken).take(own) {
+                parts.push(i.to_string());
+            }
+            taken = (taken + own).min(indices.len());
+        }
+        for i in &indices[taken..] {
+            parts.push(i.to_string());
+        }
+        parts.join(".")
+    }
+
     /// A `_` name in a def body or slot content is private to it. The entry file has no caller.
     fn is_private(&self, name: &str) -> bool {
         self.kind != RegionKind::File && name.starts_with('_')
     }
 
-    /// The E0340 note that lists the names a patch can reach.
-    fn names_note(&self) -> String {
+    fn names_note(&self, scope: Option<DeclId>) -> String {
         let names: Vec<String> = self
-            .names()
+            .names_in(scope)
             .into_iter()
             .filter(|n| !self.is_private(n.as_str()))
             .map(|n| n.to_string())
@@ -567,6 +642,71 @@ impl Region {
         } else {
             format!("names: {}", names.join(", "))
         }
+    }
+
+    /// Walks `hops` from the region root through its shapes. It stops at a decl that opens a
+    /// region with the hops still to take, at a final `*`, or at the end of the path.
+    pub fn walk(&self, hops: &[Hop]) -> Result<Walked, WalkError> {
+        let mut scopes: Vec<Option<DeclId>> = vec![None];
+        let mut last: Option<DeclId> = None;
+        let mut i = 0;
+        while i < hops.len() {
+            let name = match &hops[i] {
+                Hop::Star if i + 1 == hops.len() => {
+                    return Ok(Walked {
+                        ids: scopes.into_iter().flatten().collect(),
+                        rest: vec![Hop::Star],
+                    });
+                }
+                Hop::Star => return Err(WalkError::StarNotFinal),
+                Hop::Index(_) if i == 0 => return Err(WalkError::IndexFirst),
+                Hop::Index(_) => return Err(WalkError::ExtraIndex(last.unwrap())),
+                Hop::Name(n) => n,
+            };
+            let ids: Vec<DeclId> = scopes
+                .iter()
+                .flat_map(|&s| self.lookup_in(s, name.as_str()))
+                .copied()
+                .collect();
+            if ids.is_empty() {
+                let nested: Vec<DeclId> = scopes
+                    .iter()
+                    .flat_map(|&s| self.nested(s, name.as_str()))
+                    .collect();
+                return Err(WalkError::Missing {
+                    scopes: scopes.into_iter().flatten().collect(),
+                    name: name.clone(),
+                    nested,
+                    at: i,
+                });
+            }
+            if self.is_private(name.as_str()) {
+                return Err(WalkError::Private(name.clone()));
+            }
+            let loops = ids.iter().map(|&id| self.decl(id).loops.len()).max().unwrap_or(0);
+            let mut j = i + 1;
+            let mut seen = 0;
+            while j < hops.len() && matches!(hops[j], Hop::Index(_)) && seen < loops {
+                seen += 1;
+                j += 1;
+            }
+            if j == hops.len() || ids.iter().all(|&id| self.decl(id).kind.opens_region()) {
+                return Ok(Walked {
+                    ids,
+                    rest: hops[j..].to_vec(),
+                });
+            }
+            if let Some(&id) = ids.iter().find(|&&id| self.decl(id).kind == NameKind::Group) {
+                return Err(WalkError::Group { at: i, rest_at: j, id });
+            }
+            if let Some(&id) = ids.iter().find(|&&id| self.decl(id).kind == NameKind::Anchor) {
+                return Err(WalkError::Anchor(id));
+            }
+            last = ids.first().copied();
+            scopes = ids.into_iter().map(Some).collect();
+            i = j;
+        }
+        Err(WalkError::NoName)
     }
 
     /// The first unnamed statement whose verb `seg` spells, alone or with a count after it.
@@ -601,6 +741,34 @@ impl Region {
     }
 }
 
+
+/// Where a path walk stopped. `rest` is empty when it landed on `ids`, `[*]` when `ids` are the
+/// shapes whose children it names (none at the root), and longer only when every id opens a
+/// region the rest continues in.
+pub struct Walked {
+    pub ids: Vec<DeclId>,
+    pub rest: Vec<Hop>,
+}
+
+pub enum WalkError {
+    NoName,
+    StarNotFinal,
+    IndexFirst,
+    ExtraIndex(DeclId),
+    /// No decl named `name` directly under `scopes` (none means the root). `nested` holds the
+    /// decls of that name deeper down, for the fix.
+    Missing {
+        scopes: Vec<DeclId>,
+        name: Name,
+        nested: Vec<DeclId>,
+        at: usize,
+    },
+    Group { at: usize, rest_at: usize, id: DeclId },
+    Anchor(DeclId),
+    Private(Name),
+}
+
+
 fn exclusive(a: &[(Span, bool)], b: &[(Span, bool)]) -> bool {
     a.iter()
         .any(|(s, arm)| b.iter().any(|(t, other)| s == t && arm != other))
@@ -612,7 +780,8 @@ fn kind_of(verb: &str, components: &BTreeSet<String>) -> NameKind {
     }
     match verb {
         "anchor" => NameKind::Anchor,
-        v if BUILTIN.contains(&v) => NameKind::Draw,
+        v if GROUPS.contains(&v) => NameKind::Group,
+        v if BUILTIN.contains(&v) => NameKind::Shape,
         _ => NameKind::Instance,
     }
 }
@@ -632,16 +801,14 @@ struct Declarer<'a> {
     loops: Vec<Span>,
     arms: Vec<(Span, bool)>,
     parent: Option<DeclId>,
+    scope: Option<DeclId>,
     components: &'a BTreeSet<String>,
     nested: &'a mut BTreeMap<Span, Rc<Region>>,
     out: &'a mut Vec<Diagnostic>,
 }
 
-/// Declares one region. It walks draw bodies, mask blocks, `if` arms, and loop bodies, and it
-/// stops at slot content, which becomes its own region in `nested`, keyed by the fill's or the
-/// slot's span. A second name in the region is E0333 at its line, unless the two sit in exclusive
-/// arms of one `if`. A `name:` that is not one identifier, or a second name on one node, is E0312.
-/// It reads source only, so a statement that is never drawn is still checked.
+/// Declares one region. It stops at slot content, which becomes its own region in `nested`. It
+/// reads source only, so a statement that is never drawn is still checked.
 pub fn declare(
     file: &Rc<str>,
     kind: RegionKind,
@@ -657,6 +824,7 @@ pub fn declare(
         loops: Vec::new(),
         arms: Vec::new(),
         parent: None,
+        scope: None,
         components,
         nested,
         out,
@@ -741,9 +909,12 @@ impl Declarer<'_> {
         }
         let call = calls_component(&d.verb, self.components);
         let looped = matches!(d.verb.as_str(), "repeat" | "grid");
-        let saved = self.parent;
+        let saved = (self.parent, self.scope);
         if id.is_some() {
             self.parent = id;
+        }
+        if kind == NameKind::Shape && id.is_some() {
+            self.scope = id;
         }
         for item in d.body.items() {
             match item {
@@ -768,7 +939,7 @@ impl Declarer<'_> {
                 _ => {}
             }
         }
-        self.parent = saved;
+        (self.parent, self.scope) = saved;
     }
 
     fn name_of(&mut self, d: &Draw) -> Option<Name> {
@@ -829,17 +1000,21 @@ impl Declarer<'_> {
         };
         let first = self
             .region
-            .lookup(name.as_str())
+            .lookup_in(self.scope, name.as_str())
             .iter()
             .map(|&i| self.region.decl(i))
             .find(|o| !exclusive(&o.arms, &self.arms))
             .map(|o| o.site.span.line);
         if let Some(line) = first {
+            let where_ = match self.scope {
+                Some(s) => format!("under `{}`", self.region.spell(s, &[])),
+                None => format!("in {}", self.region.label),
+            };
             self.out.push(
                 Diagnostic::error(
                     "E0333",
                     span,
-                    format!("`{name}` is already a name in {}", self.region.label),
+                    format!("`{name}` is already a name {where_}"),
                 )
                 .in_file(&*self.file)
                 .with_note(format!("first named at line {line}"))
@@ -854,9 +1029,14 @@ impl Declarer<'_> {
             loops: self.loops.clone(),
             arms: self.arms.clone(),
             tree_parent: self.parent,
+            scope: self.scope,
             call,
         });
-        self.region.by_name.entry(name).or_default().push(id);
+        self.region
+            .by_name
+            .entry((self.scope, name))
+            .or_default()
+            .push(id);
         self.region.by_span.insert(span, id);
         id
     }
@@ -1174,11 +1354,23 @@ impl Names {
     /// Drawn names whose tree parent is `parent`. `prefix` is that parent's own loop indices,
     /// so a hop through copy 1 does not see copy 0. An opened scope passes an empty prefix.
     pub fn children_of(&self, parent: Option<DeclId>, prefix: &[u32]) -> Vec<Entry> {
+        let ids: Vec<DeclId> = self
+            .region
+            .decl_ids()
+            .filter(|&id| self.region.decl(id).tree_parent == parent)
+            .collect();
+        self.drawn_under(&ids, prefix)
+    }
+
+    /// Drawn parts named `name` whose scope is `scope`, with loop copies under `prefix`, the
+    /// copies of the node the scope belongs to.
+    pub fn drawn_in(&self, scope: Option<DeclId>, name: &str, prefix: &[u32]) -> Vec<Entry> {
+        self.drawn_under(self.region.lookup_in(scope, name), prefix)
+    }
+
+    fn drawn_under(&self, ids: &[DeclId], prefix: &[u32]) -> Vec<Entry> {
         let mut out = Vec::new();
-        for id in self.region.decl_ids() {
-            if self.region.decl(id).tree_parent != parent {
-                continue;
-            }
+        for &id in ids {
             match &self.rows[id.0] {
                 Row::One(e) if prefix.is_empty() => out.push(e.clone()),
                 Row::Copies(map) => out.extend(
@@ -1323,9 +1515,11 @@ pub enum Resolved {
     /// `usize` is how many leading copy indices the loop context already chose.
     Many(Vec<Entry>, usize),
     /// Declared, and not drawn on this pass.
-    Undrawn(Site),
+    Undrawn(Rc<Region>, DeclId),
     /// No frame declares it. `names` is the innermost region's list.
     Missing(Vec<String>),
+    /// No frame declares it at the root. These are its decls under the frames' shapes.
+    Nested(Vec<(Rc<Region>, DeclId)>),
     /// The same name is declared in more than one frame. Each note is one spelling.
     Ambiguous(Vec<String>),
 }
@@ -1339,9 +1533,13 @@ pub fn resolve(
     here_loops: &[Span],
 ) -> Resolved {
     let mut hits: Vec<(String, Resolved)> = Vec::new();
+    let mut nested: Vec<(Rc<Region>, DeclId)> = Vec::new();
     for (i, frame) in lookup.frames.iter().enumerate() {
         let names = frame.names.borrow();
         if names.region.lookup(name).is_empty() {
+            for id in names.region.nested(None, name) {
+                nested.push((names.region.clone(), id));
+            }
             continue;
         }
         let label = names.region.label.clone();
@@ -1368,6 +1566,7 @@ pub fn resolve(
         hits.push(("a `needs:` import".into(), resolved));
     }
     match hits.len() {
+        0 if !nested.is_empty() => Resolved::Nested(nested),
         0 => {
             let names = lookup
                 .frames
@@ -1401,20 +1600,20 @@ fn resolve_in(names: &Names, name: &str, here_copies: &[u32], here_loops: &[Span
         let decl = names.region.decl(id);
         match select(&names.rows[id.0], decl, here_copies, here_loops) {
             Some((entries, _)) if entries.is_empty() => {
-                undrawn.get_or_insert_with(|| decl.site.clone());
+                undrawn.get_or_insert(id);
             }
             Some((entries, depth)) => {
                 skipped = skipped.min(depth);
                 drawn.extend(entries);
             }
             None => {
-                undrawn.get_or_insert_with(|| decl.site.clone());
+                undrawn.get_or_insert(id);
             }
         }
     }
     match drawn.len() {
         0 => match undrawn {
-            Some(site) => Resolved::Undrawn(site),
+            Some(id) => Resolved::Undrawn(names.region.clone(), id),
             None => Resolved::Missing(Vec::new()),
         },
         1 => Resolved::One(drawn.pop().unwrap(), skipped),
@@ -1563,13 +1762,13 @@ impl Pending {
             if matches!(patch.rest.first(), Some(Hop::Star)) && region.is_private(d.name.as_str()) {
                 continue;
             }
-            let Some(rest) = take(patch, d, copies) else {
+            let Some(rest) = take(patch, region, decl, copies) else {
                 continue;
             };
             if rest.is_empty() {
                 reached.set(true);
                 own.push(patch.clone());
-            } else if d.kind.opens_scope() {
+            } else if d.kind.opens_region() {
                 reached.set(true);
                 let mut next = patch.clone();
                 next.rest = rest;
@@ -1585,29 +1784,50 @@ impl Pending {
     }
 }
 
-fn take(patch: &PendingPatch, decl: &NameDecl, copies: &[u32]) -> Option<Vec<Hop>> {
-    let loops = &decl.loops;
-    match patch.rest.first() {
-        Some(Hop::Star) => (decl.tree_parent.is_none() && decl.kind.has_node()).then(Vec::new),
-        Some(Hop::Name(n)) if *n == decl.name => {
-            let mut i = 1;
-            let mut c = 0;
-            while i < patch.rest.len()
-                && let Hop::Index(ix) = patch.rest[i]
-            {
-                if c < loops.len() && copies.get(c) != Some(&ix) {
-                    return None;
-                }
-                if c >= loops.len() {
-                    break;
-                }
-                c += 1;
-                i += 1;
+/// The hops left after the patch's path reaches `decl` at `copies`, or `None` when it does not.
+/// A final `*` reaches the direct named children of the node the hops before it spell, and the
+/// root's named draws when nothing comes before it.
+fn take(patch: &PendingPatch, region: &Region, decl: DeclId, copies: &[u32]) -> Option<Vec<Hop>> {
+    let d = region.decl(decl);
+    match patch.rest.split_last() {
+        Some((Hop::Star, before)) => {
+            if !d.kind.has_node() {
+                return None;
             }
-            Some(patch.rest[i..].to_vec())
+            let landed = match d.tree_parent {
+                None => before.is_empty(),
+                Some(p) => match_chain(region, p, before, copies).is_some_and(|r| r.is_empty()),
+            };
+            landed.then(Vec::new)
         }
-        _ => None,
+        _ => match_chain(region, decl, &patch.rest, copies),
     }
+}
+
+/// Matches `hops` against the shapes down to `decl`. Each shape takes its name, then up to its
+/// own loop indices, which must equal `copies` there; fewer indices match every copy.
+fn match_chain(region: &Region, decl: DeclId, hops: &[Hop], copies: &[u32]) -> Option<Vec<Hop>> {
+    let mut i = 0;
+    let mut c = 0;
+    for id in region.chain(decl) {
+        let d = region.decl(id);
+        match hops.get(i) {
+            Some(Hop::Name(n)) if *n == d.name => i += 1,
+            _ => return None,
+        }
+        while i < hops.len()
+            && c < d.loops.len()
+            && let Hop::Index(ix) = hops[i]
+        {
+            if copies.get(c) != Some(&ix) {
+                return None;
+            }
+            c += 1;
+            i += 1;
+        }
+        c = d.loops.len();
+    }
+    Some(hops[i..].to_vec())
 }
 
 fn validate(
@@ -1629,163 +1849,200 @@ fn validate(
         out.push(d.in_file(&*patch.report.file).at_node(at_node));
         false
     };
-    let Some(first) = patch.rest.first() else {
-        return fail(
-            "patch has no name".into(),
-            Vec::new(),
-            "write a name, as in `.eye`".into(),
-        );
-    };
     let shown = hop_text(&patch.written);
-    match first {
-        Hop::Star => {
-            if patch.rest.len() != 1 {
-                return fail(
-                    "`*` is only a final hop".into(),
-                    Vec::new(),
-                    "move `*` to the end".into(),
-                );
-            }
-            if region
-                .decls
-                .iter()
-                .any(|d| d.tree_parent.is_none() && d.kind.has_node() && !region.is_private(d.name.as_str()))
-            {
-                return true;
-            }
-            let notes = vec![region.names_note()];
-            let msg = match &patch.anim {
-                Some(anim) => format!("`{anim}` patch `.{shown}` matches nothing"),
-                None => format!("patch `.{shown}` matches nothing in {}", region.label),
-            };
-            fail(msg, notes, "name a part in this scope".into())
+    let what = match &patch.anim {
+        Some(anim) => format!("`{anim}` patch `.{shown}`"),
+        None => format!("patch `.{shown}`"),
+    };
+    let walked = match region.walk(&patch.rest) {
+        Ok(w) => w,
+        Err(WalkError::NoName) => {
+            return fail(
+                "patch has no name".into(),
+                Vec::new(),
+                "write a name, as in `.eye`".into(),
+            );
         }
-        Hop::Index(_) => fail(
-            format!("patch `.{shown}` does not start with a name"),
-            Vec::new(),
-            "write a name before the copy index".into(),
-        ),
-        Hop::Name(name) => {
-            let ids = region.lookup(name.as_str());
-            if ids.is_empty() {
-                let (notes, fix) = if let Some(site) = region.anon_hint(name.as_str()) {
-                    let verb = region
-                        .anon
-                        .iter()
-                        .find(|(_, s)| s.span == site.span && s.file == site.file)
-                        .map(|(v, _)| v.to_string())
-                        .unwrap_or_else(|| name.to_string());
-                    (
-                        vec![format!(
-                            "an unnamed `{verb}` is at {}:{}",
-                            site.file, site.span.line
-                        )],
-                        format!("add name: at {}:{}", site.file, site.span.line),
-                    )
-                } else {
-                    (
-                        vec![region.names_note()],
-                        "use one of the listed names".into(),
-                    )
-                };
-                let msg = match &patch.anim {
-                    Some(anim) => format!("`{anim}` patch `.{shown}` matches nothing"),
-                    None => format!("patch `.{shown}` matches nothing in {}", region.label),
-                };
-                return fail(msg, notes, fix);
-            }
-            if region.is_private(name.as_str()) {
-                let notes = vec![region.names_note()];
-                let msg = match &patch.anim {
-                    Some(anim) => format!(
-                        "`{anim}` patch `.{shown}` names `{name}`, which is private to {}",
-                        region.label
-                    ),
-                    None => format!(
-                        "patch `.{shown}` names `{name}`, which is private to {}",
-                        region.label
-                    ),
-                };
-                return fail(
-                    msg,
-                    notes,
-                    format!("drop the `_` from `{name}` in {} to make it public", region.label),
-                );
-            }
-            let loops = ids
-                .iter()
-                .map(|&id| region.decl(id).loops.len())
-                .max()
-                .unwrap_or(0);
-            let mut i = 1;
-            let mut seen = 0;
-            while i < patch.rest.len() && matches!(patch.rest[i], Hop::Index(_)) {
-                if seen < loops {
-                    seen += 1;
-                    i += 1;
-                } else {
-                    break;
-                }
-            }
-            if patch.rest[i..].is_empty() {
-                if ids.iter().any(|&id| region.decl(id).kind == NameKind::Anchor)
-                    && ids.iter().all(|&id| region.decl(id).kind == NameKind::Anchor)
-                {
-                    return fail(
-                        format!("patch `.{shown}` names anchor `{name}`, which has no node"),
-                        Vec::new(),
-                        "patch a shape or a group".into(),
-                    );
-                }
-                return true;
-            }
-            if patch.rest[i..]
-                .iter()
-                .any(|h| matches!(h, Hop::Star))
-                && !matches!(patch.rest.last(), Some(Hop::Star))
-            {
-                return fail(
-                    "`*` is only a final hop".into(),
-                    Vec::new(),
-                    "move `*` to the end".into(),
-                );
-            }
-            let opens = ids
-                .iter()
-                .all(|&id| region.decl(id).kind.opens_scope());
-            if opens {
-                return true;
-            }
-            let msg = match &patch.anim {
-                Some(anim) => format!(
-                    "`{anim}` patch `.{shown}` hops through `{name}`, which is not an instance or a slot"
-                ),
-                None => format!(
-                    "patch `.{shown}` hops through `{name}`, which is not an instance or a slot"
-                ),
-            };
-            let fix = child_fix(&patch.rest[1..i], &patch.rest[i..], region, ids);
-            fail(msg, Vec::new(), fix)
+        Err(WalkError::StarNotFinal) => {
+            return fail(
+                "`*` is only a final hop".into(),
+                Vec::new(),
+                "move `*` to the end".into(),
+            );
         }
+        Err(WalkError::IndexFirst) => {
+            return fail(
+                format!("{what} does not start with a name"),
+                Vec::new(),
+                "write a name before the copy index".into(),
+            );
+        }
+        Err(WalkError::ExtraIndex(id)) => {
+            let name = &region.decl(id).name;
+            return fail(
+                format!("{what} gives `{name}` more copy indices than it has loops"),
+                Vec::new(),
+                "drop the extra index".into(),
+            );
+        }
+        Err(WalkError::Private(name)) => {
+            let msg = format!("{what} names `{name}`, which is private to {}", region.label);
+            return fail(
+                msg,
+                vec![region.names_note(None)],
+                format!("drop the `_` from `{name}` in {} to make it public", region.label),
+            );
+        }
+        Err(WalkError::Anchor(id)) => {
+            let name = &region.decl(id).name;
+            return fail(
+                format!("{what} hops through `{name}`, which is an anchor"),
+                Vec::new(),
+                "name a part under a shape".into(),
+            );
+        }
+        Err(WalkError::Group { at, rest_at, id }) => {
+            let name = &region.decl(id).name;
+            let fix = child_fix(&patch.rest[at + 1..rest_at], &patch.rest[rest_at..], region, id);
+            return fail(
+                format!("{what} hops through `{name}`, which is a group"),
+                vec![GROUP_NOTE.into()],
+                fix,
+            );
+        }
+        Err(WalkError::Missing {
+            scopes,
+            name,
+            nested,
+            at,
+        }) => {
+            let (msg, notes, fix) =
+                missing_text(region, &what, &scopes, &name, &nested, &patch.rest[at + 1..]);
+            return fail(msg, notes, fix);
+        }
+    };
+    match walked.rest.first() {
+        None => {
+            let anchors = walked
+                .ids
+                .iter()
+                .all(|&id| region.decl(id).kind == NameKind::Anchor);
+            if anchors {
+                let name = &region.decl(walked.ids[0]).name;
+                return fail(
+                    format!("{what} names anchor `{name}`, which has no node"),
+                    Vec::new(),
+                    "patch a shape or a group".into(),
+                );
+            }
+            true
+        }
+        Some(Hop::Star) if walked.ids.iter().any(|&id| region.decl(id).kind.opens_region()) => true,
+        Some(Hop::Star) => {
+            let has_child = region.decl_ids().any(|c| {
+                let d = region.decl(c);
+                d.kind.has_node()
+                    && !region.is_private(d.name.as_str())
+                    && match d.tree_parent {
+                        None => walked.ids.is_empty(),
+                        Some(p) => walked.ids.contains(&p),
+                    }
+            });
+            if has_child {
+                return true;
+            }
+            let under = match walked.ids.first() {
+                Some(&id) => format!("under `{}`", region.spell(id, &[])),
+                None => format!("in {}", region.label),
+            };
+            let scope = walked.ids.first().copied();
+            fail(
+                format!("{what} matches nothing {under}"),
+                vec![region.names_note(scope)],
+                "name a part in this scope".into(),
+            )
+        }
+        Some(_) => true,
     }
 }
 
-fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]) -> String {
-    if rest.len() == 1 && matches!(rest.first(), Some(Hop::Star)) {
-        let mut kids = Vec::new();
-        for id in region.decl_ids() {
-            let decl = region.decl(id);
-            if decl.kind.has_node() && decl.tree_parent.is_some_and(|p| parents.contains(&p)) {
-                let name = decl.name.to_string();
-                if !kids.contains(&name) {
-                    kids.push(name);
-                }
+pub const GROUP_NOTE: &str =
+    "a path names each shape on the way; groups, layers, and loops are not part of it";
+
+fn missing_text(
+    region: &Region,
+    what: &str,
+    scopes: &[DeclId],
+    name: &Name,
+    nested: &[DeclId],
+    after: &[Hop],
+) -> (String, Vec<String>, String) {
+    let tail: String = after.iter().map(|h| format!(".{h}")).collect();
+    let paths: Vec<String> = {
+        let mut out = Vec::new();
+        for &id in nested {
+            let p = format!(".{}{tail}", region.spell(id, &[]));
+            if !out.contains(&p) {
+                out.push(p);
             }
         }
-        let Some(first) = kids.first() else {
+        out
+    };
+    match paths.as_slice() {
+        [] => {
+            let scope = scopes.first().copied();
+            let under = match scope {
+                Some(id) => format!("under `{}`", region.spell(id, &[])),
+                None => format!("in {}", region.label),
+            };
+            if let Some(site) = scope.is_none().then(|| region.anon_hint(name.as_str())).flatten() {
+                let verb = region
+                    .anon
+                    .iter()
+                    .find(|(_, s)| s.span == site.span && s.file == site.file)
+                    .map(|(v, _)| v.to_string())
+                    .unwrap_or_else(|| name.to_string());
+                return (
+                    format!("{what} matches nothing {under}"),
+                    vec![format!(
+                        "an unnamed `{verb}` is at {}:{}",
+                        site.file, site.span.line
+                    )],
+                    format!("add name: at {}:{}", site.file, site.span.line),
+                );
+            }
+            (
+                format!("{what} matches nothing {under}"),
+                vec![region.names_note(scope)],
+                "use one of the listed names".into(),
+            )
+        }
+        [path] => {
+            let under = region.spell(region.decl(nested[0]).scope.unwrap(), &[]);
+            (
+                format!("{what} names `{name}`, which is nested under `{under}`"),
+                Vec::new(),
+                format!("write {path}"),
+            )
+        }
+        _ => (
+            format!("{what} names `{name}`, which sits under more than one shape"),
+            paths.iter().map(|p| format!("`{p}`")).collect(),
+            "write one of the listed paths".into(),
+        ),
+    }
+}
+
+fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, group: DeclId) -> String {
+    if rest.len() == 1 && matches!(rest.first(), Some(Hop::Star)) {
+        let first = region.decl_ids().find(|&id| {
+            let decl = region.decl(id);
+            decl.kind.has_node() && decl.tree_parent == Some(group)
+        });
+        let Some(first) = first else {
             return "name the part under this node".into();
         };
-        let mut addr = format!(".{first}");
+        let mut addr = format!(".{}", region.spell(first, &[]));
         for hop in consumed {
             addr.push('.');
             addr.push_str(&hop.to_string());
@@ -1798,8 +2055,6 @@ fn child_fix(consumed: &[Hop], rest: &[Hop], region: &Region, parents: &[DeclId]
     }
 }
 
-/// The address with one group hop dropped: `consumed` are the copy indices after the group's
-/// name, and they move after the next name in `rest`. `None` when `rest` names nothing.
 pub fn skip_hop(consumed: &[Hop], rest: &[Hop]) -> Option<String> {
     let mut indices: Vec<String> = consumed.iter().map(|h| h.to_string()).collect();
     let mut name = None;
@@ -1818,12 +2073,9 @@ pub fn skip_hop(consumed: &[Hop], rest: &[Hop]) -> Option<String> {
 }
 
 fn drawn_copy(patch: &PendingPatch, names: &Names, owner: &Key) -> Option<String> {
-    let Hop::Name(name) = patch.rest.first()? else {
-        return None;
-    };
-    let entry = names
-        .region
-        .lookup(name.as_str())
+    let walked = names.region.walk(&patch.rest).ok()?;
+    let entry = walked
+        .ids
         .iter()
         .find_map(|&id| names.drawn(id).into_iter().next())?;
     let key = &entry.record.borrow().key;
@@ -2009,7 +2261,7 @@ mod tests {
             &mut bare_out,
         );
         let bare_id = bare.file().lookup("c")[0];
-        assert!(!bare.file().decl(bare_id).kind.opens_scope());
+        assert!(!bare.file().decl(bare_id).kind.opens_region());
         assert!(bare.region(Span { line: 6, col: 3 }).is_none());
 
         let mut out = Vec::new();
@@ -2024,7 +2276,7 @@ mod tests {
         );
         assert!(out.is_empty(), "{out:?}");
         let id = ids.file().lookup("c")[0];
-        assert!(ids.file().decl(id).kind.opens_scope());
+        assert!(ids.file().decl(id).kind.opens_region());
         let fill = ids.region(Span { line: 6, col: 3 }).expect("fill region");
         assert_eq!(fill.kind, RegionKind::Slot);
         assert_eq!(fill.names(), [&name("gem")]);
@@ -2149,6 +2401,36 @@ mod tests {
             Some(".head")
         );
         assert_eq!(face.mask().to_string(), "face.mask~1");
+    }
+
+    #[test]
+    fn identity_a_scope_is_the_nearest_named_shape_and_a_path_spells_each_one() {
+        let src = format!(
+            "{TARGET}each i in 0..2\n  circle 9 name:thorax\n    group gloss\n      each j in 0..2\n        circle 2 name:sheen\n    anchor tip 0,-9\ncircle 9 name:abdomen\n  circle 2 name:sheen\n"
+        );
+        let (ids, ds) = ids(&src);
+        assert!(ds.is_empty(), "{ds:?}");
+        let file = ids.file();
+        let thorax = file.lookup("thorax")[0];
+        assert_eq!(file.decl(thorax).scope, None);
+        assert!(file.lookup("sheen").is_empty());
+        let under_thorax = file.lookup_in(Some(thorax), "sheen");
+        assert_eq!(under_thorax.len(), 1);
+        let sheen = under_thorax[0];
+        assert_eq!(file.decl(file.decl(sheen).tree_parent.unwrap()).name, name("gloss"));
+        assert_eq!(file.spell(sheen, &[1, 0]), "thorax.1.sheen.0");
+        assert_eq!(file.spell(sheen, &[1]), "thorax.1.sheen");
+        let tip = file.lookup_in(Some(thorax), "tip")[0];
+        assert_eq!(file.spell(tip, &[]), "thorax.tip");
+        let abdomen = file.lookup("abdomen")[0];
+        assert_eq!(file.lookup_in(Some(abdomen), "sheen").len(), 1);
+        let nested: Vec<String> = file
+            .nested(None, "sheen")
+            .into_iter()
+            .map(|id| file.spell(id, &[]))
+            .collect();
+        assert_eq!(nested, ["thorax.sheen", "abdomen.sheen"]);
+        assert!(file.has_named_below(file.lookup_in(Some(thorax), "gloss")[0], "sheen"));
     }
 
     #[test]

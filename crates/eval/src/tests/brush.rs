@@ -319,9 +319,9 @@ fn a_def_takes_a_brush_parameter_and_recalls_it_with_overrides() {
         &[LIB, stone],
     );
     assert_eq!(marks(&s, "a.base")[0].stage.uniforms[0].1, UniformValue::Float(0.5));
-    assert_eq!(marks(&s, "a.core")[0].stage.uniforms[1].1, UniformValue::Float(0.5));
+    assert_eq!(marks(&s, "a.base.core")[0].stage.uniforms[1].1, UniformValue::Float(0.5));
     assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
-    assert_eq!(marks(&s, "b.core")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
+    assert_eq!(marks(&s, "b.base.core")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
     assert_eq!(marks(&s, "c.base").len(), 0, "brush:none passed as the param clears it");
     let d = first("@target t.png 100x100\nuse stone\nstone at:30,50 tool:3 name:a\n", &[LIB, stone], "E0321");
     assert!(d.message.contains("no parameter `tool`"), "{d}");

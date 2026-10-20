@@ -1,0 +1,30 @@
+# Names are scoped by shape, and a reference or a patch spells every shape on the way down. 192x64,
+# three cells on paper at 64px pitch, each one `bug` instance centered at y 32. A bug is a blue
+# circle `thorax` (radius 14) on the left of its cell and a green circle `abdomen` (radius 10) on
+# the right. Each body circle holds a small gold circle named `sheen` in its upper left, the
+# abdomen's inside a `group gloss`, so the same short name is declared twice, once under each shape.
+# 1. Cell 1 (x 32): the bug as declared. A gold sheen on the thorax and a gold sheen on the abdomen.
+# 2. Cell 2 (x 96): `.abdomen.sheen fill:p.red` turns only the abdomen's sheen red. The thorax's
+# sheen stays gold.
+# 3. Cell 3 (x 160): `.thorax.sheen off` removes the thorax's sheen, so the blue circle is plain. A
+# red ring (radius 6, no fill) placed at `@b3.abdomen.sheen.cx,@b3.abdomen.sheen.cy` is centered
+# on the abdomen's gold sheen, which stays gold. The group around that sheen is not part of the
+# path.
+@target structure/shape_scope.png 192x64
+
+def bug
+  circle 14 at:-14,4 fill:p.blue name:thorax
+    circle 4 at:-5,-6 fill:p.gold name:sheen
+  circle 10 at:14,0 fill:p.green name:abdomen
+    group gloss
+      circle 3 at:-3,-4 fill:p.gold name:sheen
+
+bug at:32,32 name:b1
+
+bug at:96,32 name:b2
+  .abdomen.sheen fill:p.red
+
+bug at:160,32 name:b3
+  .thorax.sheen off
+
+circle 6 at:@b3.abdomen.sheen.cx,@b3.abdomen.sheen.cy fill:none stroke:p.red,1.5

@@ -9,7 +9,7 @@ use ramose_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
 use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
-use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, RegionKind};
+use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, Region, RegionKind};
 use crate::value::Value;
 
 pub struct Module {
@@ -183,9 +183,10 @@ pub struct FnDef {
 /// A node (or anchor) as created so far, with the transform from its parent to the canvas.
 #[derive(Clone)]
 pub struct Record {
-    pub name: String,
     pub path: String,
     pub key: Key,
+    /// The loop indices of the key the scope registered it under.
+    pub copies: Vec<u32>,
     pub parent_world: Matrix,
     pub node: Option<Node>,
     /// Canvas position of an anchor.
@@ -287,53 +288,48 @@ impl RefVal {
         let (entries, prefix_len) = if let Some(inner) = &self.record.inner {
             (inner.borrow().children_of(None, &[]), 0)
         } else if let (Some(home), Some(decl)) = (self.home(), self.record.decl) {
-            let prefix = self.record.key.trailing_copies();
-            let n = prefix.len();
-            (home.borrow().children_of(Some(decl), &prefix), n)
+            let prefix = &self.record.copies;
+            (home.borrow().children_of(Some(decl), prefix), prefix.len())
         } else {
             return Vec::new();
         };
         entries.iter().map(|e| self.child(e, prefix_len)).collect()
     }
 
-    /// The drawn parts named `name` anywhere in the scope this instance or slot opens, under
-    /// any groups and layers, as a patch finds them. Empty when this node opens no scope.
+    /// The drawn parts named `name` at the root of the scope this instance or slot opens, under
+    /// any groups and layers. Empty when this node opens no scope.
     pub fn parts(&self, name: &str) -> Vec<RefVal> {
         let Some(inner) = &self.record.inner else {
             return Vec::new();
         };
-        let names = inner.borrow();
-        let region = names.region();
-        region
-            .lookup(name)
+        inner
+            .borrow()
+            .drawn_in(None, name, &[])
             .iter()
-            .flat_map(|&id| names.drawn(id))
-            .map(|e| self.child(&e, 0))
+            .map(|e| self.child(e, 0))
             .collect()
     }
 
-    /// Whether a part named `name` that is not an anchor is declared anywhere under this node.
-    pub fn holds(&self, name: &str) -> bool {
+    pub fn parts_under(&self, name: &str) -> Vec<RefVal> {
         let (Some(home), Some(decl)) = (self.home(), self.record.decl) else {
-            return false;
+            return Vec::new();
         };
+        home.borrow()
+            .drawn_in(Some(decl), name, &self.record.copies)
+            .iter()
+            .map(|e| self.child(e, self.record.copies.len()))
+            .collect()
+    }
+
+    pub fn home_decl(&self) -> Option<(Rc<Region>, DeclId)> {
+        let (home, decl) = (self.home()?, self.record.decl?);
         let region = home.borrow().region();
-        region.lookup(name).iter().any(|&id| {
-            let mut up = region.decl(id).tree_parent;
-            while let Some(p) = up {
-                if p == decl {
-                    return region.decl(id).kind != NameKind::Anchor;
-                }
-                up = region.decl(p).tree_parent;
-            }
-            false
-        })
+        Some((region, decl))
     }
 
     fn child(&self, e: &Entry, prefix_len: usize) -> RefVal {
-        let extra = e.record.borrow().key.trailing_copies();
         let mut label = format!("{}.{}", self.label, e.name);
-        for c in extra.iter().skip(prefix_len) {
+        for c in e.record.borrow().copies.iter().skip(prefix_len) {
             label.push_str(&format!(".{c}"));
         }
         ref_from(e, &label)
@@ -375,30 +371,60 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
 /// name inside a def or slot fill is private to it, so neither it nor anything under it appears.
 pub fn placed_anchors(top: &Rc<RefCell<Names>>) -> BTreeMap<String, (f64, f64)> {
     let mut out = BTreeMap::new();
-    let entries = top.borrow().children_of(None, &[]);
-    for e in &entries {
-        let mut label = e.name.to_string();
-        for c in e.record.borrow().key.trailing_copies() {
-            label.push_str(&format!(".{c}"));
-        }
-        collect_anchors(&ref_from(e, &label), false, &mut out);
-    }
+    anchors_in(&top.borrow(), None, &[], "", false, &mut out);
     out
 }
 
-fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (f64, f64)>) {
-    if private_scope && r.record.name.starts_with('_') {
-        return;
+/// The anchors under the shape `scope` of `names`, drawn in the copy `prefix`, each at
+/// `label.name.copies`.
+fn anchors_in(
+    names: &Names,
+    scope: Option<DeclId>,
+    prefix: &[u32],
+    label: &str,
+    private_scope: bool,
+    out: &mut BTreeMap<String, (f64, f64)>,
+) {
+    let region = names.region();
+    for name in region.names_in(scope) {
+        if private_scope && name.as_str().starts_with('_') {
+            continue;
+        }
+        for e in names.drawn_in(scope, name.as_str(), prefix) {
+            let rec = e.record.borrow();
+            let mut path = if label.is_empty() {
+                name.to_string()
+            } else {
+                format!("{label}.{name}")
+            };
+            for c in rec.copies.iter().skip(prefix.len()) {
+                path.push_str(&format!(".{c}"));
+            }
+            let r = RefVal {
+                label: path.clone(),
+                record: rec.clone(),
+                source: Some(Rc::as_ptr(&e.record) as usize),
+                canvas: None,
+                extent: Extent::Visual,
+            };
+            drop(rec);
+            collect_anchors(&r, out);
+            if let Some(decl) = r.record.decl
+                && region.decl(decl).kind == NameKind::Shape
+            {
+                anchors_in(names, Some(decl), &r.record.copies, &path, private_scope, out);
+            }
+        }
     }
+}
+
+fn collect_anchors(r: &RefVal, out: &mut BTreeMap<String, (f64, f64)>) {
     if let Some(p) = r.record.anchor {
         out.insert(r.label.clone(), (p.x as f64, p.y as f64));
     }
-    let private_scope = match &r.record.inner {
-        Some(inner) => inner.borrow().region().kind != RegionKind::File,
-        None => private_scope,
-    };
-    for child in r.children() {
-        collect_anchors(&child, private_scope, out);
+    if let Some(inner) = &r.record.inner {
+        let private_scope = inner.borrow().region().kind != RegionKind::File;
+        anchors_in(&inner.borrow(), None, &[], &r.label, private_scope, out);
     }
     for row in r.record.rows.iter() {
         for (i, stamp) in row.stamps.iter().enumerate() {
@@ -409,7 +435,7 @@ fn collect_anchors(r: &RefVal, private_scope: bool, out: &mut BTreeMap<String, (
                 canvas: None,
                 extent: Extent::Visual,
             };
-            collect_anchors(&stamp, private_scope, out);
+            collect_anchors(&stamp, out);
         }
     }
 }
