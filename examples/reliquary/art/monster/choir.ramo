@@ -1,0 +1,236 @@
+# Gouache moth-singers. One key from the upper right. Glass wings, flesh bodies, a bone stem.
+@target monster/choir.png 380x320 bg:none
+
+use paint { sculpt ink }
+use parts { eye crust }
+
+stamp fuzz spacing:5.5
+  ellipse 2.7,.95 at:0,-2.3 rot:rand(-42 42) fill:pick([p.flesh.3 p.flesh.4 p.bone.4 p.bone.5]) a:.48+rand(0 .4) name:hair
+
+def glass_choir
+  layer stem_layer
+    curve 6,36 -16,30 -18,18 -4,11 10,13 18,24 stroke:p.bone.2,8 brush:sculpt(scale:.42 depth:.68 glossk:.32) name:hook
+      fx outline 3 brush:ink color:p.ink
+    circle 3.2 at:18,24 fill:p.bone.3 brush:sculpt(scale:.26 glossk:.36) name:hook_knob
+      circle 1.1 at:.6,-.6 fill:p.bone.5
+      fx outline 2.2 brush:ink color:p.ink
+    ellipse 3.2,1.4 at:8,14 rot:-18 fill:p.bone.5 a:.75 name:hook_lit
+    circle 1.5 at:-6,18 fill:p.bone.0 a:.6 name:hook_pit
+    ellipse 7,3.2 at:-1,24 rot:-24 fill:p.verd.2 brush:sculpt(scale:.3 glossk:.4) name:collar
+      ellipse 3,1.2 at:1.2,-.6 fill:p.verd.4 a:.7
+      fx outline 1.8 brush:ink color:p.ink
+    curve -8,30 -18,86 -22,136 -2,176 -14,226 -4,276 3,304 15,276 12,226 16,176 2,136 6,86 10,32 closed fill:p.bone.2 brush:sculpt(scale:1.15 depth:.74 planes:.66 glossk:.2) name:stem
+      ellipse 8,70 at:-6,48 fill:p.bone.0 a:.32 name:stem_shade
+      ellipse 5,46 at:5,36 fill:p.bone.5 a:.34 blur:2 name:stem_lit
+      ellipse 9,14 at:-4,108 fill:p.ink a:.28 blur:2 name:grip_l
+      ellipse 8,12 at:6,124 fill:p.ink a:.26 blur:2 name:grip_r
+      ellipse 10,12 at:0,232 fill:p.ink a:.3 blur:2 name:grip_c
+      ellipse 11,8 at:-6,64 rot:-12 fill:p.verd.1 brush:sculpt(scale:.45) name:verd_a
+      ellipse 8,6 at:5,148 rot:16 fill:p.verd.3 a:.85 brush:sculpt(scale:.35 glossk:.35) name:verd_b
+      ellipse 7,5 at:-2,214 rot:-8 fill:p.verd.2 a:.75 name:verd_c
+      curve -4,58 3,74 -2,96 stroke:p.ink,1.7 a:.75 name:crack_a
+      curve 2,70 6,84 1,98 stroke:p.bone.5,1 a:.55 name:crack_a_lit
+      curve -6,186 2,204 -3,226 stroke:p.ink,1.5 a:.65 name:crack_b
+      circle 2.1 at:-1,196 fill:p.moss.2 name:moss_crack
+        circle .7 at:.4,-.5 fill:p.moss.4
+      curve 5,40 8,110 2,180 7,250 stroke:p.bone.5,2.6 a:.8 brush:sculpt(scale:.32 glossk:.2) name:stem_ridge
+      each i in 0..4
+        ellipse 2.4,1.2 at:6,78+i*46 rot:20+i*18 fill:p.bone.0 a:.55 name:stem_chip
+          ellipse 1.2,.5 at:.4,-.3 fill:p.bone.5 a:.7 name:stem_chip_lit
+      each i in 0..6
+        circle 1.7+rand(0 1.7) at:rand(-4 5),52+i*36 fill:p.bone.0 a:.62 name:stem_pit
+          circle .8 at:.5,.45 fill:p.bone.4 a:.65 name:stem_pit_lip
+      curve 4,44 8,120 2,200 6,270 fill:none stamp:crust name:stem_salt
+      circle 4.2 at:7,52 fill:p.amber.2 brush:sculpt(scale:.24 glossk:.62 depth:.28 hi:p.shine) name:nail
+        circle 1.7 at:1,-1 fill:p.amber.5
+        circle .7 at:1.4,-1.4 fill:p.shine
+        fx glow 4 color:p.amber.4 a:.4
+      fx outline 4 brush:ink color:p.ink
+      fx grain .04 scale:1.3
+
+  layer moth_l
+    group at:-58,104 rot:-22 scale:.94 name:l_moth
+      curve 6,-10 -2,-44 -26,-72 -54,-78 -76,-54 -88,-34 -72,-22 -86,-8 -62,6 -44,16 -32,2 -14,12 2,2 closed fill:p.glass.2 brush:sculpt(scale:.78 glossk:.5 depth:.46 planes:.42 hi:p.glass.5 lo:p.ink) stroke:p.rose.3,2.6 name:l_fore_l
+        curve -8,-18 -28,-58 -52,-62 -36,-28 -12,-12 closed fill:p.glass.5 brush:sculpt(scale:.36 glossk:.62 planes:.3) name:l_fore_l_pane
+        curve -24,-6 -58,-28 -70,-4 -46,8 -22,4 closed fill:p.glass.0 brush:sculpt(scale:.4 depth:.35 planes:.25) name:l_fore_l_shade
+        curve 0,-6 -22,-32 -48,-8 -62,2 stroke:p.rose.1,3.1 brush:sculpt(scale:.22) name:l_fore_l_came
+        curve 2,-3 -18,-26 -42,-4 -56,5 stroke:p.rose.4,1.3 name:l_fore_l_came_lit
+        curve -4,-16 -24,-52 -50,-66 stroke:p.amber.5,2.1 name:l_fore_l_lead
+        circle 1.8 at:-28,-36 fill:p.amber.5 name:l_fore_l_join
+        ellipse 7,2.4 at:-18,-28 rot:-40 fill:p.shine a:.5 blur:1 name:l_fore_l_glint
+        circle 2.4 at:-60,0 fill:p.void name:l_fore_l_chip
+          circle .8 at:-.5,-.5 fill:p.bone.4
+        circle 1.3 at:-40,-16 fill:p.ink a:.55 name:l_fore_l_pit
+        fx outline 2.6 brush:ink color:p.ink
+      curve -2,4 -16,-2 -42,8 -54,30 -34,40 -8,26 closed fill:p.glass.1 brush:sculpt(scale:.62 glossk:.4 depth:.5 hi:p.glass.4 lo:p.ink) stroke:p.rose.2,2.3 name:l_hind_l
+        curve -10,6 -32,10 -36,26 -14,24 closed fill:p.glass.3 a:.8 name:l_hind_l_pane
+        curve -4,8 -24,6 -40,22 stroke:p.amber.3,1.5 name:l_hind_l_lead
+        fx outline 2.3 brush:ink color:p.ink
+      curve 2,-10 16,-42 36,-58 54,-40 50,-8 32,8 8,8 closed fill:p.glass.3 brush:sculpt(scale:.7 glossk:.52 depth:.44 planes:.4 hi:p.glass.5) stroke:p.rose.4,2.5 name:l_fore_r
+        curve 10,-16 28,-44 44,-28 24,-8 closed fill:p.glass.5 brush:sculpt(scale:.32 glossk:.66 planes:.28) name:l_fore_r_pane
+        curve 8,0 28,-6 40,4 22,8 closed fill:p.glass.0 brush:sculpt(scale:.35 depth:.3) name:l_fore_r_shade
+        curve 4,-4 20,-24 40,-6 stroke:p.rose.1,2.8 brush:sculpt(scale:.2) name:l_fore_r_came
+        curve 6,-1 20,-18 38,-2 stroke:p.rose.4,1.2 name:l_fore_r_came_lit
+        curve 6,-12 22,-40 42,-36 stroke:p.amber.5,2 name:l_fore_r_lead
+        circle 1.6 at:24,-22 fill:p.amber.5 name:l_fore_r_join
+        ellipse 6,2.2 at:20,-20 rot:-32 fill:p.shine a:.55 blur:1 name:l_fore_r_glint
+        fx outline 2.5 brush:ink color:p.ink
+      curve 2,6 14,4 28,18 22,36 4,28 closed fill:p.glass.2 brush:sculpt(scale:.5 glossk:.4 depth:.5) stroke:p.rose.3,2.2 name:l_hind_r
+        curve 6,10 16,14 14,26 4,20 closed fill:p.glass.0 a:.35 name:l_hind_r_shade
+        curve 4,8 18,12 20,28 stroke:p.amber.4,1.4 name:l_hind_r_lead
+        fx outline 2.2 brush:ink color:p.ink
+      curve 8,3 24,8 40,1 stroke:p.flesh.1,2.5 taper:.15,.65 brush:sculpt(scale:.26) name:l_leg_0
+      curve 6,9 22,18 36,10 stroke:p.flesh.2,2.1 taper:.1,.7 brush:sculpt(scale:.24) name:l_leg_1
+      circle 1.7 at:40,1 fill:p.bone.4 brush:sculpt(scale:.2) name:l_foot_0
+      circle 1.5 at:36,10 fill:p.bone.3 name:l_foot_1
+      curve -6,8 -9,26 -4,48 1,56 7,44 8,22 5,8 closed fill:p.flesh.2 brush:sculpt(scale:.66 depth:.7 glossk:.18) name:l_belly
+        curve -5,16 0,18 6,15 stroke:p.flesh.0,1.8 name:l_seg_0
+        curve -6,17 0,19 6,16 stroke:p.flesh.4,1 a:.7 name:l_seg_0_lit
+        curve -5,28 0,31 6,27 stroke:p.flesh.0,1.8 name:l_seg_1
+        curve -5,29 0,32 6,28 stroke:p.flesh.4,.9 a:.65 name:l_seg_1_lit
+        curve -4,40 0,43 5,39 stroke:p.flesh.0,1.6 name:l_seg_2
+        ellipse 4,7 at:2,4 fill:p.flesh.4 a:.4 blur:1.5 name:l_belly_lit
+        fx outline 3 brush:ink color:p.ink
+      ellipse 11,9 fill:p.flesh.1 brush:sculpt(scale:.55 depth:.66 glossk:.22) stamp:fuzz name:l_thorax
+        ellipse 5,3.2 at:3,-2.4 fill:p.bone.4 a:.42 blur:1.4 name:l_thorax_lit
+        ellipse 6,3 at:-4,2 fill:p.ink a:.28 blur:1.5 name:l_wing_root
+        fx outline 3.1 brush:ink color:p.ink
+        fx grain .035 scale:1.2
+      group at:3,-16 rot:-32 name:l_face
+        circle 7.4 fill:p.flesh.3 brush:sculpt(scale:.4 depth:.6 glossk:.2) name:l_head
+          ellipse 4.2,3.5 at:.6,3.1 fill:p.flesh.5 name:l_lip
+          ellipse 2.9,2.4 at:.6,3.4 fill:p.ink name:l_mouth
+            ellipse 1.7,1.3 at:0,-.3 fill:p.void name:l_mouth_in
+            ellipse 1.15,.45 at:.35,-.95 fill:p.shine a:.85 name:l_mouth_wet
+          fx outline 2.4 brush:ink color:p.ink
+        eye r:3.8 at:2.2,-1.6 tone:p.amber.4 look:.38,-.32 name:l_eye
+        curve 2,-6 8,-22 2,-38 stroke:p.bone.3,1.7 taper:.2,1 brush:sculpt(scale:.22) name:l_ant_0
+        curve -1,-6 -8,-18 -16,-30 stroke:p.bone.2,1.5 taper:.15,1 name:l_ant_1
+        circle 1.3 at:2,-38 fill:p.bone.5 name:l_ant_tip_0
+        circle 1.2 at:-16,-30 fill:p.amber.3 name:l_ant_tip_1
+
+  layer moth_r
+    group at:68,124 rot:4 name:r_moth
+      curve 8,-4 32,-16 64,-14 96,2 102,18 84,30 60,16 48,28 24,16 8,8 closed fill:p.glass.2 brush:sculpt(scale:.84 glossk:.48 depth:.48 planes:.4 hi:p.glass.5 lo:p.ink) stroke:p.rose.3,2.7 name:r_banner
+        curve 22,-8 52,-10 82,2 48,8 18,2 closed fill:p.glass.5 brush:sculpt(scale:.38 glossk:.64 planes:.28) name:r_banner_pane
+        curve 28,10 62,8 78,24 46,22 closed fill:p.glass.0 brush:sculpt(scale:.4 depth:.32) name:r_banner_shade
+        curve 14,2 46,-2 86,12 stroke:p.rose.1,3 brush:sculpt(scale:.22) name:r_banner_came
+        curve 16,5 46,2 84,15 stroke:p.rose.4,1.3 name:r_banner_came_lit
+        curve 12,-6 40,-14 88,0 stroke:p.amber.5,2.2 name:r_banner_lead
+        circle 1.9 at:46,-8 fill:p.amber.5 name:r_banner_join
+        ellipse 9,2.6 at:40,-6 rot:-12 fill:p.shine a:.5 blur:1.2 name:r_banner_glint
+        circle 2.6 at:90,14 fill:p.void name:r_banner_chip
+          ellipse 1.5,.6 at:-.8,-.5 rot:18 fill:p.bone.4
+        circle 1.4 at:60,6 fill:p.ink a:.5 name:r_banner_pit
+        fx outline 2.7 brush:ink color:p.ink
+      curve 4,6 14,14 12,30 2,40 -6,34 -2,16 closed fill:p.glass.1 brush:sculpt(scale:.6 glossk:.36 depth:.55 hi:p.glass.4 lo:p.ink) stroke:p.rose.2,2.4 name:r_droop
+        curve 4,14 10,26 4,34 -2,24 closed fill:p.glass.0 brush:sculpt(scale:.36 depth:.3) name:r_droop_shade
+        curve 6,10 10,22 6,34 stroke:p.rose.1,2.4 brush:sculpt(scale:.2) name:r_droop_came
+        curve 8,10 12,20 8,30 stroke:p.amber.4,1.6 name:r_droop_lead
+        ellipse 2.2,1 at:8,24 rot:76 fill:p.bone.5 a:.7 name:r_droop_scratch
+        fx outline 2.4 brush:ink color:p.ink
+      curve 4,-2 18,-18 36,-10 30,8 10,6 closed fill:p.glass.3 brush:sculpt(scale:.48 glossk:.5 depth:.42) stroke:p.rose.4,2.2 name:r_hind_u
+        curve 10,-8 26,-12 30,0 stroke:p.amber.5,1.5 name:r_hind_u_lead
+        fx outline 2.2 brush:ink color:p.ink
+      curve 0,8 10,14 6,28 -6,26 -4,14 closed fill:p.glass.2 brush:sculpt(scale:.45 glossk:.38 depth:.52) stroke:p.rose.2,2.1 name:r_hind_d
+        curve 2,14 8,20 4,26 -2,22 closed fill:p.glass.0 a:.55 name:r_hind_d_shade
+        fx outline 2.1 brush:ink color:p.ink
+      curve -8,2 -32,2 -58,-6 stroke:p.flesh.1,2.6 taper:.1,.6 brush:sculpt(scale:.26) name:r_leg_0
+      curve -6,8 -30,14 -52,6 stroke:p.flesh.2,2.2 taper:.1,.7 brush:sculpt(scale:.24) name:r_leg_1
+      circle 1.8 at:-58,-6 fill:p.bone.4 name:r_foot_0
+      circle 1.6 at:-52,6 fill:p.bone.3 name:r_foot_1
+      curve -4,6 -10,8 -16,28 -8,52 2,58 10,40 8,14 closed fill:p.flesh.1 brush:sculpt(scale:.62 depth:.72 glossk:.16) name:r_belly
+        curve -8,18 -2,22 6,16 stroke:p.flesh.0,1.8 name:r_seg_0
+        curve -8,19 -2,23 6,17 stroke:p.flesh.4,.9 a:.6 name:r_seg_0_lit
+        curve -6,32 0,36 6,30 stroke:p.flesh.0,1.7 name:r_seg_1
+        curve -4,44 2,48 6,42 stroke:p.flesh.0,1.5 name:r_seg_2
+        ellipse 3.5,6 at:3,10 fill:p.flesh.4 a:.35 blur:1.4 name:r_belly_lit
+        circle 1.4 at:-2,34 fill:p.flesh.0 a:.6 name:r_pore
+        fx outline 3 brush:ink color:p.ink
+      ellipse 12,8.5 rot:-18 fill:p.flesh.2 brush:sculpt(scale:.52 depth:.64) stamp:fuzz name:r_thorax
+        ellipse 5,2.6 at:3,-2 fill:p.bone.5 a:.4 blur:1.2 name:r_thorax_lit
+        ellipse 5,2.4 at:-3,2 fill:p.ink a:.3 blur:1.2 name:r_wing_root
+        fx outline 3.1 brush:ink color:p.ink
+      group at:-2,-12 rot:-48 name:r_face
+        circle 6.8 fill:p.flesh.3 brush:sculpt(scale:.38 depth:.58) name:r_head
+          ellipse 4.4,2.6 at:-2.2,1.6 fill:p.flesh.5 name:r_lip
+          ellipse 3.2,1.7 at:-2.2,1.9 fill:p.ink name:r_mouth
+            ellipse 2,1 at:-.2,-.15 fill:p.void name:r_mouth_in
+            ellipse 1.2,.4 at:.15,-.6 fill:p.shine a:.8 name:r_mouth_wet
+          fx outline 2.3 brush:ink color:p.ink
+        eye r:3.6 at:-2.4,-.6 tone:p.amber.3 look:.02,.22 name:r_eye
+        curve -2,-5 -4,-16 -2,-24 stroke:p.bone.3,1.8 taper:.3,1 name:r_ant_short
+        circle 1.1 at:-2,-24 fill:p.bone.1 name:r_ant_break
+        curve 1,-5 10,-14 18,-12 stroke:p.bone.4,1.5 taper:.2,.9 name:r_ant_stub
+
+  layer moth_c
+    group at:2,214 rot:-6 scale:1.05 name:c_moth
+      curve 8,-8 -20,-24 -58,-20 -96,-4 -114,18 -102,34 -84,26 -76,42 -46,44 -18,26 0,8 closed fill:p.glass.2 brush:sculpt(scale:.9 glossk:.46 depth:.5 planes:.4 hi:p.glass.5 lo:p.ink) stroke:p.rose.3,2.8 name:c_cloak_l
+        curve -14,-10 -48,-14 -78,2 -40,12 -12,2 closed fill:p.glass.4 brush:sculpt(scale:.4 glossk:.58 planes:.3) name:c_cloak_l_pane
+        curve -36,12 -78,16 -96,32 -52,36 closed fill:p.glass.0 brush:sculpt(scale:.4 depth:.32) name:c_cloak_l_shade
+        curve -4,0 -40,-6 -88,14 stroke:p.rose.1,3.1 brush:sculpt(scale:.22) name:c_cloak_l_came
+        curve -2,4 -38,0 -82,18 stroke:p.rose.4,1.3 name:c_cloak_l_came_lit
+        curve 0,-6 -32,-18 -70,-4 stroke:p.amber.4,2 name:c_cloak_l_lead
+        circle 1.9 at:-46,-8 fill:p.amber.4 name:c_cloak_l_join
+        ellipse 8,2.4 at:-28,-8 rot:16 fill:p.shine a:.42 blur:1 name:c_cloak_l_glint
+        circle 1.5 at:-62,8 fill:p.ink a:.5 name:c_cloak_l_pit
+        fx outline 2.8 brush:ink color:p.ink
+      curve -2,-12 24,-32 68,-30 106,-6 114,18 98,36 70,28 60,42 28,30 6,12 closed fill:p.glass.3 brush:sculpt(scale:.86 glossk:.54 depth:.44 planes:.38 hi:p.shine lo:p.ink) stroke:p.rose.4,2.8 name:c_cloak_r
+        curve 16,-12 50,-20 86,-2 52,10 16,2 closed fill:p.glass.5 brush:sculpt(scale:.36 glossk:.68 planes:.26) name:c_cloak_r_pane
+        curve 22,10 68,14 94,32 40,28 closed fill:p.glass.0 brush:sculpt(scale:.38 depth:.3) name:c_cloak_r_shade
+        curve 6,0 42,-8 90,10 stroke:p.rose.1,3.2 brush:sculpt(scale:.22) name:c_cloak_r_came
+        curve 8,4 44,-2 88,14 stroke:p.rose.4,1.4 name:c_cloak_r_came_lit
+        curve 30,8 62,16 90,28 stroke:p.rose.1,2.4 name:c_cloak_r_came_b
+        curve 2,-10 34,-26 96,0 stroke:p.amber.5,2.3 name:c_cloak_r_lead
+        circle 2 at:48,-14 fill:p.amber.5 name:c_cloak_r_join
+        ellipse 10,2.8 at:36,-12 rot:-20 fill:p.shine a:.55 blur:1.2 name:c_cloak_r_glint
+        curve 68,8 78,18 74,28 stroke:p.rose.0,1.7 name:c_fault
+        circle 2.6 at:77,17 fill:p.amber.5 name:c_fault_bead
+          circle 1 at:.4,-.5 fill:p.shine
+          fx glow 5 color:p.amber.4 a:.65
+        circle 1.4 at:58,4 fill:p.ink a:.45 name:c_cloak_r_pit
+        fx outline 2.8 brush:ink color:p.ink
+      curve 2,8 -20,6 -40,26 -34,54 -18,70 -6,42 4,22 closed fill:p.glass.1 brush:sculpt(scale:.55 glossk:.36 depth:.54) stroke:p.rose.2,2.3 name:c_tail_l
+        curve -8,16 -26,28 -24,50 -10,40 closed fill:p.glass.0 a:.4 name:c_tail_l_shade
+        curve 0,14 -22,24 -28,52 stroke:p.amber.3,1.5 name:c_tail_l_lead
+        fx outline 2.3 brush:ink color:p.ink
+      curve 0,10 18,8 34,28 26,56 12,44 2,22 closed fill:p.glass.2 brush:sculpt(scale:.52 glossk:.42 depth:.5) stroke:p.rose.3,2.2 name:c_tail_r
+        curve 8,16 22,26 18,44 8,32 closed fill:p.glass.4 a:.75 name:c_tail_r_pane
+        curve 4,12 24,22 22,48 stroke:p.amber.4,1.5 name:c_tail_r_lead
+        fx outline 2.2 brush:ink color:p.ink
+      curve -8,4 -18,12 -14,22 stroke:p.flesh.2,2.3 taper:.2,.6 brush:sculpt(scale:.24) name:c_leg_0
+      curve 8,5 16,14 12,24 stroke:p.flesh.1,2.2 taper:.2,.65 brush:sculpt(scale:.24) name:c_leg_1
+      circle 1.6 at:-14,22 fill:p.bone.4 name:c_foot_0
+      circle 1.5 at:12,24 fill:p.bone.3 name:c_foot_1
+      curve -7,6 -10,24 -6,50 0,64 8,52 9,26 6,6 closed fill:p.flesh.2 brush:sculpt(scale:.7 depth:.7 glossk:.2) name:c_belly
+        curve -6,16 0,19 7,15 stroke:p.flesh.0,2 name:c_seg_0
+        curve -6,17 0,20 7,16 stroke:p.flesh.4,1 a:.7 name:c_seg_0_lit
+        curve -7,30 0,34 7,29 stroke:p.flesh.0,1.9 name:c_seg_1
+        curve -7,31 0,35 7,30 stroke:p.flesh.4,1 a:.6 name:c_seg_1_lit
+        curve -5,44 0,48 6,43 stroke:p.flesh.0,1.7 name:c_seg_2
+        curve -3,56 1,58 4,54 stroke:p.flesh.0,1.4 name:c_seg_3
+        ellipse 4,8 at:2.4,6 fill:p.flesh.4 a:.4 blur:1.6 name:c_belly_lit
+        fx outline 3.2 brush:ink color:p.ink
+      ellipse 12,10 fill:p.flesh.1 brush:sculpt(scale:.58 depth:.66 glossk:.24) stamp:fuzz name:c_thorax
+        ellipse 6,3.4 at:3.2,-2.6 fill:p.bone.4 a:.45 blur:1.4 name:c_thorax_lit
+        ellipse 7,3 at:-2,3 fill:p.ink a:.28 blur:1.4 name:c_wing_root
+        fx outline 3.2 brush:ink color:p.ink
+        fx grain .035 scale:1.2
+      group at:1,-14 rot:10 name:c_face
+        circle 8 fill:p.flesh.3 brush:sculpt(scale:.42 depth:.58 glossk:.22) name:c_head
+          ellipse 3.4,4.2 at:.2,3.6 fill:p.flesh.5 name:c_lip
+          ellipse 2.2,3 at:.2,3.9 fill:p.ink name:c_mouth
+            ellipse 1.2,1.9 at:0,-.15 fill:p.void name:c_mouth_in
+            ellipse .85,.4 at:.3,-1.15 fill:p.shine a:.85 name:c_mouth_wet
+          fx outline 2.5 brush:ink color:p.ink
+        eye r:4.3 at:2.6,-1.8 tone:p.amber.5 look:.24,-.06 name:c_eye
+        curve -3,-7 -14,-20 -28,-18 stroke:p.bone.3,1.8 taper:.15,.85 brush:sculpt(scale:.22) name:c_ant_0
+        curve 4,-7 16,-22 30,-16 stroke:p.bone.3,1.8 taper:.15,.85 brush:sculpt(scale:.22) name:c_ant_1
+        each i in 0..4
+          ellipse 2.2,.7 at:-8-i*5,-12-i*2 rot:-40+i*12 fill:p.bone.4 a:.75 name:c_plume_0
+        each i in 0..4
+          ellipse 2.2,.7 at:10+i*5,-14-i*1.5 rot:30-i*10 fill:p.bone.4 a:.75 name:c_plume_1
+
+glass_choir at:190,0 name:choir
+assert inside(@choir canvas margin:12)
+assert @choir.top in -16..8
