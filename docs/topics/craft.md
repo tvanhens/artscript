@@ -12,8 +12,7 @@ Structure a piece:
 Make it look finished:
 
 - Nest highlights, shadows, and texture under the shape they belong to. A child is clipped to its parent, so the shading stays inside the form.
-- A cel shadow is a `subtract` of the shape and an offset copy of it, filled with a darker ramp step at partial alpha.
-- A soft highlight is an ellipse with a lighter step at partial alpha and a `blur:`, upper left.
+- Shade each main fill with `brush:form` after `use std/brushes { form }`. It lights the shape from the upper left as a rounded volume, from the fill's own color, so a head, body, or cap reads as solid.
 - Finish a main form with `fx outline` as its last effect. Add `fx rim` for a light band and `fx grain` for texture.
 - Add a soft ground shadow: a flat ellipse in a dark color with a low `a:` and a large `blur:`, under the piece.
 - Leave a margin of about 5% of the canvas around the piece.
