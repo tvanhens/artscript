@@ -1,0 +1,22 @@
+# Loose embers and a little ash for the light shaft.
+# The curves are invisible. The room supplies the dark.
+
+@target fx/embers.png 480x360 bg:none
+
+use parts { ember }
+
+# Cooled dust. Smaller and duller than a live ember.
+stamp flake spacing:52
+  circle .85+rand(0 1.15) fill:pick([p.ash.2 p.ash.3 p.ash.4]) a:.5+rand(0 .3) name:mote
+
+def ember_field
+  layer drift_layer
+    curve -194,100 -88,36 18,-16 136,-88 fill:none stamp:ember(spacing:80+rand(0 28)) name:rise
+    curve -178,8 -58,-46 62,-28 148,22 fill:none stamp:ember(spacing:86+rand(0 24)) name:high
+    curve -82,108 26,64 86,8 18,-42 108,-86 fill:none stamp:ember(spacing:72+rand(0 22)) name:bend
+  layer ash_layer
+    curve -160,78 -70,108 14,62 90,96 fill:none stamp:flake name:ash
+    circle 2.2 at:8,16 fill:p.ash.3 a:.72 name:cinder
+
+ember_field at:240,180 name:embers
+assert inside(@embers canvas margin:8)
