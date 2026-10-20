@@ -1,6 +1,12 @@
 #![allow(dead_code)]
 
-use ramose_ir::{Blend, Color, Effect, EffectInput, EffectOp, Matrix, Node, NodeKind, Paint, Path, Scene, Shape, Warp};
+use std::sync::Arc;
+
+use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
+use ramose_ir::{
+    AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Matrix, Node, NodeKind, Paint, Path, Scene, Shape,
+    Stage, Warp,
+};
 use skia_safe::{AlphaType, ColorType, Data, Image, ImageInfo};
 
 pub fn scene(w: f32, h: f32, children: Vec<Node>) -> Scene {
@@ -91,4 +97,29 @@ pub fn with_stamps(host: &mut Node, stamps: Vec<Node>, children: Vec<Node>) {
         }
         _ => unreachable!("the host is a shape"),
     }
+}
+
+/// One checked area-brush stage from its `shade` body.
+pub fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
+    let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
+    let program = Program::assemble(MainKind::Area, &params, body);
+    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
+    Stage {
+        program: Arc::new(program),
+        uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
+        seed,
+    }
+}
+
+pub fn mark(stage: Stage, reach: f32) -> AreaMark {
+    AreaMark { stage, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach }
+}
+
+/// A shape whose fill is `paint` shaded by `marks`.
+pub fn brushed(path: &str, geometry: Path, paint: Paint, marks: Vec<AreaMark>) -> Node {
+    let mut node = solid(path, geometry, red());
+    if let NodeKind::Shape(shape) = &mut node.kind {
+        shape.fill = Some(Fill { paint, marks });
+    }
+    node
 }

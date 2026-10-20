@@ -1,12 +1,18 @@
 //! Canvas walk. A node that needs isolation, a mask, an effect, or a non-default composite is
 //! drawn into a layer. A soft clip draws into layers that start from the canvas below, so its
 //! children still blend with it. Effects see the clipped and masked content.
+//!
+//! Whenever [`draw_node`] runs, the canvas matrix is affine. A warp never concatenates a
+//! non-affine matrix around recursive drawing: `warp::draw_warped` draws the node's content flat
+//! and draws only that finished image through the warp.
 
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape};
+use ramose_ir::{
+    Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Scene, Shape, transform_scale,
+};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -18,6 +24,7 @@ use crate::RenderError;
 use crate::effects::{self, FxEnv, white_paint};
 use crate::field::{FieldUse, field_shader};
 use crate::paint::{blend_mode, color4, content_paint, dithered};
+use crate::warp::draw_warped;
 
 pub struct SceneIndex<'a> {
     nodes: HashMap<&'a str, &'a Node>,
@@ -210,7 +217,7 @@ fn bake(ctx: &DrawCtx<'_>, node: &Node, parent: Matrix, bake_scale: f32) -> Resu
     let mut bounds = node
         .bounds()
         .unwrap_or_else(|| Rect::from_xywh(0.0, 0.0, 1.0, 1.0));
-    let pad = visual_pad(node) * transform_scale(&node.transform);
+    let pad = visual_pad(node) * node.place_scale();
     bounds.outset((pad, pad));
     if bounds.width() < 1.0 {
         bounds.right = bounds.left + 1.0;
@@ -277,11 +284,11 @@ pub fn draw_node(
                 rec = rec.bounds(bounds);
             }
             canvas.save_layer(&rec);
-            draw_clipped(canvas, node, ctx, world)?;
+            draw_warped(canvas, node, ctx, world)?;
             canvas.restore();
         }
     } else {
-        draw_clipped(canvas, node, ctx, world)?;
+        draw_warped(canvas, node, ctx, world)?;
     }
 
     canvas.restore();
@@ -315,7 +322,7 @@ fn paint_layer_steps(
         _ => None,
     };
     let mut image = rasterize_layer(ctx.backend, bounds, &local_to_px, lead, |off| {
-        draw_clipped(off, node, ctx, world)
+        draw_warped(off, node, ctx, world)
     })?;
     for step in steps {
         image = match step {
@@ -362,15 +369,15 @@ fn reach_px(
         })
         .fold(0.0_f32, f32::max);
     if let Some(paths) = path_extent(node) {
-        reach.join(node.transform.map_rect(paths.with_outset((ring, ring))).0);
+        reach.join(node.place_rect(paths.with_outset((ring, ring))));
     }
     let px: IRect = parent_to_px.map_rect(reach).0.round_out();
     Some(px.with_outset((2, 2)))
 }
 
-/// The bounds Skia culls the paths under `node` by, in `node`'s space: control points, not the
-/// curve, and strokes grown by half their width times the default miter limit of 4.
-fn path_extent(node: &Node) -> Option<Rect> {
+/// The bounds Skia culls the paths under `node` by, in `node`'s content frame: control points,
+/// not the curve, and strokes grown by half their width times the default miter limit of 4.
+pub(crate) fn path_extent(node: &Node) -> Option<Rect> {
     let own = match &node.kind {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
@@ -389,7 +396,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
     };
     node.descendants()
         .chain(masks)
-        .filter_map(|child| Some(child.transform.map_rect(path_extent(child)?).0))
+        .filter_map(|child| Some(child.place_rect(path_extent(child)?)))
         .chain(own)
         .reduce(|mut a, b| {
             a.join(b);
@@ -397,7 +404,7 @@ fn path_extent(node: &Node) -> Option<Rect> {
         })
 }
 
-fn rasterize_layer(
+pub(crate) fn rasterize_layer(
     backend: Backend,
     bounds: skia_safe::IRect,
     local_to_px: &Matrix,
@@ -429,7 +436,7 @@ fn needs_layer(node: &Node) -> bool {
         || matches!(node.kind, NodeKind::Group { isolate: true, .. })
 }
 
-fn draw_clipped(
+pub(crate) fn draw_clipped(
     canvas: &Canvas,
     node: &Node,
     ctx: &DrawCtx<'_>,
@@ -737,10 +744,4 @@ fn png_bytes(image: &skia_safe::Image) -> Result<Vec<u8>, RenderError> {
         .encode_to_data(EncodedImageFormat::PNG)
         .ok_or_else(|| RenderError::Skia("png encode".into()))?;
     Ok(data.as_bytes().to_vec())
-}
-
-fn transform_scale(m: &Matrix) -> f32 {
-    let sx = (m.scale_x() * m.scale_x() + m.skew_y() * m.skew_y()).sqrt();
-    let sy = (m.scale_y() * m.scale_y() + m.skew_x() * m.skew_x()).sqrt();
-    sx.max(sy).max(1.0)
 }
