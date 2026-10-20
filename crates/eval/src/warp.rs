@@ -159,3 +159,105 @@ pub(crate) fn stack_text(stages: &[WarpStage]) -> String {
         ),
     }
 }
+
+/// The shape a `key(...)` track keeps while it moves a stage's numbers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Shape {
+    Corners,
+    Cylinder(Axis),
+}
+
+fn shape(s: &WarpStage) -> Shape {
+    match s {
+        WarpStage::Corners(_) => Shape::Corners,
+        WarpStage::Cylinder(c) => Shape::Cylinder(c.axis()),
+    }
+}
+
+fn numbers(s: &WarpStage) -> Vec<f64> {
+    match s {
+        WarpStage::Corners(c) => c
+            .quad()
+            .iter()
+            .flat_map(|p| [f64::from(p.x), f64::from(p.y)])
+            .collect(),
+        WarpStage::Cylinder(c) => vec![f64::from(c.r())],
+    }
+}
+
+fn from_numbers(shape: Shape, v: &[f64]) -> Result<WarpStage, String> {
+    match shape {
+        Shape::Corners => {
+            let p = |i: usize| Point::new(v[2 * i] as f32, v[2 * i + 1] as f32);
+            Corners::try_new([p(0), p(1), p(2), p(3)])
+                .map(WarpStage::Corners)
+                .map_err(|_| "the corners cross or fold between two keys".to_string())
+        }
+        Shape::Cylinder(axis) => Cylinder::try_new(v[0] as f32, axis)
+            .map(WarpStage::Cylinder)
+            .ok_or_else(|| "the cylinder radius drops to zero between two keys".to_string()),
+    }
+}
+
+/// The stages a `key(...)` value holds: a warp, or a list of warps. `None` for anything else.
+pub(crate) fn stages_of(v: &Value) -> Option<Vec<WarpStage>> {
+    match v {
+        Value::Warp(w) => Some(vec![**w]),
+        Value::List(items) if !items.is_empty() => items
+            .iter()
+            .map(|v| match v {
+                Value::Warp(w) => Some(**w),
+                _ => None,
+            })
+            .collect(),
+        _ => None,
+    }
+}
+
+/// A `key(...)` result in the form of its first key: one stage bare, a list as a list.
+pub(crate) fn as_value(stages: Vec<WarpStage>, as_list: bool) -> Value {
+    match (stages.as_slice(), as_list) {
+        ([one], false) => Value::Warp(Rc::new(*one)),
+        _ => Value::List(Rc::new(
+            stages
+                .into_iter()
+                .map(|s| Value::Warp(Rc::new(s)))
+                .collect(),
+        )),
+    }
+}
+
+/// `None` when two tracks have the same stages in the same order with the same axes.
+pub(crate) fn mix_error(a: &[WarpStage], b: &[WarpStage]) -> Option<String> {
+    let same = a.len() == b.len() && a.iter().zip(b).all(|(x, y)| shape(x) == shape(y));
+    (!same).then(|| {
+        format!(
+            "`key` mixes warps of different shapes: `{}` and `{}`",
+            stack_text(a),
+            stack_text(b)
+        )
+    })
+}
+
+/// `tracks` blended stage by stage: each number of a stage goes through `f` with that number
+/// from every track. Every track has the first one's shape.
+pub(crate) fn blend(
+    tracks: &[&[WarpStage]],
+    f: &dyn Fn(&[f64]) -> f64,
+) -> Result<Vec<WarpStage>, String> {
+    let first = tracks[0];
+    for t in tracks {
+        if let Some(e) = mix_error(first, t) {
+            return Err(e);
+        }
+    }
+    (0..first.len())
+        .map(|i| {
+            let per: Vec<Vec<f64>> = tracks.iter().map(|t| numbers(&t[i])).collect();
+            let mixed: Vec<f64> = (0..per[0].len())
+                .map(|j| f(&per.iter().map(|p| p[j]).collect::<Vec<_>>()))
+                .collect();
+            from_numbers(shape(&first[i]), &mixed)
+        })
+        .collect()
+}

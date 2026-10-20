@@ -261,3 +261,34 @@ fn explain_prints_the_stack_as_written() {
     );
     assert!(text.contains("warp:cylinder(8 axis:x)"), "{text}");
 }
+
+#[test]
+fn key_interpolates_warps_of_one_shape_and_rejects_a_mix() {
+    let s = scene(
+        "@target t.png 100x100 t:.5s\n\
+         rect 40x24 at:0,0 warp:key(corners(0,0 40,0 40,24 0,24) corners(0,0 80,0 80,24 0,24) ease:linear dur:1s) name:k\n\
+         rect 40x24 at:0,0 warp:key(cylinder(20) cylinder(60) ease:linear dur:1s) name:r\n\
+         rect 40x24 at:0,0 warp:key([cylinder(20) corners(-20,-12 20,-12 20,12 -20,12)] [cylinder(60) corners(-40,-12 40,-12 40,12 -40,12)] dur:1s) name:st\n\
+         circle 1 at:@k.w,@r.w name:p\n\
+         circle 1 at:@st.w,@st.h name:sp\n",
+    );
+    close(probe(&s, "p"), (60.0, 80.0 * sin(20.0 / 40.0)), 1e-3);
+    close(probe(&s, "sp"), (60.0, 24.0), 1e-3);
+    for t in ["0s", ".5s", "1s"] {
+        let ev = run_with(
+            &format!(
+                "@target t.png 100x100 t:{t}\nrect 40x24 at:0,0 warp:key(cylinder(4) corners(0,0 10,0 10,10 0,10) dur:1s) name:k\n"
+            ),
+            &[],
+        );
+        let d = diag(&ev, "E0320");
+        assert!(d.message.contains("mixes"), "{t}: {d}");
+        let ev = run_with(
+            &format!(
+                "@target t.png 100x100 t:{t}\nrect 40x24 at:0,0 warp:key(cylinder(4) none dur:1s) name:k\n"
+            ),
+            &[],
+        );
+        assert!(diag(&ev, "E0320").message.contains("mixes"), "{t}");
+    }
+}

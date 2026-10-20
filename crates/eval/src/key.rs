@@ -1,5 +1,6 @@
 use crate::color;
 use crate::value::{Col, Coord, Value};
+use crate::warp;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ease {
@@ -50,6 +51,7 @@ fn phrase(v: &Value) -> String {
         Value::Ref(_) => "a node reference".into(),
         Value::Vec2(..) => "a vector".into(),
         Value::Size(..) => "a size".into(),
+        v if warp::stages_of(v).is_some() => "a warp".into(),
         other => other.kind().to_string(),
     }
 }
@@ -70,6 +72,7 @@ fn animatable(v: &Value) -> Result<(), String> {
             numeric_coord(y)?;
             Ok(())
         }
+        v if warp::stages_of(v).is_some() => Ok(()),
         _ => Err(format!("cannot animate {} yet", phrase(v))),
     }
 }
@@ -116,6 +119,11 @@ pub fn sample_track(values: &[Value], at: &[f64], eases: &[Ease], u: f64) -> Res
             return Err(format!("`key` mixes {} and {}", phrase(first), phrase(v)));
         }
         animatable(v)?;
+        if let (Some(a), Some(b)) = (warp::stages_of(first), warp::stages_of(v))
+            && let Some(e) = warp::mix_error(&a, &b)
+        {
+            return Err(e);
+        }
     }
     if values.len() == 1 || u < at[0] {
         return Ok(first.clone());
@@ -193,8 +201,19 @@ fn cr_value(p0: &Value, p1: &Value, p2: &Value, p3: &Value, s: f64) -> Result<Va
             let _ = c;
             Ok(Value::Color(Col::plain(color::from_oklab(l, a, b, alpha))))
         }
+        v if let Some(w1) = warp::stages_of(v) => {
+            let (w0, w2, w3) = (stages(p0), stages(p2), stages(p3));
+            let mixed = warp::blend(&[&w0, &w1, &w2, &w3], &|p| cr(p[0], p[1], p[2], p[3], s))?;
+            Ok(warp::as_value(mixed, matches!(v, Value::List(_))))
+        }
         other => Err(format!("cannot animate {} yet", phrase(other))),
     }
+}
+
+/// A neighbour key's stages, for the Catmull-Rom spline. `sample_track` has checked every key
+/// holds a warp of the first key's shape.
+fn stages(v: &Value) -> Vec<ramose_ir::WarpStage> {
+    warp::stages_of(v).expect("every key of a warp track is a warp")
 }
 
 fn color_of(v: &Value) -> (f64, f64, f64, f64) {
@@ -233,6 +252,10 @@ fn lerp_value(a: &Value, b: &Value, s: f64) -> Result<Value, String> {
                 n(b0, b1),
                 n(x.rgba.a, y.rgba.a),
             ))))
+        }
+        (a, b) if let (Some(x), Some(y)) = (warp::stages_of(a), warp::stages_of(b)) => {
+            let mixed = warp::blend(&[&x, &y], &|p| n(p[0], p[1]))?;
+            Ok(warp::as_value(mixed, matches!(a, Value::List(_))))
         }
         _ => Err(format!("cannot animate {} yet", phrase(a))),
     }
