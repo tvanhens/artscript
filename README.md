@@ -182,7 +182,15 @@ assert inside(@body canvas margin:24)
 
 ## Get started
 
-ramose builds with stable Rust.
+Install a prebuilt binary for macOS (arm64, x64), Linux glibc (x64, arm64), or Windows x64:
+
+```sh
+npm install -g ramose
+bun add -g ramose
+npx ramose init
+```
+
+Elsewhere, build from source with stable Rust.
 
 ```sh
 cargo install --git https://github.com/tvanhens/ramose ramose
@@ -206,6 +214,24 @@ ramose build
 | `ramose explain <file>` | Print the evaluated node tree |
 | `ramose docs [TOPIC]...` | Print the language card or the named topics |
 | `ramose init` | Create a starter project |
+
+## Draw with a coding agent
+
+The ramose skill teaches an agent the language and the draw, check, build, and look loop. In Claude Code, install it as a plugin:
+
+```
+/plugin install ramose --marketplace tvanhens/ramose
+```
+
+On Claude Code before 2.1.275, run `/plugin marketplace add tvanhens/ramose`, then `/plugin install ramose@ramose`. For Codex, Cursor, and other agents that read skills, run `npx skills add tvanhens/ramose`.
+
+Then ask for art in your project:
+
+```
+/ramose a 32x32 treasure chest icon with a gold trim
+```
+
+The agent finds or creates `ramose.toml`, writes the `.ramo` source, builds it, and looks at the PNG before it reports back. It uses `ramose` from your PATH, and runs `npx --yes ramose` when the binary is not installed.
 
 ## Learn more
 

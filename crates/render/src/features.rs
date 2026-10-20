@@ -115,6 +115,10 @@ fn paint_features(node: &Node, out: &mut Vec<Unsupported>) {
             }
             paint_feature(node, &stroke.paint, false, out);
         }
+        // A tile has no backdrop, so SVG refuses this one under both profiles.
+        if shape.reads_below() {
+            push(out, node, "brush below");
+        }
     }
 }
 

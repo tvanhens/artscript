@@ -180,18 +180,18 @@ layer mossy_rock pivot:512,820
           rect 17x124 at:458.5,452 fill:lantern.amber.3 a:.6 blur:2
           curve 497,486 527,486 530,512 494,512 closed tension:.25 fill:grad(0 lantern.cream.4 lantern.cream.3,.5 lantern.cream.1) name:candle
             ellipse 15,4 at:512,487 fill:lantern.amber.4 a:.8
-          copy @candle fill:none stroke:fade(lantern.cream.line .6),1.6
+          copy @box.window.candle fill:none stroke:fade(lantern.cream.line .6),1.6
           curve 512,488 512,480 stroke:lantern.wick,2.2 taper:0
-        copy @window fill:none stroke:stone_line,3.2
+        copy @box.window fill:none stroke:stone_line,3.2
         curve 464,508 512,511 560,508 stroke:lantern.amber.3,2.6 taper:.35 a:.75 blur:.8
         subtract name:moon fill:lantern.amber.3
           circle 12 at:413,444
           circle 10 at:418,439
-        copy @moon fill:lantern.amber.4 a:.6 blur:2
-        copy @moon fill:none stroke:stone_line,1.8 a:.8
+        copy @box.moon fill:lantern.amber.4 a:.6 blur:2
+        copy @box.moon fill:none stroke:stone_line,1.8 a:.8
         circle 9 at:611,444 fill:lantern.amber.3 name:sun
-        copy @sun fill:lantern.amber.4 a:.6 blur:2
-        copy @sun fill:none stroke:stone_line,1.8 a:.8
+        copy @box.sun fill:lantern.amber.4 a:.6 blur:2
+        copy @box.sun fill:none stroke:stone_line,1.8 a:.8
         each x in [436 588]
           curve x,340 x,524 stroke:stone_line,2.4 taper:.2 a:.5
         fx rim 4 color:lantern.rim a:.45
@@ -199,8 +199,8 @@ layer mossy_rock pivot:512,820
         fx outline 5.5 color:stone_line
       layer glow pivot:512,452
         circle 160 at:512,452 fill:radial(fade(lantern.amber.3 .42) fade(lantern.amber .16),.45 fade(lantern.amber 0) r:160)
-        inside @window
-          copy @window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
+        inside @box.window
+          copy @box.window fill:radial(fade(lantern.amber.4 .75) fade(lantern.amber.3 .3),.6 fade(lantern.amber 0) at:.5,.64 r:66)
       layer flame pivot:512,486
         _flame 64 17 3 name:fire
       layer flame_low pivot:512,486 a:0
@@ -264,7 +264,7 @@ layer mossy_rock pivot:512,820
       curve 498,790 506,774 526,768 546,778 550,794 524,800 closed tension:.55 jitter:3.5,13 name:c2
       curve 584,788 590,766 612,752 636,756 654,746 672,764 676,788 630,796 closed tension:.55 jitter:3.5,13 name:c3
     copy @tuft_src fill:grad(11 lantern.moss.3 lantern.moss,.5 lantern.moss.1) name:tuft
-      each c in [@c1 @c2 @c3]
+      each c in [@tuft_src.c1 @tuft_src.c2 @tuft_src.c3]
         ellipse c.w*.45,9 at:c.cx+c.w*.18,c.bottom-6 fill:lantern.moss.0 a:.5 blur:5
         ellipse c.w*.25,6 at:c.cx-c.w*.15,c.top+10 fill:lantern.moss.4 a:.6 blur:3
       each i in 0..90

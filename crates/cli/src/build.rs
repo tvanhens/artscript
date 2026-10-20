@@ -186,6 +186,18 @@ fn render_error(job: &TargetJob, e: ramose_render::RenderError) -> Diagnostic {
             }
             d.with_fix("use `profile:svg` to bake those parts into embedded PNG tiles, or remove the raster-only features")
         }
+        ramose_render::RenderError::NoBackdrop(list) => {
+            let mut d = Diagnostic::error(
+                "E0209",
+                span,
+                "`.svg` target cannot bake a node whose brush reads `m.below`: a tile has no backdrop",
+            )
+            .in_file(&job.source);
+            for u in list {
+                d = d.with_note(format!("{}: {}", u.node, u.feature));
+            }
+            d.with_fix("render a `.png` or `.gif` target, or use a brush that does not read `m.below`")
+        }
         ramose_render::RenderError::Skia(msg) => {
             Diagnostic::error("E0400", span, format!("render failed: {msg}")).in_file(&job.source)
         }

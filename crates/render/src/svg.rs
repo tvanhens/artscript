@@ -27,6 +27,10 @@ pub fn render_svg(
     if profile == Profile::Vector && !hits.is_empty() {
         return Err(RenderError::NotVector(hits));
     }
+    let below: Vec<_> = hits.iter().filter(|u| u.feature == "brush below").cloned().collect();
+    if !below.is_empty() {
+        return Err(RenderError::NoBackdrop(below));
+    }
     let mut w = Writer { defs: String::new(), body: String::new(), backend };
     if let Some(bg) = scene.background {
         w.body.push_str("  <rect width=\"");

@@ -93,7 +93,7 @@ fn parts_read_flat_inside_the_body_and_warped_from_outside_after_it_closes() {
     let rig = ev
         .rig
         .anchors
-        .get("label.tip")
+        .get("tip")
         .unwrap_or_else(|| panic!("{:?}", ev.rig.anchors));
     assert!(
         (rig.0 - tip.0).abs() < 1e-3 && (rig.1 - tip.1).abs() < 1e-3,
@@ -243,7 +243,7 @@ fn adding_a_warp_does_not_reseed_the_content() {
         let s = scene(&format!(
             "@target t.png 100x100\nrect 40x24 at:50,50 {key} name:a\n  circle rand(2 6) name:dot\n"
         ));
-        shape(&s, "dot").geometry.compute_tight_bounds().width()
+        shape(&s, "a.dot").geometry.compute_tight_bounds().width()
     };
     assert_eq!(radius(""), radius("warp:cylinder(60)"));
 }

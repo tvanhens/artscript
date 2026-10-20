@@ -1,0 +1,17 @@
+{
+  "name": "ramose",
+  "description": "A language for procedural art that a language model can write and check.",
+  "license": "BUSL-1.1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tvanhens/ramose.git"
+  },
+  "homepage": "https://github.com/tvanhens/ramose#readme",
+  "bin": {
+    "ramose": "bin/ramose.js"
+  },
+  "files": [
+    "bin/ramose.js",
+    "platforms.json"
+  ]
+}
