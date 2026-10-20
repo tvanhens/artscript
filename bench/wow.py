@@ -2,7 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow"]
 # ///
-"""First-shot quality eval for the ramose plugin: N clean `/ramose <prompt>` runs, each scored 1-20 on six axes by a judge panel."""
+"""First-shot quality eval for the ramose plugin: N clean `/ramose <prompt>` runs, each scored 1-20 on six axes by two judges."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ PROMPTS = {
     "fox": "draw a cute fox sitting next to a glowing mushroom",
     "chest": "make a game icon of a treasure chest overflowing with gold coins",
 }
-JUDGES = ("claude-opus-5-5", "claude-fable-5-1", "claude-sonnet-5-5")
+JUDGES = ("claude-opus-5-5", "claude-sonnet-5-5")
 AXES = ("fidelity", "composition", "color", "form", "polish", "wow")
 TOOLS = "Bash(ramose *),Read,Write,Edit,Glob,Grep,Skill"
 TRIAL_TIMEOUT_S = 20 * 60
@@ -102,8 +102,8 @@ def judge_image(prompt: str, path: Path, dest: Path) -> dict:
     with ThreadPoolExecutor(len(JUDGES)) as ex:
         verdicts = dict(zip(JUDGES, ex.map(lambda m: cli_judge(m, prompt, shot), JUDGES)))
     ok = [v for v in verdicts.values() if "error" not in v]
-    composite = statistics.median(statistics.mean(v[a] for a in AXES) for v in ok) if ok else None
-    axes = {a: statistics.median(v[a] for v in ok) for a in AXES} if ok else {}
+    composite = statistics.mean(statistics.mean(v[a] for a in AXES) for v in ok) if ok else None
+    axes = {a: statistics.mean(v[a] for v in ok) for a in AXES} if ok else {}
     return {"judges": verdicts, "composite": composite, "axes": axes, "judge_errors": len(JUDGES) - len(ok)}
 
 
@@ -145,7 +145,7 @@ def trial(i: int, prompt: str, model: str, out: Path, bin_dir: Path) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--prompt", default="fox", choices=sorted(PROMPTS))
-    ap.add_argument("--trials", type=int, default=4)
+    ap.add_argument("--trials", type=int, default=6)
     ap.add_argument("--model", default="claude-opus-5-5")
     ap.add_argument("--label", required=True)
     ap.add_argument("--judge-only", nargs="*", help="score existing PNGs instead of running trials")

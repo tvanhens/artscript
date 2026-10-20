@@ -30,12 +30,12 @@ Write a new baseline from a CI run: download its artifact and copy its `report.j
 
 # wow
 
-`wow.py` measures how good a first `/ramose <prompt>` result looks. It runs N clean `claude -p` sessions that load only `plugins/ramose` and the ramose binary built from this checkout, so a change to the skill, the docs, or the std library is what it measures. Each PNG goes to a judge panel of opus, fable, and sonnet, which score it from 1 to 20 on fidelity, composition, color, form, polish, and wow. A trial's composite is the median judge's mean over the six axes.
+`wow.py` measures how good a first `/ramose <prompt>` result looks. It runs N clean `claude -p` sessions that load only `plugins/ramose` and the ramose binary built from this checkout, so a change to the skill, the docs, or the std library is what it measures. Each PNG goes to two judges, opus and sonnet, which score it from 1 to 20 on fidelity, composition, color, form, polish, and wow. A trial's composite is the mean of both judges over the six axes. A third judge, fable, was dropped: it was the noisiest on a re-judge of the same images, it agreed least with the other two, and as the middle scorer it set the median in 80 of 104 trials.
 
 ```sh
-uv run bench/wow.py --label base                  # 4 trials of the fox prompt
+uv run bench/wow.py --label base                  # 6 trials of the fox prompt
 uv run bench/wow.py --label base --prompt chest   # the treasure chest icon prompt
 uv run bench/wow.py --label ctl --judge-only a.png b.png
 ```
 
-Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. One trial's composite moves by about 0.5 from run to run, so compare means of at least 4 trials, and run both prompts before you trust a change.
+Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. One trial's composite moves by about 0.5 from run to run, so compare means of at least 6 trials, and run both prompts before you trust a change.
