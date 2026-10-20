@@ -1,0 +1,190 @@
+# Gouache, side view. Short glass columns under crowns of long tentacles. Flames sit in the mouths.
+
+@target prop/candles.png 260x240 bg:none
+
+use paint { sculpt ink }
+use parts { contact ember }
+
+def anemone_candles
+  anchor feet 0,0
+  contact 86 at:2,-1 name:ground
+
+  layer stone_layer
+    curve -98,8 -92,0 -80,2 -68,-6 -18,-9 30,-11 76,-6 106,2 100,11 -90,11 closed fill:p.bone.2 brush:sculpt(scale:1.15 depth:.78 planes:.6) name:rock
+      ellipse 18,4.5 at:36,-2 fill:p.bone.5 a:.4 blur:2
+      ellipse 14,4 at:-38,2 fill:p.bone.0 a:.36 blur:2
+      curve -54,2 -32,-1 -6,3 stroke:p.ink,1.8 a:.6 name:seam
+      each i in 0..3
+        circle .65+rand(0 1) at:rand(-30 50),rand(-4 4) fill:p.ink a:.4 name:pit
+      each i in 0..3
+        circle 1+rand(0 .55) at:-48+i*6+rand(-1 1),1+rand(0 1) fill:p.moss.3 brush:sculpt(scale:.14 depth:.3) name:moss
+      fx grain .04 scale:1.2
+      fx outline 4 brush:ink color:p.ink
+    curve -94,5 -88,-12 -60,-20 -18,-23 22,-22 64,-20 96,-10 104,-1 96,7 -62,8 closed fill:p.glass.2 brush:sculpt(scale:.95 glossk:.44 depth:.66 planes:.46) name:holdfast
+      ellipse 22,5 at:24,-12 fill:p.glass.5 a:.32 blur:2
+      ellipse 16,6 at:18,-8 fill:p.amber.2 a:.34 blur:2
+      ellipse 14,4 at:-34,-6 fill:p.glass.0 a:.28 blur:2
+      each i in 0..6
+        circle .5+rand(0 .8) at:-48+i*15+rand(-2 2),1+rand(-1 2) fill:pick([p.bone.4 p.bone.5 p.shine]) a:.78 brush:sculpt(scale:.12) name:crust
+      fx outline 3.8 brush:ink color:p.ink
+
+  layer bud_layer
+    each i in 0..3
+      ellipse 2.4,7+mod(i 3) at:-74+sin(-22+i*16)*(7+mod(i 3))*.65,-28-cos(-22+i*16)*(7+mod(i 3))*.65 rot:-22+i*16 fill:p.glass.2 brush:sculpt(scale:.18 glossk:.34 depth:.64) name:back_f
+        fx outline 1.4 brush:ink color:p.ink
+    curve -9,2 -12,-4 -10,-16 -3,-28 6,-26 10,-16 7,-4 4,2 closed at:-74,0 fill:p.glass.2 brush:sculpt(scale:.48 glossk:.4 depth:.64 planes:.42) name:stalk_f
+      ellipse 2.4,5 at:1.5,-10 fill:p.glass.4 a:.3 blur:1.2
+      ellipse 2,1.1 at:0,-20 fill:p.glass.0 a:.75 name:shut
+      fx outline 2.6 brush:ink color:p.ink
+    ellipse 10,3.6 at:-74,-28 fill:p.glass.3 brush:sculpt(scale:.28 glossk:.42) name:disc_f
+      fx outline 1.7 brush:ink color:p.ink
+    curve -78,-26 -88,-36 -82,-48 stroke:p.glass.3,4.5 taper:0,.9 brush:sculpt(scale:.2 glossk:.4) name:arm_f
+      fx outline 1.4 brush:ink color:p.ink
+    curve -70,-26 -64,-38 -70,-46 stroke:p.glass.4,4 taper:0,.85 brush:sculpt(scale:.18 glossk:.42) name:arm_f_r
+      fx outline 1.4 brush:ink color:p.ink
+
+  layer left_layer
+    each i in 0..4
+      ellipse 3.2,11+mod(i*3 6) at:-38+sin(-55+i*24)*(11+mod(i*3 6))*.75,-46-cos(-55+i*24)*(11+mod(i*3 6))*.75 rot:-55+i*24+rand(-6 6) fill:p.glass.2 brush:sculpt(scale:.22 glossk:.4 depth:.66) name:back_a
+        fx outline 1.5 brush:ink color:p.ink
+    curve -18,3 -24,-8 -22,-24 -16,-40 -6,-48 8,-46 16,-34 16,-16 10,3 closed at:-38,0 fill:p.glass.3 brush:sculpt(scale:.62 glossk:.5 depth:.62 planes:.44) name:stalk_a
+      ellipse 6,10 at:4,-18 fill:p.glass.5 a:.32 blur:1.6
+      ellipse 5,7 at:-5,-12 fill:p.glass.0 a:.26 blur:1.5
+      ellipse 4,7 at:1,-34 fill:p.amber.2 a:.42 blur:1.6
+      curve -1,-4 -2,-20 0,-36 stroke:p.glass.4,1.5 a:.4 name:rib
+      each i in 0..2
+        circle .55+rand(0 .8) at:rand(-4 4),rand(-34 -8) fill:p.shine a:.7 name:bubble
+      fx outline 3.4 brush:ink color:p.ink
+    ellipse 18,5.4 at:-38,-46 fill:p.glass.3 brush:sculpt(scale:.34 glossk:.55 depth:.5) name:disc_a
+      ellipse 5,1.5 at:1.6,-.5 fill:p.glass.5 a:.5
+      ellipse 3.4,1.4 at:.2,.5 fill:p.ink name:mouth
+      fx outline 2 brush:ink color:p.ink
+    curve -44,-42 -58,-66 -50,-92 -38,-110 stroke:p.glass.3,8 taper:0,.94 brush:sculpt(scale:.28 glossk:.5) name:arm_a
+      fx outline 1.9 brush:ink color:p.ink
+    curve -30,-44 -22,-70 -28,-96 -18,-112 stroke:p.glass.4,7.5 taper:0,.92 brush:sculpt(scale:.28 glossk:.52) name:arm_a_r
+      fx outline 1.9 brush:ink color:p.ink
+    curve -48,-40 -64,-30 -78,-16 -72,-4 stroke:p.glass.3,7 taper:0,.86 brush:sculpt(scale:.26 glossk:.46) name:hang_a
+      fx outline 1.8 brush:ink color:p.ink
+    curve -28,-42 -20,-26 -26,-12 stroke:p.glass.4,6.5 taper:0,.8 brush:sculpt(scale:.24 glossk:.48) name:curtain_a
+      fx outline 1.7 brush:ink color:p.ink
+    curve -3.2,2 -4.2,-5 -1.4,-10 0,-13 1.6,-10 3.8,-4 2.8,2 closed at:-38,-47 fill:p.amber.3 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.28 planes:.2 glossk:.4 scale:.26) name:flame_a
+      ellipse 1.2,3 at:.6,-5 fill:p.amber.6
+      ellipse .55,1.3 at:.9,-7 fill:p.shine
+      fx glow 7 color:p.amber.4 a:.55 strength:1.2
+      fx outline 1.4 brush:ink color:p.ink
+
+  layer right_layer
+    each i in 0..4
+      ellipse 3.3,12+mod(i*4 6) at:64+sin(-20+i*20)*(12+mod(i*4 6))*.74,-54-cos(-20+i*20)*(12+mod(i*4 6))*.74 rot:-20+i*20+rand(-5 5) fill:p.glass.2 brush:sculpt(scale:.22 glossk:.4 depth:.66) name:back_e
+        fx outline 1.5 brush:ink color:p.ink
+    curve -16,3 -22,-10 -20,-28 -12,-46 0,-56 12,-52 18,-36 16,-16 10,3 closed at:64,0 fill:p.glass.3 brush:sculpt(scale:.64 glossk:.5 depth:.62 planes:.44) name:stalk_e
+      ellipse 6,11 at:5,-22 fill:p.glass.5 a:.32 blur:1.6
+      ellipse 4,8 at:1,-40 fill:p.amber.2 a:.4 blur:1.6
+      curve 1,-6 2,-24 0,-42 stroke:p.glass.4,1.5 a:.42 name:rib
+      each i in 0..2
+        circle .55+rand(0 .85) at:rand(-4 5),rand(-40 -10) fill:p.shine a:.7 name:bubble
+      fx outline 3.5 brush:ink color:p.ink
+    ellipse 18,5.6 at:64,-54 fill:p.glass.3 brush:sculpt(scale:.34 glossk:.55 depth:.5) name:disc_e
+      ellipse 5.2,1.6 at:1.8,-.5 fill:p.glass.5 a:.5
+      ellipse 3.5,1.4 at:.3,.5 fill:p.ink name:mouth
+      fx outline 2 brush:ink color:p.ink
+    curve 58,-50 48,-74 56,-100 68,-120 stroke:p.glass.3,8 taper:0,.94 brush:sculpt(scale:.28 glossk:.5) name:arm_e
+      fx outline 1.9 brush:ink color:p.ink
+    curve 72,-50 86,-72 96,-96 88,-116 stroke:p.glass.4,7.5 taper:0,.92 brush:sculpt(scale:.28 glossk:.52) name:arm_e_r
+      fx outline 1.9 brush:ink color:p.ink
+    curve 76,-48 92,-36 104,-20 98,-6 stroke:p.glass.3,6.5 taper:0,.84 brush:sculpt(scale:.24 glossk:.46) name:hang_e
+      fx outline 1.7 brush:ink color:p.ink
+    curve 58,-48 50,-30 56,-14 stroke:p.glass.4,6 taper:0,.8 brush:sculpt(scale:.24 glossk:.48) name:curtain_e
+      fx outline 1.6 brush:ink color:p.ink
+    curve -3.4,2 -4.6,-6 -1.6,-12 0,-15 2,-12 4.4,-5 3.4,2 closed at:64,-55 fill:p.amber.4 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.26 planes:.18 glossk:.44 scale:.28) name:flame_e
+      ellipse 1.4,3.4 at:.7,-6 fill:p.amber.6
+      ellipse .65,1.5 at:1,-8.5 fill:p.shine
+      fx glow 7 color:p.amber.4 a:.6 strength:1.25
+      fx outline 1.5 brush:ink color:p.ink
+
+  layer mid_layer
+    each i in 0..4
+      ellipse 3.4,12+mod(i*5 7) at:-2+sin(-42+i*20)*(12+mod(i*5 7))*.76,-52-cos(-42+i*20)*(12+mod(i*5 7))*.76 rot:-42+i*20+rand(-6 6) fill:p.glass.2 brush:sculpt(scale:.22 glossk:.42 depth:.64) name:back_c
+        fx outline 1.5 brush:ink color:p.ink
+    curve -18,3 -24,-8 -22,-26 -14,-42 -4,-52 10,-50 18,-38 18,-18 11,3 closed at:-2,0 fill:p.glass.3 brush:sculpt(scale:.66 glossk:.52 depth:.6 planes:.42) name:stalk_c
+      ellipse 6,11 at:5,-20 fill:p.glass.5 a:.34 blur:1.6
+      ellipse 4.5,8 at:1,-38 fill:p.amber.2 a:.44 blur:1.6
+      curve -2,-6 -3,-22 -1,-38 stroke:p.glass.5,1.6 a:.45 name:rib
+      each i in 0..2
+        circle .6+rand(0 .9) at:rand(-5 5),rand(-40 -10) fill:p.shine a:.72 name:bubble
+      fx outline 3.6 brush:ink color:p.ink
+    ellipse 19,5.8 at:-2,-52 fill:p.glass.4 brush:sculpt(scale:.36 glossk:.56 depth:.48) name:disc_c
+      ellipse 5.6,1.7 at:1.8,-.6 fill:p.glass.5 a:.52
+      ellipse 3.6,1.5 at:.2,.5 fill:p.ink name:mouth
+      fx outline 2.1 brush:ink color:p.ink
+    curve -12,-48 -24,-76 -14,-104 -2,-122 stroke:p.glass.3,8.5 taper:0,.94 brush:sculpt(scale:.3 glossk:.52) name:arm_c
+      fx outline 2 brush:ink color:p.ink
+    curve 8,-50 18,-78 10,-108 18,-126 stroke:p.glass.4,8 taper:0,.93 brush:sculpt(scale:.3 glossk:.54) name:arm_c_r
+      fx outline 2 brush:ink color:p.ink
+    curve -16,-46 -30,-34 -40,-18 -34,-6 stroke:p.glass.3,6.5 taper:0,.84 brush:sculpt(scale:.24 glossk:.46) name:hang_c
+      fx outline 1.7 brush:ink color:p.ink
+    curve 6,-48 12,-30 6,-14 stroke:p.glass.4,6.5 taper:0,.8 brush:sculpt(scale:.24 glossk:.48) name:curtain_c
+      fx outline 1.7 brush:ink color:p.ink
+    curve -3.6,2 -5,-6 -1.8,-13 0,-16 2.2,-13 4.8,-5 3.6,2 closed at:-2,-53 fill:p.amber.4 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.26 planes:.18 glossk:.46 scale:.3) name:flame_c
+      ellipse 1.6,3.8 at:.8,-6.5 fill:p.amber.6
+      ellipse .7,1.6 at:1.1,-9 fill:p.shine
+      fx glow 8 color:p.amber.4 a:.62 strength:1.28
+      fx outline 1.5 brush:ink color:p.ink
+
+  layer hero_layer
+    each i in 0..5
+      ellipse 3.6,13+mod(i*4 8) at:26+sin(-40+i*15)*(13+mod(i*4 8))*.78,-64-cos(-40+i*15)*(13+mod(i*4 8))*.78 rot:-40+i*15+rand(-6 6) fill:p.glass.2 brush:sculpt(scale:.24 glossk:.44 depth:.64) name:back_d
+        fx outline 1.6 brush:ink color:p.ink
+    curve -22,4 -28,-6 -26,-24 -24,-42 -12,-60 2,-66 16,-58 24,-40 22,-18 14,4 closed at:26,0 fill:p.glass.3 brush:sculpt(scale:.75 glossk:.56 depth:.58 planes:.4) name:stalk_d
+      ellipse 8,14 at:6,-24 fill:p.glass.5 a:.36 blur:1.8
+      ellipse 6,10 at:-6,-16 fill:p.glass.0 a:.28 blur:1.5
+      ellipse 5.5,12 at:1,-46 fill:p.amber.2 a:.5 blur:2
+      curve -4,-6 -5,-26 -2,-48 stroke:p.glass.0,2 a:.32 name:septum
+      curve 3,-8 4,-28 2,-50 stroke:p.glass.5,1.7 a:.5 name:rib
+      curve -6,-18 -1,-30 4,-38 stroke:p.ink,1.3 a:.6 name:crack
+      each i in 0..3
+        circle .7+rand(0 1.1) at:rand(-7 7),rand(-50 -10) fill:p.shine a:.75 name:bubble
+          circle .28 at:.2,-.2 fill:p.glass.5
+      fx outline 4 brush:ink color:p.ink
+    ellipse 26,7 at:26,-64 fill:p.glass.4 brush:sculpt(scale:.4 glossk:.6 depth:.46) name:disc_d
+      ellipse 8,2.2 at:2.4,-.8 fill:p.glass.5 a:.55
+      ellipse 4.8,1.8 at:.2,.7 fill:p.ink name:mouth
+      each i in 0..5
+        circle 1.1+rand(0 .4) at:sin(i*60)*12,cos(i*60)*2.4 fill:p.glass.5 brush:sculpt(scale:.12 glossk:.5) name:knob
+      fx outline 2.2 brush:ink color:p.ink
+    curve 14,-60 2,-92 -8,-122 2,-148 stroke:p.glass.3,9 taper:0,.95 brush:sculpt(scale:.3 glossk:.54) name:arm_d
+      fx outline 2 brush:ink color:p.ink
+    curve 22,-62 16,-98 24,-132 16,-158 stroke:p.glass.4,8.5 taper:0,.95 brush:sculpt(scale:.3 glossk:.56) name:arm_d_m
+      fx outline 2 brush:ink color:p.ink
+    curve 32,-60 44,-96 36,-130 46,-162 stroke:p.glass.3,9.5 taper:0,.95 brush:sculpt(scale:.32 glossk:.55) name:arm_d_r
+      fx outline 2.1 brush:ink color:p.ink
+    curve 40,-58 56,-86 68,-112 58,-136 stroke:p.glass.4,8 taper:0,.92 brush:sculpt(scale:.28 glossk:.52) name:arm_d_far
+      fx outline 1.9 brush:ink color:p.ink
+    curve 46,-56 62,-42 74,-24 66,-8 stroke:p.glass.3,7 taper:0,.86 brush:sculpt(scale:.26 glossk:.48) name:hang_d
+      fx outline 1.8 brush:ink color:p.ink
+    curve 12,-58 -2,-46 -14,-28 -8,-10 stroke:p.glass.3,7 taper:0,.86 brush:sculpt(scale:.26 glossk:.48) name:hang_d_l
+      fx outline 1.8 brush:ink color:p.ink
+    curve 18,-58 10,-38 16,-16 stroke:p.glass.4,7 taper:0,.82 brush:sculpt(scale:.26 glossk:.5) name:curtain_d
+      fx outline 1.7 brush:ink color:p.ink
+    curve 34,-58 44,-40 38,-18 stroke:p.glass.4,6.5 taper:0,.8 brush:sculpt(scale:.24 glossk:.5) name:curtain_d_r
+      fx outline 1.7 brush:ink color:p.ink
+    circle 2.2 at:40,-128 fill:p.amber.5 brush:sculpt(scale:.16 glossk:.6 lo:p.amber.1 hi:p.shine) name:kiss
+    curve -4.4,3 -6.4,-8 -2.4,-16 0,-21 2.6,-16 5.8,-7 4.2,3 closed at:26,-66 fill:p.amber.4 brush:sculpt(lo:p.amber.0 hi:p.shine depth:.24 planes:.16 glossk:.5 scale:.32) name:flame_d
+      ellipse 1.9,5 at:1,-8 fill:p.amber.6
+      ellipse .85,2.1 at:1.3,-12 fill:p.shine
+      fx glow 8 color:p.amber.4 a:.66 strength:1.3
+      fx outline 1.6 brush:ink color:p.ink
+    curve 30,-62 42,-54 36,-70 28,-64 stroke:p.glass.4,5.5 taper:0,.7 brush:sculpt(scale:.22 glossk:.5) name:cross_d
+      fx outline 1.5 brush:ink color:p.ink
+    curve 4,-10 12,-22 6,-32 at:30,-78 fill:none stamp:ember name:sparks
+
+  layer litter_layer
+    curve -22,1 -2,-8 22,-3 46,2 stroke:p.glass.3,6.5 taper:0,.75 brush:sculpt(scale:.26 glossk:.5) name:fallen
+      fx outline 1.8 brush:ink color:p.ink
+    curve -18,-1 8,-9 32,-2 stroke:p.glass.5,1.7 a:.42 name:fallen_lit
+    poly 3 r:3.8 at:50,1 rot:58 fill:p.glass.4 brush:sculpt(scale:.18 glossk:.6) name:shard
+      fx outline 1.4 brush:ink color:p.ink
+
+anemone_candles at:130,198 name:candles
+assert inside(@candles canvas margin:12)
+assert @candles.bottom-@candles.feet.y in -8..16
