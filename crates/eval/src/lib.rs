@@ -360,6 +360,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
     let mut loops = probe.plays.iter().any(|p| p.loops);
+    let mut reached = dur;
     let n = match frame_count(dur, fps) {
         Ok(n) => n,
         Err(msg) => {
@@ -405,6 +406,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             frame_job.frame_t = t;
             let ev = evaluate_frame(project, &frame_job);
             loops |= ev.plays.iter().any(|p| p.loops);
+            reached = ev.plays.iter().map(|p| p.end).fold(reached, f64::max);
             let left = n - frames.len();
             if let Some(err) = ev
                 .scene
@@ -427,7 +429,8 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     if let Some(d) = retained_error {
         diagnostics.push(d);
     } else if !diagnostics.iter().any(|d| d.code.starts_with('E'))
-        && let Some(d) = gif_timing_error(job, frames.len(), dur)
+        && let Some(d) = late_play_error(job, dur, reached)
+            .or_else(|| gif_timing_error(job, frames.len(), dur))
             .or_else(|| gif_background_error(job, &frames))
             .or_else(|| gif_dimension_error(job, &frames))
             .or_else(|| gif_raster_error(job, &frames))
@@ -442,6 +445,23 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
         dur,
         fps,
     }
+}
+
+/// A clip with no `dur:` is as long as the plays the t=0 frame reaches, so a play reached only
+/// later that ends past it would be cut short.
+fn late_play_error(job: &TargetJob, dur: f64, reached: f64) -> Option<Diagnostic> {
+    if job.dur.is_some() || reached <= dur {
+        return None;
+    }
+    Some(
+        Diagnostic::error(
+            "E0206",
+            job.span,
+            format!("a play reached after t=0 ends at {reached}s, after the {dur}s clip"),
+        )
+        .in_file(&job.source)
+        .with_fix(format!("set `dur:{reached}s` on the target")),
+    )
 }
 
 /// The duration and centisecond checks `build` uses before it encodes. `check` reads them from `sample`.
