@@ -52,13 +52,14 @@ class Experiment:
     repetitions: int
     model: str | None
     judge_model: str | None
-    binary: str
-    baseline: str
+    binary: str | None
+    baseline: str | None
     candidate: str
     replay: str | None = None
     effort: str | None = None
     judge_effort: str | None = None
     candidate_binary: str | None = None
+    reference: str | None = None
 
 
 @dataclass
@@ -70,6 +71,7 @@ class Generation:
     authoring_reused: bool = False
     duration_s: float | None = None
     token_usage: dict | None = None
+    source: str = "author"
 
 
 @dataclass
@@ -363,7 +365,8 @@ def summarize(rows: list[dict], scheduled: int) -> dict:
               "judge_errors": sum(r.get("judgment", {}).get("status") == "error" for r in rows),
               "protocol_errors": [r["generations"][a].get("error") for r in rows for a in ARMS
                                   if r["generations"][a]["status"] not in ("success", "failed")],
-              "arms": {a: {"successes": sum(r["generations"][a]["status"] == "success" for r in rows),
+              "arms": {a: {"successes": sum(r["generations"][a]["status"] == "success" and r["generations"][a].get("source") != "reference" for r in rows),
+                            "reference_uses": sum(r["generations"][a].get("source") == "reference" for r in rows),
                             "failures": sum(r["generations"][a]["status"] == "failed" for r in rows),
                             "infrastructure_errors": sum(r["generations"][a]["status"] == "infrastructure_error" for r in rows)} for a in ARMS},
               "paired_delta_mean": None, "paired_delta_ci95": None}
@@ -461,7 +464,17 @@ def validate_execution(out: Path, manifest: dict) -> None:
     prompts, suite = load_prompts(out / "suite.json")
     if list(map(list, prompts.items())) != manifest["prompts"] or canonical(suite) != protocol["suite_sha256"]:
         raise ValueError("suite differs from frozen protocol")
-    for arm in ARMS:
+    if manifest.get("reference"):
+        reference = load_reference(out / manifest["reference"])
+        if protocol.get("kind") != "fixed-image-reference" or protocol.get("reference_fingerprint") != reference["fingerprint"]:
+            raise ValueError("reference protocol mismatch")
+        if list(map(list, ((item["id"], item["prompt"]) for item in reference["prompts"]))) != manifest["prompts"]:
+            raise ValueError("reference prompts differ from run")
+        if manifest["baseline"] is not None or manifest["binary"] is not None:
+            raise ValueError("reference mode cannot have baseline author inputs")
+    elif protocol.get("kind", "fresh-pair") != "fresh-pair":
+        raise ValueError("missing fixed-image reference")
+    for arm in (("candidate",) if manifest.get("reference") else ARMS):
         if tree_hashes(out / "inputs" / arm) != manifest["provenance"][arm]:
             raise ValueError("skill provenance mismatch")
         binary = out / manifest["candidate_binary" if arm == "candidate" else "binary"]
@@ -577,6 +590,13 @@ def report(out: Path, *, unsealed: bool = False) -> dict:
                 saved = json.loads((out / "pairs" / entry["directory"] / arm / "generation.json").read_text())
                 if saved != row["generations"][arm]:
                     raise ValueError("generation receipt contradicts pair")
+                if arm == "baseline" and manifest.get("reference"):
+                    reference = load_reference(out / manifest["reference"])
+                    item = next(item for item in reference["prompts"] if item["id"] == row["prompt_id"])
+                    expected = asdict(Generation(status="success", image=str(Path(manifest["reference"]) / item["image"]),
+                                                authoring_reused=True, source="reference"))
+                    if saved != expected:
+                        raise ValueError("baseline receipt contradicts fixed image reference")
                 if saved.get("image"):
                     image = out / saved["image"]
                     if Path(saved["image"]).is_absolute() or not image.resolve().is_relative_to(out.resolve()) or not image.is_file():
@@ -633,7 +653,13 @@ def run_pair(exp: Experiment, prompt_id: str, prompt: str, repetition: int, dest
                 archive = dest / "attempts" / arm
                 archive.mkdir(parents=True, exist_ok=True)
                 folder.rename(archive / str(len(list(archive.iterdir())) + 1))
-            rows[arm] = generation(exp, arm, prompt, folder)
+            if arm == "baseline" and exp.reference:
+                item = next(item for item in load_reference(Path(exp.reference))["prompts"] if item["id"] == prompt_id)
+                folder.mkdir(parents=True)
+                rows[arm] = asdict(Generation(status="success", image=str(Path(exp.reference) / item["image"]),
+                                              authoring_reused=True, source="reference"))
+            else:
+                rows[arm] = generation(exp, arm, prompt, folder)
             if rows[arm].get("image"):
                 rows[arm]["image"] = str(Path(rows[arm]["image"]).relative_to(dest.parent.parent))
             save(receipt, rows[arm])
@@ -668,11 +694,12 @@ def validate_replay(source: Path, manifest: dict) -> dict:
     for key in ("prompts", "repetitions", "model", "effort", "invocation_form", "schedule"):
         if json.loads(json.dumps(manifest[key])) != previous.get(key):
             raise ValueError(f"replay input differs: {key}")
-    for key in ("model", "effort", "jobs", "author_timeout_s", "invocation_form", "codex_version", "host", "backend_policy"):
-        if manifest["protocol"].get(key) != previous["protocol"].get(key):
+    for key in ("model", "effort", "jobs", "author_timeout_s", "invocation_form", "codex_version", "host", "backend_policy", "kind", "reference_fingerprint"):
+        default = "fresh-pair" if key == "kind" else None
+        if manifest["protocol"].get(key, default) != previous["protocol"].get(key, default):
             raise ValueError(f"replay author protocol differs: {key}")
     for key in (*ARMS, "binaries"):
-        if manifest["provenance"][key] != previous["provenance"][key]:
+        if manifest["provenance"].get(key) != previous["provenance"].get(key):
             raise ValueError(f"replay provenance differs: {key}")
     source_report = report(source)
     if source_report["protocol_errors"]:
@@ -697,10 +724,97 @@ def load_prompts(path: Path) -> tuple[dict, dict]:
     return prompts, suite
 
 
+def load_reference(root: Path) -> dict:
+    root = Path(root)
+    if root.is_symlink():
+        raise ValueError("reference root cannot be a symlink")
+    value = json.loads((root / "reference.json").read_text())
+    if not isinstance(value, dict) or value.get("schema_version") != 1 or value.get("kind") != "fixed-image-reference":
+        raise ValueError("invalid fixed-image reference")
+    if value.get("fingerprint") != canonical({k: v for k, v in value.items() if k != "fingerprint"}):
+        raise ValueError("reference fingerprint mismatch")
+    items = value.get("prompts")
+    if not isinstance(items, list) or not items:
+        raise ValueError("reference requires prompts")
+    ids, files = set(), {"reference.json"}
+    for item in items:
+        key, prompt = item["id"], item["prompt"]
+        if not isinstance(key, str) or not key.strip() or key in ids or not isinstance(prompt, str) or not prompt.strip():
+            raise ValueError("invalid or duplicate reference prompt")
+        ids.add(key)
+        score = item["original_score"]
+        if item["status"] != "success" or type(score) not in (float, int) or not math.isfinite(score) or not 1 <= score <= 20:
+            raise ValueError("reference must contain successful scored generations")
+        image = Path(item["image"])
+        if image.is_absolute() or ".." in image.parts or image.as_posix() != item["image"] or image.suffix != ".png" or str(image) in files:
+            raise ValueError("invalid or duplicate reference image path")
+        path = root / image
+        if not path.resolve().is_relative_to(root.resolve()) or digest(path) != item["image_sha256"]:
+            raise ValueError("reference image integrity failed")
+        with Image.open(path) as decoded:
+            if decoded.format != "PNG":
+                raise ValueError("reference image must be PNG")
+            decoded.verify()
+        pixels(path)
+        files.add(str(image))
+    if set(tree_hashes(root)) != files:
+        raise ValueError("reference contains missing or unexpected files")
+    return value
+
+
+def export_reference(source: Path, arm: str, repetition: int, source_commit: str, dest: Path) -> None:
+    from bundle import verify
+    if dest.resolve().is_relative_to(source.resolve()):
+        raise ValueError("reference export must be outside the sealed source bundle")
+    if dest.exists():
+        raise ValueError("reference destination must not exist; choose a new version")
+    if not re.fullmatch(r"[0-9a-f]{40}", source_commit):
+        raise ValueError("source commit must be a full Git commit SHA")
+    sealed = verify(source)
+    result = report(source)
+    if not result["summary"]["complete"] or result["protocol_errors"]:
+        raise ValueError("reference export requires a complete verified run")
+    experiment = result["experiment"]
+    if arm == "baseline" and experiment.get("reference"):
+        raise ValueError("baseline is already a reference; promote fresh candidate images")
+    if not 0 <= repetition < experiment["repetitions"]:
+        raise ValueError("reference repetition is outside the captured schedule")
+    rows = {(row["prompt_id"], row["repetition"]): row for row in result["pairs"]}
+    selected = [rows[key, repetition] for key, _ in experiment["prompts"]]
+    if any(row["generations"][arm]["status"] != "success" for row in selected):
+        raise ValueError("selected reference repetition contains an unsuccessful delivery")
+    value = {"schema_version": 1, "kind": "fixed-image-reference",
+             "source": {"bundle_fingerprint": sealed["fingerprint"], "arm": arm, "repetition": repetition,
+                        "source_skill_commit": source_commit, "skill_sha256": experiment["provenance"][arm],
+                        "binary_sha256": experiment["provenance"]["binaries"][arm],
+                        "model": experiment["model"], "effort": experiment["effort"],
+                        "judge_model": experiment["judge_model"], "judge_effort": experiment["judge_effort"],
+                        "protocol_key": experiment["protocol_key"],
+                        "rubric_sha256": experiment["protocol"]["rubric_sha256"],
+                        "codex_version": experiment["provenance"]["codex_version"],
+                        "selection": "explicit repetition, independent of scores"},
+             "score_interpretation": "Original scores are historical context only. Compare with fresh blinded judgments.",
+             "prompts": []}
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="reference-export-", dir=dest.parent) as tmp:
+        staging = Path(tmp) / "reference"
+        (staging / "images").mkdir(parents=True)
+        for index, row in enumerate(selected):
+            image = staging / "images" / f"{index:03d}.png"
+            shutil.copy2(source / row["generations"][arm]["image"], image)
+            value["prompts"].append({"id": row["prompt_id"], "prompt": row["prompt"], "status": "success",
+                                     "image": str(image.relative_to(staging)), "image_sha256": digest(image),
+                                     "original_score": row["judgment"]["scores"][arm]})
+        value["fingerprint"] = canonical(value)
+        save(staging / "reference.json", value)
+        load_reference(staging)
+        staging.rename(dest)
+
+
 def execute(out: Path, manifest: dict) -> None:
     from bundle import seal
-    fields = {key: manifest[key] for key in Experiment.__dataclass_fields__}
-    for key in ("binary", "baseline", "candidate", "candidate_binary"):
+    fields = {key: manifest.get(key) for key in Experiment.__dataclass_fields__}
+    for key in ("binary", "baseline", "candidate", "candidate_binary", "reference"):
         if fields[key]:
             fields[key] = str(out / fields[key])
     exp = Experiment(**fields)
@@ -716,8 +830,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
     run = sub.add_parser("run")
-    for name in ("baseline", "candidate", "ramose", "prompts", "out"):
+    inputs = run.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--baseline", type=Path)
+    inputs.add_argument("--reference", type=Path)
+    for name in ("candidate", "ramose", "out"):
         run.add_argument("--" + name, type=Path, required=True)
+    run.add_argument("--prompts", type=Path)
     run.add_argument("--candidate-ramose", type=Path)
     run.add_argument("--repetitions", type=int, default=5)
     run.add_argument("--jobs", type=int, default=2)
@@ -729,9 +847,23 @@ def main() -> int:
     run.add_argument("--replay", type=Path)
     for action in ("report", "resume", "verify"):
         sub.add_parser(action).add_argument("out", type=Path)
+    reference = sub.add_parser("reference", help="export one successful generation per prompt from a sealed run")
+    reference.add_argument("source", type=Path)
+    reference.add_argument("--arm", choices=ARMS, required=True)
+    reference.add_argument("--repetition", type=int, required=True, help="zero-based repetition; selection never uses scores")
+    reference.add_argument("--source-commit", required=True, help="Git commit identifying the source skill, not a claim about capture time")
+    reference.add_argument("--out", type=Path, required=True)
+    sub.add_parser("verify-reference").add_argument("out", type=Path)
     args = parser.parse_args()
     out = args.out.resolve()
     try:
+        if args.action == "reference":
+            export_reference(args.source.resolve(), args.arm, args.repetition, args.source_commit, out)
+            print(f"exported reference {out}")
+            return 0
+        if args.action == "verify-reference":
+            print(json.dumps(load_reference(out), indent=2))
+            return 0
         if args.action == "verify":
             print(json.dumps(verify(out), indent=2))
             return 0
@@ -744,9 +876,19 @@ def main() -> int:
                     raise ValueError("strict runs require --model, --judge-model, --effort and --judge-effort; use --exploratory for unresolved defaults")
                 if any(p.name != ".lock" for p in out.iterdir()):
                     raise ValueError("output directory must be empty")
-                prompts, suite = load_prompts(args.prompts)
+                reference = load_reference(args.reference.resolve()) if args.reference else None
+                if reference:
+                    prompts = {item["id"]: item["prompt"] for item in reference["prompts"]}
+                    suite = prompts
+                    if args.prompts and load_prompts(args.prompts)[0] != prompts:
+                        raise ValueError("supplied prompts differ from fixed reference")
+                    shutil.copytree(args.reference.resolve(), out / "inputs/reference")
+                else:
+                    if not args.prompts:
+                        raise ValueError("fresh pairs require --prompts")
+                    prompts, suite = load_prompts(args.prompts)
                 provenance = {"binaries": {}}
-                for arm in ARMS:
+                for arm in (("candidate",) if reference else ARMS):
                     src = getattr(args, arm).resolve()
                     if not (src / "SKILL.md").is_file():
                         raise ValueError(f"{arm} has no SKILL.md")
@@ -769,13 +911,16 @@ def main() -> int:
                     target.parent.mkdir(exist_ok=True)
                     shutil.copy2(Path(__file__).parent / filename, target)
                 exp = Experiment(tuple(prompts.items()), args.repetitions, args.model, args.judge_model,
-                                 "inputs/baseline-bin/ramose", "inputs/baseline", "inputs/candidate",
-                                 str(args.replay.resolve()) if args.replay else None, args.effort, args.judge_effort, "inputs/candidate-bin/ramose")
+                                 None if reference else "inputs/baseline-bin/ramose", None if reference else "inputs/baseline", "inputs/candidate",
+                                 str(args.replay.resolve()) if args.replay else None, args.effort, args.judge_effort, "inputs/candidate-bin/ramose", "inputs/reference" if reference else None)
                 invocation = "[$ramose](ABSOLUTE_NEUTRAL_SKILL_PATH) <prompt>"
                 protocol = {"model": args.model, "judge_model": args.judge_model, "effort": args.effort, "judge_effort": args.judge_effort,
                             "rubric_sha256": evaluator_fingerprint(), "suite_sha256": canonical(suite), "repetitions": args.repetitions,
                             "jobs": args.jobs, "invocation_form": invocation, "author_timeout_s": TIMEOUT, "judge_timeout_s": 600,
                             "analysis_version": "prompt-cluster-v2", "backend_policy": "author-selected; renderer default auto; clean rebuild with same binary and host", "codex_version": provenance["codex_version"], "host": provenance["host"]}
+                protocol["kind"] = "fixed-image-reference" if reference else "fresh-pair"
+                if reference:
+                    protocol["reference_fingerprint"] = reference["fingerprint"]
                 manifest = asdict(exp) | {"schema_version": 2, "mode": "exploratory" if args.exploratory else "strict",
                     "created_at_utc": datetime.now(timezone.utc).isoformat(), "provenance": provenance, "protocol": protocol,
                     "protocol_key": canonical(protocol), "jobs": args.jobs, "invocation_form": invocation,

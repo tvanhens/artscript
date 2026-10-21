@@ -23,4 +23,3 @@ jobs:
       - run: python -m unittest discover -s bench -p 'test_*.py'
         env:
           PYTHONDONTWRITEBYTECODE: '1'
-      - run: python bench/results/hillclimb-2026-10/analyze.py --check

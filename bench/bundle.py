@@ -114,6 +114,8 @@ def compatibility(experiment: dict) -> dict:
            for key in ("model", "judge_model", "effort", "judge_effort")):
         raise ValueError("history requires explicit models and reasoning efforts")
     provenance = experiment["provenance"]
+    if protocol.get("kind") == "fixed-image-reference":
+        return {"protocol_key": experiment["protocol_key"], "reference_fingerprint": protocol["reference_fingerprint"]}
     return {"protocol_key": experiment["protocol_key"], "baseline": provenance["baseline"],
             "baseline_binary": provenance["binaries"]["baseline"]}
 
