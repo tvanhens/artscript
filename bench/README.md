@@ -102,6 +102,14 @@ To combine disjoint prompt batches, run `uv run bench/combine_paired.py first/ru
 
 ## Preview CLI comparison
 
+Inspect preview use in captured author traces with:
+
+```sh
+uv run bench/preview_usage.py bench/out/paired/round-01
+```
+
+The report separates command events containing preview invocations, structured preview receipts, and retained PNGs. It reads incomplete runs too. A command event can contain several invocations. Shell recognition is conservative, and events containing heredocs or here-strings remain unobserved. Missing events do not establish non-use. Image-viewer calls are not exposed by the current author trace, so viewing remains unknown. Agent prose does not count as evidence. Verify the bundle separately before reporting adoption from a completed run.
+
 [The verified result record](results/preview-issue-282.json) compares main `65e3cb7` with preview candidate `748fe35`. The strict fresh-pair run used the six standard prompts, three repetitions, six workers, separate release binaries, and `gpt-6.1-sol` with medium effort for authors and judges.
 
 Candidate quality averaged 15.51 versus 15.80 out of 20. The delivery-inclusive difference was −0.29, with a prompt-cluster 95% interval of [−0.79, +0.21]. This does not establish improvement or regression. Both sides delivered 18/18 valid images, with no provider, judge, or protocol errors.
