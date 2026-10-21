@@ -39,4 +39,44 @@ uv run bench/wow.py --label base --prompt lighthouse  # a prompt that names a st
 uv run bench/wow.py --label ctl --judge-only a.png b.png
 ```
 
-Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. One trial's composite moves by about 0.5 from run to run, so compare means of at least 6 trials, and run both prompts before you trust a change.
+Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. One trial's composite moves by about 0.5 from run to run, so compare means of at least 6 trials, and run all three prompts before you trust a change.
+
+# Compare Codex skill changes
+
+`paired.py` runs ramose requests in fresh Codex projects with a local skill copy. It uses `[$ramose](absolute-skill-path) <prompt>` to select that copy explicitly. It compares two skill directories against the same ramose binary. It requires Codex and Claude CLI authentication.
+
+Create a JSON file that maps prompt names to requests. Use still-image requests that produce exactly one PNG in the manifest's output directory.
+
+```json
+{
+  "fox": "draw a cute fox sitting next to a glowing mushroom",
+  "chest": "make a game icon of a treasure chest overflowing with gold coins",
+  "lighthouse": "paint a lighthouse on a cliff at dusk in a loose watercolor style"
+}
+```
+
+Build ramose, then compare a saved baseline skill directory with the changed skill.
+
+```sh
+cargo build --release -p ramose
+uv run bench/paired.py run \
+  --baseline /path/to/baseline/ramose \
+  --candidate plugins/ramose/skills/ramose \
+  --ramose target/release/ramose \
+  --prompts /path/to/prompts.json \
+  --repetitions 5 --jobs 2 \
+  --out bench/out/paired/round-01
+uv run bench/paired.py report bench/out/paired/round-01
+```
+
+The runner uses the Codex default model unless you pass `--model`. It ignores user configuration, retains authentication, and runs authoring commands with full filesystem access. Temporary projects separate outputs; they do not sandbox the author. Use only trusted skill directories. The report labels an unspecified model as unresolved.
+
+Each prompt and repetition has two generations. Their launch order alternates. Claude judges the anonymous PNGs together on the six `wow.py` axes, then judges them again with positions reversed. Each generated pair contributes one averaged difference to the bootstrap interval. The report includes prompt-level results, delivery failures, and position disagreements.
+
+Failed deliveries score zero and remain in the denominator. Missing judge results make the comparison incomplete. The runner preserves the delivered project, checks and rebuilds a separate copy with an empty output directory, compares the rebuilt pixels, and checks formatting. It rejects multiple PNGs instead of guessing which one to judge.
+
+The output directory retains skill and binary snapshots, hashes, schedules, transcripts, sources, images, and validation receipts. A nonempty output directory is never overwritten. Reporting checks that the runner and rubric still match the frozen hashes. Codex JSON events do not expose every skill load or image-viewer call. The runner records observed skill reads, but does not treat absent events as failed delivery.
+
+Choose a meaningful gain and acceptance rule before running candidates. Confirm promising changes on fresh prompts and generations. A positive mean from a few familiar prompts does not establish a general quality improvement.
+
+Run the accounting tests with `uv run --with pillow python -m unittest discover -s bench -p test_paired.py`.
