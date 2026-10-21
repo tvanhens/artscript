@@ -20,7 +20,7 @@ ramose preview art/hero.ramo --target hero.gif --frames 8 --columns 4 --out revi
 | `--bg checker\|light\|dark\|none\|#hex` | Presentation background. Default transparent. Light is white, dark is `#202020`, and checker uses eight-pixel squares before zoom. |
 | `--time T` | One time in seconds. The default is the target's `t:`. |
 | `--times T,...` | Explicit times in seconds, in the supplied order. |
-| `--frames N` | Positive count of evenly spaced times from zero up to, but excluding, duration. Duration comes from `dur:` or the reached plays. |
+| `--frames N` | Positive count of evenly spaced times from zero up to, but excluding, duration. Duration comes from `dur:` or the plays reached at `t=0`. |
 | `--clip NAME` | Select an output whose target declares this clip. An incompatible `--target` is an error. |
 | `--columns N` | Positive count of columns in the contact sheet. The default is one horizontal strip. |
 

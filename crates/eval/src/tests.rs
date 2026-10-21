@@ -2320,7 +2320,11 @@ fn a_play_reached_after_t0_that_outlasts_the_clip_is_e0206() {
     );
     let fixed = project(&[("art/t.ramo", &src(" dur:3s"))]);
     let sampled = crate::sample(&fixed, &plan(&fixed).jobs[0]);
-    assert!(sampled.diagnostics.is_empty(), "{}", show(&sampled.diagnostics));
+    assert!(
+        sampled.diagnostics.is_empty(),
+        "{}",
+        show(&sampled.diagnostics)
+    );
     assert_eq!(sampled.frames.len(), 30);
 }
 
