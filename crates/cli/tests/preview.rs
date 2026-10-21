@@ -431,9 +431,62 @@ fn svg_preview_preserves_the_production_evaluation_scale() {
 
 #[test]
 fn receipt_preserves_parameter_precision() {
-    let dir = fixture("precision", "@target test.png 8x8\nparam offset:.001\nrect 2,2 at:4+offset,4 fill:#ff0000\n");
-    let output = success(&dir, &["preview", "art/test.ramo", "--set", "offset=.002", "--out", "review/precise.png", "--backend", "cpu"]);
+    let dir = fixture(
+        "precision",
+        "@target test.png 8x8\nparam offset:.001\nrect 2,2 at:4+offset,4 fill:#ff0000\n",
+    );
+    let output = success(
+        &dir,
+        &[
+            "preview",
+            "art/test.ramo",
+            "--set",
+            "offset=.002",
+            "--out",
+            "review/precise.png",
+            "--backend",
+            "cpu",
+        ],
+    );
     let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(receipt["parameter_altered"], true);
     assert_eq!(receipt["parameters"][0]["offset"], "0.002");
+}
+
+#[test]
+fn still_preview_probes_the_requested_time_when_zero_is_invalid() {
+    let dir = fixture(
+        "probe-time",
+        "@target test.png 8x8 t:1\nlet width = if t == 0 then false else 4/t\nrect width,4 at:4,4 fill:#ff0000 name:body\n",
+    );
+    success(&dir, &["build", "--backend", "cpu"]);
+    let production = image(&dir.join("assets/test.png"));
+    for (out, time) in [
+        ("review/target.png", None),
+        ("review/explicit.png", Some("1")),
+    ] {
+        let mut args = vec!["preview", "art/test.ramo", "--out", out, "--backend", "cpu"];
+        if let Some(time) = time {
+            args.extend(["--time", time]);
+        }
+        let output = success(&dir, &args);
+        let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(receipt["times"], serde_json::json!([1.0]));
+        assert_eq!(image(&dir.join(out)), production);
+    }
+    let invalid = run(
+        &dir,
+        &[
+            "preview",
+            "art/test.ramo",
+            "--time",
+            "0",
+            "--out",
+            "review/zero.png",
+            "--backend",
+            "cpu",
+        ],
+    );
+    assert_eq!(invalid.status.code(), Some(1));
+    assert!(invalid.stdout.is_empty());
 }
