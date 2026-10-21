@@ -43,17 +43,9 @@ Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. 
 
 # Compare Codex skill changes
 
-`paired.py` runs ramose requests in fresh Codex projects with a local skill copy. It uses `[$ramose](absolute-skill-path) <prompt>` to select that copy explicitly. It compares two skill directories against the same ramose binary. It requires Codex and Claude CLI authentication.
+`paired.py` runs ramose requests in fresh Codex projects with a local skill copy. It uses `[$ramose](absolute-skill-path) <prompt>` to select that copy explicitly. It compares two skill directories against the same ramose binary. Both authoring and judging use authenticated Codex CLI sessions.
 
-Create a JSON file that maps prompt names to requests. Use still-image requests that produce one artwork in the manifest's output directory. A base PNG can have `@2x` or other numbered scale variants.
-
-```json
-{
-  "fox": "draw a cute fox sitting next to a glowing mushroom",
-  "chest": "make a game icon of a treasure chest overflowing with gold coins",
-  "lighthouse": "paint a lighthouse on a cliff at dusk in a loose watercolor style"
-}
-```
+Use `bench/quality-prompts.json` for six requests covering a character scene, game icon, watercolor landscape, pixel sprite, a boat in perspective, and botanical ink drawing. To supply other requests, create a JSON object mapping names to prompts. Use still-image requests that produce one artwork in the manifest's output directory. A base PNG can have `@2x` or other numbered scale variants.
 
 Build ramose, then compare a saved baseline skill directory with the changed skill.
 
@@ -63,7 +55,7 @@ uv run bench/paired.py run \
   --baseline /path/to/baseline/ramose \
   --candidate plugins/ramose/skills/ramose \
   --ramose target/release/ramose \
-  --prompts /path/to/prompts.json \
+  --prompts bench/quality-prompts.json \
   --repetitions 5 --jobs 2 \
   --out bench/out/paired/round-01
 uv run bench/paired.py report bench/out/paired/round-01
@@ -71,7 +63,7 @@ uv run bench/paired.py report bench/out/paired/round-01
 
 The runner uses the Codex default model unless you pass `--model`. It ignores user configuration, retains authentication, and runs authoring commands with full filesystem access. Temporary projects separate outputs; they do not sandbox the author. Use only trusted skill directories. The report labels an unspecified model as unresolved.
 
-Each prompt and repetition has two generations. Their launch order alternates. Claude judges the anonymous PNGs together on the six `wow.py` axes, then judges them again with positions reversed. Each generated pair contributes one averaged difference to the bootstrap interval. The report includes prompt-level results, delivery failures, and position disagreements.
+Each prompt and repetition has two generations. Their launch order alternates. Independent Codex sessions judge the anonymous PNGs together on the six `wow.py` axes, then judge them again with positions reversed. Each generated pair contributes one averaged difference to the bootstrap interval. The report includes prompt-level results, delivery failures, and position disagreements. Pass `--judge-model` to select a judge model; otherwise it uses the Codex default. Independent sessions do not imply independent model families.
 
 Failed deliveries score zero and remain in the denominator. Missing judge results make the comparison incomplete. The runner preserves the delivered project, checks and rebuilds a separate copy with an empty output directory, compares the rebuilt pixels, and checks formatting. It judges the base PNG when scale variants exist. It rejects multiple unrelated PNGs instead of guessing which artwork to judge.
 
@@ -80,5 +72,7 @@ The output directory retains skill and binary snapshots, hashes, schedules, tran
 Choose a meaningful gain and acceptance rule before running candidates. Confirm promising changes on fresh prompts and generations. A positive mean from a few familiar prompts does not establish a general quality improvement.
 
 To remeasure saved generations after correcting an evaluator, repeat the `run` command with `--replay bench/out/paired/round-01` and a new `--out` directory. Replay requires matching prompts, repetitions, skill snapshots, binary, and author model configuration. Every original generation must be captured. It launches no new authors, but runs clean validation and blind judging again for every pair. The report records the source experiment and marks authoring as reused. Discard the old measurements when the evaluator changes.
+
+To combine disjoint prompt batches, run `uv run bench/combine_paired.py first/report.json second/report.json --out bench/out/paired/combined`. Both reports must be complete and use matching frozen inputs and evaluators. Duplicate prompts are rejected. Each prompt retains the same number of repetitions and weight in the combined result.
 
 Run the accounting tests with `uv run --with pillow python -m unittest discover -s bench -p test_paired.py`.

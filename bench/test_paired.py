@@ -6,7 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
-from paired import png, validate_replay, generation, AXES, RUBRIC, Experiment, evaluate_pair, summarize, validate_score, judge, report, save
+from paired import png, validate_replay, generation, AXES, RUBRIC, Experiment, evaluate_pair, summarize, validate_score, judge, judge_once, report, save
 
 
 def row(base, candidate, base_status="success", candidate_status="success", judgment="complete"):
@@ -297,6 +297,48 @@ class PairedReportTests(unittest.TestCase):
             self.assertEqual(called, [["check"], ["build"], ["fmt", "--check"]])
             self.assertEqual((dest / "codex.json").read_bytes(), (source / "pairs/000-00/baseline/codex.json").read_bytes())
             self.assertTrue((original / "assets/art.png").is_file())
+
+    def test_codex_judge_uses_anonymous_attachments_and_strict_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            left, right = root / "baseline.png", root / "candidate.png"
+            Image.new("RGBA", (4, 4), "red").save(left)
+            Image.new("RGBA", (4, 4), "blue").save(right)
+            score = dict.fromkeys(AXES, 12) | {"notes": "Good."}
+            expected = {"left": score, "right": score, "preference": "tie"}
+
+            def run(args, cwd, receipt, env=None, timeout=None):
+                self.assertEqual(args[:2], ["codex", "exec"])
+                self.assertEqual(args[args.index("-s") + 1], "read-only")
+                self.assertIn("--ephemeral", args)
+                self.assertNotIn("--model", args)
+                self.assertEqual([Path(args[i + 1]).name for i, arg in enumerate(args) if arg == "-i"],
+                                 ["left.png", "right.png"])
+                self.assertNotIn("baseline", args[-1])
+                self.assertNotIn("candidate", args[-1])
+                schema = json.loads(Path(args[args.index("--output-schema") + 1]).read_text())
+                self.assertFalse(schema["properties"]["left"]["additionalProperties"])
+                save(Path(args[args.index("-o") + 1]), expected)
+                return {"returncode": 0, "timeout": False, "stdout": '{"type":"turn.completed"}'}
+
+            with patch("paired.command", side_effect=run):
+                result = judge_once("fox", [left, right], None, root / "judge.json")
+            self.assertEqual(result, expected)
+            self.assertEqual(json.loads((root / "judge-output.json").read_text()), expected)
+
+    def test_codex_judge_rejects_failed_turn_and_invalid_score(self):
+        for event, value in (("turn.failed", 12), ("turn.completed", True)):
+            with self.subTest(event=event, value=value), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                image = root / "image.png"
+                Image.new("RGBA", (4, 4), "red").save(image)
+
+                def run(args, cwd, receipt, env=None, timeout=None):
+                    save(Path(args[args.index("-o") + 1]), dict.fromkeys(AXES, value) | {"notes": "Good."})
+                    return {"returncode": 0, "timeout": False, "stdout": json.dumps({"type": event})}
+
+                with patch("paired.command", side_effect=run), self.assertRaises(ValueError):
+                    judge_once("fox", [image], None, root / "judge.json")
 
     def test_strict_score_validation(self):
         valid = dict.fromkeys(AXES, 12) | {"notes": "Readable. Flat lighting."}
