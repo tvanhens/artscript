@@ -34,6 +34,8 @@ When the user runs `$ramose:ramose` in Codex or `/ramose` in Claude Code with a 
 
 ## The loop
 
+Give the focal subject contours specific to its structure and pose. Shape curves and corners around changes in direction, thickness, and overlap. Use the simplest shapes that retain those distinctions at the intended display size. Let the requested style determine how much to simplify.
+
 Repeat until the art is right:
 
 1. Write or change `.ramo` files with the host's file editing tools. Use `apply_patch` in Codex or Write and Edit in Claude Code. Do not edit with `sed`, `python`, or a shell heredoc.

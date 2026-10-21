@@ -1,0 +1,336 @@
+import unittest
+import paired
+import copy
+import json
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+from PIL import Image
+from paired import png, validate_replay, generation, AXES, Experiment, evaluate_pair, summarize, validate_score, judge, judge_once, report, save, digest, evaluator_fingerprint
+
+
+def row(base, candidate, base_status="success", candidate_status="success", judgment="complete"):
+    return {"generations": {"baseline": {"status": base_status}, "candidate": {"status": candidate_status}},
+            "judgment": {"status": judgment, "scores": {"baseline": base, "candidate": candidate},
+                         "preferences": ["candidate" if candidate is not None and base is not None and candidate > base else "tie"],
+                         "orientation_disagreement": False}}
+
+
+class PairedReportTests(unittest.TestCase):
+    def test_prompt_cluster_interval_does_not_treat_repetitions_as_new_prompts(self):
+        rows = [row(10, 11) | {"prompt_id": "fox"} for _ in range(20)]
+        rows += [row(10, 7) | {"prompt_id": "boat"}]
+        result = summarize(rows, len(rows))
+        self.assertEqual(result["paired_delta_mean"], -1)
+        self.assertEqual(result["paired_delta_ci95"], [-3, 1])
+        self.assertEqual(result["arms"]["candidate"]["mean"], 9)
+        self.assertIsNone(summarize(rows[:20], 20)["paired_delta_ci95"])
+
+    def test_failed_generation_stays_in_denominator(self):
+        result = summarize([row(12, 16), row(0, 8, base_status="failed")], 2)
+        self.assertTrue(result["complete"])
+        self.assertEqual(result["arms"]["baseline"]["mean"], 6)
+        self.assertEqual(result["arms"]["baseline"]["failures"], 1)
+        self.assertEqual(result["arms"]["candidate"]["mean"], 12)
+        self.assertEqual(result["paired_deltas"], [4, 8])
+        self.assertEqual(result["paired_delta_mean"], 6)
+        self.assertEqual(result["fixed_suite_pair_ci95"], [4, 8])
+
+    def test_missing_judge_does_not_become_zero_or_disappear(self):
+        result = summarize([row(12, 16), row(None, None, judgment="error")], 2)
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["judge_errors"], 1)
+        self.assertIsNone(result["paired_delta_mean"])
+        self.assertNotIn("mean", result["arms"]["baseline"])
+
+    def test_unscheduled_missing_receipt_is_incomplete(self):
+        result = summarize([row(12, 16)], 2)
+        self.assertFalse(result["complete"])
+        self.assertEqual(result["scheduled_pairs"], 2)
+        self.assertEqual(result["received_pairs"], 1)
+
+    def test_aggregation_literal_values(self):
+        result = summarize([row(4, 8), row(12, 16), row(8, 12)], 3)
+        self.assertEqual(result["arms"]["baseline"]["mean"], 8)
+        self.assertEqual(result["arms"]["candidate"]["median"], 12)
+        self.assertEqual(result["arms"]["candidate"]["range"], [8, 16])
+        self.assertEqual(result["fixed_suite_pair_ci95"], [4, 4])
+        self.assertEqual(result["preference_votes"], {"baseline": 0, "candidate": 3, "tie": 0})
+
+    def test_failed_arm_gets_zero_even_if_it_left_an_image(self):
+        exp = Experiment((), 1, None, "judge", "ramose", "base", "candidate")
+        generations = {"baseline": {"status": "failed", "image": "broken.png"},
+                       "candidate": {"status": "success", "image": "good.png"}}
+        with patch("paired.judge", return_value=dict.fromkeys(AXES, 12) | {"notes": "Good."}):
+            result = evaluate_pair(exp, "fox", generations, Path("unused"))
+        self.assertEqual(result["scores"], {"baseline": 0, "candidate": 12})
+        self.assertEqual(result["preferences"], ["candidate"])
+
+    def test_reversal_maps_scores_back_to_arm(self):
+        exp = Experiment((), 1, None, "judge", "ramose", "base", "candidate")
+        generations = {arm: {"status": "success", "image": arm + ".png"}
+                       for arm in ("baseline", "candidate")}
+        low = dict.fromkeys(AXES, 8) | {"notes": "Flat."}
+        high = dict.fromkeys(AXES, 16) | {"notes": "Polished."}
+        verdicts = [{"left": low, "right": high, "preference": "right"},
+                    {"left": high, "right": low, "preference": "left"}]
+        with patch("paired.judge", side_effect=verdicts):
+            result = evaluate_pair(exp, "fox", generations, Path("unused"))
+        self.assertEqual(result["scores"], {"baseline": 8, "candidate": 16})
+        self.assertEqual(result["preferences"], ["candidate", "candidate"])
+        self.assertFalse(result["orientation_disagreement"])
+
+    def test_reversal_judge_failure_invalidates_pair(self):
+        exp = Experiment((), 1, None, "judge", "ramose", "base", "candidate")
+        generations = {arm: {"status": "success", "image": arm + ".png"}
+                       for arm in ("baseline", "candidate")}
+        score = dict.fromkeys(AXES, 12) | {"notes": "Good."}
+        with patch("paired.judge", side_effect=[{"left": score, "right": score, "preference": "tie"}, ValueError("timeout")]):
+            result = evaluate_pair(exp, "fox", generations, Path("unused"))
+        self.assertEqual(result["status"], "error")
+        self.assertIsNone(result["scores"])
+
+    def test_judge_retry_keeps_distinct_receipts(self):
+        score = dict.fromkeys(AXES, 12) | {"notes": "Good."}
+        with patch("paired.judge_once", side_effect=[ValueError("schema"), score]) as call:
+            result = judge("fox", [Path("image.png")], "judge", Path("judge.json"))
+        self.assertEqual(result, score)
+        self.assertEqual([c.args[3].name for c in call.call_args_list],
+                         ["judge-attempt1.json", "judge-attempt2.json"])
+
+    def test_legacy_report_requires_frozen_evaluator(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            save(out / "experiment.json", {"prompts": [["fox", "draw fox"]], "repetitions": 1,
+                 "schedule": [{"prompt_id": "fox", "repetition": 0}]})
+            save(out / "pairs/000-00/pair.json", row(12, 16) | {"prompt_id": "fox", "repetition": 0})
+            result = report(out)
+        self.assertFalse(result["summary"]["complete"])
+        self.assertIsNone(result["paired_delta_mean"] if "paired_delta_mean" in result else result["summary"]["paired_delta_mean"])
+        self.assertEqual(result["protocol_errors"], ["legacy run requires its frozen evaluator"])
+        self.assertNotIn("mean", result["per_prompt"]["fox"]["arms"]["candidate"])
+
+    def test_scoring_fingerprint_covers_complete_definition(self):
+        original = evaluator_fingerprint()
+        for name, changed in (("AXES", ("wow",)), ("SCHEMA", {"type": "object"}), ("RUBRIC", "Other"), ("JUDGE_PAIR", "changed"), ("POLICY", {"version": 3})):
+            with patch.object(paired, name, changed):
+                self.assertNotEqual(evaluator_fingerprint(), original)
+
+    def test_clean_rebuild_cannot_reuse_delivered_png(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill = root / "skill"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("Frozen skill contents")
+            exp = Experiment((), 1, None, "judge", "ramose", str(skill), str(skill))
+            workdirs = []
+
+            def directory(prefix):
+                path = root / f"{prefix}{len(workdirs)}"
+                path.mkdir()
+                workdirs.append(path)
+                return str(path)
+
+            def run(args, cwd, receipt, env=None):
+                events = []
+                if args[0] == "codex":
+                    (cwd / "ramose.toml").write_text('[project]\nout = "assets"\n')
+                    (cwd / "assets").mkdir()
+                    Image.new("RGBA", (4, 4), "red").save(cwd / "assets/art.png")
+                    events = [{"type": "item.completed", "item": {"type": "command_execution",
+                               "exit_code": 0, "command": "cat .agents/skills/ramose/SKILL.md",
+                               "aggregated_output": "Frozen skill contents"}}, {"type": "turn.completed"}]
+                else:
+                    self.assertNotEqual(cwd, workdirs[0])
+                    self.assertFalse((cwd / "assets/art.png").exists())
+                return {"returncode": 0, "timeout": False, "stdout": "\n".join(map(json.dumps, events))}
+
+            with patch("paired.tempfile.mkdtemp", side_effect=directory), patch("paired.command", side_effect=run):
+                result = generation(exp, "baseline", "fox", root / "result")
+            self.assertEqual(result["status"], "failed")
+            self.assertIn("expected exactly one output PNG, found 0", result["error"])
+            self.assertTrue((root / "result/project/assets/art.png").exists())
+            self.assertFalse(workdirs[0].exists())
+            self.assertFalse((root / "result/validation/assets/art.png").exists())
+
+    def test_rebuild_accepts_project_under_symlinked_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            real = root / "real"
+            real.mkdir()
+            alias = root / "alias"
+            alias.symlink_to(real, target_is_directory=True)
+            skill = root / "skill"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("Frozen skill contents")
+            exp = Experiment((), 1, None, "judge", "ramose", str(skill), str(skill))
+            allocated = []
+
+            def directory(prefix):
+                path = alias / f"{prefix}{len(allocated)}"
+                path.mkdir()
+                allocated.append(path)
+                return str(path)
+
+            def run(args, cwd, receipt, env=None):
+                events = []
+                if args[0] == "codex":
+                    (cwd / "ramose.toml").write_text('[project]\nout = "assets"\n')
+                    events = [{"type": "item.completed", "item": {"type": "command_execution",
+                               "exit_code": 0, "command": "cat .agents/skills/ramose/SKILL.md",
+                               "aggregated_output": "Frozen skill contents"}}, {"type": "turn.completed"}]
+                if args[0] == "codex" or args[1] == "build":
+                    (cwd / "assets").mkdir(exist_ok=True)
+                    Image.new("RGBA", (4, 4), "red").save(cwd / "assets/art.png")
+                return {"returncode": 0, "timeout": False, "stdout": "\n".join(map(json.dumps, events))}
+
+            with patch("paired.tempfile.mkdtemp", side_effect=directory), patch("paired.command", side_effect=run):
+                result = generation(exp, "baseline", "fox", root / "result")
+            self.assertEqual(result["status"], "success", result["error"])
+            self.assertEqual((root / "result/original.png").read_bytes(), (root / "result/rebuilt.png").read_bytes())
+
+    def test_explicit_skill_delivery_needs_no_cat_event(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            skill = root / "skill"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("Frozen skill contents")
+            project, validation = root / "studio", root / "validation"
+            project.mkdir()
+            validation.mkdir()
+            exp = Experiment((), 1, None, "judge", "ramose", str(skill), str(skill))
+
+            def run(args, cwd, receipt, env=None):
+                if args[0] == "codex":
+                    self.assertEqual(args[-1], f"[$ramose]({project}/.agents/skills/ramose/SKILL.md) fox")
+                    (cwd / "ramose.toml").write_text('[project]\nout = "assets"\n')
+                if args[0] == "codex" or args[1] == "build":
+                    (cwd / "assets").mkdir(exist_ok=True)
+                    Image.new("RGBA", (4, 4), "red").save(cwd / "assets/art.png")
+                return {"returncode": 0, "timeout": False, "stdout": '{"type":"turn.completed"}'}
+
+            with patch("paired.tempfile.mkdtemp", side_effect=[str(project), str(validation)]), patch("paired.command", side_effect=run):
+                generated = generation(exp, "baseline", "fox", root / "result")
+            self.assertEqual(generated["status"], "success", generated["error"])
+            self.assertFalse(generated["skill_read_observed"])
+            self.assertIsNone(generated["error"])
+
+    def test_png_scale_variants_and_ambiguity(self):
+        for filenames, expected in ((["art.png", "art@2x.png"], "art.png"),
+                                    (["art@2x.png"], "art@2x.png"),
+                                    (["fox.png", "mushroom.png"], None)):
+            with self.subTest(filenames=filenames), tempfile.TemporaryDirectory() as tmp:
+                project = Path(tmp).resolve()
+                (project / "ramose.toml").write_text('[project]\nout = "assets"\n')
+                (project / "assets").mkdir()
+                for name in filenames:
+                    Image.new("RGBA", (4, 4), "red").save(project / "assets" / name)
+                if expected:
+                    self.assertEqual(png(project).name, expected)
+                else:
+                    with self.assertRaisesRegex(ValueError, "exactly one"):
+                        png(project)
+
+    def replay_fixture(self, root):
+        manifest = {"prompts": [["fox", "draw fox"]], "repetitions": 1, "model": None,
+                    "invocation_form": "linked", "schedule": [{"directory": "000-00"}],
+                    "provenance": {"baseline": {"SKILL.md": "a"}, "candidate": {"SKILL.md": "b"},
+                                   "binary_sha256": "c", "model_resolution": "unresolved Codex default"}}
+        save(root / "experiment.json", manifest)
+        for arm in ("baseline", "candidate"):
+            folder = root / "pairs/000-00" / arm
+            (folder / "project").mkdir(parents=True)
+            save(folder / "generation.json", {"status": "failed"})
+            save(folder / "codex.json", {"returncode": 0, "timeout": False, "stdout": '{"type":"turn.completed"}',
+                                         "stderr": "", "command": ["codex", "exec"]})
+        return manifest
+
+    def test_replay_revalidates_without_launching_author(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "source"
+            self.replay_fixture(source)
+            original = source / "pairs/000-00/baseline/project"
+            (original / "ramose.toml").write_text('[project]\nout = "assets"\n')
+            (original / "assets").mkdir()
+            Image.new("RGBA", (4, 4), "red").save(original / "assets/art.png")
+            project, validation = root / "studio", root / "validation"
+            project.mkdir()
+            validation.mkdir()
+            exp = Experiment((), 1, None, "judge", "ramose", "unused", "unused", str(source))
+            called = []
+
+            def run(args, cwd, receipt, env=None):
+                self.assertEqual(args[0], "ramose")
+                called.append(args[1:])
+                if args[1] == "build":
+                    self.assertFalse((cwd / "assets/art.png").exists())
+                    (cwd / "assets").mkdir()
+                    Image.new("RGBA", (4, 4), "red").save(cwd / "assets/art.png")
+                return {"returncode": 0, "timeout": False, "stdout": ""}
+
+            dest = root / "replayed/pairs/000-00/baseline"
+            with patch("paired.tempfile.mkdtemp", side_effect=[str(project), str(validation)]), patch("paired.command", side_effect=run):
+                result = generation(exp, "baseline", "draw fox", dest)
+            self.assertEqual(result["status"], "failed")
+            self.assertTrue(result["authoring_reused"])
+            self.assertEqual(called, [["check"], ["build"], ["fmt", "--check"]])
+            self.assertEqual((dest / "codex.json").read_bytes(), (source / "pairs/000-00/baseline/codex.json").read_bytes())
+            self.assertTrue((original / "assets/art.png").is_file())
+
+    def test_codex_judge_uses_anonymous_attachments_and_strict_result(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            left, right = root / "baseline.png", root / "candidate.png"
+            Image.new("RGBA", (4, 4), "red").save(left)
+            Image.new("RGBA", (4, 4), "blue").save(right)
+            score = dict.fromkeys(AXES, 12) | {"notes": "Good."}
+            expected = {"left": score, "right": score, "preference": "tie"}
+
+            def run(args, cwd, receipt, env=None, timeout=None):
+                self.assertEqual(args[:2], ["codex", "exec"])
+                self.assertEqual(args[args.index("-s") + 1], "read-only")
+                self.assertIn("--ephemeral", args)
+                self.assertNotIn("--model", args)
+                self.assertEqual([Path(args[i + 1]).name for i, arg in enumerate(args) if arg == "-i"],
+                                 ["left.png", "right.png"])
+                self.assertNotIn("baseline", args[-1])
+                self.assertNotIn("candidate", args[-1])
+                schema = json.loads(Path(args[args.index("--output-schema") + 1]).read_text())
+                self.assertFalse(schema["properties"]["left"]["additionalProperties"])
+                save(Path(args[args.index("-o") + 1]), expected)
+                return {"returncode": 0, "timeout": False, "stdout": '{"type":"turn.completed"}'}
+
+            with patch("paired.command", side_effect=run):
+                result = judge_once("fox", [left, right], None, root / "judge.json")
+            self.assertEqual(result, expected)
+            self.assertEqual(json.loads((root / "judge-output.json").read_text()), expected)
+
+    def test_codex_judge_rejects_failed_turn_and_invalid_score(self):
+        for event, value in (("turn.failed", 12), ("turn.completed", True)):
+            with self.subTest(event=event, value=value), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                image = root / "image.png"
+                Image.new("RGBA", (4, 4), "red").save(image)
+
+                def run(args, cwd, receipt, env=None, timeout=None):
+                    save(Path(args[args.index("-o") + 1]), dict.fromkeys(AXES, value) | {"notes": "Good."})
+                    return {"returncode": 0, "timeout": False, "stdout": json.dumps({"type": event})}
+
+                with patch("paired.command", side_effect=run), self.assertRaises(ValueError):
+                    judge_once("fox", [image], None, root / "judge.json")
+
+    def test_strict_score_validation(self):
+        valid = dict.fromkeys(AXES, 12) | {"notes": "Readable. Flat lighting."}
+        self.assertEqual(validate_score(valid), valid)
+        for invalid in (True, False, 0, 21, 12.0, "12", None):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                validate_score(valid | {"wow": invalid})
+        with self.assertRaises(ValueError):
+            validate_score({"fidelity": 12})
+        with self.assertRaises(ValueError):
+            validate_score(dict.fromkeys(AXES, 12))
+
+
+if __name__ == "__main__":
+    unittest.main()

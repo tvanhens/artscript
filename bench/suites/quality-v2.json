@@ -1,0 +1,239 @@
+{
+  "suite_version": "quality-v2",
+  "prompts": [
+    {
+      "id": "fox",
+      "prompt": "draw a cute fox sitting next to a glowing mushroom",
+      "tags": [
+        "illustration",
+        "character",
+        "regression"
+      ]
+    },
+    {
+      "id": "chest",
+      "prompt": "make a game icon of a treasure chest overflowing with gold coins",
+      "tags": [
+        "game-icon",
+        "material",
+        "regression"
+      ]
+    },
+    {
+      "id": "lighthouse",
+      "prompt": "paint a lighthouse on a cliff at dusk in a loose watercolor style",
+      "tags": [
+        "watercolor",
+        "landscape",
+        "regression"
+      ]
+    },
+    {
+      "id": "potion",
+      "prompt": "make a 64x64 pixel-art red health potion sprite on a transparent background",
+      "tags": [
+        "pixel-art",
+        "transparency",
+        "regression"
+      ]
+    },
+    {
+      "id": "sailboat",
+      "prompt": "draw a red sailboat on blue water in a painterly storybook style, viewed in three-quarter perspective",
+      "tags": [
+        "perspective",
+        "painterly",
+        "regression"
+      ]
+    },
+    {
+      "id": "fern",
+      "prompt": "draw a delicate botanical ink illustration of a fern frond on warm ivory paper",
+      "tags": [
+        "ink",
+        "botanical",
+        "regression"
+      ]
+    },
+    {
+      "id": "tea",
+      "prompt": "draw a cozy gouache illustration of a steaming teapot beside a sliced lemon",
+      "tags": [
+        "gouache",
+        "still-life",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "robot",
+      "prompt": "make a friendly little delivery robot game icon on a transparent background",
+      "tags": [
+        "game-icon",
+        "transparency",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "bird",
+      "prompt": "draw a kingfisher diving over a river in a bold flat graphic style with four colors",
+      "tags": [
+        "graphic",
+        "motion-pose",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "heron",
+      "prompt": "draw an elegant ink-and-wash illustration of a heron standing among reeds",
+      "tags": [
+        "ink",
+        "animal",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "oranges",
+      "prompt": "paint a colorful ceramic bowl of oranges in a gouache illustration style",
+      "tags": [
+        "gouache",
+        "still-life",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "compass",
+      "prompt": "make a polished game icon of a brass compass on a transparent background",
+      "tags": [
+        "game-icon",
+        "material",
+        "regression",
+        "previous-holdout",
+        "development"
+      ]
+    },
+    {
+      "id": "bicycle",
+      "prompt": "draw a blue bicycle leaning against a brick wall in a clean editorial illustration style, viewed from three-quarter perspective",
+      "tags": [
+        "perspective",
+        "mechanical",
+        "development"
+      ]
+    },
+    {
+      "id": "bridge",
+      "prompt": "paint a wooden footbridge curving over a stream in soft watercolor, with visible depth between near and far railings",
+      "tags": [
+        "perspective",
+        "watercolor",
+        "development"
+      ]
+    },
+    {
+      "id": "cactus",
+      "prompt": "make a 32x32 pixel-art cactus in a terracotta pot on a transparent background",
+      "tags": [
+        "pixel-art",
+        "transparency",
+        "development"
+      ]
+    },
+    {
+      "id": "owl",
+      "prompt": "make a 48x48 pixel-art snowy owl perched on a branch on a transparent background",
+      "tags": [
+        "pixel-art",
+        "animal",
+        "development"
+      ]
+    },
+    {
+      "id": "moth",
+      "prompt": "draw a symmetrical luna moth as a delicate botanical ink study on ivory paper",
+      "tags": [
+        "ink",
+        "symmetry",
+        "development"
+      ]
+    },
+    {
+      "id": "shell",
+      "prompt": "draw a spiral seashell in sepia ink with fine contour lines and sparse hatching",
+      "tags": [
+        "ink",
+        "organic-form",
+        "development"
+      ]
+    },
+    {
+      "id": "market",
+      "prompt": "paint a cheerful fruit market stall in a loose gouache style with overlapping baskets and a striped awning",
+      "tags": [
+        "gouache",
+        "scene",
+        "occlusion",
+        "development"
+      ]
+    },
+    {
+      "id": "mountains",
+      "prompt": "draw a travel-poster landscape of layered mountains and a winding river using exactly five flat colors",
+      "tags": [
+        "graphic",
+        "palette",
+        "landscape",
+        "development"
+      ]
+    },
+    {
+      "id": "crab",
+      "prompt": "draw a playful red crab waving one claw in a bold flat graphic style with a clear silhouette",
+      "tags": [
+        "graphic",
+        "animal",
+        "pose",
+        "development"
+      ]
+    },
+    {
+      "id": "lantern",
+      "prompt": "make a game icon of a glowing paper lantern with a curved handle on a transparent background",
+      "tags": [
+        "game-icon",
+        "lighting",
+        "transparency",
+        "development"
+      ]
+    },
+    {
+      "id": "raincoat",
+      "prompt": "draw a small child in a yellow raincoat jumping over a puddle in a painterly storybook style",
+      "tags": [
+        "character",
+        "motion-pose",
+        "painterly",
+        "development"
+      ]
+    },
+    {
+      "id": "tulips",
+      "prompt": "paint three red tulips in a clear glass vase in a loose watercolor style with overlapping stems visible through the glass",
+      "tags": [
+        "watercolor",
+        "material",
+        "occlusion",
+        "development"
+      ]
+    }
+  ]
+}
