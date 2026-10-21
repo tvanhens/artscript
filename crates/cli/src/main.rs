@@ -27,6 +27,7 @@ macro_rules! errln {
 }
 
 mod build;
+mod preview;
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -40,10 +41,14 @@ use ramose_syntax::{Diagnostic, Severity};
 const USAGE: &str = "usage: ramose <command>
 
 commands:
-  build [--only GLOB]... [--allow-warnings] [--backend auto|gpu|cpu]
+  build [--only GLOB]... [--set NAME=VALUE]... [--allow-warnings] [--backend auto|gpu|cpu]
                                            render every @target, write art-manifest.json
-  check [--json] [--only GLOB]... [FILE...]
+  check [--json] [--only GLOB]... [--set NAME=VALUE]... [FILE...]
                                            evaluate stills and sample GIFs, without rendering. FILE and --only limit the check to those entry files and the libraries they import
+  preview FILE --out PATH.png [--target OUTPUT] [--set NAME=VALUE]...
+          [--crop NODE|X,Y,W,H] [--pad N] [--zoom N] [--bg checker|light|dark|none|#hex]
+          [--time T|--times T,...|--frames N] [--clip NAME] [--columns N] [--backend auto|gpu|cpu]
+                                           inspect full target pixels; print a JSON receipt
   fmt [--check] [FILE...]                  rewrite .ramo files. no files means the whole project. --check lists changes and writes nothing
   explain <file>                           print the evaluated node tree of a file's first target
   init                                     create a starter project in the current directory
@@ -61,7 +66,11 @@ fn main() -> ExitCode {
             Err(msg) => usage_error(&msg),
         },
         Some("check") => match parse_check(&args[1..]) {
-            Ok((json, only, files)) => with_project(&cwd, |p| check(p, &cwd, json, &only, &files)),
+            Ok((json, only, files, parameters)) => with_project(&cwd, |p| check(p, &cwd, json, &only, &files, &parameters)),
+            Err(msg) => usage_error(&msg),
+        },
+        Some("preview") => match preview::parse(&args[1..]) {
+            Ok(opts) => with_project(&cwd, |p| preview::run(p, &cwd, &opts)),
             Err(msg) => usage_error(&msg),
         },
         Some("fmt") => match parse_fmt(&args[1..]) {
@@ -203,6 +212,7 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--allow-warnings" => opts.allow_warnings = true,
+            "--set" => { let (name, value) = ramose_eval::parse_parameter(it.next().ok_or("--set needs name=value")?)?; opts.parameters.insert(name, value); }
             "--only" => {
                 let glob = it.next().ok_or("`--only` needs a glob")?;
                 opts.only.push(Selector::Glob(parse_glob(glob)?));
@@ -221,12 +231,16 @@ fn parse_build(args: &[String]) -> Result<build::Options, String> {
     Ok(opts)
 }
 
-fn parse_check(args: &[String]) -> Result<(bool, Vec<Selector>, Vec<String>), String> {
+type CheckOptions = (bool, Vec<Selector>, Vec<String>, ramose_eval::Parameters);
+
+fn parse_check(args: &[String]) -> Result<CheckOptions, String> {
+    let mut parameters = ramose_eval::Parameters::new();
     let (mut json, mut only, mut files) = (false, Vec::new(), Vec::new());
     let mut it = args.iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--json" => json = true,
+            "--set" => { let (name, value) = ramose_eval::parse_parameter(it.next().ok_or("--set needs name=value")?)?; parameters.insert(name, value); }
             "--only" => {
                 let glob = it.next().ok_or("`--only` needs a glob")?;
                 only.push(Selector::Glob(parse_glob(glob)?));
@@ -236,7 +250,7 @@ fn parse_check(args: &[String]) -> Result<(bool, Vec<Selector>, Vec<String>), St
             s => files.push(s.to_string()),
         }
     }
-    Ok((json, only, files))
+    Ok((json, only, files, parameters))
 }
 
 fn parse_explain(args: &[String]) -> Result<&str, String> {
@@ -376,7 +390,7 @@ pub(crate) fn unmatched(plan: &Plan, selectors: &[Selector]) -> Vec<Diagnostic> 
         .collect()
 }
 
-fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[String]) -> u8 {
+fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[String], parameters: &ramose_eval::Parameters) -> u8 {
     let mut selectors = only.to_vec();
     for arg in files {
         match resolve_art(project, cwd, arg) {
@@ -405,7 +419,10 @@ fn check(project: &Project, cwd: &Path, json: bool, only: &[Selector], files: &[
         diags.extend(unmatched);
         return report(diags, false, json);
     }
-    for job in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
+    for planned in plan.jobs.iter().filter(|j| all || entries.contains(j.source.as_str())) {
+        let mut selected = planned.clone();
+        selected.parameters = parameters.clone();
+        let job = &selected;
         let frame_diags = if job.outputs.iter().any(|o| o.format == Format::Gif) {
             ramose_eval::sample_outputs(project, job).diagnostics
         } else {

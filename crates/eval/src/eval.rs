@@ -1139,6 +1139,31 @@ impl<'a> Evaluator<'a> {
                 .fix("move the shared declarations into a third library both can import"));
         }
         let parsed = self.parse(file)?;
+        let mut parameter_names = BTreeSet::new();
+        for decl in parsed.decls() {
+            if let DeclKind::Param { params } = &decl.kind {
+                if !entry {
+                    self.report(fail("E0320", "param declarations require an entry file with @target"), file, decl.span, "");
+                }
+                for p in params {
+                    let reserved = ["target", "t", "clip", "scale", "canvas", "p", "true", "false", "none"];
+                    let collision = reserved.contains(&p.key.as_str())
+                        || (file == self.job.source && self.job.matrix.iter().any(|(k, _)| k == &p.key))
+                        || parsed.scenes().any(|s| matches!(&s.kind, SceneKind::Let { name, .. } if name == &p.key));
+                    if !parameter_names.insert(p.key.clone()) || collision {
+                        self.report(fail("E0320", format!("parameter `{}` collides with another binding", p.key)), file, p.span, "");
+                    }
+                }
+            }
+        }
+        if file == self.job.source {
+            for name in self.job.parameters.keys() {
+                if !parameter_names.contains(name) {
+                    self.report(fail("E0320", format!("unknown entry parameter `{name}`"))
+                        .fix("declare it with `param name:default`, or remove --set"), file, self.job.span, "");
+                }
+            }
+        }
         self.loading.push(file.to_string());
         let mut module = Module::new(file);
         module.bundled = self.project.is_bundled(file);
@@ -1163,6 +1188,15 @@ impl<'a> Evaluator<'a> {
         for item in &parsed.items {
             if let Err(f) = self.declare(&module, item, entry) {
                 self.report(f, file, item.span(), "");
+            }
+        }
+        for name in &parameter_names {
+            if (module.own.borrow().iter().any(|own| own == name || own == &format!("style:{name}") || own == &format!("finish:{name}")) || module.anims.borrow().contains_key(name)) && !self.diags.iter().any(|d| d.file == file && d.message == format!("parameter `{name}` collides with another binding")) {
+                let span = parsed.decls().find_map(|d| match &d.kind {
+                    DeclKind::Param { params } => params.iter().find(|p| &p.key == name).map(|p| p.span),
+                    _ => None,
+                }).unwrap_or_default();
+                self.report(fail("E0320", format!("parameter `{name}` collides with another binding")), file, span, "");
             }
         }
         self.declare_aliases(&module, &parsed);
@@ -1219,6 +1253,39 @@ impl<'a> Evaluator<'a> {
             }
         };
         match &decl.kind {
+            DeclKind::Param { params } => {
+                for p in params {
+                    if let Some(Err(message)) = p.value.one_of_words() {
+                        self.report(fail("E0320", message), &module.path, p.span, "");
+                        continue;
+                    }
+                    if module.global(&p.key).is_some() && !module.parameters.borrow().contains(&p.key) {
+                        self.report(fail("E0320", format!("parameter `{}` collides with another binding", p.key)), &module.path, p.span, "");
+                        continue;
+                    }
+                    self.begin_seed(&module.path, Key::binding(&p.key));
+                    let scope = self.module_scope(module);
+                    let mut given = Vec::new();
+                    if module.path == self.job.source
+                        && let Some(value) = self.job.parameters.get(&p.key)
+                    {
+                        given.push((p.key.clone(), self.parameter_literal(value, &scope)?));
+                    }
+                    let bound = match self.bind_params("entry file", std::slice::from_ref(p), module, &given, p.span, &scope) {
+                        Ok(bound) => bound,
+                        Err(error) => {
+                            self.report(error, &module.path, p.span, "");
+                            module.lost.borrow_mut().insert(p.key.clone());
+                            continue;
+                        }
+                    };
+                    for (key, value) in bound {
+                        module.parameters.borrow_mut().insert(key.clone());
+                        module.bind(&key, value);
+                    }
+                }
+                Ok(())
+            }
             DeclKind::Use { path, alias, items } => {
                 let declared = self.declare_use(module, path, alias, items);
                 if declared.is_err() {
@@ -1369,10 +1436,18 @@ impl<'a> Evaluator<'a> {
         let parsed = self.parse(&target)?;
         let m = self.load_module(&target, is_entry(&parsed))?;
         if let Some(a) = alias {
+            if module.parameters.borrow().contains(a) {
+                return Err(fail("E0320", format!("import `{a}` collides with an entry parameter")));
+            }
             module.bind(a, Value::Module(m));
             return Ok(());
         }
         let exports = m.exports();
+        for name in module.parameters.borrow().iter() {
+            if (items.is_empty() && exports.iter().any(|(key, _)| key == name)) || items.contains(name) {
+                return Err(fail("E0320", format!("import `{name}` collides with an entry parameter")));
+            }
+        }
         let styles = m.styles.borrow().clone();
         let finishes = m.finishes.borrow().clone();
         let anims = m.anims.borrow().clone();
@@ -3623,6 +3698,15 @@ impl<'a> Evaluator<'a> {
         }
     }
 
+    fn parameter_literal(&mut self, value: &Expr, scope: &Scope) -> R<Value> {
+        match value {
+            Expr::Ident(word) if !matches!(word.as_str(), "true" | "false" | "none") => Ok(Value::Ident(word.clone())),
+            Expr::Tuple(values) => Ok(Value::tuple(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<_>>()?)),
+            Expr::List(values) => Ok(Value::List(Rc::new(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<Vec<_>>>()?))),
+            _ => self.expr(value, scope),
+        }
+    }
+
     pub(crate) fn bind_params(
         &mut self,
         owner: &str,
@@ -5019,6 +5103,9 @@ impl<'a> Evaluator<'a> {
     pub fn lookup_ident(&self, name: &str, sc: &Scope) -> Option<Value> {
         if let Some((_, v)) = sc.env.iter().rev().find(|(k, _)| k == name) {
             return Some(v.clone());
+        }
+        if sc.module.parameters.borrow().contains(name) {
+            return sc.module.global(name);
         }
         if name == "target" {
             return Some(

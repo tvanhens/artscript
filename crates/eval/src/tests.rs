@@ -7561,3 +7561,85 @@ fn fill_stroke_and_blur_on_an_instance_point_at_palette_and_fx_blur() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn entry_parameters_reuse_types_defaults_and_private_import_bindings() {
+    let src = "@target t.png 40x40\nparam view:one_of(normal geometry) width:8\nparam height:width\nrect width,height at:20,20 fill:if view == normal then #ff0000 else #00ff00 name:body\n";
+    let p = project(&[("art/t.ramo", src)]);
+    let mut job = plan(&p).jobs.remove(0);
+    let default = evaluate(&p, &job);
+    assert!(default.diagnostics.is_empty(), "{}", show(&default.diagnostics));
+    assert_eq!(default.parameters["view"], "normal");
+    assert_eq!(default.parameters["height"], "8");
+    job.parameters.insert("width".into(), ramose_syntax::ast::Expr::Num(12.0));
+    let changed = evaluate(&p, &job);
+    assert_eq!(changed.parameters["height"], "12");
+    assert_eq!(crate::node_bounds(changed.scene.as_ref().unwrap(), "body").unwrap().width(), 12.0);
+    for (setting, message) in [("width=false", "expects a number"), ("view=unknown", "one of normal, geometry"), ("missing=4", "unknown entry parameter")] {
+        job.parameters.clear();
+        let (key, value) = crate::parse_parameter(setting).unwrap();
+        job.parameters.insert(key, value);
+        let ev = evaluate(&p, &job);
+        assert!(ev.diagnostics.iter().any(|d| d.message.contains(message)), "{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn parameter_collisions_report_once_at_the_declaration() {
+    for (source, line) in [
+        ("@target t.png 8x8\nparam view:normal\nparam view:geometry\n", 3),
+        ("@target t.png 8x8\nparam width:4\nlet width = 6\n", 2),
+        ("@target t.png 8x8\nparam canvas:4\n", 2),
+        ("@target t_{view}.png 8x8 each view:[normal]\nparam view:normal\n", 2),
+        ("@target t.png 8x8\nparam thing:4\ndef thing\n  circle 2\n", 2),
+        ("@target t.png 8x8\ndef thing\n  circle 2\nparam thing:4\n", 4),
+    ] {
+        let ev = run_with(source, &[]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].span.line, line);
+        assert_eq!(errors[0].file, "art/t.ramo");
+    }
+}
+
+#[test]
+fn adding_diagnostic_draws_preserves_named_random_artwork() {
+    let src = "@target t.png 40x40\nparam guides:false\nif guides\n  circle rand(1 3) at:2,2 fill:#ff0000 name:guide\nblob 10 at:20,20 fill:#00ff00 name:body\n";
+    let p = project(&[("art/t.ramo", src)]);
+    let mut job = plan(&p).jobs.remove(0);
+    let before = evaluate(&p, &job);
+    job.parameters.insert("guides".into(), ramose_syntax::ast::Expr::Ident("true".into()));
+    let after = evaluate(&p, &job);
+    assert!(before.diagnostics.is_empty(), "{}", show(&before.diagnostics));
+    assert!(after.diagnostics.is_empty(), "{}", show(&after.diagnostics));
+    let geometry = |s: &Scene| match &node(s, "body").kind {
+        NodeKind::Shape(shape) => shape.geometry.clone(),
+        _ => panic!("body is a shape"),
+    };
+    assert_eq!(geometry(before.scene.as_ref().unwrap()), geometry(after.scene.as_ref().unwrap()));
+}
+
+#[test]
+fn entry_parameter_import_collisions_and_private_exports_are_rejected() {
+    for source in [
+        "@target t.png 8x8\nparam value:4\nuse values\n",
+        "@target t.png 8x8\nuse values\nparam value:4\n",
+        "@target t.png 8x8\nparam value:4\nuse values as value\n",
+    ] {
+        let ev = run_with(source, &[("lib/values.ramo", "let value = 8\n")]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+        assert!(errors[0].message.contains("collides"));
+    }
+    let p = project(&[("art/t.ramo", "@target t.png 8x8\nuse art/other { view }\n"), ("art/other.ramo", "@target other.png 8x8\nparam view:one_of(normal geometry)\n")]);
+    let plan = plan(&p);
+    let ev = evaluate(&p, plan.jobs.iter().find(|j| j.source == "art/t.ramo").unwrap());
+    assert!(ev.diagnostics.iter().any(|d| d.message.contains("does not export `view`")), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn named_preview_bounds_follow_ancestor_rotation() {
+    let scene = scene("@target t.png 20x20\ngroup rig at:8,8 rot:90\n  rect 4,2 at:3,0 fill:#ff0000 name:head\n");
+    let rect = crate::node_bounds(&scene, "head").unwrap();
+    assert_eq!((rect.left, rect.top, rect.width(), rect.height()), (7.0, 9.0, 2.0, 4.0));
+}

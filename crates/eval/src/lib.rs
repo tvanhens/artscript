@@ -17,6 +17,7 @@ mod lints;
 mod motion;
 mod order;
 mod paint;
+mod parameters;
 mod place;
 pub mod project;
 mod range;
@@ -33,7 +34,8 @@ use ramose_ir::Scene;
 use ramose_syntax::Diagnostic;
 use ramose_syntax::ast::DeclKind;
 
-pub use explain::explain;
+pub use explain::{explain, node_bounds};
+pub use parameters::{Parameters, parse_parameter};
 pub use key::{frame_count, frame_delays};
 pub use project::{BackendChoice, LintLevel, Manifest, Project, STD, find_root, load};
 pub use seed::fnv1a;
@@ -56,6 +58,7 @@ pub struct Evaluation {
     /// Node keys that drew a key-derived seed. `explain` prints `seed` on these.
     pub seeded: BTreeSet<String>,
     pub rig: Rig,
+    pub parameters: BTreeMap<String, String>,
 }
 
 /// What a scene exposes to the program that places its image, in canvas units.
@@ -210,9 +213,19 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
                 plays: Vec::new(),
                 seeded: BTreeSet::new(),
                 rig: Rig::default(),
+                parameters: BTreeMap::new(),
             };
         }
     };
+    let parameters = ev.parsed[&job.source].decls().filter_map(|d| match &d.kind {
+        DeclKind::Param { params } => Some(params),
+        _ => None,
+    }).flatten().filter_map(|p| module.global(&p.key).map(|v| (p.key.clone(), v.parameter_text()))).collect();
+    if ev.diags.iter().any(|d| d.severity == ramose_syntax::Severity::Error)
+        && ev.parsed.values().any(|f| f.decls().any(|d| matches!(d.kind, DeclKind::Param { .. })))
+    {
+        return Evaluation { scene: None, diagnostics: ev.diags, plays: Vec::new(), seeded: BTreeSet::new(), rig: Rig::default(), parameters };
+    }
     let loaded = ev.diags.len();
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
@@ -298,6 +311,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         plays,
         seeded,
         rig,
+        parameters,
     }
 }
 

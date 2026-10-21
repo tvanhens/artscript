@@ -170,3 +170,19 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     }
     out
 }
+
+/// Node ink bounds in canvas units, including its clip and mask, excluding effects.
+pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<ramose_ir::Rect> {
+    fn find<'a>(nodes: impl Iterator<Item = &'a ramose_ir::Node>, place: &crate::place::Place, path: &str) -> Option<ramose_ir::Rect> {
+        for node in nodes {
+            if node.path == path {
+                return node.bounds().map(|bounds| place.map_rect(bounds));
+            }
+            if let Some(bounds) = find(node.descendants(), &place.inner_node(node), path) {
+                return Some(bounds);
+            }
+        }
+        None
+    }
+    find(scene.children.iter(), &crate::place::Place::identity(), path.trim_start_matches('@'))
+}

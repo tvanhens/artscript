@@ -40,6 +40,7 @@ impl MatrixValue {
 /// One `@target` line after matrix expansion: one scene, one or more output files.
 #[derive(Clone, Debug)]
 pub struct TargetJob {
+    pub parameters: BTreeMap<String, Expr>,
     pub source: String,
     pub line: u32,
     pub span: Span,
@@ -472,6 +473,7 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
             };
             let clip = clip_of(clip_expr.as_ref(), &matrix, d.span)?;
             Ok(TargetJob {
+                parameters: BTreeMap::new(),
                 source: file.to_string(),
                 line: d.span.line,
                 span: d.span,

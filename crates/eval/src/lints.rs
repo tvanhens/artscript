@@ -189,7 +189,7 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
             }
-            DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
+            DeclKind::Param { params } | DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
                 named(params, &mut out)
             }
             DeclKind::Fn { body, .. } => out.push((body, d.span)),
@@ -250,7 +250,8 @@ fn local_names(file: &File, exprs: &Exprs<'_>) -> HashSet<String> {
         .flat_map(|d| d.each.iter().map(|n| n.key.clone()))
         .collect();
     for d in file.decls() {
-        if let DeclKind::Def { params, .. }
+        if let DeclKind::Param { params }
+        | DeclKind::Def { params, .. }
         | DeclKind::Stamp { params, .. }
         | DeclKind::Rule { params, .. }
         | DeclKind::Finish { params, .. }

@@ -1,4 +1,12 @@
-# craft: structure a piece, layers and names, choose a style, light and value, tools for each style
+# craft: structure a piece, layers and names, style, light and value, preview-assisted repairs
+
+## Inspect a repair
+
+Build and open the normal artwork at its intended display size first. Use `preview --crop node --zoom 4 --bg checker --out review/detail.png` for a closer look. Compare `light` and `dark` backgrounds when an edge depends on transparency. Select an exact output with `--target` if the file has several outputs. These controls need no temporary targets or external crop scripts.
+
+When inspection needs different source logic, declare controls such as `param view:one_of(normal geometry) guides:false`. Ordinary conditionals can reveal hidden geometry, replace texture with flat colors, or draw construction lines. Pass overrides to preview and identify the altered view when reporting it. Keep important artwork named so diagnostic additions preserve its random seeds.
+
+For moving attachments, use `--frames 8` or explicit `--times` and open the resulting strip. Compare the loop endpoints explicitly when checking a seam. Fix the source, rebuild without overrides, and inspect the normal shipping output again. The complete example in `examples/preview-debug/README.md` follows this workflow.
 
 Structure a piece:
 

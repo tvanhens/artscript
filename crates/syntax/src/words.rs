@@ -1,5 +1,6 @@
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Word {
+    Param,
     Use,
     As,
     From,
@@ -64,6 +65,7 @@ pub(crate) enum Class {
 }
 
 const WORDS: &[(Word, &str, Class)] = &[
+    (Word::Param, "param", Class::DeclHead),
     (Word::Use, "use", Class::Keyword),
     (Word::As, "as", Class::Keyword),
     (Word::From, "from", Class::Keyword),

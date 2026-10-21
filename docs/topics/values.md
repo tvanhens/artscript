@@ -1,4 +1,14 @@
-# values: the values table, expressions, operators, functions, fn
+# values: entry parameters, CLI literals, the values table, expressions, operators, functions, fn
+
+## Entry parameters
+
+`param view:one_of(normal geometry) guides:false` declares named controls in an entry file. Each default determines its type using the component parameter binder. The first `one_of` word is the default. A plain word default accepts any word. Defaults can use earlier parameters and names available at their declaration. With no overrides, all parameters use their defaults.
+
+`check`, `build`, and `preview` accept repeated `--set name=value`. Values are literals, including numbers, percentages, angles, times, booleans, words, hex colors, strings, sizes, tuples, and lists. Shell-quote values containing spaces or shell punctuation, for example `--set 'offset=12,4'` or `--set 'caption="hello"'`. Calls, arithmetic, and references are not CLI values. An undeclared parameter, a wrong type, or a word outside `one_of` is an error. Repeating a name uses its last value. The bindings apply to each selected entry, so narrow `build` and `check` with `--only` when entries have different parameters.
+
+Entry parameters cannot duplicate one another or collide with a top-level declaration, import, `let`, or target matrix axis. Built-ins `target`, `t`, `clip`, `scale`, `canvas`, `p`, `true`, `false`, and `none` are reserved parameter names. Local bindings inside components retain their ordinary scope rules.
+
+When an entry file is imported, its parameters bind their own defaults privately. Its exported components can read those values. Caller CLI overrides do not reach the imported file, and its parameter names are not added to the caller's globals. A file without `@target` cannot declare entry parameters.
 
 | kind | examples |
 |---|---|

@@ -299,6 +299,26 @@ impl Value {
         Value::Tuple(xs)
     }
 
+    pub fn parameter_text(&self) -> String {
+        let coordinate = |c: &Coord| match c {
+            Coord::Num(n) => n.to_string(),
+            Coord::Pct(p) => format!("percent({p})"),
+        };
+        match self {
+            Value::Num(n) => n.to_string(),
+            Value::Percent(p) => format!("percent({p})"),
+            Value::Vec2(x, y) => format!("{},{}", coordinate(x), coordinate(y)),
+            Value::Size(x, y) => format!("{}x{}", coordinate(x), coordinate(y)),
+            Value::Tuple(values) => values.iter().map(Value::parameter_text).collect::<Vec<_>>().join(","),
+            Value::List(values) => format!("[{}]", values.iter().map(Value::parameter_text).collect::<Vec<_>>().join(" ")),
+            Value::Color(color) => {
+                let c = color.rgba;
+                format!("rgba({} {} {} {})", c.r, c.g, c.b, c.a)
+            }
+            _ => self.show(),
+        }
+    }
+
     /// Short human form for notes and `explain`.
     pub fn show(&self) -> String {
         match self {
