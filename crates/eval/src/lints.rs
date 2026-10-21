@@ -357,71 +357,79 @@ pub fn unknown_target(
     out
 }
 
-/// `param == x` or `param != x` in a def body, where `param` is declared `one_of(...)` and `x` is
-/// a word the list leaves out. A name the body binds, or another parameter, is left alone.
-pub fn unknown_word(file: &File, path: &str, manifest: &Manifest) -> Vec<Diagnostic> {
+pub fn unknown_word(file: &File, path: &str, manifest: &Manifest, module_bound: impl Fn(&str) -> bool) -> Vec<Diagnostic> {
     let level = manifest.lint_level("unknown-word");
-    let mut out = Vec::new();
+    let entry_params: Vec<&Named> = file.decls().filter_map(|d| match &d.kind {
+        DeclKind::Param { params } => Some(params),
+        _ => None,
+    }).flatten().collect();
+    let mut out = unknown_word_scope(&entry_params, file.scenes(), Vec::new(), &module_bound, path, level);
     for d in file.decls() {
-        let DeclKind::Def { params, body, .. } = &d.kind else {
-            continue;
-        };
+        let DeclKind::Def { params, body, .. } = &d.kind else { continue };
         let mut exprs = Vec::new();
-        let mut scenes = Vec::new();
         body.iter().filter_map(DefItem::fx).for_each(|fx| fx_exprs(fx, &mut exprs));
-        for s in body.iter().filter_map(DefItem::scene) {
-            walk_scene(s, &mut |c| {
-                scene_line_and_direct_fx_mask_patch_exprs(c, &mut exprs);
-                scenes.push(c);
-            });
+        let params: Vec<&Named> = entry_params.iter().copied().filter(|entry| !params.iter().any(|param| param.key == entry.key)).chain(params.iter()).collect();
+        out.extend(unknown_word_scope(&params, body.iter().filter_map(DefItem::scene), exprs, &module_bound, path, level));
+    }
+    out
+}
+
+fn unknown_word_scope<'a>(params: &[&Named], roots: impl Iterator<Item = &'a Scene>, mut exprs: Exprs<'a>, module_bound: &impl Fn(&str) -> bool, path: &str, level: LintLevel) -> Vec<Diagnostic> {
+    let mut out = Vec::new();
+    let mut scenes = Vec::new();
+    for scene in roots {
+        walk_scene(scene, &mut |child| {
+            scene_line_and_direct_fx_mask_patch_exprs(child, &mut exprs);
+            scenes.push(child);
+        });
+    }
+    let mut bound = HashSet::new();
+    for s in &scenes {
+        if let SceneKind::Let { name, .. } | SceneKind::Each { var: name, .. } = &s.kind {
+            bound.insert(name.clone());
         }
-        let mut bound = HashSet::new();
-        for s in &scenes {
-            if let SceneKind::Let { name, .. } | SceneKind::Each { var: name, .. } = &s.kind {
-                bound.insert(name.clone());
+    }
+    for (e, _) in &exprs {
+        walk_expr(e, &mut |x| {
+            if let Expr::Each { var, .. } = x {
+                bound.insert(var.clone());
             }
-        }
-        for (e, _) in &exprs {
-            walk_expr(e, &mut |x| {
-                if let Expr::Each { var, .. } = x {
-                    bound.insert(var.clone());
-                }
-            });
-        }
-        let declared: Vec<(&str, Vec<String>)> = params
-            .iter()
-            .filter(|p| !bound.contains(&p.key))
-            .filter_map(|p| Some((p.key.as_str(), p.value.one_of_words()?.ok()?)))
-            .collect();
-        for (e, span) in &exprs {
-            walk_expr(e, &mut |x| {
-                let Expr::Binary(BinOp::Eq | BinOp::Ne, a, b) = x else {
-                    return;
+        });
+    }
+    let declared: Vec<(&str, Vec<String>)> = params
+        .iter()
+        .filter(|p| !bound.contains(&p.key))
+        .filter_map(|p| Some((p.key.as_str(), p.value.one_of_words()?.ok()?)))
+        .collect();
+    for (e, span) in &exprs {
+        walk_expr(e, &mut |x| {
+            let Expr::Binary(BinOp::Eq | BinOp::Ne, a, b) = x else {
+                return;
+            };
+            for (param, other) in [(&**a, &**b), (&**b, &**a)] {
+                let Expr::Ident(name) = param else { continue };
+                let Some((_, words)) = declared.iter().find(|(k, _)| k == name) else {
+                    continue;
                 };
-                for (param, other) in [(&**a, &**b), (&**b, &**a)] {
-                    let Expr::Ident(name) = param else { continue };
-                    let Some((_, words)) = declared.iter().find(|(k, _)| k == name) else {
-                        continue;
-                    };
-                    let Expr::Ident(w) = other else { continue };
-                    let known = words.contains(w)
-                        || bound.contains(w)
-                        || params.iter().any(|p| &p.key == w);
-                    if known {
-                        continue;
-                    }
-                    let list = words.join(", ");
-                    if let Some(d) = diag(level, "L0107", *span, format!("`{name}` is never `{w}`")) {
-                        out.push(
-                            d.in_file(path)
-                                .with_note(format!("`{name}` is one of {list}"))
-                                .with_fix(format!("compare `{name}` with one of {list}")),
-                        );
-                    }
-                    break;
+                let Expr::Ident(w) = other else { continue };
+                let known = words.contains(w)
+                    || bound.contains(w)
+                    || params.iter().any(|p| &p.key == w)
+                    || module_bound(w);
+                if known {
+                    continue;
                 }
-            });
-        }
+                let list = words.join(", ");
+                if let Some(d) = diag(level, "L0107", *span, format!("`{name}` is never `{w}`")) {
+                    out.push(
+                        d.in_file(path)
+                            .with_note(format!("`{name}` is one of {list}"))
+                            .with_fix(format!("compare `{name}` with one of {list}")),
+                    );
+                }
+                break;
+            }
+        });
     }
     out
 }

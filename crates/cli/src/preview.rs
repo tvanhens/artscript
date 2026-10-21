@@ -182,9 +182,9 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
 
 pub fn run(project: &Project, cwd: &Path, opts: &Options) -> u8 {
     match preview(project, cwd, opts) {
-        Ok(receipt) => {
-            outln!("{}", serde_json::to_string_pretty(&receipt).unwrap());
-            0
+        Ok(result) => {
+            outln!("{}", serde_json::to_string_pretty(&result.receipt).unwrap());
+            crate::report(result.diagnostics, false, false)
         }
         Err(message) => {
             errln!("error: {message}");
@@ -193,17 +193,22 @@ pub fn run(project: &Project, cwd: &Path, opts: &Options) -> u8 {
     }
 }
 
-fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::Value, String> {
+struct PreviewResult {
+    receipt: serde_json::Value,
+    diagnostics: Vec<Diagnostic>,
+}
+
+fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<PreviewResult, String> {
     let source = crate::resolve_art(project, cwd, &opts.file)?;
     let plan = ramose_eval::plan(project);
     let deps = ramose_eval::dependencies(project, &source);
-    reject_errors(
-        plan.diagnostics
-            .iter()
-            .filter(|d| deps.contains(&d.file))
-            .cloned()
-            .collect(),
-    )?;
+    let mut diagnostics: Vec<Diagnostic> = plan
+        .diagnostics
+        .iter()
+        .filter(|d| deps.contains(&d.file))
+        .cloned()
+        .collect();
+    reject_errors(&diagnostics)?;
     let candidates: Vec<_> = plan
         .jobs
         .iter()
@@ -271,7 +276,7 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::
         Frames::Target => job.frame_t,
     };
     let probe = ramose_eval::evaluate(project, &probe_job);
-    reject_errors(probe.diagnostics)?;
+    reject_errors(&probe.diagnostics)?;
     let duration = job
         .dur
         .unwrap_or_else(|| probe.plays.iter().map(|p| p.end).fold(0.0, f64::max));
@@ -292,7 +297,12 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::
     for time in &times {
         job.frame_t = *time;
         let evaluated = ramose_eval::evaluate(project, &job);
-        reject_errors(evaluated.diagnostics)?;
+        reject_errors(&evaluated.diagnostics)?;
+        for diagnostic in evaluated.diagnostics {
+            if !diagnostics.contains(&diagnostic) {
+                diagnostics.push(diagnostic);
+            }
+        }
         if !opts.parameters.is_empty() {
             let mut normal_job = job.clone();
             normal_job.parameters.clear();
@@ -415,9 +425,14 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::
         .map_err(|e| format!("cannot create preview directory: {e}"))?;
     let temporary = destination.with_extension(format!("{}.tmp", std::process::id()));
     use std::io::Write;
-    let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&temporary)
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
         .map_err(|e| format!("cannot create preview temporary file: {e}"))?;
-    let result = file.write_all(&encoded).and_then(|_| fs::rename(&temporary, &destination));
+    let result = file
+        .write_all(&encoded)
+        .and_then(|_| fs::rename(&temporary, &destination));
     if let Err(e) = result {
         let _ = fs::remove_file(&temporary);
         return Err(format!(
@@ -425,8 +440,9 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::
             destination.display()
         ));
     }
-    Ok(json!({
+    let receipt = json!({
         "source": source, "target": selected.output.path, "target_line": job.line,
+        "exit_code": crate::exit_code(&diagnostics, false), "diagnostics": diagnostics,
         "matrix": job.matrix.iter().map(|(key, value)| (key.clone(), value.text())).collect::<std::collections::BTreeMap<_, _>>(),
         "scale": selected.output.scale, "backend": format!("{backend:?}").to_lowercase(),
         "parameters": parameters, "parameter_altered": altered, "clip": job.clip,
@@ -435,19 +451,25 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<serde_json::
         "crop_pixels": [left, top, width as i64, height as i64], "zoom": opts.zoom,
         "background": match opts.background { Background::Transparent => json!("none"), Background::Checker => json!("checker"), Background::Color(color) => json!(color) },
         "columns": columns, "rows": rows, "size": [sheet_w, sheet_h], "paths": [destination],
-    }))
+    });
+    Ok(PreviewResult {
+        receipt,
+        diagnostics,
+    })
 }
 
-fn reject_errors(diagnostics: Vec<Diagnostic>) -> Result<(), String> {
-    let errors = diagnostics
-        .into_iter()
-        .filter(|d| d.severity == Severity::Error)
-        .map(|d| d.to_string())
-        .collect::<Vec<_>>();
-    if errors.is_empty() {
-        Ok(())
+fn reject_errors(diagnostics: &[Diagnostic]) -> Result<(), String> {
+    if diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Error && d.code.starts_with('E'))
+    {
+        Err(diagnostics
+            .iter()
+            .map(Diagnostic::to_string)
+            .collect::<Vec<_>>()
+            .join("\n"))
     } else {
-        Err(errors.join("\n"))
+        Ok(())
     }
 }
 

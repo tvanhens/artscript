@@ -1190,6 +1190,7 @@ impl<'a> Evaluator<'a> {
                 self.report(f, file, item.span(), "");
             }
         }
+        self.declare_aliases(&module, &parsed);
         for name in &parameter_names {
             if (module.own.borrow().iter().any(|own| own == name || own == &format!("style:{name}") || own == &format!("finish:{name}")) || module.anims.borrow().contains_key(name)) && !self.diags.iter().any(|d| d.file == file && d.message == format!("parameter `{name}` collides with another binding")) {
                 let span = parsed.decls().find_map(|d| match &d.kind {
@@ -1199,7 +1200,6 @@ impl<'a> Evaluator<'a> {
                 self.report(fail("E0320", format!("parameter `{name}` collides with another binding")), file, span, "");
             }
         }
-        self.declare_aliases(&module, &parsed);
         self.check_fn_cycles(&module, &parsed);
         let components = component_names(&module);
         let mut id_diags = Vec::new();
@@ -1257,6 +1257,7 @@ impl<'a> Evaluator<'a> {
                 for p in params {
                     if let Some(Err(message)) = p.value.one_of_words() {
                         self.report(fail("E0320", message), &module.path, p.span, "");
+                        module.lost.borrow_mut().insert(p.key.clone());
                         continue;
                     }
                     if module.global(&p.key).is_some() && !module.parameters.borrow().contains(&p.key) {

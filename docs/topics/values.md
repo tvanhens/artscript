@@ -8,6 +8,8 @@
 
 Entry parameters cannot duplicate one another or collide with a top-level declaration, import, `let`, or target matrix axis. Built-ins `target`, `t`, `clip`, `scale`, `canvas`, `p`, `true`, `false`, and `none` are reserved parameter names. Local bindings inside components retain their ordinary scope rules.
 
+In entry drawing statements and component bodies, comparing an entry `one_of` parameter with an unlisted word using `==` or `!=` triggers `unknown-word` (L0107). Component parameters shadow entry parameters of the same name. The lint respects local rebinding and names bound by the surrounding scope. It does not inspect `fn` or `anim` bodies.
+
 When an entry file is imported, its parameters bind their own defaults privately. Its exported components can read those values. Caller CLI overrides do not reach the imported file, and its parameter names are not added to the caller's globals. A file without `@target` cannot declare entry parameters.
 
 | kind | examples |

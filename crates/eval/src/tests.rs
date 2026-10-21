@@ -7643,3 +7643,60 @@ fn named_preview_bounds_follow_ancestor_rotation() {
     let rect = crate::node_bounds(&scene, "head").unwrap();
     assert_eq!((rect.left, rect.top, rect.width(), rect.height()), (7.0, 9.0, 2.0, 4.0));
 }
+
+#[test]
+fn forward_alias_cannot_overwrite_an_entry_parameter() {
+    let ev = run_with("@target t.png 8x8\nparam mode:4\ndef mode = base\ndef base\n  circle 2\n", &[]);
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].span.line, 2);
+    assert_eq!(errors[0].message, "parameter `mode` collides with another binding");
+}
+
+#[test]
+fn parameter_errors_preserve_unrelated_scene_diagnostics_without_cascades() {
+    for source in [
+        "@target t.png 8x8\nparam width:4\nlet width = 6\nrect missing\n",
+        "@target t.png 8x8\nparam width:one_of()\nrect width\nrect missing\n",
+    ] {
+        let ev = run_with(source, &[]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].span.line, 2);
+        assert_eq!(errors[1].span.line, 4);
+    }
+    let p = project(&[("art/t.ramo", "@target t.png 8x8\nparam width:4\nrect width\nrect missing\n")]);
+    let mut job = plan(&p).jobs.remove(0);
+    job.parameters.insert("width".into(), ramose_syntax::ast::Expr::Ident("false".into()));
+    let ev = evaluate(&p, &job);
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+    assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].span.line, 2);
+    assert_eq!(errors[1].span.line, 4);
+}
+
+#[test]
+fn entry_one_of_comparisons_share_the_component_word_lint() {
+    let ev = run_with("@target t.png 8x8\nparam view:one_of(normal geometry) other:normal\nif view == typo\n  circle 1\nif wrong != view\n  circle 1\nif view == geometry or view == other\n  circle 1\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!((warnings[0].span.line, warnings[1].span.line), (3, 5));
+    assert_eq!(warnings[0].message, "`view` is never `typo`");
+    let quiet = run_with("@target t.png 8x8\nuse values\nparam view:one_of(normal geometry)\nif view == imported\n  circle 1\neach word in [normal]\n  if view == word\n    circle 1\neach view in [custom]\n  if view == custom\n    circle 1\n", &[("lib/values.ramo", "let imported = normal\n")]);
+    assert!(!quiet.diagnostics.iter().any(|d| d.code == "L0107"), "{}", show(&quiet.diagnostics));
+}
+
+#[test]
+fn defs_lint_private_entry_words_unless_their_own_parameter_shadows_them() {
+    let ev = run_with("@target t.png 8x8\nparam view:one_of(normal geometry)\ndef part\n  if view == geomtry\n    circle 1\ndef shadow view:custom\n  if view == another\n    circle 1\npart\nshadow\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(warnings[0].span.line, 4);
+    assert_eq!(warnings[0].message, "`view` is never `geomtry`");
+}
+
+#[test]
+fn entry_word_comparisons_with_matrix_axes_and_target_context_are_quiet() {
+    let ev = run_with("@target t_{selection}.png 8x8 each selection:[normal] clip:normal\nparam view:one_of(normal geometry)\nif view == selection or view == clip or view == target\n  circle 1\n", &[]);
+    assert!(!ev.diagnostics.iter().any(|d| d.code == "L0107"), "{}", show(&ev.diagnostics));
+}

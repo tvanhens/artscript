@@ -490,3 +490,82 @@ fn still_preview_probes_the_requested_time_when_zero_is_invalid() {
     assert_eq!(invalid.status.code(), Some(1));
     assert!(invalid.stdout.is_empty());
 }
+
+#[test]
+fn check_failures_still_generate_preview_with_diagnostics_and_nonzero_status() {
+    let dir = fixture(
+        "check-failure",
+        "@target test.png 8x8\nrect 4,4 at:4,4 fill:#ff0000\nassert false\n",
+    );
+    let built = run(&dir, &["build", "--backend", "cpu"]);
+    assert_eq!(built.status.code(), Some(2));
+    let output = run(
+        &dir,
+        &[
+            "preview",
+            "art/test.ramo",
+            "--times",
+            "0,1",
+            "--out",
+            "review/failed-check.png",
+            "--backend",
+            "cpu",
+        ],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(2),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(receipt["exit_code"], 2);
+    assert_eq!(receipt["diagnostics"].as_array().unwrap().len(), 1);
+    assert_eq!(receipt["diagnostics"][0]["code"], "C0101");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("C0101"));
+    let (width, height, pixels) = image(&dir.join("review/failed-check.png"));
+    assert_eq!((width, height), (16, 8));
+    let (_, _, production) = image(&dir.join("assets/test.png"));
+    for y in 0..8usize {
+        assert_eq!(
+            &pixels[y * 64..y * 64 + 32],
+            &production[y * 32..y * 32 + 32]
+        );
+    }
+}
+
+#[test]
+fn preview_reports_entry_word_warnings_and_lint_errors_without_losing_images() {
+    let dir = fixture(
+        "word-warning",
+        "@target test.png 8x8\nparam view:one_of(normal geometry)\nrect 4,4 at:4,4 fill:#ff0000\nif view == typo\n  circle 1\n",
+    );
+    for expected in [3, 2] {
+        if expected == 2 {
+            use std::io::Write;
+            fs::OpenOptions::new()
+                .append(true)
+                .open(dir.join("ramose.toml"))
+                .unwrap()
+                .write_all(b"unknown-word = \"error\"\n")
+                .unwrap();
+        }
+        let output = run(
+            &dir,
+            &[
+                "preview",
+                "art/test.ramo",
+                "--out",
+                "review/lint.png",
+                "--backend",
+                "cpu",
+            ],
+        );
+        assert_eq!(output.status.code(), Some(expected));
+        let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(receipt["exit_code"], expected);
+        assert_eq!(receipt["diagnostics"].as_array().unwrap().len(), 1);
+        assert_eq!(receipt["diagnostics"][0]["code"], "L0107");
+        assert_eq!(image(&dir.join("review/lint.png")).0, 8);
+    }
+}

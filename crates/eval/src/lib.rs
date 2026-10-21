@@ -221,11 +221,6 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         DeclKind::Param { params } => Some(params),
         _ => None,
     }).flatten().filter_map(|p| module.global(&p.key).map(|v| (p.key.clone(), v.parameter_text()))).collect();
-    if ev.diags.iter().any(|d| d.severity == ramose_syntax::Severity::Error)
-        && ev.parsed.values().any(|f| f.decls().any(|d| matches!(d.kind, DeclKind::Param { .. })))
-    {
-        return Evaluation { scene: None, diagnostics: ev.diags, plays: Vec::new(), seeded: BTreeSet::new(), rig: Rig::default(), parameters };
-    }
     let loaded = ev.diags.len();
     let file = ev.parsed[&job.source].clone();
     let mut sc = ev.top_scope(&module);
@@ -288,7 +283,11 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         let parsed = &ev.parsed[f];
         diagnostics.extend(lints::raw_color(parsed, f, &project.manifest));
         diagnostics.extend(lints::unused(parsed, f, f != &job.source, &project.manifest));
-        diagnostics.extend(lints::unknown_word(parsed, f, &project.manifest));
+        diagnostics.extend(lints::unknown_word(parsed, f, &project.manifest, |name| {
+            ev.modules.get(f).is_some_and(|module| module.global(name).is_some())
+                || job.matrix.iter().any(|(key, _)| key == name)
+                || ["target", "clip", "t", "scale", "canvas", "p"].contains(&name)
+        }));
     }
     diagnostics.extend(lints::unknown_target(
         &file,
