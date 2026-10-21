@@ -437,6 +437,9 @@ pub(crate) struct Evaluator<'a> {
     /// True while `collect_entry` runs, before anything is drawn.
     pub(crate) prepass: bool,
     silence: bool,
+    /// True once a `--set` binding of the entry file was rejected. The entry is not evaluated,
+    /// because its drawing would read a value the author did not ask for.
+    pub(crate) rejected_parameters: bool,
     /// Every placed record by node path, for `.outer` to find the nodes an `of:@x` effect reads.
     pub(crate) placed: RefCell<HashMap<String, Rc<RefCell<Record>>>>,
     /// The stamp declarations whose blocks are being placed, outermost first. A set whose
@@ -1012,6 +1015,7 @@ impl<'a> Evaluator<'a> {
             guards: HashMap::new(),
             prepass: false,
             silence: false,
+            rejected_parameters: false,
             placed: RefCell::new(HashMap::new()),
             stamping: Vec::new(),
             blocked: Vec::new(),
@@ -1159,8 +1163,9 @@ impl<'a> Evaluator<'a> {
         if file == self.job.source {
             for name in self.job.parameters.keys() {
                 if !parameter_names.contains(name) {
-                    self.report(fail("E0320", format!("unknown entry parameter `{name}`"))
-                        .fix("declare it with `param name:default`, or remove --set"), file, self.job.span, "");
+                    self.rejected_parameters = true;
+                    self.report(fail("E0320", format!("unknown entry parameter `{name}` in --set"))
+                        .fix("declare it with `param name:default`, or remove --set"), file, Span::default(), "");
                 }
             }
         }
@@ -1270,15 +1275,11 @@ impl<'a> Evaluator<'a> {
                     }
                     self.begin_seed(&module.path, Key::binding(&p.key));
                     let scope = self.module_scope(module);
-                    let mut given = Vec::new();
-                    if module.path == self.job.source
-                        && let Some(value) = self.job.parameters.get(&p.key)
-                    {
-                        given.push((p.key.clone(), self.parameter_literal(value, &scope)?));
-                    }
-                    let bound = match self.bind_params("entry file", std::slice::from_ref(p), module, &given, p.span, &scope) {
+                    let overridden = module.path == self.job.source && self.job.parameters.contains_key(&p.key);
+                    let bound = match self.bind_entry_param(p, module, &scope) {
                         Ok(bound) => bound,
                         Err(error) => {
+                            self.rejected_parameters |= overridden;
                             self.report(error, &module.path, p.span, "");
                             module.lost.borrow_mut().insert(p.key.clone());
                             continue;
@@ -3712,6 +3713,17 @@ impl<'a> Evaluator<'a> {
             Expr::List(values) => Ok(Value::List(Rc::new(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<Vec<_>>>()?))),
             _ => self.expr(value, scope),
         }
+    }
+
+    /// One entry `param`, bound to its `--set` value when the job carries one for this file.
+    fn bind_entry_param(&mut self, p: &Named, module: &Rc<Module>, scope: &Scope) -> R<Vec<(String, Value)>> {
+        let mut given = Vec::new();
+        if module.path == self.job.source
+            && let Some(value) = self.job.parameters.get(&p.key)
+        {
+            given.push((p.key.clone(), self.parameter_literal(value, scope)?));
+        }
+        self.bind_params("entry file", std::slice::from_ref(p), module, &given, p.span, scope)
     }
 
     pub(crate) fn bind_params(

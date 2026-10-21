@@ -7665,14 +7665,19 @@ fn parameter_errors_preserve_unrelated_scene_diagnostics_without_cascades() {
         assert_eq!(errors[0].span.line, 2);
         assert_eq!(errors[1].span.line, 4);
     }
-    let p = project(&[("art/t.ramo", "@target t.png 8x8\nparam width:4\nrect width\nrect missing\n")]);
-    let mut job = plan(&p).jobs.remove(0);
-    job.parameters.insert("width".into(), ramose_syntax::ast::Expr::Ident("false".into()));
-    let ev = evaluate(&p, &job);
-    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
-    assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
-    assert_eq!(errors[0].span.line, 2);
-    assert_eq!(errors[1].span.line, 4);
+}
+
+#[test]
+fn rejected_parameter_binding_stops_the_entry() {
+    let p = project(&[("art/t.ramo", "@target t.png 8x8\nparam width:4\nlet edge = if width > 2 then #f00 else 1\nrect width stroke:edge,1\nrect missing\n")]);
+    for (name, value, line) in [("width", "false", 2), ("bogus", "1", 0)] {
+        let mut job = plan(&p).jobs.remove(0);
+        job.parameters.insert(name.into(), ramose_syntax::ast::Expr::Ident(value.into()));
+        let ev = evaluate(&p, &job);
+        assert!(ev.scene.is_none());
+        assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
+        assert_eq!((ev.diagnostics[0].code.as_str(), ev.diagnostics[0].span.line), ("E0320", line));
+    }
 }
 
 #[test]

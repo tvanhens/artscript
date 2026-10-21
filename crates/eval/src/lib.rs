@@ -204,9 +204,11 @@ fn merge_diagnostics(into: &mut Vec<Diagnostic>, from: Vec<Diagnostic>) {
 fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = Evaluator::new(project, job);
     let module = match ev.load_module(&job.source, true) {
-        Ok(m) => m,
-        Err(f) => {
-            ev.report(f, &job.source, job.span, "");
+        Ok(m) if !ev.rejected_parameters => m,
+        loaded => {
+            if let Err(f) = loaded {
+                ev.report(f, &job.source, job.span, "");
+            }
             return Evaluation {
                 scene: None,
                 diagnostics: ev.diags,

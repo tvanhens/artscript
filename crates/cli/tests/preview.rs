@@ -294,6 +294,37 @@ fn invalid_inputs_fail_without_reporting_a_stale_image() {
 }
 
 #[test]
+fn rejected_parameter_is_reported_once_without_cascade_errors() {
+    let dir = fixture(
+        "rejected",
+        "@target a.png 8x8\n@target b.png 8x8\nparam view:one_of(normal geometry)\nlet edge = if view == geometry then #f00 else #000\nrect 4,4 stroke:edge,1\n",
+    );
+    for (set, line, message) in [
+        ("bogus=1", 0, "unknown entry parameter `bogus` in --set"),
+        ("view=nope", 3, "`view` of `entry file` is one of normal, geometry, got nope"),
+    ] {
+        let output = run(&dir, &["check", "--json", "--set", set]);
+        assert_eq!(output.status.code(), Some(1), "{set}");
+        let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        let diagnostics = receipt["diagnostics"].as_array().unwrap();
+        assert_eq!(diagnostics.len(), 1, "{set}: {diagnostics:?}");
+        assert_eq!(diagnostics[0]["message"], message);
+        assert_eq!(diagnostics[0]["file"], "art/test.ramo");
+        assert_eq!(diagnostics[0]["span"]["line"], line);
+        for args in [
+            vec!["build", "--set", set],
+            vec!["preview", "art/test.ramo", "--target", "a.png", "--out", "review/a.png", "--set", set],
+        ] {
+            let output = run(&dir, &args);
+            assert_eq!(output.status.code(), Some(1), "{args:?}");
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(stderr.matches("error[").count(), 1, "{args:?}: {stderr}");
+            assert!(stderr.contains(message), "{args:?}: {stderr}");
+        }
+    }
+}
+
+#[test]
 fn frame_sheets_union_motion_and_define_loop_end_sampling() {
     let dir = fixture(
         "frames",
