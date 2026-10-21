@@ -7751,3 +7751,56 @@ fn wildcard_style_finish_and_anim_imports_cannot_collide_with_parameters() {
     let ev = run_with("@target t.png 8x8\nparam _theme:normal\nuse theme\n", &[("lib/theme.ramo", "style _theme fill:#ff0000\n")]);
     assert!(ev.diagnostics.iter().all(|d| d.severity != ramose_syntax::Severity::Error), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn named_subtree_crop_bounds_do_not_depend_on_group_depth() {
+    let s = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 fill:#ff0000 name:head\n");
+    let census: Vec<_> = ["head", "inner", "outer"].into_iter().map(|name| (name, crate::node_bounds(&s, name).unwrap())).collect();
+    for (name, bounds) in &census {
+        for (actual, expected) in [(bounds.left, 30.0), (bounds.top, 35.0), (bounds.width(), 20.0), (bounds.height(), 10.0)] {
+            assert!((actual - expected).abs() < 1e-4, "{name}: {census:?}");
+        }
+    }
+}
+
+#[test]
+fn named_subtree_bounds_intersect_rotated_clips_and_masks_before_boxing() {
+    use ramose_ir::{Clip, Mask, MaskSource, Path, Rect};
+    for mask in [false, true] {
+        let mut s = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n");
+        if mask {
+            let source = scene("@target t.png 80x80\nrect 4,100 at:0,0 fill:#ffffff\n").children;
+            s.children[0].mask = Some(Box::new(Mask { source: MaskSource::Nodes(source), luminance: false, feather: 0.0, invert: false }));
+        } else {
+            s.children[0].clip = Some(Clip { path: Path::rect(Rect::new(-2.0, -50.0, 2.0, 50.0), None), feather: 0.0, invert: false });
+        }
+        let bounds = crate::node_bounds(&s, "outer").unwrap();
+        assert!((bounds.width() - (10.0 + 4.0 * 2.0f32.sqrt())).abs() < 1e-4, "mask={mask}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 1e-4, "mask={mask}: {bounds:?}");
+        assert!((bounds.center_x() - 40.0).abs() < 1e-4, "{bounds:?}");
+        assert!((crate::node_bounds(&s, "head").unwrap().width() - 20.0).abs() < 1e-4, "selecting the child keeps its own clipping scope without the ancestor's clip");
+    }
+}
+
+#[test]
+fn named_subtree_bounds_compose_warps_and_stamp_placements() {
+    let warped = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 warp:cylinder(20) fill:#ff0000 name:head\n");
+    for name in ["head", "inner", "outer"] {
+        let bounds = crate::node_bounds(&warped, name).unwrap();
+        assert!((bounds.width() - 40.0 * 0.5f32.sin()).abs() < 0.01, "{name}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 0.01, "{name}: {bounds:?}");
+    }
+    let stamped = scene("@target t.png 80x80\nstamp tiles spacing:2\n  rect 20,10 rot:45 fill:#ff0000\ngroup outer at:40,40 rot:-45\n  curve -1,0 1,0 stamp:tiles name:host\n");
+    for name in ["host", "outer"] {
+        let bounds = crate::node_bounds(&stamped, name).unwrap();
+        assert!((bounds.width() - 20.0).abs() < 1e-4, "{name}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 1e-4, "{name}: {bounds:?}");
+    }
+}
+
+#[test]
+fn named_shape_bounds_keep_own_clip_and_ignore_children_outside_host_geometry() {
+    let s = scene("@target t.png 80x80\nrect 20,10 at:40,40 name:host\n  rect 100,100 fill:#ff0000\n  mask\n    rect 4,6 fill:#ffffff\n");
+    let bounds = crate::node_bounds(&s, "host").unwrap();
+    assert_eq!((bounds.left, bounds.top, bounds.width(), bounds.height()), (38.0, 37.0, 4.0, 6.0));
+}
