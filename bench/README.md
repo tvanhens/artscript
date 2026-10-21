@@ -45,7 +45,7 @@ Results, PNGs, and the `.ramo` sources go to `bench/out/wow/<label>-<prompt>/`. 
 
 `paired.py` runs ramose requests in fresh Codex projects with a local skill copy. It uses `[$ramose](absolute-skill-path) <prompt>` to select that copy explicitly. It compares two skill directories against the same ramose binary. It requires Codex and Claude CLI authentication.
 
-Create a JSON file that maps prompt names to requests. Use still-image requests that produce exactly one PNG in the manifest's output directory.
+Create a JSON file that maps prompt names to requests. Use still-image requests that produce one artwork in the manifest's output directory. A base PNG can have `@2x` or other numbered scale variants.
 
 ```json
 {
@@ -73,10 +73,12 @@ The runner uses the Codex default model unless you pass `--model`. It ignores us
 
 Each prompt and repetition has two generations. Their launch order alternates. Claude judges the anonymous PNGs together on the six `wow.py` axes, then judges them again with positions reversed. Each generated pair contributes one averaged difference to the bootstrap interval. The report includes prompt-level results, delivery failures, and position disagreements.
 
-Failed deliveries score zero and remain in the denominator. Missing judge results make the comparison incomplete. The runner preserves the delivered project, checks and rebuilds a separate copy with an empty output directory, compares the rebuilt pixels, and checks formatting. It rejects multiple PNGs instead of guessing which one to judge.
+Failed deliveries score zero and remain in the denominator. Missing judge results make the comparison incomplete. The runner preserves the delivered project, checks and rebuilds a separate copy with an empty output directory, compares the rebuilt pixels, and checks formatting. It judges the base PNG when scale variants exist. It rejects multiple unrelated PNGs instead of guessing which artwork to judge.
 
 The output directory retains skill and binary snapshots, hashes, schedules, transcripts, sources, images, and validation receipts. A nonempty output directory is never overwritten. Reporting checks that the runner and rubric still match the frozen hashes. Codex JSON events do not expose every skill load or image-viewer call. The runner records observed skill reads, but does not treat absent events as failed delivery.
 
 Choose a meaningful gain and acceptance rule before running candidates. Confirm promising changes on fresh prompts and generations. A positive mean from a few familiar prompts does not establish a general quality improvement.
+
+To remeasure saved generations after correcting an evaluator, repeat the `run` command with `--replay bench/out/paired/round-01` and a new `--out` directory. Replay requires matching prompts, repetitions, skill snapshots, binary, and author model configuration. Every original generation must be captured. It launches no new authors, but runs clean validation and blind judging again for every pair. The report records the source experiment and marks authoring as reused. Discard the old measurements when the evaluator changes.
 
 Run the accounting tests with `uv run --with pillow python -m unittest discover -s bench -p test_paired.py`.

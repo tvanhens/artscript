@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 import random
+import re
 import shutil
 import signal
 import statistics
@@ -37,6 +38,7 @@ class Experiment:
     binary: str
     baseline: str
     candidate: str
+    replay: str | None = None
 
 
 @dataclass
@@ -45,6 +47,7 @@ class Generation:
     error: str | None = None
     image: str | None = None
     skill_read_observed: bool = False
+    authoring_reused: bool = False
 
 
 @dataclass
@@ -104,6 +107,8 @@ def output_directory(project: Path) -> Path:
 
 def png(project: Path) -> Path:
     images = sorted(output_directory(project).rglob("*.png"))
+    images = [p for p in images if not (re.search(r"@[0-9]+(?:\.[0-9]+)?x$", p.stem)
+              and p.with_name(re.sub(r"@[0-9]+(?:\.[0-9]+)?x$", "", p.stem) + ".png").is_file())]
     if len(images) != 1:
         raise ValueError(f"expected exactly one output PNG, found {len(images)}")
     return images[0]
@@ -121,7 +126,13 @@ def generation(exp: Experiment, arm: str, prompt: str, dest: Path) -> dict:
     save(dest / "generation.json", asdict(row))
     project = Path(tempfile.mkdtemp(prefix="ramose-studio-")).resolve()
     try:
-        shutil.copytree(Path(getattr(exp, arm)), project / ".agents/skills/ramose")
+        source = Path(exp.replay) / "pairs" / dest.parent.name / arm if exp.replay else None
+        if source:
+            shutil.copytree(source / "project", project, dirs_exist_ok=True)
+            row.authoring_reused = True
+            shutil.copy2(source / "generation.json", dest / "authoring-source.json")
+        else:
+            shutil.copytree(Path(getattr(exp, arm)), project / ".agents/skills/ramose")
         env = dict(os.environ)
         env["PATH"] = str(Path(exp.binary).parent) + os.pathsep + env.get("PATH", "")
         args = ["codex", "exec", "--ignore-user-config", "--ephemeral", "--skip-git-repo-check",
@@ -129,7 +140,11 @@ def generation(exp: Experiment, arm: str, prompt: str, dest: Path) -> dict:
         if exp.model:
             args += ["--model", exp.model]
         skill_path = project / ".agents/skills/ramose/SKILL.md"
-        res = command(args + [f"[$ramose]({skill_path}) {prompt}"], project, dest / "codex.json", env)
+        if source:
+            shutil.copy2(source / "codex.json", dest / "codex.json")
+            res = json.loads((dest / "codex.json").read_text())
+        else:
+            res = command(args + [f"[$ramose]({skill_path}) {prompt}"], project, dest / "codex.json", env)
         events = []
         for line in res["stdout"].splitlines():
             try:
@@ -333,6 +348,28 @@ def run_pair(exp: Experiment, prompt_id: str, prompt: str, repetition: int, dest
     print(f"completed {dest.name}", flush=True)
 
 
+def validate_replay(source: Path, manifest: dict) -> dict:
+    previous = json.loads((source / "experiment.json").read_text())
+    for key in ("prompts", "repetitions", "model", "invocation_form", "schedule"):
+        if json.loads(json.dumps(manifest[key])) != previous.get(key):
+            raise ValueError(f"replay input differs: {key}")
+    for key in (*ARMS, "binary_sha256", "model_resolution"):
+        if manifest["provenance"][key] != previous.get("provenance", {}).get(key):
+            raise ValueError(f"replay provenance differs: {key}")
+    for entry in manifest["schedule"]:
+        for arm in ARMS:
+            folder = source / "pairs" / entry["directory"] / arm
+            if not (folder / "project").is_dir():
+                raise ValueError(f"replay project missing: {folder}")
+            receipt = json.loads((folder / "generation.json").read_text())
+            if receipt.get("status") not in ("success", "failed", "protocol_error"):
+                raise ValueError(f"replay generation not captured: {folder}")
+            codex = json.loads((folder / "codex.json").read_text())
+            if not {"returncode", "timeout", "stdout", "stderr", "command"} <= codex.keys():
+                raise ValueError(f"replay codex receipt incomplete: {folder}")
+    return previous
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="action", required=True)
@@ -342,6 +379,7 @@ def main() -> int:
     run.add_argument("--repetitions", type=int, default=5)
     run.add_argument("--jobs", type=int, default=2)
     run.add_argument("--model")
+    run.add_argument("--replay", type=Path)
     run.add_argument("--judge-model", default="claude-opus-5-5")
     sub.add_parser("report").add_argument("out", type=Path)
     args = parser.parse_args()
@@ -372,15 +410,26 @@ def main() -> int:
             provenance[name] = command([name, "--version"], out, out / f"{name}-version.json", timeout=30)
         provenance["ramose"] = command([str(binary), "--version"], out, out / "ramose-version.json", timeout=30)
         exp = Experiment(tuple(prompts.items()), args.repetitions, args.model, args.judge_model,
-                         str(binary), str(out / "inputs/baseline"), str(out / "inputs/candidate"))
+                         str(binary), str(out / "inputs/baseline"), str(out / "inputs/candidate"),
+                         str(args.replay.resolve()) if args.replay else None)
         save(out / "prompts.json", prompts)
-        save(out / "experiment.json", asdict(exp) | {"provenance": provenance,
+        manifest = asdict(exp) | {"provenance": provenance,
              "rubric_sha256": hashlib.sha256(RUBRIC.encode()).hexdigest(),
              "harness_sha256": digest(Path(__file__)), "jobs": args.jobs,
              "invocation_form": "[$ramose](ABSOLUTE_NEUTRAL_SKILL_PATH) <prompt>",
              "schedule": [{"prompt_id": key, "repetition": rep, "directory": f"{i:03d}-{rep:02d}",
                            "launch_order": list(ARMS if rep % 2 == 0 else ARMS[::-1])}
-                          for i, (key, _) in enumerate(exp.prompts) for rep in range(exp.repetitions)]})
+                          for i, (key, _) in enumerate(exp.prompts) for rep in range(exp.repetitions)]}
+        if args.replay:
+            try:
+                previous = validate_replay(args.replay.resolve(), manifest)
+            except (OSError, ValueError, KeyError) as exc:
+                parser.error(str(exc))
+            save(out / "source-experiment.json", previous)
+            provenance["replay"] = {"path": str(args.replay.resolve()),
+                                    "manifest_sha256": digest(args.replay / "experiment.json"),
+                                    "authoring_reused": True}
+        save(out / "experiment.json", manifest)
         jobs = [(exp, key, prompt, rep, out / "pairs" / f"{i:03d}-{rep:02d}")
                 for i, (key, prompt) in enumerate(exp.prompts) for rep in range(exp.repetitions)]
         with ThreadPoolExecutor(args.jobs) as pool:

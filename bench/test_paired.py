@@ -1,11 +1,12 @@
 import unittest
 import hashlib
+import copy
 import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
-from paired import generation, AXES, RUBRIC, Experiment, evaluate_pair, summarize, validate_score, judge, report, save
+from paired import png, validate_replay, generation, AXES, RUBRIC, Experiment, evaluate_pair, summarize, validate_score, judge, report, save
 
 
 def row(base, candidate, base_status="success", candidate_status="success", judgment="complete"):
@@ -199,6 +200,103 @@ class PairedReportTests(unittest.TestCase):
             self.assertEqual(generated["status"], "success", generated["error"])
             self.assertFalse(generated["skill_read_observed"])
             self.assertIsNone(generated["error"])
+
+    def test_png_scale_variants_and_ambiguity(self):
+        for filenames, expected in ((["art.png", "art@2x.png"], "art.png"),
+                                    (["art@2x.png"], "art@2x.png"),
+                                    (["fox.png", "mushroom.png"], None)):
+            with self.subTest(filenames=filenames), tempfile.TemporaryDirectory() as tmp:
+                project = Path(tmp).resolve()
+                (project / "ramose.toml").write_text('[project]\nout = "assets"\n')
+                (project / "assets").mkdir()
+                for name in filenames:
+                    Image.new("RGBA", (4, 4), "red").save(project / "assets" / name)
+                if expected:
+                    self.assertEqual(png(project).name, expected)
+                else:
+                    with self.assertRaisesRegex(ValueError, "exactly one"):
+                        png(project)
+
+    def replay_fixture(self, root):
+        manifest = {"prompts": [["fox", "draw fox"]], "repetitions": 1, "model": None,
+                    "invocation_form": "linked", "schedule": [{"directory": "000-00"}],
+                    "provenance": {"baseline": {"SKILL.md": "a"}, "candidate": {"SKILL.md": "b"},
+                                   "binary_sha256": "c", "model_resolution": "unresolved Codex default"}}
+        save(root / "experiment.json", manifest)
+        for arm in ("baseline", "candidate"):
+            folder = root / "pairs/000-00" / arm
+            (folder / "project").mkdir(parents=True)
+            save(folder / "generation.json", {"status": "failed"})
+            save(folder / "codex.json", {"returncode": 0, "timeout": False, "stdout": '{"type":"turn.completed"}',
+                                         "stderr": "", "command": ["codex", "exec"]})
+        return manifest
+
+    def test_replay_accepts_complete_capture_and_rejects_missing_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.replay_fixture(root)
+            self.assertEqual(validate_replay(root, manifest), manifest)
+            (root / "pairs/000-00/candidate/codex.json").unlink()
+            with self.assertRaises(OSError):
+                validate_replay(root, manifest)
+
+    def test_replay_rejects_changed_inputs(self):
+        for key, value in (("prompts", [["fox", "different"]]), ("repetitions", 2), ("model", "other")):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                manifest = self.replay_fixture(root)
+                changed = copy.deepcopy(manifest)
+                changed[key] = value
+                with self.assertRaisesRegex(ValueError, key):
+                    validate_replay(root, changed)
+        for key in ("baseline", "candidate", "binary_sha256", "model_resolution"):
+            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                manifest = self.replay_fixture(root)
+                manifest["provenance"][key] = "different"
+                with self.assertRaisesRegex(ValueError, key):
+                    validate_replay(root, manifest)
+
+    def test_replay_rejects_generation_still_running(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest = self.replay_fixture(root)
+            save(root / "pairs/000-00/baseline/generation.json", {"status": "running"})
+            with self.assertRaisesRegex(ValueError, "not captured"):
+                validate_replay(root, manifest)
+
+    def test_replay_revalidates_without_launching_author(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            source = root / "source"
+            self.replay_fixture(source)
+            original = source / "pairs/000-00/baseline/project"
+            (original / "ramose.toml").write_text('[project]\nout = "assets"\n')
+            (original / "assets").mkdir()
+            Image.new("RGBA", (4, 4), "red").save(original / "assets/art.png")
+            project, validation = root / "studio", root / "validation"
+            project.mkdir()
+            validation.mkdir()
+            exp = Experiment((), 1, None, "judge", "ramose", "unused", "unused", str(source))
+            called = []
+
+            def run(args, cwd, receipt, env=None):
+                self.assertEqual(args[0], "ramose")
+                called.append(args[1:])
+                if args[1] == "build":
+                    self.assertFalse((cwd / "assets/art.png").exists())
+                    (cwd / "assets").mkdir()
+                    Image.new("RGBA", (4, 4), "red").save(cwd / "assets/art.png")
+                return {"returncode": 0, "timeout": False, "stdout": ""}
+
+            dest = root / "replayed/pairs/000-00/baseline"
+            with patch("paired.tempfile.mkdtemp", side_effect=[str(project), str(validation)]), patch("paired.command", side_effect=run):
+                result = generation(exp, "baseline", "draw fox", dest)
+            self.assertEqual(result["status"], "success", result["error"])
+            self.assertTrue(result["authoring_reused"])
+            self.assertEqual(called, [["check"], ["build"], ["fmt", "--check"]])
+            self.assertEqual((dest / "codex.json").read_bytes(), (source / "pairs/000-00/baseline/codex.json").read_bytes())
+            self.assertTrue((original / "assets/art.png").is_file())
 
     def test_strict_score_validation(self):
         valid = dict.fromkeys(AXES, 12) | {"notes": "Readable. Flat lighting."}
