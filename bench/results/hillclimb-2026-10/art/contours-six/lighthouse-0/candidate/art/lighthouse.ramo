@@ -1,0 +1,91 @@
+@target lighthouse-dusk.png 1200x900 bg:#f5efe3
+
+palette dusk
+  color paper #f5efe3
+  color violet #77758e
+  color rose #d49c9c
+  color peach #efbe9c
+  color sea #597b8e
+  color blue #344f69
+  color ink #323d50
+  color stone #726d77
+  color earth #9a8878
+  color grass #737e70
+  color cream #eee3c9
+  color gold #ffd596
+
+brush wash rag:4 reach:5
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 48 + seeded(m), 4);
+    float grain = vnoise(m.p * 1.7 + seeded(m));
+    float edge = m.edge + (n - .5) * rag;
+    float pool = (1 - smoothstep(0, 10, m.edge)) * .18;
+    float3 pigment = m.paint.rgb * (1 - pool - .13 * n);
+    return float4(pigment, cover(edge, m) * (.72 + .22 * n) * (.91 + .09 * grain));
+  }
+  """
+
+layer sky brush:wash
+  rect 1090x770 at:600,433 fill:grad(down dusk.violet dusk.rose dusk.peach) a:.68 name:sky_wash
+  curve 78,190 270,175 465,216 691,184 930,218 1115,170 stroke:dusk.violet,48 a:.18 name:high_cloud
+  curve 86,309 269,278 460,314 630,291 stroke:dusk.rose,40 a:.24 name:rose_cloud
+  curve 665,335 816,316 985,340 1114,319 stroke:dusk.cream,24 a:.28 name:cloud_light
+
+layer ocean brush:wash
+  path "M58 452 Q280 438 473 453 Q760 439 1141 449 L1144 820 L56 822 Z" fill:grad(down dusk.sea dusk.blue) a:.76 name:water
+  curve 65,461 330,456 583,461 805,450 1133,455 stroke:dusk.violet,4 a:.4 name:horizon
+  each i in 0..35
+    let x = rand(80 1090)
+    let y = rand(480 805)
+    curve x,y x+rand(15 35),y-2 x+rand(45 100),y+1 stroke:dusk.cream,rand(1 4) a:rand(.08 .32) seed:100+i name:ripple
+  curve 735,481 824,478 970,482 stroke:dusk.peach,8 a:.28 name:far_glimmer
+
+layer distant_land brush:wash
+  path "M61 451 Q149 407 206 425 Q268 395 325 428 L391 454 Z" fill:dusk.violet a:.43 name:headland
+
+layer cliff brush:wash
+  path "M63 583 L156 558 L255 516 L345 502 L422 471 L518 476 L596 501 L674 518 L704 552 L678 584 L701 617 L646 657 L624 708 L566 738 L530 811 L61 822 Z" fill:dusk.stone name:cliff_face
+    path "M97 601 L276 544 L388 516 L429 500 L391 571 L348 620 L318 730 L245 818 L70 824 Z" fill:dusk.earth a:.7 name:warm_rock
+    path "M466 509 L509 529 L477 588 L496 632 L435 693 L414 811 L319 820 L381 722 L402 645 Z" fill:dusk.ink a:.46 name:deep_fissure
+    path "M591 526 L649 546 L612 597 L636 621 L576 654 L540 749 L485 805 L513 689 L548 617 Z" fill:dusk.blue a:.63 name:seaward_shadow
+    each i in 0..22
+      let x = rand(100 610)
+      let y = rand(550 775)
+      curve x,y x-8,y+19 x-24,y+rand(30 60) stroke:dusk.ink,rand(2 9) a:.2 seed:200+i name:crack
+  path "M64 580 Q172 550 253 513 L346 495 L420 468 L520 472 L600 497 L676 518 L696 540 L645 540 L562 522 L473 510 L395 526 L306 535 L223 567 L61 620 Z" fill:dusk.grass name:clifftop
+  curve 120,582 282,534 416,501 506,493 553,504 stroke:dusk.cream,11 a:.47 name:footpath
+
+layer lighthouse brush:wash
+  path "M503 491 L518 291 L560 290 L583 498 Q545 511 503 491 Z" fill:dusk.cream name:tower
+    path "M540 289 L560 291 L584 502 L548 504 Z" fill:dusk.violet a:.5 name:tower_shadow
+    curve 515,410 542,416 574,412 stroke:dusk.rose,21 a:.65 name:red_band
+    path "M533 497 L534 469 Q542 456 550 468 L552 501 Z" fill:dusk.ink a:.78 name:door
+    rect 8x17 at:540,349 fill:dusk.ink a:.72 name:window
+  path "M507 295 L511 281 L567 280 L574 296 Z" fill:dusk.ink name:balcony_base
+  rect 45x40 at:539,260 fill:dusk.gold name:lantern
+  rect 6x42 at:516,261 fill:dusk.ink name:left_frame
+  rect 6x42 at:561,261 fill:dusk.ink name:right_frame
+  rect 4x40 at:540,261 fill:dusk.earth name:middle_frame
+  path "M505 242 Q537 207 571 242 Z" fill:dusk.ink name:roof
+  curve 538,216 538,204 stroke:dusk.ink,3 name:finial
+  curve 505,280 505,266 574,266 574,281 stroke:dusk.ink,2 a:.8 name:rail
+  each i in 0..7
+    curve 505+i*11,268 505+i*11,282 stroke:dusk.ink,1.5 seed:300+i
+
+layer lamplight brush:wash
+  path "M542 255 L1069 178 L1078 287 Z" fill:grad(right dusk.gold fade(dusk.gold 0)) a:.17 name:beam
+  ellipse 27,23 at:539,258 fill:dusk.gold a:.4 name:halo
+  ellipse 9,12 at:533,257 fill:dusk.cream a:.9 name:lamp
+
+layer surf brush:wash
+  curve 689,576 714,604 662,655 645,708 579,753 560,788 stroke:dusk.cream,[3 12 5 15 8 2] a:.64 name:breaking_surf
+  curve 724,615 704,651 689,695 628,741 610,772 stroke:dusk.cream,4 a:.35 name:outer_surf
+  each i in 0..16
+    let x = rand(710 1030)
+    let y = rand(635 800)
+    curve x,y x+18,y-3 x+48,y stroke:dusk.cream,2 a:.2 seed:400+i
+
+layer birds brush:wash
+  curve 805,320 813,316 822,321 830,317 839,319 stroke:dusk.ink,2 a:.65 name:gull_one
+  curve 870,299 876,296 882,300 889,297 894,299 stroke:dusk.ink,1.6 a:.55 name:gull_two

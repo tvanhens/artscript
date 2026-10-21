@@ -1,0 +1,51 @@
+@target kingfisher.png 1000x1000 bg:bird.paper
+@target kingfisher.svg 1000x1000 bg:bird.paper
+
+palette bird
+  color paper #f5ebd5
+  color ink #102f40
+  color blue #009eb3
+  color orange #f07832
+
+# Four spot colors; sweeping water below a diagonal, folded dive.
+layer river_layer
+  path "M50 748 C215 680 310 794 475 756 C640 718 765 704 950 747 L950 950 L50 950 Z" fill:bird.ink name:river
+  path "M50 803 C235 725 330 848 514 799 C690 752 799 768 950 797 L950 832 C774 798 693 791 519 837 C328 886 231 765 50 842 Z" fill:bird.blue name:current
+  path "M100 885 C275 824 341 930 535 883 C717 839 784 852 901 877" stroke:bird.paper,12 name:foam
+  path "M574 917 C703 880 773 902 846 918" stroke:bird.blue,10 name:lower_current
+  path "M105 761 C187 741 241 754 289 770" stroke:bird.paper,9 name:upper_current
+
+layer far_wing_layer
+  path "M506 415 C548 340 626 272 753 230 L714 297 L744 290 L684 352 L711 346 L639 403 L660 402 L571 461 Z" fill:bird.ink name:far_wing
+  path "M545 410 C584 352 638 307 703 278 L637 350 L569 429 Z" fill:bird.blue name:far_panel
+
+layer tail_layer
+  path "M453 405 L280 375 L343 438 L326 452 L446 465 L483 438 Z" fill:bird.ink name:tail
+  path "M319 396 L449 426 L433 440 L350 418 Z" fill:bird.blue name:tail_flash
+
+layer body_layer
+  path "M419 362 C466 345 515 368 557 402 C578 419 601 432 628 455 L607 527 C556 528 487 492 453 451 C426 418 415 389 419 362 Z" fill:bird.blue name:body
+  path "M448 415 C486 418 531 439 569 454 L616 485 L607 527 C551 533 476 478 448 415 Z" fill:bird.orange name:breast
+
+layer near_wing_layer
+  path "M516 420 C457 400 390 359 350 306 C306 249 279 184 255 112 C315 132 362 167 410 213 C455 256 491 296 514 342 C527 368 532 394 516 420 Z" fill:bird.ink name:near_wing
+  path "M282 142 C337 168 380 205 423 253 C461 294 488 334 499 371 C443 349 402 313 367 270 C330 226 305 184 282 142 Z" fill:bird.blue name:wing_panel
+  path "M311 165 L397 292 L418 309 L347 193 Z" fill:bird.ink name:feather_one
+  path "M369 213 L448 335 L468 348 L407 255 Z" fill:bird.ink name:feather_two
+
+layer head_layer
+  path "M552 424 C588 398 627 408 654 440 C672 460 676 483 671 505 L635 548 L586 517 C565 497 545 463 552 424 Z" fill:bird.blue name:head
+  path "M566 460 C598 447 634 458 668 483 L663 510 L635 548 L603 529 Z" fill:bird.ink name:mask_band
+  path "M572 479 L609 493 L628 525 L611 535 L584 514 Z" fill:bird.paper name:collar
+  path "M640 506 L766 670 L674 589 L620 535 Z" fill:bird.ink name:bill
+  path "M650 525 L737 637 L662 559 Z" fill:bird.orange name:bill_edge
+  circle 10 at:632,480 fill:bird.paper name:eye_ring
+  circle 6 at:634,482 fill:bird.ink name:eye
+  path "M576 431 L604 424 L623 431 L590 440 Z" fill:bird.paper name:crown_flash
+
+layer dive_marks
+  path "M724 490 L760 537" stroke:bird.orange,8 name:speed_one
+  path "M752 470 L807 542" stroke:bird.orange,8 name:speed_two
+  path "M812 704 L830 690 L843 704" stroke:bird.blue,7 name:ripple_peak
+  ellipse 52,8 at:769,733 fill:bird.paper name:entry_ripple
+  ellipse 25,4 at:769,733 fill:bird.blue name:entry_center

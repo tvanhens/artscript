@@ -1,0 +1,90 @@
+@target cozy-teapot.png 960x800 bg:tea.paper
+
+use std/brushes { bristle }
+
+palette tea
+  color paper #f2e5ce
+  color wall #e7d8ba
+  color table #cc9672
+  color cloth #e7c9a3
+  color stripe #bd7862
+  color shadow #986e56
+  color green #456e63
+  color dark #31534d
+  color light #749385
+  color glint #a9b6a0
+  color cream #f4dfb1
+  color yellow #e6ad32
+  color flesh #f6ce62
+  color pulp #efbc43
+  color white #fff0ca
+
+brush gouache grain:.09 rag:1.5 reach:2
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 20 + seeded(m), 3);
+    float tooth = hash12(m.dev + seeded(m));
+    float streak = vnoise(float2(m.p.x / 32, m.p.y / 2.1) + seeded(m));
+    float3 col = m.paint.rgb * (1 + (n-.5)*grain + (streak-.5)*.045 + (tooth-.5)*.045);
+    return float4(col, cover(m.edge + (n-.5)*rag, m));
+  }
+  """
+
+layer setting brush:gouache
+  rect 842x676 at:480,400 r:9 fill:tea.wall name:painted_background
+  path "M59 537 Q280 518 492 539 Q716 557 901 530 L901 738 L59 738 Z" fill:tea.table name:tabletop
+  path "M130 583 L684 566 L800 709 L199 725 Z" fill:tea.cloth name:linen
+    each i in 0..12
+      curve 110+i*55,552 210+i*55,739 stroke:tea.stripe,2 a:.38 name:linen_threads
+  ellipse 282,30 at:486,635 fill:tea.shadow a:.28 name:cast_shadow
+
+layer handle_layer brush:gouache
+  path "M327 388 C201 322 177 432 223 496 C244 527 275 541 310 544 L326 513 C276 509 241 477 240 439 C240 407 273 401 313 423 Z" fill:tea.dark name:handle
+    path "M309 393 C221 353 199 430 231 484" stroke:tea.light,11 fill:none name:handle_light
+
+layer spout_layer brush:gouache
+  path "M584 448 C645 435 668 404 692 355 C706 348 721 351 728 362 C702 395 702 456 673 493 C652 521 631 537 596 541 Z" fill:tea.green name:spout
+    path "M617 468 C661 450 687 412 702 377" stroke:tea.light,16 name:spout_light
+  ellipse 19,8 at:711,358 rot:14 fill:tea.dark name:spout_mouth
+  curve 694,353 708,350 728,359 stroke:tea.glint,5 name:spout_lip
+
+layer pot_layer brush:gouache
+  path "M345 370 C317 393 284 445 282 510 C278 583 325 622 442 628 C552 634 621 603 630 539 C640 475 603 407 565 375 C506 358 398 357 345 370 Z" fill:tea.green name:body
+    path "M553 388 C607 444 610 513 594 559 C578 603 496 613 403 606 C503 644 634 621 647 558 L652 390 Z" fill:tea.dark a:.65 name:body_shadow
+    path "M340 409 C315 444 308 492 317 532" stroke:tea.light,[13 26 17] brush:bristle(strength:.3 gaps:.2) name:body_light
+    curve 338,426 327,455 324,479 stroke:tea.glint,7 brush:bristle(strength:.4) name:shine
+    curve 334,591 420,610 531,599 stroke:tea.light,6 a:.65 name:bottom_glaze
+    group at:450,502
+      curve -53,37 -20,6 11,-35 stroke:tea.cream,3 name:botanical_stem
+      path "M-23 8 C-51 9 -65 -5 -66 -18 C-44 -19 -29 -9 -23 8 Z" fill:tea.cream name:leaf_left
+      path "M-11 -6 C-10 -32 3 -47 19 -50 C23 -27 8 -10 -11 -6 Z" fill:tea.cream name:leaf_top
+      path "M-36 24 C-22 4 -2 2 13 10 C1 28 -17 32 -36 24 Z" fill:tea.cream name:leaf_right
+  ellipse 116,22 at:454,379 fill:tea.dark name:neck
+  path "M332 374 C356 360 368 336 398 328 C429 317 487 318 518 330 C544 340 555 360 575 374 C532 395 381 400 332 374 Z" fill:tea.light name:lid
+    curve 351,373 418,382 490,380 556,371 stroke:tea.glint,5 name:lid_edge
+  ellipse 22,11 at:454,324 fill:tea.dark name:knob_base
+  path "M437 320 C433 307 438 296 452 295 C468 293 477 304 470 320 C463 327 445 327 437 320 Z" fill:tea.green name:knob
+    curve 443,308 448,302 457,302 stroke:tea.glint,5 name:knob_shine
+
+layer steam_layer
+  curve 435,277 421,251 443,222 447,200 429,171 438,142 stroke:tea.white,[3 9 12 9 5 1] taper:.2 brush:bristle(strength:.35 gaps:.3) a:.8 name:steam_left
+  curve 476,279 490,247 477,226 476,205 498,178 493,149 480,124 stroke:tea.white,[2 7 10 12 9 5 1] taper:.3 brush:bristle(strength:.35 gaps:.3) a:.75 name:steam_right
+  curve 711,336 706,314 719,294 715,275 stroke:tea.white,[3 6 5 1] brush:bristle(strength:.4) a:.6 name:spout_steam
+
+layer lemon_layer brush:gouache
+  ellipse 108,19 at:703,653 fill:tea.shadow a:.38 name:lemon_shadow
+  path "M638 605 C634 574 671 548 714 555 C743 559 771 581 777 607 L787 614 L777 624 C768 657 720 673 679 655 C653 645 641 631 638 605 Z" fill:tea.yellow name:lemon_half
+    curve 662,638 697,654 732,651 stroke:tea.pulp,9 name:rind_shade
+  group at:677,608 rot:-22
+    ellipse 68,53 fill:tea.yellow name:slice_rind
+    ellipse 61,47 at:-1,-2 fill:tea.white name:pith
+    ellipse 54,40 at:-1,-2 fill:tea.flesh name:cut_face
+      repeat 9 rot:40
+        path "M0 -4 C-8 -10 -14 -21 -13 -31 Q-5 -39 8 -34 C11 -22 6 -10 0 -4 Z" fill:tea.pulp name:segment
+        curve 0,-8 -3,-19 -2,-29 stroke:tea.flesh,3 name:juice
+      ellipse 7,5 fill:tea.white name:center
+      ellipse 2,5 at:-22,-13 rot:-30 fill:tea.white name:seed_left
+      ellipse 2,5 at:20,13 rot:24 fill:tea.white name:seed_right
+  curve 744,660 770,665 802,654 stroke:tea.dark,3 name:leaf_stem
+  path "M757 661 C766 633 796 630 812 638 C805 660 780 672 757 661 Z" fill:tea.green name:lemon_leaf
+    curve 760,660 786,646 803,642 stroke:tea.light,2 name:leaf_vein

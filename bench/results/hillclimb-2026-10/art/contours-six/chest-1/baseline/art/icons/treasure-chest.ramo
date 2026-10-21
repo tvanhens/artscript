@@ -1,0 +1,83 @@
+@target icons/treasure-chest.png 512x512 bg:none scale:1,2
+@target icons/treasure-chest.svg 512x512 bg:none
+
+palette treasure
+  ramp wood #9e4626 5
+  ramp gold #efb62e 5
+  color ink #382039
+  color dark #502332
+  color cream #fff2ac
+  color shine #fffbe2
+
+def coin size:48x30
+  ellipse 24,13 at:0,5 fill:treasure.gold.1 stroke:treasure.ink,3
+  ellipse 24,13 fill:grad(down treasure.gold.4 treasure.gold.2) stroke:treasure.ink,3
+    ellipse 17,8 fill:none stroke:treasure.gold.1,2
+    curve -12,-5 -3,-8 6,-7 stroke:treasure.cream,3
+    curve 1,-5 -3,4 4,5 stroke:treasure.gold.1,2
+
+def sparkle size:36
+  path "M0 -18 Q3 -3 14 0 Q3 3 0 18 Q-3 3 -14 0 Q-3 -3 0 -18Z" fill:treasure.shine stroke:treasure.gold.2,2
+
+layer ground_shadow
+  ellipse 184,22 at:258,439 fill:treasure.ink a:.18 blur:6
+
+layer open_lid
+  path "M99 250 L83 156 Q82 109 127 89 L314 64 Q352 63 369 108 L391 203Z" fill:treasure.gold.2 stroke:treasure.ink,9 name:lid
+    path "M111 230 L103 154 Q103 127 132 112 L312 87 Q337 86 346 115 L365 190Z" fill:grad(down treasure.wood.3 treasure.wood.1) stroke:treasure.ink,5
+    path "M127 220 L116 154 Q117 137 136 128 L309 103 Q323 103 330 122 L345 183Z" fill:treasure.dark stroke:treasure.gold.1,5
+    curve 102,150 125,120 311,94 stroke:treasure.cream,4
+    path "M143 85 L166 82 L189 232 L164 237Z" fill:treasure.gold.2 stroke:treasure.ink,4
+    path "M297 67 L318 65 L347 213 L324 218Z" fill:treasure.gold.2 stroke:treasure.ink,4
+
+layer chest_back
+  path "M91 263 L303 220 L418 267 L214 326Z" fill:treasure.dark stroke:treasure.ink,9
+  path "M91 263 L214 307 L418 267 L302 229Z" fill:treasure.gold.1 stroke:treasure.ink,5
+
+layer gold_heap
+  each i, pos in [151,251 197,238 244,228 289,223 331,239 371,257 124,271 169,267 214,255 260,251 305,258 346,273 190,289 236,278 281,281]
+    coin at:pos rot:-12+i*3
+  coin at:229,207 rot:-18
+  coin at:276,196 rot:14
+  coin at:318,214 rot:24
+  coin at:188,218 rot:-22
+  coin at:254,181 rot:-9
+
+layer chest_body
+  path "M91 284 L218 324 L414 279 L397 400 L218 454 L107 402Z" fill:treasure.wood.2 stroke:treasure.ink,9 name:body
+    path "M218 324 L414 279 L397 400 L218 454Z" fill:grad(down treasure.wood.3 treasure.wood.1)
+    path "M91 284 L218 324 L218 454 L107 402Z" fill:grad(down treasure.wood.2 treasure.wood.0)
+    curve 109,335 215,372 404,324 stroke:treasure.dark,5
+    curve 112,378 215,417 398,366 stroke:treasure.dark,5
+    curve 243,351 305,336 372,318 stroke:treasure.wood.4,3
+    curve 243,396 297,382 341,370 stroke:treasure.wood.3,3
+    path "M115 292 L140 301 L153 420 L128 412Z" fill:treasure.gold.2 stroke:treasure.ink,4
+    path "M183 313 L210 321 L210 449 L184 439Z" fill:treasure.gold.1 stroke:treasure.ink,4
+    path "M245 317 L270 311 L266 439 L240 447Z" fill:grad(right treasure.gold.1 treasure.gold.3) stroke:treasure.ink,4
+    path "M366 290 L392 284 L376 407 L351 415Z" fill:grad(right treasure.gold.1 treasure.gold.3) stroke:treasure.ink,4
+  path "M90 278 L216 315 L417 270 L415 293 L216 340 L93 301Z" fill:treasure.gold.2 stroke:treasure.ink,6 name:rim
+    curve 100,283 216,322 407,278 stroke:treasure.cream,4
+  path "M106 385 L217 431 L399 380 L396 402 L217 455 L108 407Z" fill:treasure.gold.1 stroke:treasure.ink,5
+  path "M286 314 L326 304 L325 354 Q307 374 287 364Z" fill:treasure.gold.3 stroke:treasure.ink,5 name:lock
+    ellipse 6,7 at:306,335 fill:treasure.ink
+    path "M303 337 L300 352 L311 349 L309 336Z" fill:treasure.ink
+  each pos in [128,313 140,397 194,339 196,423 255,338 253,421 379,311 365,391]
+    circle 4 at:pos fill:treasure.cream stroke:treasure.gold.0,2
+
+layer spilled_gold
+  coin at:142,433 rot:10
+  coin at:108,420 rot:-10
+  coin at:365,440 rot:-9
+  coin at:401,422 rot:17
+  coin at:378,422 rot:-14
+  coin at:430,391 rot:-33
+  coin at:420,363 rot:64
+
+layer gleams
+  sparkle at:174,186 scale:.8
+  sparkle at:300,167 scale:1.1
+  sparkle at:376,235 scale:.7
+  sparkle at:77,320 scale:.65
+  sparkle at:449,293 scale:.8
+  circle 4 at:341,151 fill:treasure.cream
+  circle 3 at:151,171 fill:treasure.cream

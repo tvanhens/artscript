@@ -1,0 +1,103 @@
+@target lighthouse-dusk.png 1200x900 bg:#f5efdf
+
+palette dusk
+  color paper #f5efdf
+  color sky #777c9e
+  color violet #77748e
+  color rose #d69a9a
+  color peach #efbc9b
+  color sea #637f91
+  color deep #324f65
+  color foam #d6ddd1
+  color rock #4e5262
+  color stone #87807e
+  color grass #686e59
+  color ink #343f50
+  color wall #e8dac0
+  color shade #a5a6a4
+  color roof #73535c
+  color gold #ffd98b
+
+brush wash rag:3 reach:4
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 35 + seeded(m), 4);
+    float fine = vnoise(m.p / 1.5 + seeded(m));
+    float edge = m.edge + (n - .5) * rag;
+    float pool = exp(-abs(edge) / 4.0);
+    float bloom = fbm(m.p / 90 + seeded(m), 3);
+    float3 rgb = m.paint.rgb * (1.0 - .16 * pool - .12 * n);
+    float alpha = (.72 + .23 * bloom) * (.88 + .12 * fine);
+    return float4(rgb, cover(edge, m) * alpha);
+  }
+  """
+
+layer sky_washes brush:wash
+  rect 1090x747 at:600,435 fill:grad(down dusk.sky dusk.rose dusk.peach) name:sky
+  curve 66,195 240,167 454,228 675,189 918,223 1138,164 stroke:dusk.violet,94 a:.28 name:cloud_upper
+  curve 100,296 277,274 442,317 663,277 894,303 1119,262 stroke:dusk.rose,67 a:.35 name:cloud_rose
+  curve 75,365 267,349 453,376 609,350 822,384 1135,346 stroke:dusk.peach,58 a:.45 name:horizon_wash
+
+layer ocean brush:wash
+  curve 58,454 322,445 598,452 871,446 1144,453 1144,815 58,815 closed fill:grad(down dusk.sea dusk.deep) name:water
+  each i in 0..28
+    let y = 480+i*11
+    let x = rand(85 1080)
+    curve x,y x+rand(18 35),y-2 x+rand(45 95),y+1 stroke:dusk.foam,rand(1 4) a:rand(.12 .38) seed:100+i name:ripple
+  curve 70,666 184,651 285,671 393,651 529,667 stroke:dusk.foam,12 a:.4 name:breaker_far
+  curve 75,749 210,727 343,752 478,725 604,741 stroke:dusk.foam,18 a:.48 name:breaker_near
+
+layer distant_headland brush:wash
+  curve 58,445 124,422 169,426 218,404 275,430 330,443 380,455 closed fill:dusk.violet a:.43 name:far_land
+
+layer cliff_mass brush:wash
+  curve 1139,453 1040,444 950,429 879,438 811,456 737,476 676,501 620,520 585,548 601,584 576,625 600,664 564,704 612,756 651,794 722,817 1142,817 closed fill:dusk.rock name:cliff
+    curve 692,510 674,579 704,612 657,678 716,784 791,815 737,686 759,614 742,529 closed fill:dusk.stone a:.65 name:rock_face
+    curve 872,469 823,566 847,627 780,735 809,814 922,816 904,690 933,583 969,465 closed fill:dusk.stone a:.52 name:rock_right
+    curve 623,564 652,587 633,640 656,686 621,724 stroke:dusk.ink,17 a:.6 name:fissure_left
+    curve 801,520 777,583 804,650 748,742 stroke:dusk.ink,12 a:.48 name:fissure_mid
+    curve 1031,507 979,576 995,666 945,754 stroke:dusk.ink,21 a:.34 name:fissure_right
+    each i in 0..34
+      let x = rand(615 1120)
+      let y = rand(535 808)
+      curve x,y x-13,y+24 x+4,y+48 stroke:dusk.stone,rand(2 8) a:.35 seed:300+i name:rock_marks
+  curve 587,539 650,510 698,474 779,446 865,428 950,420 1037,436 1140,446 1140,515 1010,492 910,478 828,479 757,492 696,517 642,545 closed fill:dusk.grass name:grass_cap
+  curve 682,515 759,479 851,461 946,464 1034,477 stroke:dusk.peach,13 a:.4 name:footpath
+
+layer lighthouse brush:wash
+  curve 827,469 838,300 875,300 892,468 closed fill:dusk.wall name:tower
+    curve 861,296 875,299 894,470 864,473 closed fill:dusk.shade a:.78 name:tower_shadow
+    curve 835,394 886,393 887,411 833,414 closed fill:dusk.roof a:.8 name:stripe
+    rect 9x18 at:855,337 fill:dusk.ink name:upper_window
+    rect 11x23 at:853,434 fill:dusk.ink name:door
+  curve 822,301 889,301 stroke:dusk.ink,7 name:gallery_base
+  curve 827,289 885,289 stroke:dusk.ink,3 name:gallery_rail
+  each i in 0..6
+    curve 828+i*11,289 828+i*11,300 stroke:dusk.ink,2 seed:400+i
+  rect 39x37 at:856,270 fill:dusk.gold name:lantern
+    rect 6x38 at:0,0 fill:dusk.roof name:lantern_mullion
+  curve 829,251 855,232 883,251 closed fill:dusk.roof name:lantern_roof
+  curve 855,232 855,222 stroke:dusk.ink,3 name:finial
+  curve 831,286 881,286 stroke:dusk.ink,5 name:lantern_sill
+  curve 927,460 927,424 979,423 981,468 closed fill:dusk.wall name:keepers_house
+    rect 10x15 at:944,446 fill:dusk.ink name:house_window
+  curve 916,426 949,405 989,428 closed fill:dusk.roof name:house_roof
+
+layer beacon brush:wash
+  curve 840,263 437,217 436,305 841,278 closed fill:grad(left fade(dusk.gold 0) fade(dusk.gold .36)) name:beam
+  ellipse 23,14 at:854,270 fill:dusk.gold a:.65 name:lamp_glow
+  ellipse 9,8 at:850,268 fill:dusk.paper name:lamp_core
+
+layer coastal_marks brush:wash
+  curve 514,753 553,739 580,745 613,735 650,749 stroke:dusk.foam,9 a:.65 name:surf_rocks
+  curve 597,787 629,777 672,786 705,775 stroke:dusk.foam,7 a:.5 name:surf_front
+  each i in 0..18
+    let x = rand(721 1120)
+    let y = rand(477 495)
+    curve x,y x-4,y-10 x+3,y-4 stroke:dusk.grass,2 seed:500+i
+  curve 355,309 364,305 373,310 stroke:dusk.ink,2 a:.7 name:gull_one
+  curve 392,290 398,287 405,291 stroke:dusk.ink,1.7 a:.55 name:gull_two
+
+layer paper_texture
+  rect 1200x900 at:600,450 fill:dusk.paper a:.07 name:paper_grain
+    fx grain .18 scale:1

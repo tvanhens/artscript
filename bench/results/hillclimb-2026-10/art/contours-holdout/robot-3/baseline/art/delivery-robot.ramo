@@ -1,0 +1,70 @@
+@target delivery-robot.png 512x512 bg:none
+@target delivery-robot.svg 512x512 bg:none
+
+palette bot
+  color ink #203b49
+  color tire #344e5c
+  color hub #89a5ad
+  color mint #7cddc3
+  color shade #40b69f
+  color light #c6f7df
+  color screen #173440
+  color eye #9fffe8
+  color cream #fff4d9
+  color orange #f5ad61
+  color boxshadow #dd824b
+  color tape #ffe0a0
+  color coral #ff7e72
+
+layer antenna
+  curve 279,117 285,87 stroke:bot.ink,10
+  circle 14 at:286,77 fill:bot.coral stroke:bot.ink,7
+    circle 4 at:-4,-4 fill:bot.cream
+
+layer wheels
+  rect 61x88 r:25 at:174,408 fill:bot.tire stroke:bot.ink,8 name:left_wheel
+    rect 14x47 r:7 at:-10,0 fill:bot.hub
+  rect 61x88 r:25 at:338,408 fill:bot.tire stroke:bot.ink,8 name:right_wheel
+    rect 14x47 r:7 at:10,0 fill:bot.hub
+
+layer arms
+  curve 149,289 116,318 135,344 stroke:bot.ink,29
+  curve 149,289 116,318 135,344 stroke:bot.shade,15
+  curve 364,283 396,260 411,226 stroke:bot.ink,27
+  curve 364,283 396,260 411,226 stroke:bot.mint,14
+  rect 36x43 r:15 at:415,212 rot:20 fill:bot.light stroke:bot.ink,7
+  curve 417,207 429,212 stroke:bot.shade,5
+
+layer chassis
+  rect 238x190 r:47 at:256,319 fill:bot.mint stroke:bot.ink,8 name:body
+    rect 245x63 r:22 at:12,78 fill:bot.shade
+    rect 20x103 r:10 at:-96,-17 fill:bot.light
+  rect 181x19 r:9 at:256,397 fill:bot.tire stroke:bot.ink,6
+
+layer head_layer
+  rect 252x167 r:51 at:256,182 fill:bot.mint stroke:bot.ink,8 name:head
+    rect 260x38 at:0,70 fill:bot.shade
+    curve -103,-39 -89,-62 -60,-67 stroke:bot.light,9
+  rect 206x111 r:35 at:256,183 fill:bot.screen stroke:bot.ink,6 name:face
+    curve -85,-30 -73,-39 -44,-40 stroke:bot.tire,6
+  curve 198,179 202,167 211,164 220,167 224,179 stroke:bot.eye,8
+  curve 286,179 290,167 299,164 308,167 312,179 stroke:bot.eye,8
+  curve 241,199 248,207 256,209 264,207 271,199 stroke:bot.eye,6
+  ellipse 10,5 at:190,198 fill:bot.coral
+  ellipse 10,5 at:322,198 fill:bot.coral
+  circle 7 at:143,199 fill:bot.cream stroke:bot.ink,4
+  circle 7 at:369,199 fill:bot.cream stroke:bot.ink,4
+
+layer parcel_layer
+  rect 145x102 r:13 at:252,319 fill:bot.orange stroke:bot.ink,7 name:parcel
+    rect 148x21 at:0,43 fill:bot.boxshadow
+    rect 26x107 at:0,0 fill:bot.tape
+    curve -58,-36 -35,-36 stroke:bot.cream,5
+  rect 43x30 r:5 at:288,334 fill:bot.cream
+  path "M 278 335 L 285 342 L 299 327" fill:none stroke:bot.shade,5
+  rect 39x28 r:12 at:176,338 rot:-12 fill:bot.light stroke:bot.ink,6
+  rect 39x28 r:12 at:329,338 rot:12 fill:bot.light stroke:bot.ink,6
+
+layer details
+  circle 6 at:229,380 fill:bot.cream
+  rect 26x8 r:4 at:260,380 fill:bot.ink

@@ -1,0 +1,100 @@
+@target lighthouse.png 1200x900 bg:wc.paper
+
+palette wc
+  color paper #f3ecde
+  color violet #65647f
+  color rose #c88d91
+  color peach #edba96
+  color sea #617e91
+  color foam #d9ded4
+  color ink #303d54
+  color rock #555365
+  color earth #9b8279
+  color grass #777b68
+  color wall #eee0c6
+  color gold #ffda88
+  color roof #794c56
+
+brush wash rag:3 reach:3
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 34 + seeded(m), 4);
+    float grain = vnoise(m.p * 1.1 + seeded(m));
+    float edge = m.edge + (n - .5) * rag;
+    float pool = (1 - smoothstep(0, 7, m.edge)) * .17;
+    float3 pigment = m.paint.rgb * ( .91 + n * .12 - pool);
+    float alpha = cover(edge, m) * (.72 + n * .22) * (.88 + grain * .12);
+    return float4(pigment, alpha);
+  }
+  """
+
+layer sky brush:wash
+  rect 1080x760 at:600,440 fill:grad(down wc.violet wc.rose wc.peach) name:sky_wash
+  each i in 0..22
+    let x = rand(240 960)
+    let y = rand(110 420)
+    ellipse rand(60 180),rand(9 28) at:x,y fill:wc.violet a:rand(.06 .17) seed:i name:cloud
+  curve 90,390 280,376 450,396 640,378 850,398 1100,374 stroke:wc.peach,40 a:.23 name:horizon_wash
+
+layer distant_land brush:wash
+  curve 65,482 149,451 224,457 285,429 342,464 437,483 530,495 65,507 closed fill:wc.violet a:.3 name:headland
+
+layer water brush:wash
+  curve 62,489 280,485 530,491 790,481 1138,487 1138,818 64,818 closed fill:grad(down wc.sea wc.violet) a:.84 name:ocean
+  each i in 0..125
+    let y = rand(505 807)
+    let x = rand(90 1090)
+    curve x,y x+rand(10 48),y-2 x+rand(50 105),y+1 stroke:wc.foam,rand(1 4) a:rand(.1 .36) seed:i name:ripple
+  each i in 0..28
+    let y = 505+i*9
+    let x = 335+rand(-60 60)
+    curve x,y x+rand(25 100),y-1 stroke:wc.peach,rand(2 6) a:.22 seed:i name:reflection
+
+layer cliff_mass brush:wash
+  curve 577,532 657,474 763,453 854,481 931,515 1037,538 1137,554 1137,820 680,820 645,770 666,729 610,684 638,639 574,602 closed tension:.15 fill:wc.rock name:cliff
+    curve 659,507 730,487 751,565 718,644 741,748 694,801 stroke:wc.earth,58 a:.68 name:rock_light
+    curve 817,491 794,563 833,641 782,734 803,818 stroke:wc.ink,39 a:.55 name:rock_cleft
+    curve 924,528 898,606 947,683 908,802 stroke:wc.earth,66 a:.47 name:rock_face
+    each i in 0..34
+      let x = rand(625 1120)
+      let y = rand(520 810)
+      curve x,y x-12,y+rand(25 80) x+12,y+100 stroke:wc.ink,rand(2 9) a:rand(.1 .35) seed:i name:fissure
+  curve 570,532 663,477 751,453 828,469 912,504 1042,533 1135,551 1134,595 1016,569 907,547 809,515 714,504 638,537 592,554 closed fill:wc.grass name:clifftop
+  curve 675,512 739,491 817,505 901,535 1058,557 stroke:wc.wall,[3 13 6] a:.48 name:footpath
+
+layer surf brush:wash
+  curve 561,604 584,645 616,674 602,702 637,739 626,778 666,812 stroke:wc.foam,[7 18 9 22 8] a:.72 name:breaking_surf
+  each i in 0..30
+    let x = rand(492 648)
+    let y = rand(656 811)
+    curve x,y x+22,y-4 x+44,y+1 stroke:wc.foam,rand(2 5) a:.48 seed:i name:sea_spray
+
+layer lighthouse brush:wash
+  curve 736,296 780,296 802,484 711,489 closed tension:0 fill:wc.wall name:tower
+    curve 767,303 780,301 802,487 770,486 closed tension:0 fill:wc.violet a:.48 name:shadow_side
+    curve 725,402 790,400 794,429 721,431 closed tension:0 fill:wc.roof a:.85 name:red_band
+    rect 12x25 at:754,343 fill:wc.ink a:.8 name:upper_window
+    rect 15x29 at:757,462 r:6,6,0,0 fill:wc.ink name:door
+  curve 707,486 805,482 stroke:wc.earth,8 name:foundation
+  rect 66x12 at:758,296 fill:wc.ink name:gallery_base
+  rect 49x37 at:758,270 fill:wc.gold name:lantern
+  curve 727,250 756,227 788,250 closed tension:0 fill:wc.roof name:lantern_roof
+  curve 758,225 758,213 stroke:wc.ink,3 name:finial
+  curve 734,252 734,287 782,287 782,252 stroke:wc.ink,4 name:lantern_frame
+  curve 757,253 757,284 stroke:wc.ink,3 name:mullion
+  curve 721,282 721,294 795,294 795,282 stroke:wc.ink,2 name:railing
+  curve 736,283 736,294 stroke:wc.ink,2 name:rail_left
+  curve 782,283 782,294 stroke:wc.ink,2 name:rail_right
+
+layer lamplight brush:wash
+  curve 747,267 268,310 264,352 748,277 closed tension:0 fill:grad(left fade(wc.gold .02) fade(wc.gold .28)) a:.5 name:light_beam
+  ellipse 29,22 at:756,269 fill:wc.gold a:.25 name:glow
+  circle 6 at:751,269 fill:wc.wall name:lamp
+
+layer foreground brush:wash
+  each i in 0..52
+    let x = rand(946 1118)
+    let y = rand(553 584)
+    curve x,y x-4,y-rand(6 20) stroke:wc.ink,rand(1 3) a:.4 seed:i name:grass_blade
+  curve 304,350 313,345 322,351 stroke:wc.ink,2 a:.6 name:bird_one
+  curve 350,332 357,329 365,334 stroke:wc.ink,1.7 a:.45 name:bird_two

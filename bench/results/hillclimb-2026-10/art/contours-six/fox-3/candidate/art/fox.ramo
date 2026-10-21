@@ -1,0 +1,89 @@
+@target fox-and-mushroom.png 800x800 bg:wood.night
+
+palette wood
+  color night #102d36
+  color distant #1a4148
+  color bark #204a4e
+  color ground #285653
+  color moss #457263
+  color ink #23383c
+  ramp fur #e78343 5
+  color cream #ffe8bd
+  color pink #eaa28b
+  color mint #a6ffcf
+  color cap #65cdaa
+  color darkcap #347e76
+  color light #edffcf
+
+layer forest
+  circle 308 at:400,380 fill:radial(wood.distant wood.night) name:forest_window
+  path "M104 577 Q137 370 114 190 Q137 169 150 186 Q150 323 179 561Z" fill:wood.distant
+  path "M617 570 Q650 375 630 171 L653 160 Q676 361 660 570Z" fill:wood.distant
+  path "M190 541 Q217 369 202 264 L218 250 Q237 400 227 541Z" fill:wood.bark
+  path "M555 540 Q572 369 558 266 L573 260 Q592 408 584 540Z" fill:wood.bark
+  ellipse 294,74 at:400,622 fill:wood.ground name:clearing
+  ellipse 218,38 at:422,634 fill:wood.moss a:.35
+  ellipse 105,30 at:561,612 fill:wood.mint a:.18 blur:18
+  ellipse 150,20 at:335,643 fill:wood.ink a:.45 blur:9
+
+layer mushroom_aura
+  ellipse 107,119 at:566,467 fill:wood.mint a:.13 blur:28
+
+layer fox_body
+  path "M304 434 C263 455 248 534 267 598 C279 638 338 649 383 625 C426 600 407 507 374 459Z" fill:grad(right wood.fur.1 wood.fur.2) stroke:wood.ink,5 name:body
+    path "M344 465 C315 484 304 540 326 589 C343 608 376 608 391 590 L388 481Z" fill:wood.cream
+    ellipse 28,65 at:396,536 fill:wood.mint a:.18 blur:15
+  path "M315 628 C255 642 211 610 204 566 C194 515 218 480 245 466 C233 515 262 544 302 548 C355 551 400 585 389 615 C374 642 343 640 315 628Z" fill:grad(down wood.fur.3 wood.fur.2) stroke:wood.ink,5 name:tail
+    path "M188 455 C209 458 235 466 245 466 C228 506 251 526 268 540 L247 550 L246 565 L230 559 L219 576 L199 575Z" fill:wood.cream
+  ellipse 26,13 at:354,632 fill:wood.fur.1 stroke:wood.ink,4 name:paw_left
+  ellipse 26,13 at:399,630 fill:wood.fur.3 stroke:wood.ink,4 name:paw_right
+  curve 354,626 354,636 stroke:wood.ink,2
+  curve 400,625 400,634 stroke:wood.ink,2
+
+layer fox_head
+  path "M261 355 C246 322 242 274 253 255 C279 259 308 283 323 304 C344 297 369 298 389 308 C412 279 433 268 449 269 C455 300 444 342 431 364 C438 403 408 447 350 463 C298 449 263 426 251 400 L239 386 L258 382 L246 368Z" fill:grad(right wood.fur.2 wood.fur.3) stroke:wood.ink,5 name:head
+    path "M259 275 Q281 282 298 311 L272 334Z" fill:wood.ink
+    path "M435 286 Q416 294 405 317 L431 337Z" fill:wood.ink
+    path "M263 376 C278 356 306 372 343 402 C357 413 366 411 379 397 C405 369 427 367 440 377 L452 424 L353 477 L264 431Z" fill:wood.cream
+    path "M410 326 Q439 352 435 388" fill:none stroke:wood.mint,5 a:.4
+  curve 282,376 293,369 305,376 fill:none stroke:wood.ink,5 name:eye_left
+  curve 383,376 394,369 405,376 fill:none stroke:wood.ink,5 name:eye_right
+  ellipse 14,7 at:290,395 fill:wood.pink a:.75
+  ellipse 14,7 at:397,395 fill:wood.pink a:.75
+  path "M336 408 Q348 402 360 408 Q356 420 349 420 Q342 420 336 408Z" fill:wood.ink name:nose
+  curve 349,419 349,428 338,432 fill:none stroke:wood.ink,3
+  curve 349,428 359,432 365,427 fill:none stroke:wood.ink,3
+  path "M320 311 Q334 298 345 302 L337 315 L355 308 L348 324" fill:wood.fur.3
+
+layer mushroom
+  path "M547 478 C555 518 550 567 537 606 C549 619 581 620 593 605 C575 566 576 514 588 476Z" fill:grad(right wood.cap wood.light) stroke:wood.darkcap,4 name:stem
+    curve 560,503 566,546 560,586 stroke:wood.light,5 a:.6
+  ellipse 36,8 at:565,608 fill:wood.mint a:.3 blur:6
+  path "M469 474 C480 432 515 395 561 394 C608 393 647 428 660 472 C633 499 498 502 469 474Z" fill:grad(down wood.cap wood.mint) stroke:wood.darkcap,4 name:cap
+    ellipse 74,40 at:576,405 fill:wood.light a:.23
+    ellipse 14,9 at:514,440 fill:wood.light rot:-32
+    ellipse 20,12 at:556,414 fill:wood.light rot:-6
+    ellipse 14,10 at:607,438 fill:wood.light rot:25
+    ellipse 8,6 at:570,458 fill:wood.light
+  path "M470 474 Q559 451 659 473 Q640 501 565 503 Q492 501 470 474Z" fill:wood.light stroke:wood.darkcap,3 name:gills
+    curve 492,479 527,484 550,499 stroke:wood.cap,2
+    curve 521,474 544,483 558,501 stroke:wood.cap,2
+    curve 555,471 563,484 565,502 stroke:wood.cap,2
+    curve 589,473 580,486 573,501 stroke:wood.cap,2
+    curve 625,477 597,488 583,500 stroke:wood.cap,2
+  curve 483,476 559,468 648,477 stroke:wood.light,4
+    fx glow 9 color:wood.mint strength:1.5
+
+layer forest_details
+  each x in [160 184 466 639 666]
+    curve x,636 x-7,619 x-16,613 stroke:wood.moss,4
+    curve x,636 x+2,615 x+10,608 stroke:wood.moss,4
+  path "M478 629 Q455 615 462 600 Q482 603 478 629Z" fill:wood.cap
+  path "M480 630 Q483 607 498 608 Q502 625 480 630Z" fill:wood.moss
+  each pos in [196,401 468,337 618,348 684,521 458,533 522,359 166,510]
+    circle 3 at:pos fill:wood.light
+      fx glow 8 color:wood.mint
+  star 4 r:8 inner:.22 at:488,377 fill:wood.mint
+  star 4 r:6 inner:.22 at:640,386 fill:wood.light
+  circle 2 at:395,244 fill:wood.mint a:.65
+  circle 2 at:304,225 fill:wood.mint a:.5

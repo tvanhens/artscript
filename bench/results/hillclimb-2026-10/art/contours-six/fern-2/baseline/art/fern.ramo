@@ -1,0 +1,45 @@
+@target fern.png 900x1200 bg:botanical.paper
+@target fern.svg 900x1200 bg:botanical.paper
+
+palette botanical
+  color paper #f4eddd
+  ramp parchment #e8dcc3 #faf5e9 5
+  color ink #384037
+  color fine #697064
+  color wash #e8e5d5
+
+# Fine pen, airy compound foliage, and the quiet texture of laid paper.
+def leaflet length:24 breadth:5
+  curve 0,0 length*.23,-breadth*.7 length*.66,-breadth length,-length*.16 length*.69,breadth*.45 length*.3,breadth*.5 0,0 closed fill:botanical.paper stroke:botanical.ink,.65 name:blade
+    curve 0,0 length*.5,-length*.045 length*.94,-length*.15 fill:none stroke:botanical.fine,.45 name:midvein
+    each k in 1..5
+      let x = length*k/6
+      curve x,-x*.09 x+length*.12,-breadth*.55 x+length*.2,-breadth*.74 fill:none stroke:botanical.fine,.3 a:.8
+      curve x,-x*.09 x+length*.1,breadth*.21 x+length*.17,breadth*.32 fill:none stroke:botanical.fine,.28 a:.7
+
+def pinna length:170 width:29
+  curve 0,0 length*.4,-length*.075 length*.76,-length*.17 length,-length*.3 fill:none stroke:botanical.ink,[1 .8 .45 .1] name:rib
+  each j in 0..12
+    let u = (j+.5)/12
+    let x = length*u
+    let y = -length*(.06*u+.24*u*u)
+    let l = width*sin(22+u*155)*(1-.28*u)
+    leaflet length:l breadth:l*.2 at:x,y rot:-62+u*13 name:upper
+    leaflet length:l*.88 breadth:l*.18 at:x+length*.025,y-length*.009 rot:63-u*25 name:lower
+  leaflet length:length*.13 breadth:length*.019 at:length*.9,-length*.244 rot:-27 name:tip
+
+layer paper_surface
+  rect 900x1200 at:450,600 fill:botanical.parchment.3 name:paper
+    fx grain .025 scale:.65
+
+layer frond
+  curve 326,1070 365,908 417,733 471,555 515,383 538,232 548,127 fill:none stroke:botanical.ink,[2.2 2 1.8 1.5 1.1 .65 .1] name:rachis
+  curve 330,1068 369,908 420,733 474,555 fill:none stroke:botanical.fine,.5 a:.5 name:stem_glint
+  each i in 0..19
+    let u = i/19
+    let y = 880-u*711
+    let x = 374+207*u-35*u*u
+    let l = 216*sqrt(1-u)*(1-.2*u)+12
+    pinna length:l width:32*(1-u)+8 at:x,y rot:-14-u*19 name:right
+    pinna length:l*.93 width:30*(1-u)+7 at:x-2,y-17 rot:15+u*20 scale:-1,1 name:left
+  leaflet length:48 breadth:6 at:546,171 rot:-86 name:crown

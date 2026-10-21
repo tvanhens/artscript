@@ -1,0 +1,90 @@
+@target lighthouse-at-dusk.png 1200x900 bg:dusk.paper
+
+palette dusk
+  color paper #f3e9d8
+  ramp sky #626b91 #eab2a0 7
+  ramp sea #384d68 #a7b5bc 6
+  ramp rock #343b50 #a39187 6
+  ramp grass #414e4b #96917b 5
+  ramp wall #7d8394 #f2e2bb 6
+  ramp roof #423b4f #9b6471 5
+  color gold #ffdc93
+  color foam #e0dcd0
+
+brush wash rag:3 reach:4 strength:.18
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 39 + seeded(m), 4);
+    float grain = hash12(m.dev + seeded(m));
+    float edge = m.edge + (n - .5) * rag;
+    float pool = (1 - smoothstep(0, 13, m.edge)) * .17;
+    float3 rgb = m.paint.rgb * (1 - pool - strength * (n - .45));
+    float coverage = smoothstep(-2, 2, edge) * (.82 + .18 * grain);
+    return float4(rgb, coverage);
+  }
+  """
+
+layer atmosphere brush:wash
+  rect 1090x790 at:600,450 fill:grad(down dusk.sky.0 dusk.sky.5) jitter:7,70 seed:1 name:sky_wash
+  curve 85,385 220,354 410,376 595,340 820,374 1120,346 stroke:dusk.sky.6,76 a:.3 seed:2 name:peach_haze
+  curve 100,183 240,208 405,185 548,221 stroke:dusk.sky.0,47 a:.22 seed:3 name:high_cloud
+  curve 700,133 846,155 975,136 1090,163 stroke:dusk.sky.1,38 a:.27 seed:4 name:east_cloud
+  curve 120,284 288,272 437,298 stroke:dusk.sky.2,25 a:.25 seed:5 name:cloud_scrap
+
+layer water brush:wash
+  curve 57,437 240,431 450,438 680,430 900,436 1143,425 1144,837 61,840 closed fill:grad(down dusk.sea.4 dusk.sea.0) seed:8 name:sea_wash
+  curve 60,442 139,419 202,428 276,409 365,432 470,430 508,449 closed fill:dusk.sea.2 a:.38 seed:9 name:far_headland
+  each i in 0..44
+    let x = rand(80 1095)
+    let y = rand(465 822)
+    curve x,y x+rand(15 45),y-2 x+rand(55 110),y+2 stroke:dusk.sea.5,rand(1 5) a:rand(.1 .4) seed:100+i name:ripple
+  curve 90,666 191,653 270,665 360,655 455,663 stroke:dusk.foam,7 a:.45 seed:11 name:long_swell
+  curve 86,773 185,752 318,762 442,746 stroke:dusk.foam,10 a:.42 seed:12 name:near_swell
+
+layer cliffs brush:wash
+  curve 432,838 498,767 548,705 566,639 617,581 650,517 733,458 795,447 860,473 922,519 1015,540 1142,563 1140,841 closed tension:0 fill:dusk.rock.1 seed:20 name:cliff_mass
+    curve 654,534 628,623 618,674 569,754 547,840 702,841 750,720 767,620 798,479 closed tension:0 fill:dusk.rock.4 a:.68 seed:21 name:lit_face
+    curve 794,481 775,594 804,655 758,748 745,840 865,840 887,686 863,557 closed tension:0 fill:dusk.rock.0 a:.7 seed:22 name:deep_fissure
+    curve 891,534 918,632 881,729 924,840 1037,840 1020,686 1052,565 closed fill:dusk.rock.3 a:.65 seed:23 name:east_face
+    each i in 0..38
+      let x = rand(550 1135)
+      let y = rand(550 830)
+      curve x,y x-14,y+24 x-8,y+rand(35 85) stroke:dusk.rock.0,rand(2 11) a:.3 seed:200+i name:rock_streak
+  curve 596,566 642,504 727,457 789,446 855,463 928,510 1042,525 1140,540 1140,611 1045,590 926,556 852,519 779,496 709,515 649,553 closed tension:.2 fill:dusk.grass.1 seed:25 name:grassy_crown
+  curve 640,518 739,478 798,477 855,493 952,536 1059,554 stroke:dusk.grass.4,16 a:.65 seed:26 name:ridge_light
+  curve 1055,560 948,529 853,499 787,488 761,482 stroke:dusk.wall.4,9 a:.65 seed:27 name:footpath
+
+layer beacon_glow
+  ellipse 72,56 at:759,278 fill:dusk.gold a:.18 blur:24 name:lantern_halo
+  curve 752,278 163,217 168,338 closed fill:grad(right fade(dusk.gold 0) fade(dusk.gold .22)) name:beam
+    fx blur 9
+
+layer lighthouse brush:wash
+  curve 722,468 734,302 778,302 796,474 closed tension:0 fill:grad(right dusk.wall.5 dusk.wall.1) brush:wash(rag:2) seed:30 name:tower
+    curve 759,302 779,302 796,474 769,469 closed tension:0 fill:dusk.wall.1 a:.5 seed:31 name:tower_shadow
+    curve 728,405 785,413 787,430 726,424 closed tension:0 fill:dusk.roof.2 a:.8 seed:32 name:painted_band
+    rect 9x19 at:756,350 fill:dusk.sea.0 seed:33 name:upper_window
+    rect 13x27 at:755,457 r:5 fill:dusk.roof.0 seed:34 name:door
+  ellipse 47,10 at:760,474 fill:dusk.rock.3 seed:35 name:foundation
+  rect 68x9 at:758,307 fill:dusk.roof.0 seed:36 name:gallery_deck
+  rect 47x37 at:758,280 fill:dusk.gold seed:37 name:lantern_room
+  rect 12x35 at:776,281 fill:dusk.roof.1 a:.65 seed:38 name:lantern_shadow
+  curve 729,262 757,242 786,261 closed tension:0 fill:dusk.roof.0 seed:39 name:lantern_roof
+  curve 758,241 758,230 stroke:dusk.roof.0,3 seed:40 name:finial
+  curve 736,263 736,299 757,299 757,264 779,264 779,299 stroke:dusk.roof.0,3 seed:41 name:window_mullions
+  curve 725,294 725,307 792,307 792,294 stroke:dusk.roof.0,2 seed:42 name:gallery_rail
+  curve 724,294 792,294 stroke:dusk.roof.0,2 seed:43 name:rail_top
+  circle 7 at:747,278 fill:dusk.wall.5 seed:44 name:lamp_core
+
+layer foreground brush:wash
+  curve 960,838 1002,744 1052,718 1110,724 1142,697 1142,839 closed fill:dusk.grass.0 seed:50 name:foreground_bank
+  each i in 0..35
+    let x = rand(991 1130)
+    let y = rand(751 831)
+    curve x,y x-4,y-11 x-12,y-rand(15 35) stroke:dusk.grass.3,2 a:.7 seed:300+i name:grass_blade
+  curve 489,790 525,771 552,774 585,737 stroke:dusk.foam,12 a:.7 seed:51 name:surf_on_rocks
+  curve 484,808 526,794 549,799 stroke:dusk.foam,5 a:.55 seed:52 name:surf_echo
+
+layer seabirds brush:wash
+  curve 465,289 477,284 487,290 497,285 506,288 stroke:dusk.roof.0,2 a:.7 seed:60 name:gull_one
+  curve 532,264 539,261 546,265 552,262 560,264 stroke:dusk.roof.0,1.6 a:.6 seed:61 name:gull_two

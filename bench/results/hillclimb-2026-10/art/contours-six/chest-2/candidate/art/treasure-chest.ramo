@@ -1,0 +1,83 @@
+@target treasure-chest.png 512x512 bg:none
+@target treasure-chest.svg 512x512 bg:none
+
+palette treasure
+  color ink #342137
+  ramp wood #a64e28 5
+  ramp gold #efb52f 5
+  ramp teal #144c58 5
+  color cream #fff3b0
+  color dark #472726
+
+def coin size:38x26
+  ellipse 19,12 at:0,4 fill:treasure.gold.1 stroke:treasure.ink,3
+  ellipse 19,11 fill:treasure.gold.3 stroke:treasure.ink,3
+    ellipse 13,7 fill:treasure.gold.2 stroke:treasure.gold.1,2
+    curve -7,-3 0,-6 8,-3 stroke:treasure.cream,2
+
+def glint size:32
+  path "M0 -19 L4 -5 L15 0 L4 5 L0 19 L-4 5 L-15 0 L-4 -5 Z" fill:treasure.cream
+
+layer backdrop
+  rect 456x456 r:102 at:256,256 fill:grad(down treasure.teal.3 treasure.teal.0) stroke:treasure.teal.4,4 name:badge
+    circle 174 at:0,-15 fill:none stroke:treasure.teal.4,2 a:.25
+    circle 149 at:0,-15 fill:none stroke:treasure.teal.4,1 a:.2
+  ellipse 168,24 at:266,420 fill:treasure.teal.0 a:.65
+
+layer lid_parts
+  path "M111 237 L104 157 Q105 105 150 94 L338 74 Q379 74 391 117 L411 203 L340 256 Z" fill:treasure.gold.1 stroke:treasure.ink,9 name:lid
+  path "M129 220 L122 156 Q123 123 153 115 L335 95 Q363 95 371 126 L386 191 L331 229 Z" fill:grad(down treasure.wood.3 treasure.wood.0) stroke:treasure.ink,5 name:lid_wood
+    path "M133 153 L366 128 M135 180 L375 153 M139 207 L380 181" fill:none stroke:treasure.wood.0,4
+    path "M155 131 Q205 118 254 122 M269 106 L331 102" fill:none stroke:treasure.wood.4,4
+  path "M160 112 L184 109 L205 226 L179 229 Z" fill:grad(right treasure.gold.4 treasure.gold.1) stroke:treasure.ink,4
+  path "M314 92 L339 90 L365 210 L340 223 Z" fill:grad(right treasure.gold.4 treasure.gold.1) stroke:treasure.ink,4
+  path "M115 228 L331 206 L406 193 L399 233 L168 275 Z" fill:treasure.dark stroke:treasure.ink,7
+
+layer coin_heap
+  each row in 0..3
+    each col in 0..6
+      coin at:148+col*35+mod(row 2)*12,249-row*22 rot:(col-2)*5
+  coin at:220,174 rot:-19
+  coin at:263,177 rot:12
+  coin at:302,192 rot:-16
+  coin at:180,207 rot:-24
+  coin at:339,219 rot:22
+
+layer chest
+  path "M110 267 L324 292 L402 246 L386 373 L310 420 L126 382 Z" fill:treasure.wood.1 stroke:treasure.ink,9 name:body
+  path "M110 267 L324 292 L310 420 L126 382 Z" fill:grad(down treasure.wood.3 treasure.wood.1) stroke:treasure.ink,5 name:front
+    path "M116 304 L320 331 M121 345 L316 372" stroke:treasure.wood.0,5
+    path "M143 293 Q169 288 195 299 M231 346 Q256 340 286 353 M154 365 L187 370" stroke:treasure.wood.4,3
+  path "M324 292 L402 246 L386 373 L310 420 Z" fill:grad(right treasure.wood.1 treasure.wood.0) stroke:treasure.ink,5
+    path "M322 334 L396 291 M318 376 L391 333" stroke:treasure.ink,4
+  path "M107 254 L325 278 L407 234 L404 258 L325 304 L110 280 Z" fill:treasure.gold.2 stroke:treasure.ink,6
+  path "M111 257 L325 282 L399 241" stroke:treasure.gold.4,5
+  path "M143 285 L166 288 L178 389 L151 384 Z" fill:grad(right treasure.gold.4 treasure.gold.1) stroke:treasure.ink,4
+  path "M277 301 L301 304 L289 413 L264 408 Z" fill:grad(right treasure.gold.3 treasure.gold.1) stroke:treasure.ink,4
+  path "M127 363 L311 399 L386 355 L384 377 L311 423 L128 386 Z" fill:treasure.gold.1 stroke:treasure.ink,5
+  path "M136 367 L310 403 L377 364" stroke:treasure.gold.3,4
+  path "M211 284 L247 288 L245 329 Q227 342 210 324 Z" fill:treasure.gold.3 stroke:treasure.ink,5
+  circle 6 at:228,308 fill:treasure.ink
+  path "M225 310 L221 322 L233 323 L230 310 Z" fill:treasure.ink
+  each pos in [155,303 163,370 287,321 279,391 348,292 374,366]
+    circle 4 at:pos fill:treasure.gold.4 stroke:treasure.gold.0,2
+
+layer spilling_gold
+  coin at:344,280 rot:32
+  coin at:371,310 rot:62
+  coin at:397,383 rot:-12
+  coin at:366,411 rot:10
+  coin at:323,441 rot:-8
+  coin at:166,422 rot:-12
+  coin at:201,437 rot:7
+  coin at:394,424 rot:-16
+  coin at:364,433 rot:3
+
+layer sparkles
+  glint at:91,184 scale:.8
+  glint at:415,143 scale:1.1
+  glint at:272,150 scale:.65
+  glint at:438,323 scale:.65
+  circle 3 at:106,125 fill:treasure.cream
+  circle 4 at:429,215 fill:treasure.gold.3
+  circle 3 at:85,342 fill:treasure.gold.3

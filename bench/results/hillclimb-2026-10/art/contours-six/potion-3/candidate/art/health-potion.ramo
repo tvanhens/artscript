@@ -1,0 +1,50 @@
+@target health-potion.png 64x64 bg:none
+
+palette potion
+  color ink #251b35
+  color glass #799ba9
+  color pale #b9e4e1
+  color white #f1fff1
+  color shade #436071
+  color wine #771c45
+  color red #c52c4d
+  color bright #f14c5b
+  color pink #ff9490
+  color corkdark #774534
+  color cork #b87b4c
+  color corklight #e5b778
+
+layer bottle_layer
+  path "M24 15H40V25H44V29H48V35H52V49H48V55H42V59H22V55H16V49H12V35H16V29H20V25H24Z" fill:potion.ink name:bottle
+    path "M26 17H38V27H42V31H46V37H50V47H46V53H40V57H24V53H18V47H14V37H18V31H22V27H26Z" fill:potion.glass
+    path "M26 19H30V29H24V33H20V39H16V45H18V49H20V35H24V31H28V27H34V19Z" fill:potion.pale
+    path "M38 29H42V33H46V39H48V47H44V53H40V55H26V53H38V49H42V43H44V37H40V33H38Z" fill:potion.shade
+
+layer liquid_layer
+  path "M20 35H44V39H48V47H44V53H40V55H24V53H20V49H16V39H20Z" fill:potion.wine name:liquid
+    path "M20 37H42V41H44V47H40V51H24V49H20Z" fill:potion.red
+    path "M20 37H42V39H38V41H24V39H20Z" fill:potion.pink
+    path "M20 41H24V47H28V51H24V49H20Z" fill:potion.bright
+    rect 8x2 at:32,51 fill:potion.bright
+    rect 2x2 at:38,45 fill:potion.bright
+
+layer glass_reflections
+  rect 2x8 at:19,40 fill:potion.white
+  rect 2x4 at:21,32 fill:potion.white
+  rect 4x2 at:24,29 fill:potion.pale
+  rect 2x4 at:45,44 fill:potion.pale
+  rect 8x2 at:30,56 fill:potion.pale
+
+layer stopper_layer
+  path "M24 5H40V9H42V15H40V19H24V15H22V9H24Z" fill:potion.ink name:stopper
+    path "M26 7H38V11H40V13H38V17H26V13H24V11H26Z" fill:potion.corkdark
+    path "M26 7H38V11H36V15H26V11H24V9H26Z" fill:potion.cork
+    rect 12x2 at:32,8 fill:potion.corklight
+    rect 2x4 at:27,12 fill:potion.corklight
+    rect 2x2 at:34,12 fill:potion.corkdark
+
+layer lip_layer
+  rect 20x6 at:32,20 fill:potion.ink name:lip
+    rect 16x2 at:0,-1 fill:potion.pale
+    rect 12x2 at:2,1 fill:potion.glass
+    rect 4x2 at:-6,1 fill:potion.white

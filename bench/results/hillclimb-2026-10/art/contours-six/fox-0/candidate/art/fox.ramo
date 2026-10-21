@@ -1,0 +1,105 @@
+@target fox-and-mushroom.png 800x800
+@target fox-and-mushroom.svg 800x800
+
+palette woods
+  color night #132c3b
+  color distant #20434c
+  color bark #18353f
+  color ground #284e50
+  color moss #46746a
+  color ink #422e36
+  ramp fur #e98a46 5
+  color cream #fff0cf
+  color blush #e99b85
+  color jade #75d6ae
+  color glow #c9ffcb
+  color darkjade #377c74
+
+layer backdrop
+  rect 800x800 at:400,400 fill:woods.night
+  circle 308 at:400,373 fill:radial(woods.distant woods.night)
+  path "M90 610 Q125 380 108 155 Q121 137 135 155 L151 335 L186 291 L194 305 L153 367 L164 610 Z" fill:woods.bark
+  path "M640 600 L655 310 L617 252 L626 240 L659 277 L672 139 Q684 123 697 142 L688 399 L720 357 L729 371 L686 439 L687 610 Z" fill:woods.bark
+  ellipse 310,83 at:400,632 fill:woods.ground
+  ellipse 263,39 at:402,637 fill:woods.moss a:.27
+
+layer ambient_light
+  ellipse 128,128 at:566,459 fill:woods.jade a:.13 blur:22
+  ellipse 120,32 at:560,624 fill:woods.jade a:.22 blur:12
+  ellipse 185,24 at:331,647 fill:woods.night a:.55 blur:8
+
+layer fox_tail
+  path "M323 624 C233 676 115 621 137 519 C146 476 182 454 190 407 C228 431 260 482 242 529 C227 571 269 577 322 563 Z" fill:woods.fur.2 stroke:woods.ink,5 name:tail
+    path "M124 492 Q169 484 190 407 Q235 453 238 488 Q211 492 213 514 Q192 509 185 533 Q160 521 136 544 Z" fill:woods.cream
+    path "M148 567 Q183 638 288 603 L324 631 Q201 686 148 596 Z" fill:woods.fur.1
+
+layer fox_body
+  path "M293 436 C258 475 244 548 253 605 Q250 643 285 649 L401 649 Q434 639 418 599 C410 542 396 478 366 443 Z" fill:grad(right woods.fur.1 woods.fur.3) stroke:woods.ink,5 name:body
+  path "M302 466 Q330 479 371 465 Q395 523 378 566 L355 594 L330 578 L307 585 Q284 538 302 466 Z" fill:woods.cream
+  path "M286 551 Q280 594 292 629 Q300 645 322 641 L325 564" fill:woods.fur.2 stroke:woods.ink,4
+  path "M359 559 L359 629 Q364 645 389 641 Q404 639 398 621 L390 556" fill:woods.fur.3 stroke:woods.ink,4
+  curve 302,628 303,638 stroke:woods.ink,2
+  curve 315,629 315,639 stroke:woods.ink,2
+  curve 374,629 374,639 stroke:woods.ink,2
+  curve 386,628 386,638 stroke:woods.ink,2
+
+layer fox_head
+  path "M243 367 Q216 320 233 241 Q238 230 247 239 L303 293 Q333 282 363 292 L417 242 Q428 235 429 248 Q438 311 413 363 L431 386 L411 388 L421 404 Q378 459 331 468 Q274 462 232 411 L243 401 L225 393 Z" fill:grad(right woods.fur.2 woods.fur.3) stroke:woods.ink,5 name:head
+    path "M245 258 L286 298 L257 332 Q241 305 245 258 Z" fill:woods.ink
+    path "M414 262 Q419 305 400 331 L377 300 Z" fill:woods.ink
+    path "M251 276 L273 300 L257 316 Z" fill:woods.blush
+    path "M408 280 L389 301 L401 315 Z" fill:woods.blush
+    path "M234 375 Q273 364 312 410 Q332 425 349 409 Q383 367 424 373 L436 423 L337 479 L239 433 Z" fill:woods.cream
+    ellipse 18,9 at:271,402 fill:woods.blush a:.65
+    ellipse 18,9 at:389,401 fill:woods.blush a:.65
+    curve 265,377 276,369 288,377 stroke:woods.ink,5
+    curve 374,377 385,369 397,376 stroke:woods.ink,5
+    path "M319 410 Q330 404 342 410 Q344 419 332 425 Q320 420 319 410 Z" fill:woods.ink
+    curve 332,423 332,432 322,435 314,430 stroke:woods.ink,3
+    curve 332,432 342,436 350,430 stroke:woods.ink,3
+    curve 405,339 411,350 413,359 stroke:woods.glow,3 a:.7
+
+layer mushroom
+  path "M545 482 Q555 536 541 590 Q536 610 551 620 Q571 633 591 618 Q600 610 591 590 Q578 541 590 483 Z" fill:grad(right woods.darkjade woods.glow) stroke:woods.darkjade,4 name:stem
+    curve 570,517 565,560 568,592 stroke:woods.glow,5 a:.65
+  ellipse 100,25 at:569,492 fill:woods.glow
+    fx glow 15 color:woods.jade a:.65
+  group stroke:woods.darkjade,2 a:.65
+    curve 483,491 531,500 556,496
+    curve 507,480 542,492 558,495
+    curve 536,476 553,487 563,497
+    curve 596,477 585,489 576,497
+    curve 625,480 601,493 582,498
+    curve 654,492 613,502 586,498
+  path "M464 479 C479 453 493 396 539 386 C594 368 630 404 652 447 Q665 464 674 479 C659 496 627 488 606 483 Q572 475 541 485 Q489 500 464 479 Z" fill:grad(down woods.jade woods.glow) stroke:woods.darkjade,4 name:cap
+    ellipse 17,10 at:536,409 rot:-20 fill:woods.cream a:.9
+    ellipse 22,12 at:592,420 rot:22 fill:woods.cream a:.9
+    ellipse 11,7 at:504,447 rot:-30 fill:woods.cream a:.9
+    ellipse 14,9 at:628,454 rot:24 fill:woods.cream a:.9
+    ellipse 12,8 at:557,455 fill:woods.cream a:.9
+    curve 480,475 520,478 565,469 613,474 658,478 stroke:woods.glow,4
+    fx glow 10 color:woods.jade a:.4
+
+layer forest_details
+  group stroke:woods.moss,4
+    curve 191,645 182,626 173,619
+    curve 193,647 193,620 202,611
+    curve 453,654 452,633 443,625
+    curve 454,652 465,630 477,626
+    curve 637,638 649,617 649,605
+    curve 640,637 663,629 672,617
+  ellipse 12,5 at:231,674 rot:14 fill:woods.jade a:.35
+  ellipse 17,5 at:514,651 rot:-12 fill:woods.moss
+  ellipse 9,4 at:609,665 fill:woods.moss
+  group fill:woods.glow
+    circle 3 at:479,351
+      fx glow 7 color:woods.jade
+    circle 2 at:613,337
+      fx glow 6 color:woods.jade
+    circle 3 at:678,555
+      fx glow 7 color:woods.jade
+    circle 2 at:457,567
+    circle 2 at:218,444
+    circle 2 at:343,214
+    path "M557 301 L560 309 L568 312 L560 315 L557 323 L554 315 L546 312 L554 309 Z"
+    path "M177 348 L179 353 L184 355 L179 357 L177 362 L175 357 L170 355 L175 353 Z" a:.65

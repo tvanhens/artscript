@@ -1,0 +1,49 @@
+@target kingfisher.png 1000x1000 bg:bird.paper
+@target kingfisher.svg 1000x1000 bg:bird.paper profile:vector
+
+palette bird
+  color paper #f5ebd6
+  color ink #102f42
+  color blue #008f9a
+  color orange #ed713a
+
+# Four inks, cut-paper contours, and a steep descending diagonal.
+layer setting
+  circle 112 at:763,221 fill:bird.orange name:sun
+  path "M50 730 C205 677 322 755 477 724 C663 685 778 688 950 735 L950 950 L50 950 Z" fill:bird.blue name:river
+  path "M50 829 C226 777 329 856 512 812 C693 769 826 793 950 824 L950 867 C790 832 700 827 520 865 C322 907 217 825 50 875 Z" fill:bird.ink name:current
+  path "M89 921 C227 881 343 941 468 912" fill:none stroke:bird.paper,12 name:near_ripple
+  path "M692 904 C759 886 833 890 907 911" fill:none stroke:bird.paper,12 name:far_ripple
+  path "M118 755 C179 743 228 748 278 758" fill:none stroke:bird.paper,10 name:surface_ripple
+
+layer distant_wing
+  path "M470 420 C413 343 419 242 453 115 C487 150 509 198 519 249 L530 191 C559 235 566 291 551 342 L579 302 C587 361 565 412 522 457 Z" fill:bird.ink name:far_wing
+  path "M470 188 C456 278 468 345 504 389 C503 318 491 253 470 188 Z" fill:bird.blue name:far_panel
+
+layer tail
+  path "M416 413 L248 357 L291 426 L259 430 L427 485 Z" fill:bird.ink name:tail_fan
+  path "M295 391 L426 442 L414 456 L315 418 Z" fill:bird.blue name:tail_stripe
+
+layer body
+  path "M405 391 C464 369 531 400 582 457 C619 496 631 540 615 573 C580 614 527 586 484 549 C435 508 408 453 405 391 Z" fill:bird.blue name:torso
+  path "M425 432 C448 494 489 551 548 581 C573 594 597 589 609 570 C586 524 558 493 517 472 Z" fill:bird.orange name:breast
+
+layer near_wing
+  path "M510 460 C456 456 394 420 349 365 C291 296 220 244 123 215 C143 257 170 289 210 319 L158 303 C180 345 217 375 259 393 L204 385 C236 422 283 445 327 453 L278 458 C338 494 414 514 477 493 Z" fill:bird.ink name:wing
+  path "M166 244 C279 290 334 390 444 447 C358 426 309 384 265 339 C232 303 199 271 166 244 Z" fill:bird.blue name:wing_panel
+  path "M290 357 C338 405 383 438 436 458 L400 461 C355 446 316 421 282 389 Z" fill:bird.paper name:wing_flash
+
+layer head
+  path "M557 469 C584 458 619 470 643 493 C670 519 678 552 661 576 L627 600 C592 587 568 564 559 537 C551 514 548 489 557 469 Z" fill:bird.blue name:head_shape
+  path "M574 514 C600 495 630 499 650 519 L670 550 L647 568 C618 551 596 535 574 514 Z" fill:bird.ink name:eye_band
+  path "M565 526 L588 524 L626 568 L610 579 C584 564 572 548 565 526 Z" fill:bird.paper name:collar
+  path "M638 561 L751 700 L666 578 Z" fill:bird.ink name:beak
+  path "M649 574 L751 700 L657 588 Z" fill:bird.orange name:lower_beak
+  circle 10 at:631,532 fill:bird.paper name:eye_ring
+  circle 6 at:633,534 fill:bird.ink name:eye
+  path "M575 486 C595 477 614 484 625 491" fill:none stroke:bird.paper,8 name:crown_flash
+
+layer water_marks
+  path "M662 749 C690 737 728 736 754 746" fill:none stroke:bird.paper,10 name:impact_ripple
+  path "M781 750 L794 728 L801 756 Z" fill:bird.paper name:drop_right
+  path "M647 712 L631 693 L636 721 Z" fill:bird.blue name:drop_left

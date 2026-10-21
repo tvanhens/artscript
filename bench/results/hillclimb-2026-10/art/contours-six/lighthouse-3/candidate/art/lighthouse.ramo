@@ -1,0 +1,89 @@
+@target lighthouse-dusk.png 1200x900 bg:dusk.paper
+
+palette dusk
+  color paper #f5eedf
+  ramp sky #646a94 #edb5a1 5
+  ramp sea #3d6275 #afa6b3 5
+  ramp rock #333d51 #a68d87 5
+  ramp grass #414f53 #a2a080 5
+  ramp wall #9c9bad #f9e5bd 5
+  ramp ink #292f44 5
+  ramp gold #e9ab61 #fff1b1 5
+
+# Broken edges, pigment pooling, broad blooms and fine paper granulation.
+brush wash rag:3 reach:4
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 42 + seeded(m), 4);
+    float grain = hash12(m.dev + seeded(m));
+    float edge = m.edge + (n - .5) * rag;
+    float pool = (1 - smoothstep(0, 7, m.edge)) * .16;
+    float bloom = fbm(m.p / 125 + seeded(m), 3);
+    float3 pigment = m.paint.rgb * (0.89 + n * .16 - pool);
+    return float4(pigment, cover(edge, m) * (.69 + bloom * .24) * (.89 + grain * .11));
+  }
+  """
+
+layer atmosphere brush:wash
+  rect 1090x787 at:600,446 fill:grad(down dusk.sky.0 dusk.sky.4) name:sky_wash
+  curve 66,227 227,209 418,237 573,216 791,241 1116,198 stroke:dusk.sky.0,67 a:.18 name:cloud_high
+  curve 83,337 281,300 425,325 650,301 877,329 1120,294 stroke:dusk.sky.1,38 a:.25 name:cloud_low
+  ellipse 222,46 at:367,410 fill:dusk.gold.3 a:.22 name:last_light
+  curve 67,473 239,458 344,469 460,447 555,466 668,452 817,467 1136,455 1136,828 65,828 closed fill:grad(down dusk.sea.4 dusk.sea.0) name:sea
+  curve 69,462 171,447 240,451 307,438 391,451 455,446 stroke:dusk.sky.0,9 a:.35 name:far_coast
+
+layer water_marks brush:wash
+  each i in 0..36
+    let y = 492+i*8.8
+    let x = rand(94 550)
+    curve x,y x+rand(30 90),y-2 x+rand(100 210),y+1 stroke:dusk.sea.4,rand(1 4) a:rand(.12 .4) seed:100+i name:ripple
+  each i in 0..13
+    let x = 232+rand(-75 75)
+    let y = 480+i*13
+    curve x,y x+rand(40 125),y+1 stroke:dusk.gold.3,rand(2 5) a:.23 seed:200+i name:reflection
+
+layer headland brush:wash
+  path "M1136 465 C1025 462 968 435 904 447 L838 481 789 517 731 535 718 576 677 601 668 648 617 682 605 728 540 769 503 835 1137 835 Z" fill:dusk.rock.1 name:cliff
+    path "M856 485 L816 551 824 613 766 669 748 752 693 835 1138 835 1138 507Z" fill:dusk.rock.0 a:.66 name:shadow_face
+    path "M787 521 L758 585 777 627 708 706 695 759 633 813 601 819 654 728 663 675 720 618 727 571Z" fill:dusk.rock.3 a:.75 name:lit_ridge
+    curve 864,521 854,581 811,646 815,702 764,786 stroke:dusk.rock.4,[2 12 3] a:.45 name:rock_seam
+    curve 942,514 908,591 925,657 875,739 893,812 stroke:dusk.rock.0,[4 16 7] a:.6 name:fissure
+    each i in 0..30
+      let x = rand(760 1120)
+      let y = rand(560 826)
+      curve x,y x-14,y+rand(10 32) x-9,y+44 stroke:dusk.rock.3,rand(2 8) a:.27 seed:300+i name:strata
+  path "M1135 470 C1041 465 995 434 916 441 C874 442 855 459 836 476 L791 511 733 535 771 544 828 523 869 494 926 482 1028 492 1135 508Z" fill:dusk.grass.2 name:grass_cap
+  curve 799,516 853,489 915,474 1002,474 1080,488 stroke:dusk.grass.4,[2 12 3] a:.65 name:grass_light
+  curve 1100,482 1045,473 1000,468 965,474 937,472 stroke:dusk.wall.3,[8 6 2] a:.6 name:footpath
+
+layer beacon brush:wash
+  path "M887 298 L930 298 949 476 Q913 489 875 477Z" fill:dusk.wall.4 name:tower
+    path "M915 296 L933 298 951 478 919 485Z" fill:dusk.wall.0 a:.85 name:cool_side
+    curve 885,359 910,363 938,360 stroke:dusk.wall.1,18 a:.58 name:paint_band
+    rect 11x21 at:908,341 r:4 fill:dusk.ink.1 name:upper_window
+    rect 13x23 at:910,401 r:5 fill:dusk.ink.1 name:lower_window
+    path "M903 478 L903 454 Q912 444 920 454 L921 481Z" fill:dusk.ink.0 name:door
+  path "M872 299 L944 299 940 309 876 310Z" fill:dusk.ink.1 name:balcony_base
+  rect 49x40 at:908,276 fill:dusk.ink.1 name:lantern_frame
+  rect 35x30 at:908,275 fill:dusk.gold.2 name:lantern_glass
+  path "M875 255 L909 234 942 255Z" fill:dusk.ink.0 name:roof
+  curve 909,234 909,224 stroke:dusk.ink.0,3 name:finial
+  curve 873,299 873,285 944,285 944,299 stroke:dusk.ink.1,2 name:railing
+  curve 886,286 886,298 stroke:dusk.ink.1,2 name:rail_left
+  curve 931,286 931,298 stroke:dusk.ink.1,2 name:rail_right
+
+layer warm_light brush:wash
+  path "M896 269 L289 207 265 303 896 282Z" fill:grad(right fade(dusk.gold.4 0) fade(dusk.gold.4 .25)) name:beam
+  ellipse 26,22 at:907,275 fill:dusk.gold.2 a:.3 name:halo
+  ellipse 8,12 at:907,275 fill:dusk.gold.4 name:lamp
+
+layer surf brush:wash
+  curve 535,797 570,771 594,767 618,735 633,727 stroke:dusk.wall.4,[2 9 3 7 1] a:.8 name:breaking_wave
+  curve 425,811 468,801 506,815 551,800 stroke:dusk.wall.4,[1 5 2 1] a:.65 name:foam
+  curve 593,713 615,693 634,692 653,668 stroke:dusk.sea.4,[2 7 3 1] a:.8 name:upper_surf
+  each i in 0..17
+    ellipse rand(2 7),rand(1 3) at:rand(476 609),rand(771 826) fill:dusk.wall.4 a:.55 seed:400+i name:spray
+
+layer birds brush:wash
+  path "M557 330 Q565 320 574 328 Q580 316 590 319" stroke:dusk.ink.1,2 a:.75 name:gull_one
+  path "M611 352 Q618 344 625 349 Q631 340 638 343" stroke:dusk.ink.1,1.6 a:.65 name:gull_two

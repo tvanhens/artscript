@@ -1,0 +1,57 @@
+@target kingfisher.png 1000x1000 bg:king.paper
+@target kingfisher.svg 1000x1000 bg:king.paper profile:vector
+
+palette king
+  color paper #f5ecd5
+  color ink #102f43
+  color blue #168ead
+  color orange #e96630
+
+# Four solid inks: cut-paper silhouettes and sweeping negative space.
+layer sky
+  circle 77 at:800,196 fill:king.orange name:sun
+  path "M 80 300 L 235 300 L 205 311 L 80 311 Z" fill:king.ink name:wind_high
+  path "M 106 331 L 193 331 L 165 339 L 106 339 Z" fill:king.blue name:wind_low
+
+layer river
+  path "M 50 750 C 225 655 348 693 507 738 C 675 785 791 703 950 679 L 950 950 L 50 950 Z" fill:king.blue name:water
+  path "M 50 824 C 214 736 343 765 495 809 C 677 863 802 739 950 751 L 950 791 C 799 774 660 900 482 847 C 302 794 185 796 50 864 Z" fill:king.paper name:current_light
+  path "M 50 916 C 221 835 318 863 461 893 C 641 933 778 828 950 835 L 950 883 C 767 869 641 964 467 933 C 285 899 183 895 50 950 Z" fill:king.ink name:deep_current
+  path "M 93 728 C 158 700 214 700 266 709" fill:none stroke:king.ink,9 name:ripple_left
+  path "M 784 927 C 823 915 870 908 912 911" fill:none stroke:king.paper,9 name:ripple_right
+
+layer far_wing
+  path "M 495 407 C 550 310 605 245 681 219 L 658 284 L 621 328 L 654 310 L 626 366 L 581 403 L 611 394 L 582 437 L 539 462 Z" fill:king.ink name:wing_far
+  path "M 530 407 C 567 333 605 284 648 258 C 618 314 582 367 548 422 Z" fill:king.blue name:wing_far_band
+
+layer tail
+  path "M 454 446 L 300 440 L 221 386 L 355 409 L 275 352 L 423 390 L 480 424 Z" fill:king.ink name:tail_fan
+  path "M 453 422 L 307 386 L 366 422 L 457 442 Z" fill:king.blue name:tail_flash
+
+layer bird_body
+  path "M 414 377 C 470 354 526 386 575 430 C 626 462 664 480 674 517 C 687 563 655 589 617 578 C 579 567 566 534 527 521 C 465 500 407 461 397 423 C 391 404 399 387 414 377 Z" fill:king.blue name:body
+  path "M 425 445 C 460 472 497 477 537 486 C 583 495 594 544 635 560 C 648 566 658 560 668 552 C 663 580 636 588 612 577 C 565 554 563 539 524 529 C 474 514 440 489 425 445 Z" fill:king.orange name:breast
+  path "M 566 446 C 592 449 619 465 630 482 L 595 509 L 561 480 Z" fill:king.paper name:collar
+
+layer near_wing
+  path "M 501 442 C 431 416 366 357 325 287 C 287 222 278 139 294 77 C 314 130 342 180 370 210 L 343 119 C 375 158 399 204 422 246 L 417 180 C 451 228 476 291 483 338 C 509 371 530 400 530 421 Z" fill:king.ink name:wing_near
+  path "M 310 141 C 336 207 377 262 424 299 C 448 321 468 360 484 398 C 418 358 342 272 310 141 Z" fill:king.blue name:wing_panel
+  path "M 331 225 C 363 272 398 310 435 336 L 460 383 C 405 346 360 294 331 225 Z" fill:king.paper name:wing_cut
+  path "M 379 226 L 419 275 L 442 315 L 407 286 Z" fill:king.paper name:feather_cut
+
+layer head
+  path "M 593 466 C 623 457 654 471 673 495 L 690 533 L 662 558 C 638 558 612 540 601 521 L 575 493 Z" fill:king.blue name:head_cap
+  path "M 610 504 L 639 491 L 675 512 L 690 533 L 657 537 Z" fill:king.ink name:eye_mask
+  path "M 608 521 L 640 529 L 658 548 L 639 549 L 620 538 Z" fill:king.paper name:cheek
+  circle 7 at:644,511 fill:king.paper name:eye
+  circle 3.5 at:646,513 fill:king.ink name:pupil
+  path "M 673 517 L 764 666 L 667 550 L 687 542 Z" fill:king.ink name:beak
+  path "M 685 542 L 749 644 L 680 552 Z" fill:king.orange name:beak_split
+
+layer dive_marks
+  path "M 724 578 L 754 619" fill:none stroke:king.blue,7 name:motion_one
+  path "M 754 565 L 783 605" fill:none stroke:king.blue,7 name:motion_two
+  ellipse 49,9 at:764,735 fill:king.ink name:target_ripple
+  ellipse 28,4 at:764,734 fill:king.paper name:ripple_hole
+  path "M 744 710 L 737 694 L 750 704 Z" fill:king.paper name:splash_left
+  path "M 781 708 L 793 689 L 789 711 Z" fill:king.paper name:splash_right

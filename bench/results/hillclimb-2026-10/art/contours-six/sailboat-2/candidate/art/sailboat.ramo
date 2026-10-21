@@ -1,0 +1,108 @@
+@target sailboat.png 1000x800 bg:book.paper
+
+use std/brushes { bristle }
+
+palette book
+  color paper #f6e9c9
+  color sky #d4e4df
+  color cloud #f9f1d9
+  color distant #83aaa9
+  color sea #438eaa
+  color deep #286b8f
+  color turquoise #6cb8bf
+  color foam #c5e0d5
+  color red #c83f37
+  color scarlet #e66248
+  color shade #962d39
+  color dark #493e42
+  color wood #aa7652
+  color gold #edbe79
+  color sail #fff0cd
+  color sailshadow #cdbb96
+
+brush gouache grain:.13 rag:1.6 reach:2
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 24 + seeded(m), 4);
+    float tooth = hash12(m.dev + seeded(m));
+    float3 c = m.paint.rgb * (0.91 + n * .17);
+    c += (tooth - .5) * grain;
+    return float4(c, cover(m.edge + (n - .5) * rag, m));
+  }
+  """
+
+layer sky_paint brush:gouache
+  rect 1000x800 at:500,400 fill:book.paper brush:gouache(reach:0 rag:0) name:paper
+  path "M25 33 Q480 14 972 34 L977 471 L24 481 Z" fill:grad(down book.sky book.cloud) name:sky
+  path "M75 176 Q121 151 162 163 Q188 118 234 145 Q264 130 302 165 Q345 159 359 178 Q204 190 75 176Z" fill:book.cloud a:.8 name:cloud_left
+  path "M662 116 Q698 96 731 109 Q760 78 792 105 Q842 88 865 118 Q906 116 927 133 Q798 146 662 138Z" fill:book.cloud a:.7 name:cloud_right
+  circle 42 at:802,244 fill:book.gold a:.44 name:sun
+  path "M26 425 Q113 395 185 419 Q246 402 316 426 Q397 411 450 432 L450 461 L26 461Z" fill:book.distant a:.55 name:far_shore
+
+layer water brush:gouache
+  path "M24 441 Q203 432 374 443 Q640 429 976 444 L976 766 Q526 779 24 761Z" fill:grad(down book.turquoise book.deep) name:water_base
+  each i in 0..90
+    let x = rand(40 950)
+    let y = rand(459 750)
+    let w = rand(15 86)
+    curve x,y x+w*.45,y-3 x+w,y+1 stroke:book.turquoise,[1 8 1] a:rand(.15 .5) brush:bristle(strength:.4) seed:100+i name:water_marks
+  each i in 0..32
+    let x = rand(44 912)
+    let y = rand(450 752)
+    curve x,y x+26,y-2 x+51,y stroke:book.foam,[1 3 1] a:.5 seed:300+i name:glints
+  path "M296 615 Q472 584 715 613 Q771 634 679 659 Q445 687 293 652Z" fill:book.deep a:.65 name:boat_shadow
+  each i in 0..15
+    let y = 651+i*5
+    let x = 461+rand(-45 35)
+    curve x,y x+rand(35 95),y+3 stroke:book.red,[1 7 1] a:.28 seed:600+i name:red_reflection
+
+layer rigging_behind brush:gouache
+  curve 527,181 330,542 stroke:book.wood,2 name:backstay
+  curve 529,177 742,569 stroke:book.wood,2 name:forestay
+  curve 523,163 516,572 stroke:book.dark,10 name:mast_shadow
+  curve 521,165 514,571 stroke:book.gold,5 name:mast_light
+  path "M528 171 Q551 158 581 171 L567 185 Q544 178 529 187Z" fill:book.red name:pennant
+
+layer sails brush:gouache
+  path "M509 199 C454 271 357 370 298 480 Q388 481 500 532 Q490 387 509 199Z" fill:book.red name:main_sail
+    path "M507 214 Q462 348 485 521 Q414 458 306 477 Q410 420 507 214Z" fill:book.scarlet a:.77 name:lit_belly
+    path "M506 221 Q480 400 495 527 L464 506 Q459 389 506 221Z" fill:book.shade a:.45 name:fold_shadow
+    curve 493,240 424,381 326,468 stroke:book.gold,2 a:.35 name:seam_one
+    curve 500,306 450,428 386,487 stroke:book.gold,2 a:.3 name:seam_two
+    curve 304,478 397,489 498,530 stroke:book.shade,5 name:foot
+  path "M543 239 Q559 392 541 533 Q632 521 716 553 C652 460 607 336 543 239Z" fill:book.sail name:foresail
+    path "M548 265 Q578 431 550 530 Q596 518 634 532 Q587 463 548 265Z" fill:book.sailshadow a:.48 name:ivory_fold
+    curve 563,290 622,441 694,536 stroke:book.gold,2 a:.55 name:jib_seam
+  curve 298,486 504,540 stroke:book.wood,7 name:boom
+  curve 307,483 501,537 stroke:book.gold,2 name:boom_light
+  curve 319,494 395,557 stroke:book.sailshadow,2 name:sheet
+
+layer hull brush:gouache
+  path "M320 534 Q472 518 587 542 L746 566 Q653 624 492 626 Q383 596 320 534Z" fill:book.wood name:deck_outer
+  path "M341 539 Q468 529 583 551 L716 568 Q589 599 494 603 Q405 582 341 539Z" fill:book.gold name:deck
+  path "M401 549 Q469 543 526 557 L597 578 L502 593 L420 574Z" fill:book.dark name:cockpit
+  path "M424 551 L492 553 L551 572 L487 576Z" fill:book.wood name:seat
+  path "M320 539 Q396 582 496 608 Q634 598 746 566 Q703 626 598 649 Q541 668 489 651 Q374 614 335 567Z" fill:book.red name:hull_near
+    path "M328 548 Q401 600 490 626 Q612 628 734 578 L699 612 Q578 657 493 644 Q391 610 328 548Z" fill:book.scarlet a:.7 name:hull_light
+    path "M495 610 Q621 605 746 567 Q701 631 598 649 Q538 667 489 651Z" fill:book.shade a:.7 name:bow_shadow
+    curve 347,568 409,608 488,633 stroke:book.gold,4 a:.45 name:paint_scuff
+  curve 322,539 399,583 494,609 624,593 744,567 stroke:book.sail,6 name:gunwale
+  curve 337,568 405,610 490,644 596,647 698,612 stroke:book.dark,4 a:.65 name:waterline
+  curve 494,612 491,647 stroke:book.scarlet,4 name:chine
+  ellipse 10,7 at:574,616 rot:-12 fill:book.dark name:porthole
+    ellipse 6,3 fill:book.gold name:glass
+  curve 514,532 512,574 stroke:book.dark,7 name:mast_base
+  curve 520,538 604,581 stroke:book.sailshadow,2 name:rope_front
+
+layer wake brush:gouache
+  curve 270,604 322,624 380,638 stroke:book.foam,[1 9 2] name:wake_left
+  curve 243,624 313,646 411,662 stroke:book.turquoise,[1 13 1] name:wake_wash
+  curve 581,662 661,641 721,606 758,593 stroke:book.foam,[2 9 6 1] name:bow_foam
+  curve 626,677 700,652 774,614 stroke:book.turquoise,[1 10 1] name:bow_ripple
+  curve 381,684 452,696 517,691 stroke:book.foam,[1 4 1] name:foreground_foam
+  curve 133,702 223,713 287,704 stroke:book.foam,[1 5 1] name:near_wave
+  curve 753,723 819,709 899,717 stroke:book.turquoise,[1 8 1] name:right_wave
+
+layer birds brush:gouache
+  curve 169,301 180,295 191,302 201,296 211,300 stroke:book.dark,2 a:.65 name:gull_one
+  curve 238,274 246,270 255,276 263,272 272,274 stroke:book.dark,2 a:.45 name:gull_two

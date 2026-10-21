@@ -1,0 +1,83 @@
+@target botanical/fern.png 1000x1400 bg:botanical.paper
+@target botanical/fern.svg 1000x1400 bg:botanical.paper
+
+palette botanical
+  color paper #f5efdf
+  ramp fiber #e9dfc9 #fcf7eb 5
+  color ink #363c32
+  color fine #666957
+  color wash #e5e3d0
+
+# Slender, asymmetric pinnules with fine branching venation.
+def pinnule length:32 width:7
+  group scale:width/7,length/32
+    path "M0 0 C-3 -5 -6 -8 -5 -12 C-8 -15 -7 -19 -5 -21 C-7 -24 -4 -28 0 -32 C3 -27 7 -24 5 -21 C8 -17 6 -14 5 -12 C6 -7 3 -3 0 0Z" fill:botanical.paper stroke:botanical.ink,.72 name:contour
+    path "M0 -1 Q1 -16 0 -30" stroke:botanical.fine,.56 fill:none name:midvein
+    each k in 0..4
+      let y = -6-k*5
+      curve 0,y -2,y-2 -4,y-5 stroke:botanical.fine,.4 fill:none name:vein_left
+      curve 0,y 2,y-2 4,y-4 stroke:botanical.fine,.4 fill:none name:vein_right
+
+def pinna length:230 fullness:1
+  let count = floor(length/16)
+  each j in 0..count
+    let u = (j+.6)/(count+1)
+    let x = u*length
+    let bend = -12*u*u
+    let blade = (12+26*sqrt(sin(180*u)))*fullness
+    pinnule blade 5.5*fullness at:x,bend rot:31+u*20 name:upper
+    pinnule blade*.88 5.2*fullness at:x+4,bend rot:139-u*12 name:lower
+  curve 0,0 length*.48,-2 length,-13 stroke:botanical.ink,[1.25 .8 .15] fill:none name:rachilla
+  pinnule 20 3.6 at:length-4,-12 rot:78 name:tip
+
+layer paper_texture
+  rect 1000x1400 at:500,700 fill:botanical.paper name:sheet
+    fx grain .026 scale:.65
+
+layer frond
+  path "M416 1230 C424 1090 424 910 452 740 C480 559 544 323 621 165" fill:none stroke:botanical.ink,[2.7 2.1 1.4 .3] name:main_stem
+  pinna 106.89 1 at:425.92,995.7 scale:-1,1 rot:28.5 name:pinna_0_left
+  pinna 106.89 1 at:425.92,982.92 scale:1,1 rot:-28.5 name:pinna_0_right
+  pinna 133.8 1 at:429.28,958.96 scale:-1,1 rot:29.36 name:pinna_1_left
+  pinna 133.8 1 at:429.28,946.18 scale:1,1 rot:-29.36 name:pinna_1_right
+  pinna 157.7 1 at:433.12,922.21 scale:-1,1 rot:30.23 name:pinna_2_left
+  pinna 157.7 1 at:433.12,909.43 scale:1,1 rot:-30.23 name:pinna_2_right
+  pinna 178.69 1 at:437.45,885.47 scale:-1,1 rot:31.09 name:pinna_3_left
+  pinna 178.69 1 at:437.45,872.69 scale:1,1 rot:-31.09 name:pinna_3_right
+  pinna 196.77 1 at:442.27,848.73 scale:-1,1 rot:31.95 name:pinna_4_left
+  pinna 196.77 1 at:442.27,835.95 scale:1,1 rot:-31.95 name:pinna_4_right
+  pinna 211.91 1 at:447.58,811.99 scale:-1,1 rot:32.81 name:pinna_5_left
+  pinna 211.91 1 at:447.58,799.21 scale:1,1 rot:-32.81 name:pinna_5_right
+  pinna 224.07 1 at:453.38,775.24 scale:-1,1 rot:33.67 name:pinna_6_left
+  pinna 224.07 1 at:453.38,762.46 scale:1,1 rot:-33.67 name:pinna_6_right
+  pinna 233.21 1 at:459.66,738.5 scale:-1,1 rot:34.54 name:pinna_7_left
+  pinna 233.21 1 at:459.66,725.72 scale:1,1 rot:-34.54 name:pinna_7_right
+  pinna 239.3 1 at:466.43,701.76 scale:-1,1 rot:35.4 name:pinna_8_left
+  pinna 239.3 1 at:466.43,688.98 scale:1,1 rot:-35.4 name:pinna_8_right
+  pinna 242.34 1 at:473.69,665.02 scale:-1,1 rot:36.26 name:pinna_9_left
+  pinna 242.34 1 at:473.69,652.24 scale:1,1 rot:-36.26 name:pinna_9_right
+  pinna 242.34 1 at:481.44,628.27 scale:-1,1 rot:37.13 name:pinna_10_left
+  pinna 242.34 1 at:481.44,615.49 scale:1,1 rot:-37.13 name:pinna_10_right
+  pinna 239.33 1 at:489.68,591.53 scale:-1,1 rot:37.99 name:pinna_11_left
+  pinna 239.33 1 at:489.68,578.75 scale:1,1 rot:-37.99 name:pinna_11_right
+  pinna 233.36 1 at:498.4,554.79 scale:-1,1 rot:38.85 name:pinna_12_left
+  pinna 233.36 1 at:498.4,542.01 scale:1,1 rot:-38.85 name:pinna_12_right
+  pinna 224.52 1 at:507.61,518.05 scale:-1,1 rot:39.71 name:pinna_13_left
+  pinna 224.52 1 at:507.61,505.27 scale:1,1 rot:-39.71 name:pinna_13_right
+  pinna 212.87 1 at:517.31,481.3 scale:-1,1 rot:40.58 name:pinna_14_left
+  pinna 212.87 1 at:517.31,468.52 scale:1,1 rot:-40.58 name:pinna_14_right
+  pinna 198.55 1 at:527.5,444.56 scale:-1,1 rot:41.44 name:pinna_15_left
+  pinna 198.55 1 at:527.5,431.78 scale:1,1 rot:-41.44 name:pinna_15_right
+  pinna 181.64 1 at:538.18,407.82 scale:-1,1 rot:42.3 name:pinna_16_left
+  pinna 181.64 1 at:538.18,395.04 scale:1,1 rot:-42.3 name:pinna_16_right
+  pinna 162.27 1 at:549.34,371.08 scale:-1,1 rot:43.16 name:pinna_17_left
+  pinna 162.27 1 at:549.34,358.3 scale:1,1 rot:-43.16 name:pinna_17_right
+  pinna 140.53 1 at:560.99,334.34 scale:-1,1 rot:44.02 name:pinna_18_left
+  pinna 140.53 1 at:560.99,321.56 scale:1,1 rot:-44.02 name:pinna_18_right
+  pinna 116.46 1 at:573.13,297.59 scale:-1,1 rot:44.89 name:pinna_19_left
+  pinna 116.46 1 at:573.13,284.81 scale:1,1 rot:-44.89 name:pinna_19_right
+  pinna 90.01 .857 at:585.76,260.85 scale:-1,1 rot:45.75 name:pinna_20_left
+  pinna 90.01 .857 at:585.76,248.07 scale:1,1 rot:-45.75 name:pinna_20_right
+  pinna 60.8 .579 at:598.88,224.11 scale:-1,1 rot:46.61 name:pinna_21_left
+  pinna 60.8 .579 at:598.88,211.33 scale:1,1 rot:-46.61 name:pinna_21_right
+  pinnule 40 5 at:608,195 rot:23 name:terminal_leaf

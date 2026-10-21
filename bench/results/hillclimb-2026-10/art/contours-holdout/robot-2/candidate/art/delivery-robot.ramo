@@ -1,0 +1,64 @@
+@target delivery-robot.png 512x512 bg:none
+@target delivery-robot.svg 512x512 bg:none
+
+palette bot
+  ramp mint #62d6bc 5
+  ramp cream #fff1cf 5
+  ramp orange #efa15a 5
+  color ink #203c4b
+  color screen #18323e
+  color eyes #a7fff0
+  color white #ffffff
+  color blush #ffab8d
+
+layer antenna
+  curve 250,130 246,94 262,73 stroke:bot.ink,10
+  circle 14 at:264,69 fill:bot.orange.2 stroke:bot.ink,6
+    circle 5 at:-4,-5 fill:bot.cream.3
+
+layer running_gear
+  rect 205x35 r:16 at:253,401 fill:bot.ink
+  rect 55x82 r:22 at:180,419 fill:bot.ink name:left_wheel
+    rect 15x55 r:7 at:-9,-2 fill:bot.mint.0
+    curve -3,27 15,27 stroke:bot.screen,5
+  rect 55x82 r:22 at:332,419 fill:bot.ink name:right_wheel
+    rect 15x55 r:7 at:-9,-2 fill:bot.mint.0
+
+layer arms
+  curve 164,280 126,284 112,257 stroke:bot.ink,32
+  curve 164,276 128,280 114,255 stroke:bot.mint.2,20
+  circle 20 at:111,249 fill:bot.cream.2 stroke:bot.ink,6
+  curve 355,281 387,263 402,230 stroke:bot.ink,29
+  curve 355,278 384,260 401,229 stroke:bot.mint.2,18
+  path "M389 220 Q379 206 390 198 L402 209 L412 195 Q424 196 422 209 L415 230 Q406 240 396 231 Z" fill:bot.cream.2 stroke:bot.ink,6 name:waving_hand
+
+layer chassis
+  path "M168 245 Q152 248 151 269 L145 369 Q144 400 176 404 L334 404 Q365 400 363 371 L356 268 Q354 247 335 245 Z" fill:bot.mint.2 stroke:bot.ink,7 name:body
+    path "M328 241 L370 246 L376 417 L144 417 L144 378 L320 378 Z" fill:bot.mint.1
+    curve 162,363 166,277 180,263 stroke:bot.mint.4,9
+  rect 147x87 r:13 at:255,336 fill:bot.cream.2 stroke:bot.ink,6 name:parcel
+    rect 147x17 at:0,35 fill:bot.orange.2
+    rect 26x87 at:0,0 fill:bot.orange.2
+    rect 26x17 at:0,-35 fill:bot.orange.3
+    rect 36x25 r:4 at:-42,3 fill:bot.white
+    curve -52,2 -34,2 stroke:bot.orange.1,4
+    curve -52,9 -41,9 stroke:bot.orange.1,3
+
+layer head_assembly
+  rect 238x145 r:45 at:255,196 fill:bot.cream.2 stroke:bot.ink,7 name:head
+    rect 240x35 r:16 at:0,62 fill:bot.orange.3
+    curve -99,-27 -94,-46 -73,-55 -38,-55 stroke:bot.white,8
+  rect 194x94 r:31 at:255,193 fill:bot.screen stroke:bot.ink,5 name:face
+    path "M-94 -36 Q-65 -52 -8 -45 L-69 48 L-100 48 Z" fill:bot.ink
+    curve -54,-4 -53,-14 -45,-19 -37,-15 -34,-5 stroke:bot.eyes,8
+    curve 34,-5 37,-15 45,-19 53,-14 54,-4 stroke:bot.eyes,8
+    curve -19,13 -10,22 0,25 10,22 19,13 stroke:bot.eyes,6
+    ellipse 10,5 at:-65,17 fill:bot.blush
+    ellipse 10,5 at:65,17 fill:bot.blush
+  circle 9 at:144,195 fill:bot.orange.2 stroke:bot.ink,5
+  circle 9 at:366,195 fill:bot.orange.2 stroke:bot.ink,5
+
+layer details
+  circle 5 at:173,384 fill:bot.cream.3
+  circle 5 at:338,384 fill:bot.cream.3
+  rect 25x7 r:3 at:255,272 fill:bot.ink

@@ -1,0 +1,90 @@
+@target fox-and-mushroom.png 800x800
+
+palette dusk
+  ramp forest #18383c 5
+  ramp fur #df783d 5
+  ramp cream #ffe3b6 5
+  ramp mint #8aefcb 5
+  color ink #26343b
+  color sky #10282f
+  color trunk #234247
+  color moss #345856
+  color gold #f7d697
+
+layer backdrop
+  rect 800x800 at:400,400 fill:grad(down dusk.sky dusk.forest.1)
+  circle 218 at:413,329 fill:dusk.forest.2 a:.19 blur:28
+  path "M83 610 Q108 320 99 100 L127 100 Q113 342 151 610 Z" fill:dusk.trunk
+  path "M637 610 Q668 335 650 73 L680 73 Q671 348 709 610 Z" fill:dusk.trunk
+  curve 114,300 171,244 202,159 stroke:dusk.trunk,14
+  curve 665,248 608,205 583,139 stroke:dusk.trunk,13
+  ellipse 330,77 at:400,658 fill:dusk.forest.1
+  ellipse 278,49 at:403,641 fill:dusk.moss
+  ellipse 202,21 at:404,659 fill:dusk.ink a:.35 blur:9
+
+layer mushroom_light
+  circle 110 at:567,459 fill:dusk.mint a:.13 blur:26
+  ellipse 96,22 at:570,630 fill:dusk.mint a:.22 blur:14
+
+layer fox_tail
+  path "M332 632 C211 679 129 607 160 531 C172 500 200 478 231 466 C205 516 260 516 303 543 C341 567 363 608 332 632 Z" fill:grad(down dusk.fur.3 dusk.fur.1) stroke:dusk.ink,5 name:tail
+    path "M152 554 Q144 505 231 466 Q210 493 229 514 L211 518 L222 531 L196 533 L201 550 Q180 543 152 566 Z" fill:dusk.cream.3
+    curve 192,598 237,621 280,614 stroke:dusk.fur.1,5
+
+layer fox_body
+  path "M300 425 C272 466 266 526 264 577 Q245 616 272 642 Q325 668 392 641 Q412 626 392 597 C394 528 377 462 351 429 Z" fill:grad(right dusk.fur.1 dusk.fur.3) stroke:dusk.ink,5 name:body
+    path "M320 438 Q292 468 301 514 L286 520 L303 530 L294 541 Q323 573 359 552 L349 541 L367 531 L353 518 Q365 470 339 439 Z" fill:dusk.cream.3
+    ellipse 18,67 at:371,557 fill:dusk.fur.4 a:.35
+  ellipse 35,17 at:295,637 fill:dusk.fur.2 stroke:dusk.ink,4
+  ellipse 35,17 at:371,637 fill:dusk.fur.3 stroke:dusk.ink,4
+  curve 311,562 312,609 321,634 stroke:dusk.fur.0,4
+  curve 354,561 350,606 347,633 stroke:dusk.fur.0,4
+  curve 282,638 282,644 stroke:dusk.fur.0,3
+  curve 293,640 293,646 stroke:dusk.fur.0,3
+  curve 371,640 371,646 stroke:dusk.fur.0,3
+  curve 382,638 382,644 stroke:dusk.fur.0,3
+
+layer fox_head
+  path "M251 361 Q211 298 233 237 Q280 249 300 298 L355 296 Q384 243 422 234 Q435 299 407 354 Z" fill:dusk.fur.2 stroke:dusk.ink,5 name:ears
+    path "M248 305 Q235 275 241 257 Q270 271 281 302 Z" fill:dusk.fur.0
+    path "M374 302 Q388 269 412 253 Q417 281 401 313 Z" fill:dusk.fur.0
+    path "M255 290 L247 271 L265 284 Z" fill:dusk.cream.2
+    path "M394 288 L410 268 L405 292 Z" fill:dusk.cream.2
+  path "M233 351 Q247 294 318 298 Q388 291 412 343 L428 365 L413 366 L423 382 L405 382 Q396 428 333 455 Q270 447 243 405 L226 393 L237 384 L222 372 Z" fill:grad(right dusk.fur.2 dusk.fur.3) stroke:dusk.ink,5 name:head
+    path "M229 370 Q252 350 283 379 Q306 399 329 402 Q354 394 375 374 Q402 353 421 365 L428 415 L337 461 L253 431 Z" fill:dusk.cream.3
+    ellipse 18,8 at:269,397 fill:dusk.fur.3 a:.55
+    ellipse 18,8 at:390,394 fill:dusk.fur.3 a:.55
+    ellipse 13,45 at:406,337 fill:dusk.mint a:.23 rot:-25
+  curve 265,371 276,365 287,371 stroke:dusk.ink,5
+  curve 365,370 376,363 387,368 stroke:dusk.ink,5
+  path "M318 398 Q329 391 341 398 Q336 409 330 410 Q323 408 318 398 Z" fill:dusk.ink
+  curve 330,409 329,420 318,423 stroke:dusk.ink,3
+  curve 329,420 339,425 346,419 stroke:dusk.ink,3
+  curve 302,321 321,316 337,320 stroke:dusk.fur.4,4
+
+layer mushroom
+  path "M552 502 Q560 556 543 618 Q562 642 590 620 Q574 559 584 502 Z" fill:grad(right dusk.mint.1 dusk.cream.4) stroke:dusk.forest.1,4 name:stem
+    curve 567,531 569,571 561,610 stroke:dusk.mint.2,3
+  ellipse 92,22 at:566,506 fill:dusk.mint.3 stroke:dusk.forest.1,4 name:gills
+    each i in 0..11
+      curve 0,4 i*16-80,-10 stroke:dusk.mint.1,2 a:.65
+  path "M468 496 C481 469 494 408 548 401 C603 391 637 460 664 492 Q648 514 603 507 Q572 500 539 512 Q497 525 468 496 Z" fill:grad(down dusk.mint.2 dusk.mint.4) stroke:dusk.forest.1,4 name:cap
+    ellipse 17,10 at:541,429 fill:dusk.cream.4 rot:-18
+    ellipse 12,8 at:586,435 fill:dusk.cream.4 rot:25
+    ellipse 19,10 at:610,474 fill:dusk.cream.4 rot:25
+    ellipse 12,8 at:506,471 fill:dusk.cream.4 rot:-30
+    ellipse 9,6 at:556,484 fill:dusk.cream.4
+    curve 489,485 511,439 540,416 stroke:dusk.mint.4,4
+    fx glow 12 color:dusk.mint a:.55
+
+layer woodland_details
+  each x in [183 214 441 470 625]
+    curve x,647 x-9,630 x-13,627 stroke:dusk.mint.1,3
+    curve x,647 x+1,626 x+7,619 stroke:dusk.mint.1,3
+  each pos in [192,398 472,330 591,351 675,413 451,552 168,454 549,273]
+    circle 3 at:pos fill:dusk.gold
+      fx glow 6 color:dusk.gold a:.7
+  each pos in [226,673 419,671 602,658 494,649]
+    ellipse 6,3 at:pos fill:dusk.mint.2 a:.6
+  star 4 r:8 inner:.22 at:624,376 fill:dusk.mint.4
+  star 4 r:6 inner:.22 at:465,429 fill:dusk.mint.4

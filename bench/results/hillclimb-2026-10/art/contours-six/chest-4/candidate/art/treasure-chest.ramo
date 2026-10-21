@@ -1,0 +1,90 @@
+@target treasure-chest.png 512x512 bg:none scale:1,2
+@target treasure-chest.svg 512x512 bg:none
+
+# Chunky fantasy loot icon. Light falls from the upper left.
+palette loot
+  color ink #382139
+  color wood #a64c27
+  color lightwood #e4873d
+  color darkwood #71302c
+  color gold #ffc844
+  color goldshade #c98220
+  color shine #fff2a0
+  color cavity #412632
+  color shadow #302139
+
+def coin size:44x30
+  ellipse 22,12 at:0,5 fill:loot.goldshade stroke:loot.ink,3
+  ellipse 22,12 fill:loot.gold stroke:loot.ink,3
+    ellipse 15,7 fill:none stroke:loot.goldshade,2
+    curve -12,-4 -4,-7 5,-7 stroke:loot.shine,3
+  curve -12,12 -12,16 stroke:loot.shine,2
+
+def glint size:36
+  path "M0 -22 L5 -5 L19 0 L5 5 L0 22 L-5 5 L-19 0 L-5 -5 Z" fill:loot.shine
+
+layer ground
+  ellipse 169,21 at:257,449 fill:loot.shadow a:.18
+
+layer open_lid
+  path "M105 234 L89 142 Q86 113 115 101 L326 62 Q351 58 363 84 L407 191 L361 234 Z" fill:loot.goldshade stroke:loot.ink,9 name:lid
+    path "M110 213 L102 144 Q100 126 121 121 L323 82 Q339 80 346 97 L385 183 L351 212 Z" fill:loot.wood stroke:loot.ink,5
+    path "M120 147 L338 104 L348 128 L126 169 Z" fill:loot.lightwood
+    curve 127,173 354,130 stroke:loot.darkwood,4
+    curve 134,197 366,153 stroke:loot.darkwood,4
+    path "M145 115 L169 110 L197 224 L170 226 Z" fill:loot.gold stroke:loot.ink,4
+    path "M291 87 L314 82 L358 211 L332 217 Z" fill:loot.gold stroke:loot.ink,4
+    curve 151,121 174,211 stroke:loot.shine,4
+    curve 298,94 338,203 stroke:loot.shine,4
+  path "M106 233 L349 186 L407 215 L170 279 Z" fill:loot.cavity stroke:loot.ink,8 name:opening
+
+layer gold_heap
+  each pos in [135,222 171,208 210,204 250,190 290,193 330,188 367,212 152,244 193,231 232,220 273,220 313,218 350,239 183,260 225,248 268,245 307,252]
+    coin at:pos
+  coin at:215,182 rot:-24
+  coin at:288,174 rot:23
+  coin at:327,166 rot:-33
+  coin at:177,194 rot:18
+
+layer chest_body
+  path "M111 261 L329 284 L394 248 L382 397 L325 440 L130 407 Z" fill:loot.wood stroke:loot.ink,9 name:body
+    path "M329 284 L394 248 L382 397 L325 440 Z" fill:loot.darkwood
+    path "M119 276 L325 299 L323 329 L123 306 Z" fill:loot.lightwood
+    curve 126,327 325,349 386,310 stroke:loot.darkwood,5
+    curve 130,365 325,387 382,351 stroke:loot.darkwood,5
+    curve 148,317 198,323 217,320 stroke:loot.goldshade,3
+    curve 233,367 274,372 295,369 stroke:loot.lightwood,3
+    path "M144 269 L173 272 L187 414 L155 410 Z" fill:loot.gold stroke:loot.ink,5
+    path "M281 279 L311 282 L309 435 L279 431 Z" fill:loot.goldshade stroke:loot.ink,5
+    path "M282 280 L296 282 L294 427 L280 426 Z" fill:loot.gold
+    curve 152,287 164,395 stroke:loot.shine,4
+    curve 287,300 286,413 stroke:loot.shine,3
+    path "M129 387 L325 418 L383 377 L382 399 L325 440 L130 407 Z" fill:loot.goldshade stroke:loot.ink,4
+    curve 139,391 322,423 stroke:loot.gold,5
+  path "M108 253 L329 276 L396 240 L397 263 L330 300 L112 277 Z" fill:loot.gold stroke:loot.ink,7 name:rim
+    curve 117,259 328,283 389,249 stroke:loot.shine,4
+  rect 43x56 r:9 at:242,314 rot:6 fill:loot.goldshade stroke:loot.ink,5 name:lock
+    rect 32x43 r:6 at:-2,-3 fill:loot.gold
+    circle 6 at:0,-7 fill:loot.ink
+    path "M-3 -5 L-5 10 L5 10 L3 -5 Z" fill:loot.ink
+  each pos in [161,300 171,384 294,310 293,401]
+    circle 4 at:pos fill:loot.ink
+
+layer spilling_coins
+  coin at:357,283 rot:-36
+  coin at:366,315 rot:-56
+  coin at:385,359 rot:24
+  coin at:407,419 rot:-12
+  coin at:360,447
+  coin at:402,443 rot:9
+  coin at:105,423 rot:-14
+  coin at:139,445 rot:8
+  coin at:89,447 rot:-8
+
+layer sparkle
+  glint at:239,141 scale:.85
+  glint at:395,134 scale:.8
+  glint at:76,267 scale:.65
+  glint at:428,333 scale:.55
+  circle 4 at:206,124 fill:loot.shine
+  circle 4 at:419,177 fill:loot.gold

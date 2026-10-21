@@ -1,0 +1,50 @@
+@target kingfisher.png 1000x1000 bg:river.paper
+@target kingfisher.svg 1000x1000 bg:river.paper
+
+palette river
+  color paper #f5e9cb
+  color ink #102f3b
+  color blue #008f9b
+  color orange #eb642b
+
+# Four flat inks, sweeping wings, and a river cut into broad ribbons.
+layer river_banks
+  path "M50 707 C220 626 355 709 520 716 C704 726 794 660 950 682 L950 950 L50 950 Z" fill:river.blue name:water
+  path "M50 793 C259 697 371 832 573 800 C741 774 824 722 950 750 L950 800 C794 766 714 850 544 846 C337 842 240 759 50 845 Z" fill:river.paper name:current
+  path "M50 910 C217 825 356 925 525 900 C716 871 790 837 950 867 L950 950 L50 950 Z" fill:river.ink name:deep_water
+  path "M92 922 C219 871 326 930 439 925" fill:none stroke:river.paper,9 name:lower_ripple
+  path "M695 900 C776 877 841 884 901 894" fill:none stroke:river.blue,10
+
+layer far_wing
+  path "M474 379 C542 285 647 191 811 126 C795 201 760 256 711 293 L765 276 C735 325 683 365 626 386 L670 382 C631 427 577 448 527 442 Z" fill:river.ink name:raised_wing
+  path "M500 378 C586 281 669 220 758 176 C701 257 629 321 547 382 Z" fill:river.blue name:wing_inlay
+
+layer tail
+  path "M449 371 L294 304 L337 405 L384 390 L405 444 L479 426 Z" fill:river.ink name:tail_fan
+  path "M425 385 L336 342 L367 384 L451 415 Z" fill:river.blue
+
+layer body
+  path "M423 337 C489 331 555 388 584 449 C617 487 625 529 594 555 C561 580 514 551 482 517 C432 468 390 401 423 337 Z" fill:river.orange name:breast
+  path "M423 337 C480 322 539 371 577 434 L542 489 C498 452 464 415 423 337 Z" fill:river.blue name:back
+  path "M489 462 C504 498 541 539 573 545 C550 551 525 534 505 514 L473 479 Z" fill:river.ink name:belly_cut
+
+layer near_wing
+  path "M494 407 C402 388 313 344 248 280 C199 233 166 172 144 95 C226 128 300 179 354 237 C412 266 479 304 510 352 C522 371 512 396 494 407 Z" fill:river.ink name:swept_wing
+  path "M473 357 C371 315 265 221 187 138 C229 240 327 342 455 380 Z" fill:river.blue name:wing_blue
+  path "M224 214 L341 293 L314 288 Z M263 268 L384 336 L352 329 Z M312 320 L424 366 L388 361 Z" fill:river.paper name:feather_cuts
+
+layer head
+  path "M552 424 C588 408 626 424 644 455 C654 472 652 496 640 516 L608 541 L567 515 L545 478 Z" fill:river.blue name:crown
+  path "M577 472 C602 458 628 466 644 484 L631 516 L605 537 L569 510 Z" fill:river.ink name:eye_mask
+  path "M562 481 L589 507 L609 523 L594 543 L566 531 L549 510 Z" fill:river.paper name:collar
+  path "M629 493 L741 666 L608 530 Z" fill:river.ink name:bill
+  path "M633 514 L719 633 L621 529 Z" fill:river.orange name:bill_split
+  circle 8 at:615,483 fill:river.paper name:eye
+  circle 4 at:617,485 fill:river.ink name:pupil
+  path "M568 440 L597 435 L617 448 L588 448 Z" fill:river.paper name:crown_flash
+
+layer dive_marks
+  path "M339 461 L389 511 M308 485 L345 523" fill:none stroke:river.ink,8 name:motion
+  ellipse 59,10 at:743,708 fill:river.ink name:impact_ring
+  ellipse 35,5 at:743,706 fill:river.paper
+  path "M775 672 L792 642 M803 691 L833 678" fill:none stroke:river.paper,8 name:spray

@@ -1,0 +1,14 @@
+[project]
+name = "ramose-studio-umqhd0ao"
+out  = "assets"
+lib  = ["lib"]
+std  = "0.1"
+
+[defaults]
+palette = "palette/house"
+scale   = [1]
+bg      = "none"
+profile = "auto"
+
+[lint]
+raw-color = "warn"

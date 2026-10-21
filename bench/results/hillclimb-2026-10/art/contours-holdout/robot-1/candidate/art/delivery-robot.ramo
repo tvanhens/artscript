@@ -1,0 +1,71 @@
+@target delivery-robot.png 512x512 bg:none
+@target delivery-robot.svg 512x512 bg:none
+
+palette bot
+  color ink #21394a
+  color screen #203b49
+  color eye #adffe9
+  color white #f4fff5
+  color mint #8cddc5
+  color mintdark #4ba997
+  color mintlight #c9f4df
+  color orange #f4ad61
+  color orangeshade #d98545
+  color tape #ffe2a4
+  color pink #f48d83
+  color tire #344958
+  color hub #769398
+
+layer antenna_layer
+  curve 256,116 256,76 stroke:bot.ink,12 name:antenna
+  circle 15 at:256,64 fill:bot.orange stroke:bot.ink,7
+    circle 5 at:-4,-5 fill:bot.tape
+
+layer arms
+  path "M157 277 C118 266 95 240 88 213" fill:none stroke:bot.ink,32 name:left_arm
+  path "M157 277 C118 266 95 240 88 213" fill:none stroke:bot.mint,19
+  rect 40x46 r:17 at:85,197 rot:-18 fill:bot.mint stroke:bot.ink,7
+    curve -10,0 10,0 stroke:bot.mintdark,5
+  path "M353 276 C390 274 405 301 398 326" fill:none stroke:bot.ink,32 name:right_arm
+  path "M353 276 C390 274 405 301 398 326" fill:none stroke:bot.mint,19
+
+layer wheels
+  rect 65x88 r:25 at:184,414 fill:bot.tire stroke:bot.ink,8 name:left_wheel
+    rect 12x62 r:6 at:-13,-2 fill:bot.hub
+  rect 65x88 r:25 at:328,414 fill:bot.tire stroke:bot.ink,8 name:right_wheel
+    rect 12x62 r:6 at:13,-2 fill:bot.hub
+
+layer chassis
+  rect 231x172 r:43 at:256,333 fill:bot.mint stroke:bot.ink,8 name:body
+    rect 250x43 at:0,69 fill:bot.mintdark
+    path "M-99 11 L-99 -33 Q-99 -69 -63 -69 L47 -69" fill:none stroke:bot.mintlight,11
+  rect 49x19 r:8 at:256,405 fill:bot.ink
+  circle 5 at:243,405 fill:bot.orange
+  curve 257,405 270,405 stroke:bot.mintlight,4
+
+layer head_layer
+  rect 48x26 r:10 at:256,249 fill:bot.mintdark stroke:bot.ink,7
+  rect 264x145 r:52 at:256,179 fill:bot.mint stroke:bot.ink,8 name:head
+    rect 284x40 at:0,65 fill:bot.mintdark
+    path "M-112 -7 L-112 -20 Q-112 -55 -77 -55 L55 -55" fill:none stroke:bot.mintlight,10
+  rect 218x103 r:35 at:256,181 fill:bot.screen stroke:bot.ink,5 name:face
+    path "M-92 -17 Q-92 -38 -69 -38 L13 -38" fill:none stroke:bot.hub,4 a:.5
+  ellipse 12,18 at:214,177 fill:bot.eye name:eye_left
+  ellipse 12,18 at:298,177 fill:bot.eye name:eye_right
+  path "M241 201 Q256 217 271 201" fill:none stroke:bot.eye,6 name:smile
+  ellipse 10,5 at:183,199 fill:bot.pink
+  ellipse 10,5 at:329,199 fill:bot.pink
+
+layer parcel
+  rect 145x105 r:12 at:280,335 rot:-5 fill:bot.orangeshade stroke:bot.ink,7 name:package
+    rect 149x74 at:0,-20 fill:bot.orange
+    rect 27x112 at:0,0 fill:bot.tape
+    curve -60,-40 58,-40 stroke:bot.tape,5
+    rect 35x27 r:4 at:39,20 fill:bot.white
+    path "M30 24 L39 15 L48 24 M39 15 L39 30" fill:none stroke:bot.ink,3
+  rect 46x34 r:14 at:350,366 rot:-12 fill:bot.mint stroke:bot.ink,7 name:hand
+    curve -9,-3 8,-3 stroke:bot.mintdark,4
+
+layer badge
+  circle 19 at:171,306 fill:bot.white stroke:bot.ink,5
+  path "M160 306 L168 314 L182 297" fill:none stroke:bot.mintdark,5

@@ -1,0 +1,297 @@
+{
+  "method": "Original frozen pair bootstrap and retrospective prompt-cluster percentile bootstrap. Both use 4000 draws, seed 0, order-statistic indices 100 and 3899. Cluster bootstrap samples whole prompt means without within-prompt resampling.",
+  "longitudinal_eligible": false,
+  "runs": [
+    {
+      "name": "review-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.155555555555555,
+      "candidate_mean": 15.380555555555555,
+      "delta": 0.2249999999999997,
+      "historical_pair_ci95": [
+        -0.19166666666666685,
+        0.6388888888888894
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.18333333333333335,
+        0.5999999999999991
+      ],
+      "per_prompt_delta": {
+        "fox": 0.21666666666666642,
+        "chest": -0.03333333333333251,
+        "lighthouse": 0.3666666666666668,
+        "potion": -0.6166666666666668,
+        "sailboat": 0.9999999999999982,
+        "fern": 0.4166666666666661
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": 0.2249999999999997
+    },
+    {
+      "name": "plan-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.241666666666667,
+      "candidate_mean": 15.405555555555555,
+      "delta": 0.163888888888889,
+      "historical_pair_ci95": [
+        -0.2805555555555558,
+        0.6055555555555555
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.21388888888888852,
+        0.5361111111111115
+      ],
+      "per_prompt_delta": {
+        "fox": 0.6000000000000003,
+        "chest": 0.44999999999999857,
+        "lighthouse": -0.14999999999999963,
+        "potion": -0.11666666666666572,
+        "sailboat": 0.7666666666666672,
+        "fern": -0.5666666666666668
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": 0.163888888888889
+    },
+    {
+      "name": "simplify-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.897222222222222,
+      "candidate_mean": 14.805555555555555,
+      "delta": -1.0916666666666666,
+      "historical_pair_ci95": [
+        -1.5694444444444446,
+        -0.6166666666666661
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -1.5638888888888887,
+        -0.6277777777777782
+      ],
+      "per_prompt_delta": {
+        "fox": -0.8166666666666658,
+        "chest": -1.4499999999999988,
+        "lighthouse": -1.8999999999999997,
+        "potion": -0.28333333333333427,
+        "sailboat": -1.5666666666666678,
+        "fern": -0.5333333333333329
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": -1.0916666666666666
+    },
+    {
+      "name": "relationships-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.472222222222223,
+      "candidate_mean": 15.052777777777779,
+      "delta": -0.4194444444444442,
+      "historical_pair_ci95": [
+        -0.8361111111111107,
+        -0.0027777777777768502
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.9805555555555546,
+        0.07222222222222227
+      ],
+      "per_prompt_delta": {
+        "fox": 0.43333333333333324,
+        "chest": -0.6333333333333332,
+        "lighthouse": -1.6166666666666654,
+        "potion": -0.4666666666666668,
+        "sailboat": -0.3833333333333336,
+        "fern": 0.15000000000000072
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": -0.4194444444444442
+    },
+    {
+      "name": "contours-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.01388888888889,
+      "candidate_mean": 15.533333333333333,
+      "delta": 0.5194444444444444,
+      "historical_pair_ci95": [
+        0.13055555555555512,
+        0.9083333333333334
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        0.2499999999999994,
+        0.7916666666666671
+      ],
+      "per_prompt_delta": {
+        "fox": 0.5000000000000003,
+        "chest": 0.5000000000000003,
+        "lighthouse": 1.0500000000000012,
+        "potion": -0.033333333333334283,
+        "sailboat": 0.3499999999999986,
+        "fern": 0.7500000000000003
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": 0.5194444444444444
+    },
+    {
+      "name": "medium-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 14.969444444444445,
+      "candidate_mean": 15.472222222222221,
+      "delta": 0.5027777777777777,
+      "historical_pair_ci95": [
+        0.02222222222222226,
+        0.9499999999999998
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        0.14166666666666647,
+        0.8277777777777776
+      ],
+      "per_prompt_delta": {
+        "fox": 0.1999999999999993,
+        "chest": 0.6333333333333335,
+        "lighthouse": -0.25,
+        "potion": 0.5833333333333336,
+        "sailboat": 0.766666666666666,
+        "fern": 1.0833333333333333
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": 0.5027777777777777
+    },
+    {
+      "name": "contours-medium-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.31388888888889,
+      "candidate_mean": 15.302777777777777,
+      "delta": -0.01111111111111119,
+      "historical_pair_ci95": [
+        -0.4805555555555555,
+        0.43611111111111106
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.4249999999999999,
+        0.3277777777777775
+      ],
+      "per_prompt_delta": {
+        "fox": -0.9,
+        "chest": 0.55,
+        "lighthouse": -0.15,
+        "potion": -0.04999999999999964,
+        "sailboat": 0.25,
+        "fern": 0.2333333333333325
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": -0.01111111111111119
+    },
+    {
+      "name": "contours-review-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.502777777777778,
+      "candidate_mean": 14.566666666666666,
+      "delta": -0.936111111111111,
+      "historical_pair_ci95": [
+        -2.277777777777778,
+        -0.04444444444444447
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -2.208333333333334,
+        -0.17222222222222214
+      ],
+      "per_prompt_delta": {
+        "fox": 0.05000000000000071,
+        "chest": -0.7166666666666657,
+        "lighthouse": -0.43333333333333324,
+        "potion": -0.2666666666666668,
+        "sailboat": -4.033333333333334,
+        "fern": -0.21666666666666715
+      },
+      "generation_failures": 1,
+      "both_delivered_pairs": 29,
+      "both_delivered_delta": -0.3936781609195401
+    },
+    {
+      "name": "contours-plan-six",
+      "pairs": 30,
+      "prompts": 6,
+      "baseline_mean": 15.48611111111111,
+      "candidate_mean": 15.108333333333334,
+      "delta": -0.3777777777777771,
+      "historical_pair_ci95": [
+        -0.7722222222222213,
+        0.04166666666666738
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.7499999999999994,
+        0.13888888888889003
+      ],
+      "per_prompt_delta": {
+        "fox": -0.7833333333333332,
+        "chest": -0.7833333333333325,
+        "lighthouse": -0.24999999999999928,
+        "potion": -0.866666666666666,
+        "sailboat": 0.7833333333333361,
+        "fern": -0.3666666666666675
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 30,
+      "both_delivered_delta": -0.3777777777777771
+    },
+    {
+      "name": "contours-holdout",
+      "pairs": 15,
+      "prompts": 3,
+      "baseline_mean": 15.327777777777778,
+      "candidate_mean": 16.1,
+      "delta": 0.7722222222222217,
+      "historical_pair_ci95": [
+        0.016666666666665365,
+        1.5111111111111108
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.20000000000000034,
+        2.2166666666666655
+      ],
+      "per_prompt_delta": {
+        "tea": -0.20000000000000034,
+        "robot": 0.3,
+        "bird": 2.2166666666666655
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 15,
+      "both_delivered_delta": 0.7722222222222217
+    },
+    {
+      "name": "medium-holdout",
+      "pairs": 15,
+      "prompts": 3,
+      "baseline_mean": 16.144444444444446,
+      "candidate_mean": 16.3,
+      "delta": 0.15555555555555536,
+      "historical_pair_ci95": [
+        -0.4388888888888902,
+        0.7222222222222224
+      ],
+      "retrospective_prompt_cluster_ci95": [
+        -0.30000000000000104,
+        0.45000000000000073
+      ],
+      "per_prompt_delta": {
+        "heron": -0.30000000000000104,
+        "oranges": 0.31666666666666643,
+        "compass": 0.45000000000000073
+      },
+      "generation_failures": 0,
+      "both_delivered_pairs": 15,
+      "both_delivered_delta": 0.15555555555555536
+    }
+  ]
+}

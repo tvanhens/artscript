@@ -1,0 +1,85 @@
+@target sailboat.png 1000x900
+
+use std/brushes { bristle }
+
+palette sea
+  ramp sky #b9d6d7 5
+  ramp blue #347b9d 5
+  ramp red #c44435 5
+  ramp wood #aa744b 5
+  color cream #f4e5bd
+  color ink #354653
+  color paper #f5efda
+
+brush gouache grain:.1 rag:1.5 reach:2
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 25 + seeded(m), 4);
+    float tooth = hash12(m.dev + seeded(m));
+    float bands = vnoise(float2(m.p.x / 45, m.p.y / 3) + seeded(m));
+    float3 c = m.paint.rgb * (1 + (n-.5)*.18 + (tooth-.5)*grain + (bands-.5)*.06);
+    return float4(c, cover(m.edge + (n-.5)*rag, m));
+  }
+  """
+
+layer sky_paint brush:gouache
+  rect 1000x900 at:500,450 fill:sea.paper brush:none name:paper
+  rect 940x840 at:500,450 fill:grad(down sea.sky.3 sea.paper) name:sky
+  ellipse 58,57 at:760,180 fill:sea.cream name:sun
+  path "M80 237 Q140 210 210 229 Q245 197 288 224 Q350 218 382 243 Q232 255 80 237Z" fill:sea.paper a:.65 name:cloud_left
+  path "M624 300 Q666 270 708 286 Q751 253 790 285 Q848 276 901 306 Q760 318 624 300Z" fill:sea.paper a:.58 name:cloud_right
+  path "M30 419 Q145 384 246 409 Q338 382 431 416 L480 447 L30 455Z" fill:sea.sky.2 a:.5 name:far_coast
+
+layer water_paint brush:gouache
+  path "M30 438 Q212 423 410 438 Q670 421 970 433 L970 870 L30 870Z" fill:grad(down sea.blue.3 sea.blue.1) name:water
+    each i in 0..170
+      let x = rand(0 1000)
+      let y = rand(432 880)
+      let w = rand(15 110)
+      curve x,y x+w*.5,y-3 x+w,y+1 stroke:pick([sea.blue.4 sea.sky.2 sea.blue.2 sea.blue.0]),rand(2 9) a:rand(.15 .5) brush:bristle(strength:.35) name:wave
+  each i in 0..19
+    let y = 666+i*8
+    let x = 480+rand(-60 90)
+    curve x,y x+rand(30 120),y+3 stroke:sea.red,rand(4 10) a:.23 brush:bristle name:reflection
+  path "M232 667 Q371 716 598 703 Q742 693 803 658 Q754 738 529 743 Q338 735 232 667Z" fill:sea.blue.0 a:.35 name:water_shadow
+
+layer rigging_back brush:gouache
+  curve 479,174 282,613 stroke:sea.wood.1,2 name:backstay
+  curve 479,174 748,651 stroke:sea.wood.1,2 name:forestay
+
+layer boat brush:gouache
+  path "M265 607 Q402 574 539 596 L760 648 Q680 699 515 703 Q358 679 265 607Z" fill:sea.wood.4 name:deck
+    path "M300 613 Q403 594 521 611 L669 649 Q556 675 443 647Z" fill:sea.wood.1 name:cockpit
+    path "M340 613 L454 610 L523 631 L406 633Z" fill:sea.wood.3 name:seat
+    curve 301,609 516,599 731,648 stroke:sea.cream,4 name:far_rail
+  path "M265 607 Q404 662 544 670 Q669 674 760 648 Q725 714 567 741 Q394 731 306 664Z" fill:grad(down sea.red.3 sea.red.1) name:hull
+    path "M534 670 Q663 679 760 648 Q727 713 567 741 L548 714Z" fill:sea.red.0 a:.56 name:bow_shadow
+    curve 294,630 409,676 546,694 713,677 stroke:sea.red.4,12 a:.65 brush:bristle name:hull_light
+    curve 328,674 442,714 567,725 683,704 stroke:sea.red.0,4 a:.5 name:plank
+  curve 268,610 405,659 545,674 661,670 760,648 stroke:sea.cream,7 name:gunwale
+  curve 478,184 499,634 stroke:sea.wood.1,10 name:mast
+  curve 475,184 494,628 stroke:sea.wood.4,3 name:mast_light
+  curve 487,557 695,605 stroke:sea.wood.1,8 name:boom
+
+layer sails brush:gouache
+  path "M470 214 Q392 336 300 502 Q377 542 481 551 Q452 398 470 214Z" fill:grad(right sea.red.3 sea.red.1) name:main_sail
+    path "M462 242 Q412 389 331 495 Q396 519 464 530 Q420 408 462 242Z" fill:sea.red.3 a:.6 name:belly_light
+    curve 464,235 404,376 315,500 stroke:sea.cream,3 a:.62 name:luff
+    curve 320,503 392,531 476,544 stroke:sea.red.4,4 name:foot
+    curve 446,311 423,411 447,535 stroke:sea.red.0,2 a:.4 name:seam_one
+    curve 403,380 379,448 390,523 stroke:sea.red.0,2 a:.35 name:seam_two
+  path "M492 248 Q612 407 706 584 Q604 573 505 550 Q525 420 492 248Z" fill:grad(right sea.red.4 sea.red.2) name:jib
+    path "M505 280 Q593 413 677 566 Q599 548 535 537 Q555 414 505 280Z" fill:sea.red.3 a:.65 name:jib_belly
+    curve 502,274 595,416 696,576 stroke:sea.cream,3 a:.7 name:jib_edge
+    curve 531,353 567,453 581,565 stroke:sea.red.1,2 a:.45 name:jib_seam
+  curve 480,169 478,209 stroke:sea.wood.1,7 name:mast_tip
+  path "M480 172 Q508 155 545 173 L526 184 L547 195 Q509 184 481 195Z" fill:sea.red.2 name:pennant
+
+layer finishing brush:gouache
+  curve 507,554 536,642 590,661 stroke:sea.cream,2 name:sheet
+  curve 749,651 777,668 806,667 stroke:sea.sky.4,7 brush:bristle name:bow_foam
+  curve 307,686 405,733 548,750 671,729 stroke:sea.sky.4,[2 8 5 1] brush:bristle name:near_wake
+  curve 198,677 251,700 298,705 stroke:sea.sky.3,5 brush:bristle name:wake_left
+  curve 689,750 758,739 819,747 stroke:sea.blue.4,5 brush:bristle name:ripple_right
+  curve 122,770 198,757 283,773 stroke:sea.sky.3,6 brush:bristle name:foreground_wave
+  curve 357,811 444,798 525,811 stroke:sea.blue.4,7 brush:bristle name:foreground_glint

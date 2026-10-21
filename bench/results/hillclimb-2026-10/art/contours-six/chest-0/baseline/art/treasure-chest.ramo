@@ -1,0 +1,97 @@
+@target treasure-chest.png 512x512 bg:none
+@target treasure-chest.svg 512x512 bg:none
+
+palette treasure
+  color ink #352039
+  color deep #542638
+  ramp wood #b9572c 5
+  ramp gold #efad29 5
+  color gleam #fff4b2
+  color edge #9b511e
+
+def coin size:40x24
+  ellipse 19,10 at:0,4 fill:treasure.edge stroke:treasure.ink,2.5
+  ellipse 19,10 fill:grad(down treasure.gleam treasure.gold) stroke:treasure.edge,2.5
+    ellipse 12,6 fill:none stroke:treasure.gold.1,1.5
+    curve -7,-3 0,-5 7,-3 stroke:treasure.gleam,2
+
+def sparkle size:32
+  path "M0 -19 Q3 -3 14 0 Q3 3 0 19 Q-3 3 -14 0 Q-3 -3 0 -19Z" fill:treasure.gleam stroke:treasure.gold,2
+
+layer ground_shadow
+  ellipse 179,25 at:259,437 fill:treasure.ink a:.22
+
+layer open_lid
+  path "M99 242 L108 132 Q109 89 151 83 L330 67 Q369 66 388 101 L412 204 L335 259Z" fill:treasure.gold stroke:treasure.ink,9 name:lid
+    path "M120 224 L127 137 Q128 108 156 105 L326 89 Q350 89 365 114 L384 195 L329 232Z" fill:grad(down treasure.wood.2 treasure.deep) stroke:treasure.ink,6
+    path "M139 124 L150 219 M203 113 L216 230 M267 108 L280 235 M329 100 L350 224" stroke:treasure.wood.0,4
+    path "M114 139 Q115 101 151 96 L331 79" fill:none stroke:treasure.gleam,5
+    path "M163 83 L177 235 L202 241 L189 81Z" fill:treasure.gold stroke:treasure.ink,4
+    path "M305 71 L330 222 L354 216 L331 69Z" fill:treasure.gold stroke:treasure.ink,4
+    curve 171,99 180,182 stroke:treasure.gleam,4
+    curve 316,88 331,170 stroke:treasure.gleam,4
+
+layer dark_interior
+  path "M91 257 L175 213 L410 239 L339 296Z" fill:treasure.deep stroke:treasure.ink,8
+
+layer overflowing_coins
+  each row in 0..4
+    each col in 0..7
+      coin at:139+col*33+mod(row 2)*13,226+row*14 rot:-12+mod(col*17+row*11 25)
+  coin at:187,210 rot:-25
+  coin at:225,209 rot:12
+  coin at:263,201 rot:-15
+  coin at:301,212 rot:20
+  coin at:337,222 rot:-12
+  coin at:217,185 rot:-22
+  coin at:256,183 rot:12
+  coin at:284,191 rot:-25
+
+layer chest_body
+  path "M96 276 L335 301 L332 432 L115 407Z" fill:grad(down treasure.wood.3 treasure.wood.1) stroke:treasure.ink,8 name:front
+    path "M100 326 L334 350 M105 369 L334 393" stroke:treasure.wood.0,4
+    curve 151,309 181,317 223,318 stroke:treasure.wood.4,3
+    curve 174,359 205,365 246,365 stroke:treasure.wood.4,3
+    curve 180,395 223,402 259,402 stroke:treasure.wood.0,3
+    path "M126 281 L151 283 L164 414 L137 410Z M280 295 L306 298 L303 430 L277 426Z" fill:grad(right treasure.gleam treasure.gold.1) stroke:treasure.ink,4
+  path "M335 301 L411 251 L394 390 L332 432Z" fill:grad(right treasure.wood.1 treasure.wood.0) stroke:treasure.ink,8 name:side
+    path "M336 349 L406 302 M335 393 L399 348" stroke:treasure.deep,4
+    path "M374 277 L395 262 L379 402 L359 415Z" fill:treasure.gold.1 stroke:treasure.ink,4
+    curve 381,287 368,393 stroke:treasure.gold.3,3
+  path "M92 265 L337 289 L413 241 L411 264 L338 313 L95 290Z" fill:treasure.gold stroke:treasure.ink,7 name:rim
+    curve 101,274 334,299 402,255 stroke:treasure.gleam,4
+  path "M112 395 L333 420 L395 378 L394 395 L332 442 L114 416Z" fill:treasure.gold.1 stroke:treasure.ink,6
+    curve 124,405 329,431 stroke:treasure.gold.3,4
+  path "M213 291 L252 295 L252 339 Q232 358 213 335Z" fill:treasure.gold stroke:treasure.ink,5 name:lock
+    path "M220 298 L245 301 L245 327 L220 324Z" fill:treasure.gleam
+    circle 6 at:232,318 fill:treasure.ink
+    path "M229 319 L227 330 L237 331 L235 320Z" fill:treasure.ink
+  each pt in [142,304 152,393 291,319 290,410 386,283 374,383]
+    circle 3 at:pt fill:treasure.ink
+
+layer spilling_gold
+  coin at:115,274 rot:-25
+  coin at:148,282 rot:12
+  coin at:181,289 rot:-14
+  coin at:315,291 rot:22
+  coin at:364,285 rot:-35
+  coin at:382,317 rot:60
+  coin at:403,367 rot:75
+  coin at:398,424 rot:-10
+  coin at:369,440 rot:8
+  coin at:421,443 rot:-12
+  coin at:389,448 rot:10
+  coin at:108,431 rot:-15
+  coin at:139,444 rot:12
+  coin at:87,448 rot:-5
+  coin at:111,447 rot:8
+
+layer magic_glints
+  sparkle at:252,158 scale:.8
+  sparkle at:404,189 scale:.85
+  sparkle at:85,208 scale:.65
+  sparkle at:302,242 scale:.6
+  sparkle at:437,389 scale:.55
+  circle 3 at:382,159 fill:treasure.gleam
+  circle 3 at:103,183 fill:treasure.gold
+  circle 3 at:426,216 fill:treasure.gold

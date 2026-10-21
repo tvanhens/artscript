@@ -1,0 +1,44 @@
+@target fern.png 1100x1400
+@target fern.svg 1100x1400
+
+palette herbarium
+  color paper #f3ebd9
+  color ink #393b30
+  color fine #666553
+  ramp fibre #e9dfc9 #faf5e9 5
+
+# Each ultimate segment is outlined with an airy, finely divided venation.
+def leaflet length:30 breadth:5
+  curve 0,0 length*.22,-breadth*.62 length*.51,-breadth length*.78,-breadth*.65 length,0 length*.73,breadth*.65 length*.4,breadth*.77 length*.13,breadth*.38 0,0 closed fill:herbarium.paper stroke:herbarium.ink,.67 name:blade
+    curve 0,0 length*.46,-.25 length*.94,0 stroke:herbarium.fine,.48 name:midvein
+    each k in 1..6
+      let u = k/7
+      curve length*u,0 length*(u+.09),-breadth*.3 length*(u+.14),-breadth*.72 stroke:herbarium.fine,.35
+      curve length*u,0 length*(u+.08),breadth*.28 length*(u+.13),breadth*.57 stroke:herbarium.fine,.35
+
+def pinna length:220 bend:20
+  curve 0,0 length*.35,-bend*.35 length*.7,-bend*.78 length,-bend stroke:herbarium.ink,[1.15 .9 .55 .15] name:rib
+  each j in 0..13
+    let u = (j+.5)/14
+    let x = length*u
+    let y = -bend*u
+    let leaf = length*.235*sin(25+u*150)*(1-u*.5)
+    leaflet leaf leaf*.145 at:x,y rot:-53+u*12 seed:j+10 name:upper
+    leaflet leaf*.94 leaf*.14 at:x+length*.015,y rot:47-u*10 seed:j+40 name:lower
+  leaflet length*.16 length*.021 at:length*.89,-bend*.9 rot:-12 name:tip
+
+layer paper_surface
+  rect 1100x1400 at:550,700 fill:fbm(simplex(3 seed:21)) -> herbarium.fibre a:.44 name:paper
+    fx grain .027 scale:.7
+
+layer frond
+  curve 433,1224 463,1105 492,962 517,812 543,658 578,502 618,351 665,197 stroke:herbarium.ink,[3 2.8 2.4 2.1 1.8 1.4 1 .2] name:rachis
+  curve 436,1216 466,1105 495,962 520,812 546,658 stroke:herbarium.fine,.55 name:stem_glint
+  each i in 0..19
+    let u = i/19
+    let y = 1048-u*814
+    let x = 475+116*u+66*u*u
+    let len = 242*sin(42+u*132)
+    pinna len 18+9*u at:x,y rot:-18-u*20 seed:i+100 name:right
+    pinna len*.94 18+8*u at:x-1,y-12 scale:-1,1 rot:13+u*23 seed:i+200 name:left
+  pinna 63 8 at:655,230 rot:-69 seed:360 name:crown

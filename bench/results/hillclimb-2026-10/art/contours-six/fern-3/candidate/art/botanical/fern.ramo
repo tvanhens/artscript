@@ -1,0 +1,72 @@
+@target fern.png 900x1200 bg:botanical.paper
+@target fern.svg 900x1200 bg:botanical.paper
+
+palette botanical
+  color paper #f4eddd
+  color ink #4d4939
+  color fine #726b53
+  color wash #e9e3ce
+
+def pinna length:160 breadth:16
+  group scale:length/160,breadth/16
+    curve 0,0 7,-3.18 10,-7.06 14,-6.36 17,-4 20,-8.89 24,-8 27,-4.57 30,-10.15 34,-9.13 37,-4.92 40,-10.93 44,-9.84 47,-5.08 50,-11.3 54,-10.17 57,-5.08 60,-11.3 64,-10.17 67,-4.94 70,-10.98 74,-9.89 77,-4.68 80,-10.4 84,-9.36 87,-4.32 90,-9.59 94,-8.63 97,-3.87 100,-8.6 104,-7.74 107,-3.37 110,-7.48 114,-6.73 117,-2.83 120,-6.28 124,-5.65 127,-2.27 130,-5.04 134,-4.53 137,-1.71 140,-3.79 144,-3.41 147,-1.16 150,-2.59 154,-2.33 160,0 154,2.12 150,2.43 147,1.04 144,3.11 140,3.57 137,1.52 134,4.13 130,4.73 127,2.01 124,5.15 120,5.9 117,2.51 114,6.14 110,7.03 107,2.99 104,7.05 100,8.09 97,3.44 94,7.86 90,9.01 87,3.84 84,8.53 80,9.77 77,4.16 74,9.01 70,10.32 67,4.39 64,9.26 60,10.62 57,4.52 54,9.26 50,10.62 47,4.52 44,8.96 40,10.27 37,4.37 34,8.32 30,9.54 27,4.06 24,7.29 20,8.36 17,3.56 14,5.79 10,6.64 7,2.82 closed tension:.35 fill:botanical.paper stroke:botanical.ink,.78 name:contour
+    curve 0,0 52,-.8 112,-.5 160,0 fill:none stroke:botanical.ink,[1 .7 .3] name:midrib
+    each k in 0..14
+      let x = 10+k*10
+      let w = 16*sin((x+12)/180*180)*(.98-x/220)
+      curve x-6,0 x,-w*.35 x+3,-w*.9 fill:none stroke:botanical.fine,.48 name:upper_vein
+      curve x-5,0 x,w*.3 x+3,w*.83 fill:none stroke:botanical.fine,.45 name:lower_vein
+
+layer paper_surface
+  rect 900x1200 at:450,600 fill:botanical.paper name:paper
+    fx grain .023 scale:.65
+
+layer fern
+  curve 350,1050 361.4,975.83 373.33,901.67 386.29,827.5 400.69,753.33 416.86,679.17 435,605 455.19,530.83 477.35,456.67 501.29,382.5 526.67,308.33 553.07,234.17 580,160 fill:none stroke:botanical.ink,[3.1 2.5 1.7 .5] name:rachis
+  pinna length:66.14 breadth:6.94 at:375.33,889.8 rot:-152.56 name:pinna_0_left
+  pinna length:60.85 breadth:6.39 at:375.33,882.8 rot:-36.24 name:pinna_0_right
+  pinna length:88.39 breadth:9.91 at:380.77,858.21 rot:-152.28 name:pinna_1_left
+  pinna length:81.32 breadth:9.11 at:380.77,851.21 rot:-36.88 name:pinna_1_right
+  pinna length:106.77 breadth:12.03 at:386.45,826.61 rot:-151.99 name:pinna_2_left
+  pinna length:98.23 breadth:11.06 at:386.45,819.61 rot:-37.52 name:pinna_2_right
+  pinna length:127.63 breadth:13.55 at:392.39,795.01 rot:-151.71 name:pinna_3_left
+  pinna length:117.42 breadth:12.47 at:392.39,788.01 rot:-38.16 name:pinna_3_right
+  pinna length:139.23 breadth:13.73 at:398.63,763.42 rot:-151.42 name:pinna_4_left
+  pinna length:128.09 breadth:12.64 at:398.63,756.42 rot:-38.8 name:pinna_4_right
+  pinna length:159.53 breadth:15.47 at:405.18,731.83 rot:-151.14 name:pinna_5_left
+  pinna length:146.77 breadth:14.23 at:405.18,724.83 rot:-39.44 name:pinna_5_right
+  pinna length:163.6 breadth:16.62 at:412.07,700.23 rot:-150.86 name:pinna_6_left
+  pinna length:150.51 breadth:15.45 at:412.07,693.23 rot:-40.07 name:pinna_6_right
+  pinna length:183.12 breadth:17.89 at:419.31,668.63 rot:-150.57 name:pinna_7_left
+  pinna length:168.47 breadth:17.89 at:419.31,661.63 rot:-40.71 name:pinna_7_right
+  pinna length:179.72 breadth:18.35 at:426.91,637.04 rot:-150.29 name:pinna_8_left
+  pinna length:165.35 breadth:18.35 at:426.91,630.04 rot:-41.35 name:pinna_8_right
+  pinna length:197.43 breadth:17.56 at:434.89,605.45 rot:-150 name:pinna_9_left
+  pinna length:181.64 breadth:17.56 at:434.89,598.45 rot:-41.99 name:pinna_9_right
+  pinna length:187.45 breadth:16.26 at:443.23,573.85 rot:-149.72 name:pinna_10_left
+  pinna length:172.46 breadth:16.26 at:443.23,566.85 rot:-42.63 name:pinna_10_right
+  pinna length:201.8 breadth:15.64 at:451.95,542.25 rot:-149.44 name:pinna_11_left
+  pinna length:185.65 breadth:15.64 at:451.95,535.25 rot:-43.27 name:pinna_11_right
+  pinna length:186.73 breadth:16.27 at:461.03,510.66 rot:-149.15 name:pinna_12_left
+  pinna length:171.79 breadth:16.27 at:461.03,503.66 rot:-43.91 name:pinna_12_right
+  pinna length:195.99 breadth:17.57 at:470.46,479.07 rot:-148.87 name:pinna_13_left
+  pinna length:180.31 breadth:17.57 at:470.46,472.07 rot:-44.55 name:pinna_13_right
+  pinna length:177.58 breadth:18.35 at:480.23,447.47 rot:-148.58 name:pinna_14_left
+  pinna length:163.37 breadth:18.35 at:480.23,440.47 rot:-45.19 name:pinna_14_right
+  pinna length:180.29 breadth:17.88 at:490.32,415.88 rot:-148.3 name:pinna_15_left
+  pinna length:165.87 breadth:17.88 at:490.32,408.88 rot:-45.83 name:pinna_15_right
+  pinna length:160.09 breadth:16.42 at:500.69,384.28 rot:-148.02 name:pinna_16_left
+  pinna length:147.28 breadth:15.11 at:500.69,377.28 rot:-46.46 name:pinna_16_right
+  pinna length:155.4 breadth:15.06 at:511.34,352.69 rot:-147.73 name:pinna_17_left
+  pinna length:142.96 breadth:13.86 at:511.34,345.69 rot:-47.1 name:pinna_17_right
+  pinna length:134.44 breadth:13.27 at:522.22,321.09 rot:-147.45 name:pinna_18_left
+  pinna length:123.68 breadth:12.21 at:522.22,314.09 rot:-47.74 name:pinna_18_right
+  pinna length:122.28 breadth:12.99 at:533.29,289.5 rot:-147.16 name:pinna_19_left
+  pinna length:112.5 breadth:11.95 at:533.29,282.5 rot:-48.38 name:pinna_19_right
+  pinna length:100.78 breadth:11.36 at:544.54,257.9 rot:-146.88 name:pinna_20_left
+  pinna length:92.72 breadth:10.45 at:544.54,250.9 rot:-49.02 name:pinna_20_right
+  pinna length:81.89 breadth:9.17 at:555.91,226.31 rot:-146.6 name:pinna_21_left
+  pinna length:75.34 breadth:8.44 at:555.91,219.31 rot:-49.66 name:pinna_21_right
+  pinna length:58.9 breadth:6.18 at:567.36,194.71 rot:-146.31 name:pinna_22_left
+  pinna length:54.19 breadth:5.69 at:567.36,187.71 rot:-50.3 name:pinna_22_right
+  pinna length:64 breadth:7 at:563,221 rot:-73 name:terminal

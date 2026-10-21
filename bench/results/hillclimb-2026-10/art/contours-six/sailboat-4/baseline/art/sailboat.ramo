@@ -1,0 +1,84 @@
+@target sailboat.png 1000x900
+
+use std/brushes { bristle dry }
+
+palette voyage
+  ramp sky #b9d2d0 #f6e9cf 5
+  ramp sea #234c70 #8bbbc4 7
+  ramp red #912f3e #ef7e59 5
+  ramp wood #553d3e #e6b880 5
+  color cream #fff0ce
+  color distant #8faeaa
+
+# Opaque gouache, softly ragged edges and visible paper tooth.
+brush gouache strength:.16 rag:1.8 reach:2
+  sksl """
+  float4 shade(Mark m) {
+    float n = fbm(m.p / 19 + seeded(m), 4);
+    float tooth = hash12(floor(m.dev * .75));
+    float3 c = m.paint.rgb * (1 - strength * (n - .35)) + (tooth - .5) * .035;
+    return float4(c, cover(m.edge + (n - .5) * rag, m));
+  }
+  """
+
+layer atmosphere
+  rect 1000x900 at:500,450 fill:grad(down voyage.sky.0 voyage.sky.4) name:sky brush:gouache(rag:0 reach:0)
+  circle 48 at:211,174 fill:voyage.cream a:.8 name:sun brush:gouache
+  path "M72 240 Q130 204 192 226 Q244 188 311 225 Q355 216 405 244 Q228 260 72 240Z" fill:voyage.cream a:.46 name:cloud_left brush:gouache
+  path "M626 144 Q690 115 743 139 Q785 113 838 148 Q896 142 927 162 Q749 173 626 144Z" fill:voyage.cream a:.42 name:cloud_right brush:gouache
+  path "M0 390 Q84 354 150 374 Q230 323 321 376 Q375 357 441 395 L1000 420 L0 440Z" fill:voyage.distant name:far_coast brush:gouache(rag:0 reach:0)
+
+layer ocean
+  rect 1000x490 at:500,655 fill:grad(down voyage.sea.6 voyage.sea.1) name:water brush:gouache(rag:0 reach:0)
+  each i in 0..110
+    let x = rand(110 890)
+    let y = rand(429 870)
+    let w = rand(14 75)*(y/650)
+    curve x-w,y x,y-3 x+w,y+1 stroke:pick([voyage.sea.3 voyage.sea.5 voyage.sea.6]),rand(2 7) a:rand(.2 .65) brush:bristle(strength:.5) seed:i name:wave
+  each i in 0..25
+    let y = 686+i*5
+    let x = 510+rand(-62 56)
+    curve x-36,y x+rand(18 65),y+3 stroke:voyage.red.2,rand(3 10) a:.26 brush:dry(strength:.6) seed:200+i name:reflection
+
+layer wake
+  path "M259 646 Q197 694 96 716 Q246 725 377 690 Q529 739 780 693 Q655 699 641 654Z" fill:voyage.sea.5 a:.65 name:wake_wash brush:gouache
+  curve 125,722 234,703 301,669 stroke:voyage.cream,[1 6 2] a:.65 name:wake_left brush:bristle
+  curve 403,715 521,731 696,708 774,691 stroke:voyage.sea.6,[1 8 5 1] name:wake_right brush:bristle
+
+layer rigging_back
+  curve 469,179 291,596 stroke:voyage.wood.1,2 name:backstay brush:gouache
+  curve 472,185 684,654 stroke:voyage.wood.1,2 name:forestay brush:gouache
+
+layer boat
+  path "M265 591 Q399 553 548 585 L692 651 Q579 699 438 676 Q322 654 265 591Z" fill:voyage.wood.4 name:deck brush:gouache
+    path "M312 594 Q411 574 534 600 L625 644 Q496 665 380 626Z" fill:voyage.wood.1 name:cockpit brush:gouache
+    path "M366 596 L502 600 L553 627 L406 621Z" fill:voyage.wood.3 name:seat brush:gouache
+    curve 313,601 422,644 637,660 stroke:voyage.wood.2,3 name:deck_plank brush:gouache
+  path "M265 591 Q432 686 692 651 Q669 709 616 725 Q385 728 292 643Z" fill:grad(down voyage.red.3 voyage.red.0) name:hull brush:gouache
+    path "M294 650 Q444 719 668 688 L622 740 L347 714Z" fill:voyage.red.0 a:.65 name:underside brush:gouache
+    curve 306,635 437,684 653,677 stroke:voyage.red.4,7 name:hull_glint brush:dry(strength:.5)
+    curve 323,661 463,702 617,696 stroke:voyage.red.2,3 name:plank brush:gouache
+  curve 267,590 358,635 514,662 691,651 stroke:voyage.cream,[5 7 7 3] name:gunwale brush:gouache
+  curve 470,174 480,617 stroke:voyage.wood.1,9 name:mast brush:gouache
+  curve 467,178 477,613 stroke:voyage.wood.4,3 name:mast_light brush:gouache
+  curve 326,556 476,583 stroke:voyage.wood.1,8 name:boom brush:gouache
+
+layer sails
+  path "M458 199 Q342 313 306 537 Q368 535 463 568 Q434 398 458 199Z" fill:grad(right voyage.red.4 voyage.red.1) name:main_sail brush:gouache
+    path "M453 216 Q398 379 440 553 L466 571 Q438 381 453 216Z" fill:voyage.red.0 a:.35 name:leech_shadow brush:gouache
+    curve 441,251 367,401 333,515 stroke:voyage.red.4,13 a:.55 name:canvas_light brush:dry(strength:.6)
+    curve 414,293 380,414 376,542 stroke:voyage.cream,1.4 a:.28 name:seam_one brush:gouache
+    curve 446,394 383,396 341,407 stroke:voyage.wood.1,1 a:.24 name:seam_two brush:gouache
+  path "M488 228 Q526 388 654 601 Q569 566 491 570 Q514 403 488 228Z" fill:grad(right voyage.red.2 voyage.red.4) name:jib brush:gouache
+    path "M489 247 Q523 404 505 568 L490 571 Q509 399 489 247Z" fill:voyage.red.0 a:.5 name:jib_fold brush:gouache
+    curve 509,337 549,464 610,560 stroke:voyage.red.4,13 a:.55 name:jib_light brush:dry(strength:.5)
+    curve 514,412 548,494 580,569 stroke:voyage.cream,1.4 a:.25 name:jib_seam brush:gouache
+  path "M471 175 L472 145 Q502 142 523 157 L473 165Z" fill:voyage.red.3 name:pennant brush:gouache
+
+layer finishing
+  curve 480,581 531,630 574,639 stroke:voyage.wood.4,2 name:sheet brush:gouache
+  curve 286,671 337,703 420,718 stroke:voyage.cream,[1 7 1] a:.9 name:foam_stern brush:bristle
+  curve 615,731 673,710 702,673 stroke:voyage.cream,[1 8 2] name:bow_splash brush:bristle
+  curve 677,705 725,713 764,706 stroke:voyage.sea.6,[1 5 1] name:bow_ripple brush:bristle
+  curve 751,295 762,290 774,296 stroke:voyage.wood.1,2 a:.65 name:bird_one brush:gouache
+  curve 796,271 805,268 814,273 stroke:voyage.wood.1,2 a:.5 name:bird_two brush:gouache
