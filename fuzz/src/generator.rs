@@ -59,7 +59,7 @@ enum Ty {
     Pts,
     PathData,
     Blend,
-    Z,
+    Order,
     Cap,
     Join,
     Axis,
@@ -175,7 +175,7 @@ const COMMON: &[Key] = &[
     ("warp", Ty::Warp, 1),
     ("a", Ty::Unit, 4),
     ("blend", Ty::Blend, 2),
-    ("z", Ty::Z, 2),
+    ("order", Ty::Order, 2),
 ];
 
 const STYLE: &[Key] = &[("style", Ty::StyleRef, 2)];
@@ -1653,7 +1653,7 @@ impl<'u, 'd> Gen<'u, 'd> {
     fn word(&mut self, ty: Ty) -> String {
         match ty {
             Ty::Blend => self.pick(BLENDS).to_string(),
-            Ty::Z => self.pick(&["behind", "front", "1", "-1", "3"]).to_string(),
+            Ty::Order => self.pick(&["behind", "front", "1", "-1", "3"]).to_string(),
             Ty::Cap => self.pick(&["round", "butt", "square"]).to_string(),
             Ty::Join => self.pick(&["round", "miter", "bevel"]).to_string(),
             Ty::Axis => self.pick(&["x", "y"]).to_string(),

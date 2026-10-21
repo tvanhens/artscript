@@ -95,7 +95,7 @@ def _fold i:0 flutter:0
     ellipse 6,30 at:-10+dx+sk/2+13,(y0+y1)/2 fill:cool a:.6 blur:3
     curve -10+dx+sk/2-13,y0+2 -10+dx+sk/2+13,y0+3 stroke:mix(cool paper.line .4),1.6 a:.55
 def _shide flutter:0
-  union fill:paper name:sil z:-1
+  union fill:paper name:sil order:-1
     each i in 0..4
       _fold i flutter:flutter
     fx outline 3 color:mix(paper.line ink_cool .5)
@@ -127,7 +127,7 @@ layer ground_shadow
   each cx in [340 696]
     ellipse 96,13 at:cx,848 fill:p.shadow a:.32 blur:6
 layer footings pivot:512,840
-  layer pillars pivot:512,800 z:behind
+  layer pillars pivot:512,800 order:behind
     _pillar 334 name:pillar_l
     _pillar 690 name:pillar_r
     layer nuki pivot:512,373
@@ -161,13 +161,13 @@ layer footings pivot:512,840
           fx inner 3,4 blur:3 color:char.0
           fx outline 4 color:char.line
       layer shimenawa pivot:512,440
-        layer shide_l pivot:424,475.24 z:-2
+        layer shide_l pivot:424,475.24 order:-2
           _shide at:424,475.24 name:paper_l
-        layer shide_c pivot:512,480 z:-2
+        layer shide_c pivot:512,480 order:-2
           _shide at:512,480 name:paper_c
-        layer shide_r pivot:600,475.24 z:-2
+        layer shide_r pivot:600,475.24 order:-2
           _shide at:600,475.24 name:paper_r
-        layer shide_c_flutter pivot:512,480 a:0 z:-2
+        layer shide_c_flutter pivot:512,480 a:0 order:-2
           _shide flutter:.6 at:512,480 name:paper_flutter
         group name:bundle
           curve 270,436 390,462 512,472 634,462 754,436 stroke:straw,[34 54 68 54 34] taper:0 name:rope
@@ -178,20 +178,20 @@ layer footings pivot:512,840
             each x in [262 280.77 300.08 319.95 340.4 361.43 383.08 405.35 428.26 451.84 476.1 501.06 526.74 552.32 577.15 601.27 624.69 647.43 669.51 690.95 711.78 732 751.63]
               _groove x name:groove
             fx _surface a:.4 strength:.05 scale:1.8
-          _tassel 467 name:tas_l z:behind
-          _tassel 557 name:tas_r z:behind
-        union fill:straw z:-1
+          _tassel 467 name:tas_l order:behind
+          _tassel 557 name:tas_r order:behind
+        union fill:straw order:-1
           copy @rope
           copy @tas_l.fringe
           copy @tas_r.fringe
           fx outline 4.5 color:straw.line
-      union fill:verm z:-1
+      union fill:verm order:-1
         copy @strut
         copy @beam
         fx outline 6 color:gate
     layer kasagi pivot:512,240
       group name:roof
-        curve 96,100 180,150 320,178 512,184 704,178 844,150 928,100 930,124 896,172 808,206 700,220 512,226 324,220 216,206 128,172 94,124 closed tension:.5 fill:grad(down char.3 char,.4 char.0) name:cap z:front
+        curve 96,100 180,150 320,178 512,184 704,178 844,150 928,100 930,124 896,172 808,206 700,220 512,226 324,220 216,206 128,172 94,124 closed tension:.5 fill:grad(down char.3 char,.4 char.0) name:cap order:front
           copy @cap fill:grad(right char.3 char,.45 char.1) a:.5
           subtract fill:char.0 a:.8 blur:.8
             copy @cap
@@ -208,7 +208,7 @@ layer footings pivot:512,840
           ellipse 110,14 at:780,242 fill:verm.0 a:.35 blur:8
           curve 190,230 340,242 480,246 stroke:verm.4,[2 4 2] a:.5 blur:1.5
           fx _surface width:5 a:.55 strength:.035 scale:2
-      union fill:verm z:-1
+      union fill:verm order:-1
         copy @shimaki
         copy @cap
         fx outline 7 color:gate
@@ -222,7 +222,7 @@ layer footings pivot:512,840
     intersect fill:grad(45 moss.3 moss,.55 moss.1) name:tuft_l
       copy @src_l
       copy @stone_l.rock
-    copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 z:behind
+    copy @tuft_l at:3,4 fill:stone.0 a:.45 blur:3 order:behind
     inside @tuft_l
       each i in 0..14
         circle rand(1 1.8) at:rand(248 294),rand(766 814) fill:moss.4 a:.6 name:moss_dot_l

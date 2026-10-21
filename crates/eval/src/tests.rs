@@ -163,7 +163,7 @@ fn unmatched_patch_is_e0340_listing_parts() {
 #[test]
 fn z_behind_moves_a_node_first() {
     let s = scene(
-        "@target t.png 100x100\nlayer l\n  circle 5 name:a\n  circle 5 name:b\n  circle 5 name:c z:behind\n",
+        "@target t.png 100x100\nlayer l\n  circle 5 name:a\n  circle 5 name:b\n  circle 5 name:c order:behind\n",
     );
     assert_eq!(paths(&s), ["l", "c", "a", "b"]);
 }
@@ -4136,7 +4136,7 @@ fn siblings_that_read_each_other_are_one_e0350_that_suggests_z() {
     let d = errors[0];
     assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
     assert!(d.message.contains("before `b` is drawn"), "{d}");
-    assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("order:")), "{d}");
 }
 
 #[test]
@@ -4162,7 +4162,7 @@ fn a_cycle_through_an_unnamed_sibling_names_its_line() {
     let d = errors[0];
     assert_eq!((d.code.as_str(), d.span.line), ("E0350", 2), "{d}");
     assert!(d.message.contains("before the statement at art/t.ramo:5 is drawn"), "{d}");
-    assert!(d.fix.as_deref().is_some_and(|f| f.contains("z:")), "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("order:")), "{d}");
 }
 
 #[test]
@@ -5475,7 +5475,7 @@ fn an_unknown_key_on_a_builtin_verb_is_e0321() {
         "star 5 r:20 inner:.5 round:2 jitter:1,20 seed:3",
         "blob 20 seed:4 wobble:.2 points:9",
         "curve 0,0 20,-15 40,0 closed tension:0 round:2 taper:.3",
-        "rect 10x10 r:2 stroke:#000000,2 cap:butt join:miter dash:4,2 blur:1 a:.5 blend:multiply z:front feather:1 name:box",
+        "rect 10x10 r:2 stroke:#000000,2 cap:butt join:miter dash:4,2 blur:1 a:.5 blend:multiply order:front feather:1 name:box",
         "group g\n  grid 2x2 gap:2 cell:4x4\n    circle 2",
         "group g\n  repeat 3 step:4,0 rot:10\n    circle 2",
         "group g style:ink fill:#000000\n  circle 2",

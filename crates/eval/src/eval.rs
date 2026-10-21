@@ -81,8 +81,14 @@ const MEASURES: &[&str] = &[
     "x", "y", "w", "h", "cx", "cy", "left", "right", "top", "bottom", "area",
 ];
 const NODE_KEYS: &[&str] = &[
-    "at", "rot", "scale", "skew", "pivot", "warp", "a", "blend", "z", "name", "style", "feather",
+    "at", "rot", "scale", "skew", "pivot", "warp", "a", "blend", "order", "name", "style", "feather",
 ];
+/// Keys the language renamed, each with the key that replaced it.
+const RENAMED: &[(&str, &str)] = &[("z", "order")];
+
+fn renamed(key: &str) -> Option<&'static str> {
+    RENAMED.iter().find(|(old, _)| *old == key).map(|(_, new)| *new)
+}
 
 /// E0321 for a key that `target`, an instance of `def`, does not take. A def draws several
 /// shapes, so `fill:` and `blur:` have no single shape to land on; the fix names what recolors or
@@ -92,6 +98,9 @@ fn no_parameter(target: &str, def: &str, key: &str, params: &[impl AsRef<str>]) 
     let mut f = fail("E0321", format!("`{target}` has no parameter `{key}`"));
     if !params.is_empty() {
         f = f.note(format!("parameters: {}", params.join(", ")));
+    }
+    if let Some(new) = renamed(key) {
+        return f.fix(format!("`{key}:` is now `{new}:`"));
     }
     match key {
         "fill" | "stroke" => f.fix(format!(
@@ -2009,7 +2018,7 @@ impl<'a> Evaluator<'a> {
                     .fix("use normal, multiply, screen, overlay, soft_light, add, erase, …")
             })?;
         }
-        Ok(match a.get("z") {
+        Ok(match a.get("order") {
             Some(Value::Ident(w)) if w == "behind" => f64::NEG_INFINITY,
             Some(Value::Ident(w)) if w == "front" => f64::INFINITY,
             Some(Value::Num(n)) => *n,
@@ -2017,7 +2026,7 @@ impl<'a> Evaluator<'a> {
                 return Err(fail(
                     "E0320",
                     format!(
-                        "`z:` expects behind, front or a number, got {}",
+                        "`order:` expects behind, front or a number, got {}",
                         other.show()
                     ),
                 ));
@@ -6131,7 +6140,7 @@ fn cycle(label: &str, b: &order::Blocker) -> Fail {
         format!("`@{label}` is read before {who} is drawn, and {it} reads back to this line"),
     )
     .fix(format!(
-        "draw {it} with no reference back to this node, and paint this node behind it with `z:behind`"
+        "draw {it} with no reference back to this node, and paint this node behind it with `order:behind`"
     ));
     match b.name {
         Some(_) => f.note(format!("{who} is drawn at {at}")),
@@ -6196,6 +6205,9 @@ fn hidden_anchor(label: &str) -> Fail {
 
 pub(crate) fn unknown_key(verb: &str, keys: &[&str], key: &str) -> Fail {
     let f = fail("E0321", format!("`{verb}` has no key `{key}`"));
+    if let Some(new) = renamed(key).filter(|new| keys.contains(new)) {
+        return f.fix(format!("`{key}:` is now `{new}:`"));
+    }
     let near = keys
         .iter()
         .map(|k| (osa_distance(key, k), k))
