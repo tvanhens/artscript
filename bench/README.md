@@ -100,6 +100,14 @@ History records are immutable compact JSON files. Recording requires a verified,
 
 To combine disjoint prompt batches, run `uv run bench/combine_paired.py first/run second/run --out bench/out/paired/combined/report.json`. The command verifies each source bundle and recomputes its report. All protocol fields except the suite hash must match, as must both treatments. Duplicate prompt IDs are rejected. A combined report is an analysis artifact, not a new sealed run or history entry.
 
+## Preview CLI comparison
+
+[The verified result record](results/preview-issue-282.json) compares main `65e3cb7` with preview candidate `748fe35`. The strict fresh-pair run used the six standard prompts, three repetitions, six workers, separate release binaries, and `gpt-6.1-sol` with medium effort for authors and judges.
+
+Candidate quality averaged 15.51 versus 15.80 out of 20. The delivery-inclusive difference was −0.29, with a prompt-cluster 95% interval of [−0.79, +0.21]. This does not establish improvement or regression. Both sides delivered 18/18 valid images, with no provider, judge, or protocol errors.
+
+None of the 18 candidate command traces invoked `preview`. This measures general still-art authoring with the updated guidance, not preview-assisted repair effectiveness. Human calibration is absent. The earlier interrupted five-repetition run is excluded. The compact record retains input hashes, protocol settings, per-prompt results, resource counts, and the verified bundle fingerprint; the full bundle remains local at `bench/out/paired/issue-282-main-vs-preview-r3-j6/`.
+
 ## Historical hillclimb
 
 [The compact result record](results/hillclimb-2026-10.json) preserves all eleven comparisons, counts and original and retrospective intervals. The full experiment archive remains in the recorded Git commit, rather than in the maintained benchmark tree.
