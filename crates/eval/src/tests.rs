@@ -2298,6 +2298,33 @@ fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
 }
 
 #[test]
+fn a_play_reached_after_t0_that_outlasts_the_clip_is_e0206() {
+    let src = |dur: &str| {
+        format!(
+            "@target t.gif 8x8 bg:#ffffff fps:10{dur}\nrect 2x2 name:box\n\
+             anim short dur:1s\n  .box at:key(0,0 2,0)\n\
+             anim long dur:3s\n  .box at:key(0,0 0,2)\n\
+             play short\nif t > .5\n  play long\n"
+        )
+    };
+    let p = project(&[("art/t.ramo", &src(""))]);
+    let sampled = crate::sample(&p, &plan(&p).jobs[0]);
+    let late = sampled
+        .diagnostics
+        .iter()
+        .find(|d| d.code == "E0206")
+        .unwrap_or_else(|| panic!("{}", show(&sampled.diagnostics)));
+    assert_eq!(
+        late.message,
+        "a play reached after t=0 ends at 3s, after the 1s clip"
+    );
+    let fixed = project(&[("art/t.ramo", &src(" dur:3s"))]);
+    let sampled = crate::sample(&fixed, &plan(&fixed).jobs[0]);
+    assert!(sampled.diagnostics.is_empty(), "{}", show(&sampled.diagnostics));
+    assert_eq!(sampled.frames.len(), 30);
+}
+
+#[test]
 fn a_clip_past_the_frame_cap_is_e0206() {
     let p = project(&[(
         "art/t.ramo",
