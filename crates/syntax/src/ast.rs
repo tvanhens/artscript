@@ -81,6 +81,7 @@ pub struct Decl {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum DeclKind {
+    Param { params: Vec<Named> },
     /// `use palette/dusk as p`, `use face/eye { eye, blush }`.
     Use {
         path: String,

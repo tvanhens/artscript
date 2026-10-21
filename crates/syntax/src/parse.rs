@@ -472,6 +472,7 @@ impl<'a> Parser<'a> {
             Some(Tok::Kw(Word::Def)) => self.parse_def(),
             Some(Tok::Kw(Word::Rule)) => self.parse_rule(),
             Some(Tok::Kw(Word::Light)) => self.parse_light(),
+            Some(Tok::Ident(s)) if s == "param" => self.parse_param(),
             Some(Tok::Ident(s)) if s == "brush" => self.parse_brush(),
             Some(Tok::Ident(s)) if s == "stamp" => self.parse_stamp(),
             Some(Tok::Ident(s)) if s == "fn" => self.parse_fn(),
@@ -635,6 +636,19 @@ impl<'a> Parser<'a> {
                 None
             }
         }
+    }
+
+    fn parse_param(&mut self) -> Option<DeclKind> {
+        let span = self.cur_span();
+        let indent = self.cur_indent();
+        self.bump();
+        let (args, params) = self.parse_items();
+        if !args.is_empty() || params.is_empty() {
+            self.fail(span, "param needs named defaults", "write `param view:one_of(normal geometry) guides:false`");
+        }
+        self.reject_param_names(&params);
+        self.no_block(indent);
+        Some(DeclKind::Param { params })
     }
 
     fn parse_def(&mut self) -> Option<DeclKind> {

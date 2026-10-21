@@ -7561,3 +7561,246 @@ fn fill_stroke_and_blur_on_an_instance_point_at_palette_and_fx_blur() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn entry_parameters_reuse_types_defaults_and_private_import_bindings() {
+    let src = "@target t.png 40x40\nparam view:one_of(normal geometry) width:8\nparam height:width\nrect width,height at:20,20 fill:if view == normal then #ff0000 else #00ff00 name:body\n";
+    let p = project(&[("art/t.ramo", src)]);
+    let mut job = plan(&p).jobs.remove(0);
+    let default = evaluate(&p, &job);
+    assert!(default.diagnostics.is_empty(), "{}", show(&default.diagnostics));
+    assert_eq!(default.parameters["view"], "normal");
+    assert_eq!(default.parameters["height"], "8");
+    job.parameters.insert("width".into(), ramose_syntax::ast::Expr::Num(12.0));
+    let changed = evaluate(&p, &job);
+    assert_eq!(changed.parameters["height"], "12");
+    assert_eq!(crate::node_bounds(changed.scene.as_ref().unwrap(), "body").unwrap().width(), 12.0);
+    for (setting, message) in [("width=false", "expects a number"), ("view=unknown", "one of normal, geometry"), ("missing=4", "unknown entry parameter")] {
+        job.parameters.clear();
+        let (key, value) = crate::parse_parameter(setting).unwrap();
+        job.parameters.insert(key, value);
+        let ev = evaluate(&p, &job);
+        assert!(ev.diagnostics.iter().any(|d| d.message.contains(message)), "{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn parameter_collisions_report_once_at_the_declaration() {
+    for (source, line) in [
+        ("@target t.png 8x8\nparam view:normal\nparam view:geometry\n", 3),
+        ("@target t.png 8x8\nparam width:4\nlet width = 6\n", 2),
+        ("@target t.png 8x8\nparam canvas:4\n", 2),
+        ("@target t_{view}.png 8x8 each view:[normal]\nparam view:normal\n", 2),
+        ("@target t.png 8x8\nparam thing:4\ndef thing\n  circle 2\n", 2),
+        ("@target t.png 8x8\ndef thing\n  circle 2\nparam thing:4\n", 4),
+    ] {
+        let ev = run_with(source, &[]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].span.line, line);
+        assert_eq!(errors[0].file, "art/t.ramo");
+    }
+}
+
+#[test]
+fn adding_diagnostic_draws_preserves_named_random_artwork() {
+    let src = "@target t.png 40x40\nparam guides:false\nif guides\n  circle rand(1 3) at:2,2 fill:#ff0000 name:guide\nblob 10 at:20,20 fill:#00ff00 name:body\n";
+    let p = project(&[("art/t.ramo", src)]);
+    let mut job = plan(&p).jobs.remove(0);
+    let before = evaluate(&p, &job);
+    job.parameters.insert("guides".into(), ramose_syntax::ast::Expr::Ident("true".into()));
+    let after = evaluate(&p, &job);
+    assert!(before.diagnostics.is_empty(), "{}", show(&before.diagnostics));
+    assert!(after.diagnostics.is_empty(), "{}", show(&after.diagnostics));
+    let geometry = |s: &Scene| match &node(s, "body").kind {
+        NodeKind::Shape(shape) => shape.geometry.clone(),
+        _ => panic!("body is a shape"),
+    };
+    assert_eq!(geometry(before.scene.as_ref().unwrap()), geometry(after.scene.as_ref().unwrap()));
+}
+
+#[test]
+fn entry_parameter_import_collisions_and_private_exports_are_rejected() {
+    for source in [
+        "@target t.png 8x8\nparam value:4\nuse values\n",
+        "@target t.png 8x8\nuse values\nparam value:4\n",
+        "@target t.png 8x8\nparam value:4\nuse values as value\n",
+    ] {
+        let ev = run_with(source, &[("lib/values.ramo", "let value = 8\n")]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+        assert!(errors[0].message.contains("collides"));
+    }
+    let p = project(&[("art/t.ramo", "@target t.png 8x8\nuse art/other { view }\n"), ("art/other.ramo", "@target other.png 8x8\nparam view:one_of(normal geometry)\n")]);
+    let plan = plan(&p);
+    let ev = evaluate(&p, plan.jobs.iter().find(|j| j.source == "art/t.ramo").unwrap());
+    assert!(ev.diagnostics.iter().any(|d| d.message.contains("does not export `view`")), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn named_preview_bounds_follow_ancestor_rotation() {
+    let scene = scene("@target t.png 20x20\ngroup rig at:8,8 rot:90\n  rect 4,2 at:3,0 fill:#ff0000 name:head\n");
+    let rect = crate::node_bounds(&scene, "head").unwrap();
+    assert_eq!((rect.left, rect.top, rect.width(), rect.height()), (7.0, 9.0, 2.0, 4.0));
+}
+
+#[test]
+fn forward_alias_cannot_overwrite_an_entry_parameter() {
+    let ev = run_with("@target t.png 8x8\nparam mode:4\ndef mode = base\ndef base\n  circle 2\n", &[]);
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+    assert_eq!(errors.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].span.line, 2);
+    assert_eq!(errors[0].message, "parameter `mode` collides with another binding");
+}
+
+#[test]
+fn parameter_errors_preserve_unrelated_scene_diagnostics_without_cascades() {
+    for source in [
+        "@target t.png 8x8\nparam width:4\nlet width = 6\nrect missing\n",
+        "@target t.png 8x8\nparam width:one_of()\nrect width\nrect missing\n",
+    ] {
+        let ev = run_with(source, &[]);
+        let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+        assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
+        assert_eq!(errors[0].span.line, 2);
+        assert_eq!(errors[1].span.line, 4);
+    }
+    let p = project(&[("art/t.ramo", "@target t.png 8x8\nparam width:4\nrect width\nrect missing\n")]);
+    let mut job = plan(&p).jobs.remove(0);
+    job.parameters.insert("width".into(), ramose_syntax::ast::Expr::Ident("false".into()));
+    let ev = evaluate(&p, &job);
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+    assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].span.line, 2);
+    assert_eq!(errors[1].span.line, 4);
+}
+
+#[test]
+fn entry_one_of_comparisons_share_the_component_word_lint() {
+    let ev = run_with("@target t.png 8x8\nparam view:one_of(normal geometry) other:normal\nif view == typo\n  circle 1\nif wrong != view\n  circle 1\nif view == geometry or view == other\n  circle 1\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!((warnings[0].span.line, warnings[1].span.line), (3, 5));
+    assert_eq!(warnings[0].message, "`view` is never `typo`");
+    let quiet = run_with("@target t.png 8x8\nuse values\nparam view:one_of(normal geometry)\nif view == imported\n  circle 1\neach word in [normal]\n  if view == word\n    circle 1\neach view in [custom]\n  if view == custom\n    circle 1\n", &[("lib/values.ramo", "let imported = normal\n")]);
+    assert!(!quiet.diagnostics.iter().any(|d| d.code == "L0107"), "{}", show(&quiet.diagnostics));
+}
+
+#[test]
+fn defs_lint_private_entry_words_unless_their_own_parameter_shadows_them() {
+    let ev = run_with("@target t.png 8x8\nparam view:one_of(normal geometry)\ndef part\n  if view == geomtry\n    circle 1\ndef shadow view:custom\n  if view == another\n    circle 1\npart\nshadow\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(warnings[0].span.line, 4);
+    assert_eq!(warnings[0].message, "`view` is never `geomtry`");
+}
+
+#[test]
+fn entry_word_comparisons_with_matrix_axes_and_target_context_are_quiet() {
+    let ev = run_with("@target t_{selection}.png 8x8 each selection:[normal] clip:normal\nparam view:one_of(normal geometry)\nif view == selection or view == clip or view == target\n  circle 1\n", &[]);
+    assert!(!ev.diagnostics.iter().any(|d| d.code == "L0107"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn nested_bindings_do_not_suppress_entry_word_warnings_outside_their_scope() {
+    for nested in [
+        "if false\n  let view = normal\n",
+        "each view in [normal]\n  if view == custom\n    circle 1\n",
+        "let comparisons = [each view in [normal] -> view == custom]\n",
+        "if false\n  let geomtry = normal\n",
+        "each geomtry in [normal]\n  if view == geomtry\n    circle 1\n",
+    ] {
+        let source = format!("@target t.png 8x8\nparam view:one_of(normal geometry)\n{nested}if view == geomtry\n  circle 1\n");
+        let ev = run_with(&source, &[]);
+        let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+        assert_eq!(warnings.len(), 1, "{source}\n{}", show(&ev.diagnostics));
+        assert_eq!(warnings[0].span.line as usize, source.lines().count() - 1);
+    }
+    let ev = run_with("@target t.png 8x8\ndef part view:one_of(normal geometry)\n  if false\n    let view = normal\n  if view == geomtry\n    circle 1\npart\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(warnings[0].span.line, 5);
+}
+
+#[test]
+fn named_preview_bounds_compose_rotations_before_boxing_the_ink() {
+    let s = scene("@target t.png 80x80\ngroup at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n");
+    let bounds = crate::node_bounds(&s, "head").unwrap();
+    for (actual, expected) in [(bounds.left, 30.0), (bounds.top, 35.0), (bounds.width(), 20.0), (bounds.height(), 10.0)] {
+        assert!((actual - expected).abs() < 1e-4, "{bounds:?}");
+    }
+    let warped = scene("@target t.png 80x80\ngroup at:40,40 rot:-45\n  rect 20,10 rot:45 warp:cylinder(20) fill:#ff0000 name:head\n");
+    let bounds = crate::node_bounds(&warped, "head").unwrap();
+    assert!((bounds.width() - 40.0 * 0.5f32.sin()).abs() < 0.01, "{bounds:?}");
+    assert!((bounds.height() - 10.0).abs() < 0.01, "{bounds:?}");
+}
+
+#[test]
+fn wildcard_style_finish_and_anim_imports_cannot_collide_with_parameters() {
+    for library in ["style theme fill:#ff0000\n", "finish theme\n  fx grain .1\n", "anim theme dur:1\n  .body rot:0\n"] {
+        for source in [
+            "@target t.png 8x8\nparam theme:normal\nuse theme\n",
+            "@target t.png 8x8\nuse theme\nparam theme:normal\n",
+        ] {
+            let ev = run_with(source, &[("lib/theme.ramo", library)]);
+            let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+            assert_eq!(errors.len(), 1, "{library}\n{source}\n{}", show(&ev.diagnostics));
+            assert!(errors[0].message.contains("collides"), "{}", show(&ev.diagnostics));
+        }
+    }
+    let ev = run_with("@target t.png 8x8\nparam _theme:normal\nuse theme\n", &[("lib/theme.ramo", "style _theme fill:#ff0000\n")]);
+    assert!(ev.diagnostics.iter().all(|d| d.severity != ramose_syntax::Severity::Error), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn named_subtree_crop_bounds_do_not_depend_on_group_depth() {
+    let s = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 fill:#ff0000 name:head\n");
+    let census: Vec<_> = ["head", "inner", "outer"].into_iter().map(|name| (name, crate::node_bounds(&s, name).unwrap())).collect();
+    for (name, bounds) in &census {
+        for (actual, expected) in [(bounds.left, 30.0), (bounds.top, 35.0), (bounds.width(), 20.0), (bounds.height(), 10.0)] {
+            assert!((actual - expected).abs() < 1e-4, "{name}: {census:?}");
+        }
+    }
+}
+
+#[test]
+fn named_subtree_bounds_intersect_rotated_clips_and_masks_before_boxing() {
+    use ramose_ir::{Clip, Mask, MaskSource, Path, Rect};
+    for mask in [false, true] {
+        let mut s = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n");
+        if mask {
+            let source = scene("@target t.png 80x80\nrect 4,100 at:0,0 fill:#ffffff\n").children;
+            s.children[0].mask = Some(Box::new(Mask { source: MaskSource::Nodes(source), luminance: false, feather: 0.0, invert: false }));
+        } else {
+            s.children[0].clip = Some(Clip { path: Path::rect(Rect::new(-2.0, -50.0, 2.0, 50.0), None), feather: 0.0, invert: false });
+        }
+        let bounds = crate::node_bounds(&s, "outer").unwrap();
+        assert!((bounds.width() - (10.0 + 4.0 * 2.0f32.sqrt())).abs() < 1e-4, "mask={mask}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 1e-4, "mask={mask}: {bounds:?}");
+        assert!((bounds.center_x() - 40.0).abs() < 1e-4, "{bounds:?}");
+        assert!((crate::node_bounds(&s, "head").unwrap().width() - 20.0).abs() < 1e-4, "selecting the child keeps its own clipping scope without the ancestor's clip");
+    }
+}
+
+#[test]
+fn named_subtree_bounds_compose_warps_and_stamp_placements() {
+    let warped = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 warp:cylinder(20) fill:#ff0000 name:head\n");
+    for name in ["head", "inner", "outer"] {
+        let bounds = crate::node_bounds(&warped, name).unwrap();
+        assert!((bounds.width() - 40.0 * 0.5f32.sin()).abs() < 0.01, "{name}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 0.01, "{name}: {bounds:?}");
+    }
+    let stamped = scene("@target t.png 80x80\nstamp tiles spacing:2\n  rect 20,10 rot:45 fill:#ff0000\ngroup outer at:40,40 rot:-45\n  curve -1,0 1,0 stamp:tiles name:host\n");
+    for name in ["host", "outer"] {
+        let bounds = crate::node_bounds(&stamped, name).unwrap();
+        assert!((bounds.width() - 20.0).abs() < 1e-4, "{name}: {bounds:?}");
+        assert!((bounds.height() - 10.0).abs() < 1e-4, "{name}: {bounds:?}");
+    }
+}
+
+#[test]
+fn named_shape_bounds_keep_own_clip_and_ignore_children_outside_host_geometry() {
+    let s = scene("@target t.png 80x80\nrect 20,10 at:40,40 name:host\n  rect 100,100 fill:#ff0000\n  mask\n    rect 4,6 fill:#ffffff\n");
+    let bounds = crate::node_bounds(&s, "host").unwrap();
+    assert_eq!((bounds.left, bounds.top, bounds.width(), bounds.height()), (38.0, 37.0, 4.0, 6.0));
+}

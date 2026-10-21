@@ -67,6 +67,7 @@ impl<'a> Printer<'a> {
     fn decl(&mut self, decl: &Decl) {
         let line = decl.span.line;
         match &decl.kind {
+            DeclKind::Param { params } => self.emit(line, 0, &join_head("param", "", &[], params)),
             DeclKind::Use { path, alias, items } => {
                 let mut text = format!("use {path}");
                 if let Some(alias) = alias {

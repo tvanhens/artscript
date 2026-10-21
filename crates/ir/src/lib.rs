@@ -479,6 +479,22 @@ pub enum EffectOp {
 }
 
 impl Shape {
+    /// This shape's geometry, stroke, and brush reach in local units, before stamps or children.
+    pub fn own_bounds(&self) -> Option<Rect> {
+        let mut r = self.geometry.compute_tight_bounds();
+        match self.stroke.as_ref().map(|st| (st, st.ink.as_ref().filter(|_| st.ribbon.is_none()))) {
+            Some((_, Some(ink))) if self.fill.is_none() => r = ink.compute_tight_bounds(),
+            Some((_, Some(ink))) => r.join(ink.compute_tight_bounds()),
+            Some((st, None)) => r.outset((st.width / 2.0, st.width / 2.0)),
+            None => {}
+        }
+        let reach = self.mark_reach();
+        if reach > 0.0 {
+            r.outset((reach, reach));
+        }
+        if r.is_empty() && self.geometry.is_empty() { None } else { Some(r) }
+    }
+
     /// What the shape's children, `inside` and `copy` clip to: the geometry, as for any shape,
     /// except that a tapered stroke contributes its ink outline in place of the spine, joined
     /// with the geometry when the shape also has a fill.
@@ -801,18 +817,7 @@ pub fn transform_scale(m: &Matrix) -> f32 {
 /// the geometry when the shape has no fill. A brushed stroke keeps the half width, since its
 /// marks paint from the ribbon's edge, not from the ink's flattened outline.
 fn shape_bounds(s: &Shape) -> Option<Rect> {
-    let mut r = s.geometry.compute_tight_bounds();
-    match s.stroke.as_ref().map(|st| (st, st.ink.as_ref().filter(|_| st.ribbon.is_none()))) {
-        Some((_, Some(ink))) if s.fill.is_none() => r = ink.compute_tight_bounds(),
-        Some((_, Some(ink))) => r.join(ink.compute_tight_bounds()),
-        Some((st, None)) => r.outset((st.width / 2.0, st.width / 2.0)),
-        None => {}
-    }
-    let reach = s.mark_reach();
-    if reach > 0.0 {
-        r.outset((reach, reach));
-    }
-    let own = if r.is_empty() && s.geometry.is_empty() { None } else { Some(r) };
+    let own = s.own_bounds();
     // Skia's `join` drops an empty rect, and an unstroked line is one, so cover both by hand.
     match (own, union_bounds(&s.stamps)) {
         (Some(a), Some(b)) => Some(Rect::new(a.left.min(b.left), a.top.min(b.top), a.right.max(b.right), a.bottom.max(b.bottom))),

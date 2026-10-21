@@ -15,8 +15,8 @@ When the user runs `$ramose:ramose` in Codex or `/ramose` in Claude Code with a 
 
 1. Run `ramose --version`. If it fails, run `npx --yes ramose --version`. If that works, write `npx --yes ramose` everywhere this skill writes `ramose`. If both fail, tell the user to install Node.js and run `npm install -g ramose`, and stop.
 2. Run `ramose docs <topic> [topic...]` once per session, naming every topic the task touches. Include `craft` when you draw a new piece or add a part. It prints the core card for the installed version, then those topics. Do not guess syntax from memory. The topics:
-   - `targets` @target keys, entry files and libraries, use, the manifest palette p
-   - `values` the values table, expressions, operators, functions, fn
+   - `targets` @target keys, entry parameters and libraries, use, the manifest palette p
+   - `values` entry parameters, CLI literals, the values table, expressions, operators, functions, fn
    - `color` palettes, ramps, color rows, shade, mix, fade, line, gradients
    - `shapes` the shape table, contour position, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush, stamp, pressure, angle, tilt)
    - `structure` layer and group, clipping by nesting, inside/outside, mask, fx, finish
@@ -24,11 +24,11 @@ When the user runs `$ramose:ramose` in Codex or `/ramose` in Claude Code with a 
    - `brushes` brush declarations, SkSL bodies, the Mark, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
    - `stamps` stamp declarations, the block and its bound names, spacing and count, stamp: on a node, sets and references, seeds, std/stamps
    - `warp` corners and cylinder, stacks, order of application, the warped box, raster-only
-   - `components` def, size box, slots, patches, let/if/each, style
-   - `anim` t, key, anim, play, node keys, explain
+   - `components` def and entry parameters, size box, slots, patches, let/if/each, style
+   - `anim` t, key, anim, play, preview frame sheets, node keys, explain
    - `checks` assert, expect, measurements, check functions, rule
-   - `cli` commands, flags, docs topics, exit codes
-   - `craft` structure a piece, layers and names, choose a style, light and value, tools for each style
+   - `cli` commands, preview crops and frame sheets, parameter overrides, exit codes
+   - `craft` structure a piece, layers and names, style, light and value, preview-assisted repairs
    - `manifest` ramose.toml tables and keys, project defaults, lint levels
 3. Find the project root: the nearest `ramose.toml`. If there is none, run `ramose init` in the folder where the art belongs, then delete the starter `art/hello.ramo`. The manifest names the output folder (`out`, default `assets`) and the library roots (`lib`).
 
@@ -44,7 +44,13 @@ Repeat until the art is right:
 4. Open the PNG with the host's image viewer, such as `view_image` in Codex or Read in Claude Code, and look at it. Compare it to the request. Look for parts outside the canvas, shading that spills outside its shape, a missing outline, a face that is off-center, and colors that are too close to each other.
 5. Run `ramose fmt` on the files you changed.
 
-Never report a piece as done before you have looked at its rendered PNG. For a GIF, also build a still of a mid-animation frame (`t:` on a PNG target) when the motion matters.
+Never report a piece as done before you have looked at its normal rendered PNG. For motion, use `ramose preview` to inspect a frame strip or contact sheet.
+
+## Inspect a difficult part
+
+Read `ramose docs cli values anim` from the installed CLI before using preview. Build and inspect the normal output at its intended display size first. Use `preview FILE --target OUTPUT --crop node --pad 8 --zoom 4 --bg checker --out review/detail.png` for a crop. `--target` is the exact expanded output path, including the matrix variant and scale suffix. Use light and dark presentation backgrounds when transparency affects the edge. Use `--frames 8` for a frame strip or `--times 0,.5,1` for explicit times, including a loop endpoint. Use these controls without temporary output targets or external image scripts.
+
+If debugging requires source logic, declare entry parameters such as `param view:one_of(normal geometry) guides:false`. Draw diagnostic views with ordinary conditionals and shapes, then enable them with `--set view=geometry --set guides=true`. Inspect each generated PNG with the host's supported image viewer, such as `view_image` in Codex or Read in Claude Code. Read the receipt and distinguish parameter-altered views from normal artwork. After a repair, rebuild without overrides and inspect the final shipping output again.
 
 ## Edit existing art
 
@@ -57,4 +63,4 @@ Never report a piece as done before you have looked at its rendered PNG. For a G
 
 ## Report back
 
-Tell the user which files you wrote, which outputs `build` wrote, and what you saw when you looked at the PNG. If a check still warns, say which one and why you left it.
+Tell the user which files you wrote, which outputs `build` wrote, and what you saw when you looked at the PNG. For diagnostic work, include preview paths and parameter settings, and identify the final normal output you inspected. If a check still warns, say which one and why you left it.

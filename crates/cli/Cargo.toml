@@ -16,9 +16,9 @@ ramose-ir.workspace = true
 ramose-render.workspace = true
 ramose-eval.workspace = true
 toml = "0.8"
+png = "0.18"
 
 [dev-dependencies]
 gif = "0.13"
 color_quant = "1.1"
-png = "0.18"
 resvg = { version = "0.48", default-features = false, features = ["raster-images"] }

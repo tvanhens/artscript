@@ -1,0 +1,8 @@
+[project]
+name = "preview-debug"
+out = "assets"
+lib = ["lib"]
+std = "0.1"
+
+[build]
+backend = "cpu"

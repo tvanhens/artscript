@@ -170,3 +170,50 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     }
     out
 }
+
+/// Node ink bounds in canvas units, including its clip and mask, excluding effects.
+pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<ramose_ir::Rect> {
+    fn find<'a>(nodes: impl Iterator<Item = &'a Node>, place: &Place, path: &str) -> Option<Rect> {
+        for node in nodes {
+            if node.path == path {
+                return subtree_bounds(node, place, &[]).ok().flatten();
+            }
+            if let Some(bounds) = find(node.descendants(), &place.inner_node(node), path) {
+                return Some(bounds);
+            }
+        }
+        None
+    }
+    find(scene.children.iter(), &Place::identity(), path.trim_start_matches('@'))
+}
+
+fn subtree_bounds(node: &Node, parent: &Place, clips: &[ramose_ir::Path]) -> Result<Option<Rect>, ()> {
+    let place = parent.inner_node(node);
+    let mut clips = clips.to_vec();
+    clips.extend(node.kept_bounds().map(|rect| {
+        place.map_path(&ramose_ir::Path::rect(rect, None), crate::scope::FLATTEN_TOL)
+    }));
+    let (own, children) = match &node.kind {
+        NodeKind::Group { children, .. } => (None, children.as_slice()),
+        NodeKind::Shape(shape) => (shape.own_bounds(), shape.stamps.as_slice()),
+    };
+    let mut bounds = None;
+    if let Some(own) = own {
+        let mut path = place.map_path(&ramose_ir::Path::rect(own, None), crate::scope::FLATTEN_TOL);
+        for clip in &clips {
+            path = skia_safe::op(&path, clip, skia_safe::PathOp::Intersect).ok_or(())?;
+        }
+        if !path.is_empty() {
+            bounds = Some(path.compute_tight_bounds());
+        }
+    }
+    for child in children {
+        if let Some(child) = subtree_bounds(child, &place, &clips)? {
+            bounds = Some(match bounds {
+                Some(own) => Rect::new(own.left.min(child.left), own.top.min(child.top), own.right.max(child.right), own.bottom.max(child.bottom)),
+                None => child,
+            });
+        }
+    }
+    Ok(bounds)
+}

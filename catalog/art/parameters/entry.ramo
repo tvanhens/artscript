@@ -1,0 +1,14 @@
+# Normal shows a blue disk with a small gold center. Geometry shows the same
+# disk in red with a dark crosshair through its center. Parameters retain these
+# defaults; the geometry target also selects the diagnostic view explicitly.
+@target parameters/entry-normal.png 96x96 as:normal
+@target parameters/entry-geometry.png 96x96 as:geometry
+
+param view:one_of(normal geometry) guides:false radius:26
+
+let diagnostic = view == geometry or target == geometry
+circle radius at:48,48 fill:if diagnostic then p.red else p.blue name:body
+circle 5 at:48,48 fill:p.gold name:joint
+if guides or diagnostic
+  curve 16,48 80,48 stroke:p.ink,1 name:horizontal
+  curve 48,16 48,80 stroke:p.ink,1 name:vertical

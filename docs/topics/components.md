@@ -1,4 +1,6 @@
-# components: def, size box, slots, patches, let/if/each, style
+# components: def and entry parameters, size box, slots, patches, let/if/each, style
+
+Entry files use `param name:default` with the same default-derived types and `one_of` allowed words as `def`. A declaration can name several parameters. `param` does not create a component or a special drawing block. Ordinary expressions, conditionals, shapes, and effects read the bound values. See `values` for entry scope and CLI literal syntax.
 
 ```
 def eye size:10 iris:p.sky.3 look:0,0

@@ -1,0 +1,962 @@
+{
+  "schema_version": 1,
+  "bundle_fingerprint": "afaebebaeab75c4ca9334e17a2a7e767d22ade5346aea6548beacbcca1db1145",
+  "compatibility": {
+    "protocol_key": "4d797a54bd21dfd6fa395bb191f791a9d3134bd8a02d479755036255111bf1b6",
+    "baseline": {
+      "SKILL.md": "b8867516acbebf522c88882460b14a4bab93ac0036bead97eb2b4cb88d27c4cb"
+    },
+    "baseline_binary": "fd2ade0bbf433d733421731c383208a19de004d6ce00f3ab4b8e034ae970c1e6"
+  },
+  "compatibility_key": "45864ea30cae4504bb7eb503886e6c88177e50268e942ce200310dd811e2ccca",
+  "experiment": {
+    "prompts": [
+      [
+        "fox",
+        "draw a cute fox sitting next to a glowing mushroom"
+      ],
+      [
+        "chest",
+        "make a game icon of a treasure chest overflowing with gold coins"
+      ],
+      [
+        "lighthouse",
+        "paint a lighthouse on a cliff at dusk in a loose watercolor style"
+      ],
+      [
+        "potion",
+        "make a 64x64 pixel-art red health potion sprite on a transparent background"
+      ],
+      [
+        "sailboat",
+        "draw a red sailboat on blue water in a painterly storybook style, viewed in three-quarter perspective"
+      ],
+      [
+        "fern",
+        "draw a delicate botanical ink illustration of a fern frond on warm ivory paper"
+      ]
+    ],
+    "repetitions": 3,
+    "model": "gpt-6.1-sol",
+    "judge_model": "gpt-6.1-sol",
+    "binary": "inputs/baseline-bin/ramose",
+    "baseline": "inputs/baseline",
+    "candidate": "inputs/candidate",
+    "replay": null,
+    "effort": "medium",
+    "judge_effort": "medium",
+    "candidate_binary": "inputs/candidate-bin/ramose",
+    "reference": null,
+    "schema_version": 2,
+    "mode": "strict",
+    "created_at_utc": "2026-10-21T04:04:10.796829+00:00",
+    "provenance": {
+      "binaries": {
+        "baseline": "fd2ade0bbf433d733421731c383208a19de004d6ce00f3ab4b8e034ae970c1e6",
+        "candidate": "cc2ff3c7a49b478f19528a47f1e59e1bffc9a376db2082bb6ada129a2e6a6293"
+      },
+      "baseline": {
+        "SKILL.md": "b8867516acbebf522c88882460b14a4bab93ac0036bead97eb2b4cb88d27c4cb"
+      },
+      "candidate": {
+        "SKILL.md": "80fa5bcfa916470b2bf0f6a74ec7ee1092af11341c2a84c624955436f0a9a359"
+      },
+      "host": {
+        "system": "Darwin",
+        "release": "24.6.0",
+        "machine": "arm64",
+        "python": "3.14.3",
+        "pillow": "11.3.0"
+      },
+      "codex_version": "codex-cli 0.163.0",
+      "served_model_identity": "unverified; requested identifiers only"
+    },
+    "protocol": {
+      "model": "gpt-6.1-sol",
+      "judge_model": "gpt-6.1-sol",
+      "effort": "medium",
+      "judge_effort": "medium",
+      "rubric_sha256": "3822af25724ade27be1824f23660c960611763812249e00afa5c887b97c34829",
+      "suite_sha256": "db7ce23ec2c993841481d49d151f1254a6663d16ef0a531805497d3a5088f3f8",
+      "repetitions": 3,
+      "jobs": 6,
+      "invocation_form": "[$ramose](ABSOLUTE_NEUTRAL_SKILL_PATH) <prompt>",
+      "author_timeout_s": 1200,
+      "judge_timeout_s": 600,
+      "analysis_version": "prompt-cluster-v2",
+      "backend_policy": "author-selected; renderer default auto; clean rebuild with same binary and host",
+      "codex_version": "codex-cli 0.163.0",
+      "host": {
+        "system": "Darwin",
+        "release": "24.6.0",
+        "machine": "arm64",
+        "python": "3.14.3",
+        "pillow": "11.3.0"
+      },
+      "kind": "fresh-pair"
+    },
+    "protocol_key": "4d797a54bd21dfd6fa395bb191f791a9d3134bd8a02d479755036255111bf1b6",
+    "jobs": 6,
+    "invocation_form": "[$ramose](ABSOLUTE_NEUTRAL_SKILL_PATH) <prompt>",
+    "schedule": [
+      {
+        "prompt_id": "fox",
+        "repetition": 0,
+        "directory": "000-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "fox",
+        "repetition": 1,
+        "directory": "000-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "fox",
+        "repetition": 2,
+        "directory": "000-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "chest",
+        "repetition": 0,
+        "directory": "001-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "chest",
+        "repetition": 1,
+        "directory": "001-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "chest",
+        "repetition": 2,
+        "directory": "001-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "lighthouse",
+        "repetition": 0,
+        "directory": "002-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "lighthouse",
+        "repetition": 1,
+        "directory": "002-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "lighthouse",
+        "repetition": 2,
+        "directory": "002-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "potion",
+        "repetition": 0,
+        "directory": "003-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "potion",
+        "repetition": 1,
+        "directory": "003-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "potion",
+        "repetition": 2,
+        "directory": "003-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "sailboat",
+        "repetition": 0,
+        "directory": "004-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "sailboat",
+        "repetition": 1,
+        "directory": "004-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "sailboat",
+        "repetition": 2,
+        "directory": "004-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "fern",
+        "repetition": 0,
+        "directory": "005-00",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      },
+      {
+        "prompt_id": "fern",
+        "repetition": 1,
+        "directory": "005-01",
+        "launch_order": [
+          "candidate",
+          "baseline"
+        ]
+      },
+      {
+        "prompt_id": "fern",
+        "repetition": 2,
+        "directory": "005-02",
+        "launch_order": [
+          "baseline",
+          "candidate"
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "complete": true,
+    "scheduled_pairs": 18,
+    "received_pairs": 18,
+    "judge_errors": 0,
+    "protocol_errors": [],
+    "arms": {
+      "baseline": {
+        "successes": 18,
+        "reference_uses": 0,
+        "failures": 0,
+        "infrastructure_errors": 0,
+        "author_duration_s_total": 1647.8140968314838,
+        "author_duration_observations": 18,
+        "authoring_reused": 0,
+        "author_token_usage": {
+          "reasoning_output_tokens": 4340,
+          "cache_write_input_tokens": 0,
+          "input_tokens": 4518865,
+          "cached_input_tokens": 3953664,
+          "output_tokens": 60985
+        },
+        "token_usage_observations": 18,
+        "mean": 15.796296296296296,
+        "median": 15.75,
+        "range": [
+          14.166666666666668,
+          17.166666666666668
+        ],
+        "scores": [
+          15.25,
+          16.416666666666664,
+          16.166666666666664,
+          15.416666666666668,
+          17.166666666666664,
+          16.25,
+          15.666666666666666,
+          15.5,
+          14.166666666666668,
+          15.416666666666668,
+          15.0,
+          15.083333333333332,
+          17.166666666666668,
+          16.833333333333336,
+          15.25,
+          15.833333333333334,
+          15.833333333333332,
+          15.916666666666666
+        ]
+      },
+      "candidate": {
+        "successes": 18,
+        "reference_uses": 0,
+        "failures": 0,
+        "infrastructure_errors": 0,
+        "author_duration_s_total": 1608.2748372096103,
+        "author_duration_observations": 18,
+        "authoring_reused": 0,
+        "author_token_usage": {
+          "reasoning_output_tokens": 4484,
+          "cache_write_input_tokens": 0,
+          "input_tokens": 4611446,
+          "cached_input_tokens": 4052992,
+          "output_tokens": 59615
+        },
+        "token_usage_observations": 18,
+        "mean": 15.50925925925926,
+        "median": 15.541666666666668,
+        "range": [
+          13.333333333333332,
+          17.25
+        ],
+        "scores": [
+          16.583333333333332,
+          14.916666666666668,
+          16.583333333333336,
+          17.25,
+          16.25,
+          16.666666666666664,
+          13.416666666666668,
+          15.166666666666668,
+          13.333333333333332,
+          14.5,
+          15.75,
+          16.416666666666664,
+          16.0,
+          15,
+          16.833333333333336,
+          14.416666666666666,
+          15.333333333333334,
+          14.75
+        ]
+      }
+    },
+    "paired_delta_mean": -0.2870370370370368,
+    "paired_delta_ci95": [
+      -0.7870370370370371,
+      0.2129629629629629
+    ],
+    "paired_deltas": [
+      1.3333333333333321,
+      -1.4999999999999964,
+      0.4166666666666714,
+      1.8333333333333321,
+      -0.9166666666666643,
+      0.4166666666666643,
+      -2.2499999999999982,
+      -0.33333333333333215,
+      -0.8333333333333357,
+      -0.9166666666666679,
+      0.75,
+      1.3333333333333321,
+      -1.1666666666666679,
+      -1.8333333333333357,
+      1.5833333333333357,
+      -1.4166666666666679,
+      -0.4999999999999982,
+      -1.166666666666666
+    ],
+    "prompt_count": 6,
+    "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+    "fixed_suite_pair_ci95": [
+      -0.8564814814814814,
+      0.296296296296297
+    ],
+    "successful_pairs": 18,
+    "successful_pair_delta_mean": -0.2870370370370368,
+    "preference_votes": {
+      "baseline": 23,
+      "candidate": 13,
+      "tie": 0
+    },
+    "orientation_disagreements": 3
+  },
+  "per_prompt": {
+    "fox": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 320.4667851657141,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 340,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 771783,
+            "cached_input_tokens": 667392,
+            "output_tokens": 11313
+          },
+          "token_usage_observations": 3,
+          "mean": 15.944444444444443,
+          "median": 16.166666666666664,
+          "range": [
+            15.25,
+            16.416666666666664
+          ],
+          "scores": [
+            15.25,
+            16.416666666666664,
+            16.166666666666664
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 284.79280133266,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 177,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 646158,
+            "cached_input_tokens": 553216,
+            "output_tokens": 10728
+          },
+          "token_usage_observations": 3,
+          "mean": 16.02777777777778,
+          "median": 16.583333333333332,
+          "range": [
+            14.916666666666668,
+            16.583333333333336
+          ],
+          "scores": [
+            16.583333333333332,
+            14.916666666666668,
+            16.583333333333336
+          ]
+        }
+      },
+      "paired_delta_mean": 0.0833333333333357,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        1.3333333333333321,
+        -1.4999999999999964,
+        0.4166666666666714
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -1.4999999999999964,
+        1.3333333333333321
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": 0.0833333333333357,
+      "preference_votes": {
+        "baseline": 3,
+        "candidate": 3,
+        "tie": 0
+      },
+      "orientation_disagreements": 1
+    },
+    "chest": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 291.8163743750192,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 596,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 738422,
+            "cached_input_tokens": 653696,
+            "output_tokens": 10112
+          },
+          "token_usage_observations": 3,
+          "mean": 16.27777777777778,
+          "median": 16.25,
+          "range": [
+            15.416666666666668,
+            17.166666666666664
+          ],
+          "scores": [
+            15.416666666666668,
+            17.166666666666664,
+            16.25
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 257.208712418098,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 663,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 728338,
+            "cached_input_tokens": 639232,
+            "output_tokens": 9848
+          },
+          "token_usage_observations": 3,
+          "mean": 16.72222222222222,
+          "median": 16.666666666666664,
+          "range": [
+            16.25,
+            17.25
+          ],
+          "scores": [
+            17.25,
+            16.25,
+            16.666666666666664
+          ]
+        }
+      },
+      "paired_delta_mean": 0.44444444444444403,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        1.8333333333333321,
+        -0.9166666666666643,
+        0.4166666666666643
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -0.9166666666666643,
+        1.8333333333333321
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": 0.44444444444444403,
+      "preference_votes": {
+        "baseline": 3,
+        "candidate": 3,
+        "tie": 0
+      },
+      "orientation_disagreements": 1
+    },
+    "lighthouse": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 309.8032758748159,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 483,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 865847,
+            "cached_input_tokens": 760320,
+            "output_tokens": 12801
+          },
+          "token_usage_observations": 3,
+          "mean": 15.11111111111111,
+          "median": 15.5,
+          "range": [
+            14.166666666666668,
+            15.666666666666666
+          ],
+          "scores": [
+            15.666666666666666,
+            15.5,
+            14.166666666666668
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 348.21316887577996,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 691,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 986279,
+            "cached_input_tokens": 879488,
+            "output_tokens": 12831
+          },
+          "token_usage_observations": 3,
+          "mean": 13.972222222222223,
+          "median": 13.416666666666668,
+          "range": [
+            13.333333333333332,
+            15.166666666666668
+          ],
+          "scores": [
+            13.416666666666668,
+            15.166666666666668,
+            13.333333333333332
+          ]
+        }
+      },
+      "paired_delta_mean": -1.1388888888888886,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        -2.2499999999999982,
+        -0.33333333333333215,
+        -0.8333333333333357
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -2.2499999999999982,
+        -0.33333333333333215
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": -1.1388888888888886,
+      "preference_votes": {
+        "baseline": 6,
+        "candidate": 0,
+        "tie": 0
+      },
+      "orientation_disagreements": 0
+    },
+    "potion": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 144.4870367499534,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 192,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 501253,
+            "cached_input_tokens": 429440,
+            "output_tokens": 5518
+          },
+          "token_usage_observations": 3,
+          "mean": 15.166666666666666,
+          "median": 15.083333333333332,
+          "range": [
+            15.0,
+            15.416666666666668
+          ],
+          "scores": [
+            15.416666666666668,
+            15.0,
+            15.083333333333332
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 152.16866095806472,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 191,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 490425,
+            "cached_input_tokens": 418560,
+            "output_tokens": 5462
+          },
+          "token_usage_observations": 3,
+          "mean": 15.555555555555555,
+          "median": 15.75,
+          "range": [
+            14.5,
+            16.416666666666664
+          ],
+          "scores": [
+            14.5,
+            15.75,
+            16.416666666666664
+          ]
+        }
+      },
+      "paired_delta_mean": 0.3888888888888881,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        -0.9166666666666679,
+        0.75,
+        1.3333333333333321
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -0.9166666666666679,
+        1.3333333333333321
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": 0.3888888888888881,
+      "preference_votes": {
+        "baseline": 2,
+        "candidate": 4,
+        "tie": 0
+      },
+      "orientation_disagreements": 0
+    },
+    "sailboat": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 311.48124012490734,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 537,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 805705,
+            "cached_input_tokens": 699520,
+            "output_tokens": 11628
+          },
+          "token_usage_observations": 3,
+          "mean": 16.416666666666668,
+          "median": 16.833333333333336,
+          "range": [
+            15.25,
+            17.166666666666668
+          ],
+          "scores": [
+            17.166666666666668,
+            16.833333333333336,
+            15.25
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 318.84669795795344,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 476,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 926724,
+            "cached_input_tokens": 812416,
+            "output_tokens": 12132
+          },
+          "token_usage_observations": 3,
+          "mean": 15.944444444444445,
+          "median": 16.0,
+          "range": [
+            15,
+            16.833333333333336
+          ],
+          "scores": [
+            16.0,
+            15,
+            16.833333333333336
+          ]
+        }
+      },
+      "paired_delta_mean": -0.4722222222222226,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        -1.1666666666666679,
+        -1.8333333333333357,
+        1.5833333333333357
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -1.8333333333333357,
+        1.5833333333333357
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": -0.4722222222222226,
+      "preference_votes": {
+        "baseline": 4,
+        "candidate": 2,
+        "tie": 0
+      },
+      "orientation_disagreements": 0
+    },
+    "fern": {
+      "complete": true,
+      "scheduled_pairs": 3,
+      "received_pairs": 3,
+      "judge_errors": 0,
+      "protocol_errors": [],
+      "arms": {
+        "baseline": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 269.7593845410738,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 2192,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 835855,
+            "cached_input_tokens": 743296,
+            "output_tokens": 9613
+          },
+          "token_usage_observations": 3,
+          "mean": 15.86111111111111,
+          "median": 15.833333333333334,
+          "range": [
+            15.833333333333332,
+            15.916666666666666
+          ],
+          "scores": [
+            15.833333333333334,
+            15.833333333333332,
+            15.916666666666666
+          ]
+        },
+        "candidate": {
+          "successes": 3,
+          "reference_uses": 0,
+          "failures": 0,
+          "infrastructure_errors": 0,
+          "author_duration_s_total": 247.04479566705413,
+          "author_duration_observations": 3,
+          "authoring_reused": 0,
+          "author_token_usage": {
+            "reasoning_output_tokens": 2286,
+            "cache_write_input_tokens": 0,
+            "input_tokens": 833522,
+            "cached_input_tokens": 750080,
+            "output_tokens": 8614
+          },
+          "token_usage_observations": 3,
+          "mean": 14.833333333333334,
+          "median": 14.75,
+          "range": [
+            14.416666666666666,
+            15.333333333333334
+          ],
+          "scores": [
+            14.416666666666666,
+            15.333333333333334,
+            14.75
+          ]
+        }
+      },
+      "paired_delta_mean": -1.0277777777777775,
+      "paired_delta_ci95": null,
+      "paired_deltas": [
+        -1.4166666666666679,
+        -0.4999999999999982,
+        -1.166666666666666
+      ],
+      "prompt_count": 1,
+      "uncertainty": "percentile bootstrap of prompt means; prompt sample is curated, not a random population sample",
+      "fixed_suite_pair_ci95": [
+        -1.4166666666666679,
+        -0.4999999999999982
+      ],
+      "successful_pairs": 3,
+      "successful_pair_delta_mean": -1.0277777777777775,
+      "preference_votes": {
+        "baseline": 5,
+        "candidate": 1,
+        "tie": 0
+      },
+      "orientation_disagreements": 1
+    }
+  },
+  "resources": {
+    "groups": {
+      "author": {
+        "calls": 36,
+        "duration_s_known": 3256.088934041094,
+        "duration_missing": 0,
+        "usage_observations": 36,
+        "usage_missing": 0,
+        "tokens_known": {
+          "input_tokens": 9130311,
+          "cached_input_tokens": 8006656,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 120600,
+          "reasoning_output_tokens": 8824
+        }
+      },
+      "judge": {
+        "calls": 36,
+        "duration_s_known": 446.4547754575033,
+        "duration_missing": 0,
+        "usage_observations": 36,
+        "usage_missing": 0,
+        "tokens_known": {
+          "input_tokens": 670646,
+          "cached_input_tokens": 266496,
+          "cache_write_input_tokens": 0,
+          "output_tokens": 8739,
+          "reasoning_output_tokens": 3030
+        }
+      },
+      "reused_author": {
+        "calls": 0,
+        "duration_s_known": 0.0,
+        "duration_missing": 0,
+        "usage_observations": 0,
+        "usage_missing": 0,
+        "tokens_known": {}
+      }
+    },
+    "cost_usd": null,
+    "accounting": "Known process receipts include archived attempts and judge retries. Interrupted calls without receipts are unobserved. Reused author costs are historical, not spent again. Durations sum process time, not wall time."
+  },
+  "report_fingerprint": "2a7b5d72e8f6b7d947cd10644f359dfe3e2c8030265c3ca9697ac5f6ee76fcb9",
+  "fingerprint": "cba5148f12c998d56f037fd4c4573780576f44352c897e98288153fa49f55a66"
+}

@@ -23,6 +23,7 @@ const CACHE_DIR: &str = ".ramose/cache";
 
 #[derive(Default)]
 pub struct Options {
+    pub parameters: ramose_eval::Parameters,
     /// A target is built when any glob matches it. Empty builds every target.
     pub only: Vec<Selector>,
     pub allow_warnings: bool,
@@ -128,6 +129,7 @@ fn cache_key(project: &Project, job: &TargetJob, backend: Backend) -> String {
     buf.extend_from_slice(format!("{backend:?}").as_bytes());
     buf.push(0);
     buf.extend_from_slice(job.key().as_bytes());
+    buf.extend_from_slice(format!("{:?}", job.parameters).as_bytes());
     hex(&buf)
 }
 
@@ -478,7 +480,10 @@ fn resolve_backend(choice: BackendChoice, gpu: bool) -> Option<Backend> {
 }
 
 pub fn build(project: &Project, opts: &Options) -> u8 {
-    let plan = plan(project);
+    let mut plan = plan(project);
+    for job in &mut plan.jobs {
+        job.parameters = opts.parameters.clone();
+    }
     let choice = opts.backend.unwrap_or(project.manifest.backend);
     let Some(backend) = resolve_backend(choice, ramose_render::gpu_available()) else {
         let mut diagnostics = plan.diagnostics;

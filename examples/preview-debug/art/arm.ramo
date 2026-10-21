@@ -1,0 +1,31 @@
+# The orange hand touches the blue arm throughout the swing. Geometry mode
+# reveals the joint, and cyan guides cross its center.
+@target arm.png 128x128 bg:none
+@target swing.gif 128x128 bg:#f4f1ea fps:8 dur:2s clip:swing
+
+param view:one_of(normal geometry) guides:false
+
+palette paint
+  color arm #487caa
+  color hand #e5a45a
+  color ink #203449
+  color debug #dd3e98
+  color guide #16a6b3
+
+let attachment = 0
+let edge = if view == geometry then paint.debug else paint.ink
+
+group arm at:64,64
+  rect 48,18 at:0,0 fill:paint.arm stroke:edge,2 name:beam
+  circle 10 at:34+attachment,0 fill:paint.hand stroke:edge,2 name:hand
+  if view == geometry
+    circle 3 at:24,0 fill:paint.debug name:joint
+  if guides
+    curve -28,0 48,0 stroke:paint.guide,1 name:horizontal
+    curve 24,-18 24,18 stroke:paint.guide,1 name:vertical
+
+anim swing dur:2s loop
+  .arm rot:key(-30 30 -30)
+
+if clip == swing
+  play swing
