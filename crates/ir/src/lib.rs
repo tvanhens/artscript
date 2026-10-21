@@ -83,7 +83,8 @@ pub struct Scene {
 
 #[derive(Clone, Debug)]
 pub struct Node {
-    /// Stable dotted path, e.g. `hero.body.arm_r`. Unnamed nodes get `<verb><index>`.
+    /// Stable dotted path, e.g. `hero.body.arm_r`. An unnamed node gets `verb~N`, its count among
+    /// the draws with that verb in its block from 1, as in `body.eye.0.circle~1`.
     pub path: String,
     /// Source location `file:line:col` for diagnostics and `explain`.
     pub origin: String,
