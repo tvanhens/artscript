@@ -3415,6 +3415,24 @@ fn a_seeded_instance_draws_the_same_pixels_after_its_def_moves_to_another_librar
 }
 
 #[test]
+fn a_seeded_instance_draws_new_detail_after_its_def_is_renamed() {
+    let draw = |name: &str| {
+        let lib = BLOT_LIB.replace("def blot", &format!("def {name}"));
+        let src = format!(
+            "@target t.png 48x48 bg:#ffffff\nuse d {{ {name} }}\n\
+             {name} at:24,24 seed:7 name:a\n  fx grain .3\n"
+        );
+        let ev = run_with(&src, &[("lib/d.ramo", &lib)]);
+        assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+        crop(&ev.scene.unwrap(), 24, 24)
+    };
+    assert!(
+        draw("blot") != draw("stone"),
+        "blot seed:7 and stone seed:7 drew the same detail from the same body"
+    );
+}
+
+#[test]
 fn a_seeded_instance_seeds_slot_content_from_the_seed_in_any_file() {
     let fill = |indent: &str| format!("{indent}top:\n{indent}  circle 4 at:rand(0 40),0 name:c\n");
     let wrap = format!(
