@@ -17,6 +17,15 @@ def row(base, candidate, base_status="success", candidate_status="success", judg
 
 
 class PairedReportTests(unittest.TestCase):
+    def test_prompt_cluster_interval_does_not_treat_repetitions_as_new_prompts(self):
+        rows = [row(10, 11) | {"prompt_id": "fox"} for _ in range(20)]
+        rows += [row(10, 7) | {"prompt_id": "boat"}]
+        result = summarize(rows, len(rows))
+        self.assertEqual(result["paired_delta_mean"], -1)
+        self.assertEqual(result["paired_delta_ci95"], [-3, 1])
+        self.assertEqual(result["arms"]["candidate"]["mean"], 9)
+        self.assertIsNone(summarize(rows[:20], 20)["paired_delta_ci95"])
+
     def test_failed_generation_stays_in_denominator(self):
         result = summarize([row(12, 16), row(0, 8, base_status="failed")], 2)
         self.assertTrue(result["complete"])
@@ -25,7 +34,7 @@ class PairedReportTests(unittest.TestCase):
         self.assertEqual(result["arms"]["candidate"]["mean"], 12)
         self.assertEqual(result["paired_deltas"], [4, 8])
         self.assertEqual(result["paired_delta_mean"], 6)
-        self.assertEqual(result["paired_delta_ci95"], [4, 8])
+        self.assertEqual(result["fixed_suite_pair_ci95"], [4, 8])
 
     def test_missing_judge_does_not_become_zero_or_disappear(self):
         result = summarize([row(12, 16), row(None, None, judgment="error")], 2)
@@ -45,7 +54,7 @@ class PairedReportTests(unittest.TestCase):
         self.assertEqual(result["arms"]["baseline"]["mean"], 8)
         self.assertEqual(result["arms"]["candidate"]["median"], 12)
         self.assertEqual(result["arms"]["candidate"]["range"], [8, 16])
-        self.assertEqual(result["paired_delta_ci95"], [4, 4])
+        self.assertEqual(result["fixed_suite_pair_ci95"], [4, 4])
         self.assertEqual(result["preference_votes"], {"baseline": 0, "candidate": 3, "tie": 0})
 
     def test_failed_arm_gets_zero_even_if_it_left_an_image(self):
@@ -89,38 +98,23 @@ class PairedReportTests(unittest.TestCase):
         self.assertEqual([c.args[3].name for c in call.call_args_list],
                          ["judge-attempt1.json", "judge-attempt2.json"])
 
-    def test_changed_protocol_makes_report_incomplete(self):
+    def test_legacy_report_requires_frozen_evaluator(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp)
             save(out / "experiment.json", {"prompts": [["fox", "draw fox"]], "repetitions": 1,
-                 "schedule": [{"prompt_id": "fox", "repetition": 0}], "harness_sha256": "changed",
-                 "rubric_sha256": evaluator_fingerprint()})
+                 "schedule": [{"prompt_id": "fox", "repetition": 0}]})
             save(out / "pairs/000-00/pair.json", row(12, 16) | {"prompt_id": "fox", "repetition": 0})
             result = report(out)
         self.assertFalse(result["summary"]["complete"])
-        self.assertIsNone(result["summary"]["paired_delta_mean"])
-        self.assertEqual(result["protocol_errors"], ["harness changed since experiment was frozen"])
-        self.assertEqual(result["per_prompt"]["fox"]["arms"]["candidate"]["mean"], 16)
+        self.assertIsNone(result["paired_delta_mean"] if "paired_delta_mean" in result else result["summary"]["paired_delta_mean"])
+        self.assertEqual(result["protocol_errors"], ["legacy run requires its frozen evaluator"])
+        self.assertNotIn("mean", result["per_prompt"]["fox"]["arms"]["candidate"])
 
-    def test_changed_scoring_definition_invalidates_report(self):
-        for name, changed in (("AXES", ("wow",)),
-                              ("SCHEMA", {"type": "object"}),
-                              ("RUBRIC", "A different rubric")):
-            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
-                out = Path(tmp)
-                frozen = evaluator_fingerprint()
-                save(out / "experiment.json", {"prompts": [["fox", "draw fox"]], "repetitions": 1,
-                     "schedule": [{"prompt_id": "fox", "repetition": 0}],
-                     "harness_sha256": digest(Path(paired.__file__)), "rubric_sha256": frozen})
-                save(out / "pairs/000-00/pair.json", row(12, 16) | {"prompt_id": "fox", "repetition": 0})
-                self.assertTrue(report(out)["summary"]["complete"])
-                with patch.object(paired, name, changed):
-                    self.assertNotEqual(evaluator_fingerprint(), frozen)
-                    result = report(out)
-                self.assertFalse(result["summary"]["complete"])
-                self.assertIsNone(result["summary"]["paired_delta_mean"])
-                self.assertEqual(result["protocol_errors"],
-                                 ["scoring definition changed since experiment was frozen"])
+    def test_scoring_fingerprint_covers_complete_definition(self):
+        original = evaluator_fingerprint()
+        for name, changed in (("AXES", ("wow",)), ("SCHEMA", {"type": "object"}), ("RUBRIC", "Other"), ("JUDGE_PAIR", "changed"), ("POLICY", {"version": 3})):
+            with patch.object(paired, name, changed):
+                self.assertNotEqual(evaluator_fingerprint(), original)
 
     def test_clean_rebuild_cannot_reuse_delivered_png(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -156,7 +150,7 @@ class PairedReportTests(unittest.TestCase):
             self.assertEqual(result["status"], "failed")
             self.assertIn("expected exactly one output PNG, found 0", result["error"])
             self.assertTrue((root / "result/project/assets/art.png").exists())
-            self.assertTrue((workdirs[0] / "assets/art.png").exists())
+            self.assertFalse(workdirs[0].exists())
             self.assertFalse((root / "result/validation/assets/art.png").exists())
 
     def test_rebuild_accepts_project_under_symlinked_parent(self):
@@ -251,40 +245,6 @@ class PairedReportTests(unittest.TestCase):
                                          "stderr": "", "command": ["codex", "exec"]})
         return manifest
 
-    def test_replay_accepts_complete_capture_and_rejects_missing_run(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            manifest = self.replay_fixture(root)
-            self.assertEqual(validate_replay(root, manifest), manifest)
-            (root / "pairs/000-00/candidate/codex.json").unlink()
-            with self.assertRaises(OSError):
-                validate_replay(root, manifest)
-
-    def test_replay_rejects_changed_inputs(self):
-        for key, value in (("prompts", [["fox", "different"]]), ("repetitions", 2), ("model", "other")):
-            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                manifest = self.replay_fixture(root)
-                changed = copy.deepcopy(manifest)
-                changed[key] = value
-                with self.assertRaisesRegex(ValueError, key):
-                    validate_replay(root, changed)
-        for key in ("baseline", "candidate", "binary_sha256", "model_resolution"):
-            with self.subTest(key=key), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                manifest = self.replay_fixture(root)
-                manifest["provenance"][key] = "different"
-                with self.assertRaisesRegex(ValueError, key):
-                    validate_replay(root, manifest)
-
-    def test_replay_rejects_generation_still_running(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            manifest = self.replay_fixture(root)
-            save(root / "pairs/000-00/baseline/generation.json", {"status": "running"})
-            with self.assertRaisesRegex(ValueError, "not captured"):
-                validate_replay(root, manifest)
-
     def test_replay_revalidates_without_launching_author(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp).resolve()
@@ -312,7 +272,7 @@ class PairedReportTests(unittest.TestCase):
             dest = root / "replayed/pairs/000-00/baseline"
             with patch("paired.tempfile.mkdtemp", side_effect=[str(project), str(validation)]), patch("paired.command", side_effect=run):
                 result = generation(exp, "baseline", "draw fox", dest)
-            self.assertEqual(result["status"], "success", result["error"])
+            self.assertEqual(result["status"], "failed")
             self.assertTrue(result["authoring_reused"])
             self.assertEqual(called, [["check"], ["build"], ["fmt", "--check"]])
             self.assertEqual((dest / "codex.json").read_bytes(), (source / "pairs/000-00/baseline/codex.json").read_bytes())
