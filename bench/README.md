@@ -116,6 +116,24 @@ Candidate quality averaged 15.51 versus 15.80 out of 20. The delivery-inclusive 
 
 None of the 18 candidate command traces invoked `preview`. This measures general still-art authoring with the updated guidance, not preview-assisted repair effectiveness. Human calibration is absent. The earlier interrupted five-repetition run is excluded. The compact record retains input hashes, protocol settings, per-prompt results, resource counts, and the verified bundle fingerprint; the full bundle remains local at `bench/out/paired/issue-282-main-vs-preview-r3-j6/`.
 
+## Preview self-review workflow
+
+[The self-review result record](results/preview-self-review.json) preserves five workflow screens and a fresh-prompt confirmation against the skill shipped in PR #283. Each screen used six prompts and one repetition. Question-led review ranked highest among the first four screens and was confirmed on six new prompts with five repetitions each. A later screen deferred CLI documentation until review and did not improve the result.
+
+| Workflow screen | Candidate minus baseline, out of 20 |
+| --- | ---: |
+| Late focal crop | −0.35 |
+| Question-led review | +0.07 |
+| Early structural preview | −0.67 |
+| Explicit before/after revision | −0.86 |
+| Deferred CLI documentation | −0.86 |
+
+The retained question-led workflow asks for one concrete visual question, a relevant preview, and a repair only when warranted at the intended display size. This replaces optional diagnostic use with required self-review. It is retained to satisfy preview adoption, not as an established quality improvement.
+
+In confirmation, candidate quality averaged 15.80 versus 15.63 out of 20. The difference was +0.17, with a prompt-cluster 95% interval of [−0.41, +0.65]. This failed the predeclared gate of at least +0.30 with a lower interval bound above zero. All 30 candidates invoked preview and retained valid PNGs, versus 4/30 baselines. Both arms delivered 30/30 valid images. Across all screens and confirmation, every candidate invoked preview, and there were no delivery, provider, judge, or protocol failures.
+
+These runs used fresh authors in both arms, the same release binary, six workers, and requested `gpt-6.1-sol` with medium effort for authors and judges. They measure whole-workflow effects. They do not isolate preview's causal effect, prove viewing, establish an optimal workflow, or supply human calibration. The next useful experiment is repair of known visual defects, with blinded human judgments. The exact tested patches, input hashes, resource counts, prompt-level estimates, and verified bundle fingerprints are in the record. Full sealed bundles remain local under `bench/out/self-review/`. The confirmation bundle is `bench/out/self-review/confirmation/`; the blinded human packet is `bench/out/self-review/human-confirmation/public/`.
+
 ## Historical hillclimb
 
 [The compact result record](results/hillclimb-2026-10.json) preserves all eleven comparisons, counts and original and retrospective intervals. The full experiment archive remains in the recorded Git commit, rather than in the maintained benchmark tree.
