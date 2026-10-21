@@ -5420,6 +5420,24 @@ fn extra_positional_items_on_a_builtin_verb_are_e0321() {
 }
 
 #[test]
+fn z_is_an_error_whose_fix_names_order() {
+    for (src, line) in [
+        ("circle 6 at:32,32 z:front\n", 2),
+        ("def dot\n  circle 6\ndot z:behind\n", 4),
+        ("def dot r:6\n  circle r\ndef big = dot r:9\nbig z:2\n", 5),
+        ("def dot r:6\n  circle r\ndef big = dot z:2\nbig\n", 4),
+    ] {
+        let ev = run_with(&format!("@target t.png 64x64\n{src}"), &[]);
+        let d = diag(&ev, "E0321");
+        assert_eq!(d.span.line, line, "{src}: {d}");
+        assert!(d.message.contains("`z`"), "{src}: {d}");
+        assert!(d.fix.as_deref().is_some_and(|f| f.contains("`order:`")), "{src}: {d}");
+    }
+    let ev = run_with("@target t.png 64x64\ncircle 6 order:front\ndef dot\n  circle 6\ndot order:-1\n", &[]);
+    assert!(ev.diagnostics.iter().all(|d| !d.code.starts_with('E')), "{}", show(&ev.diagnostics));
+}
+
+#[test]
 fn an_unknown_key_on_a_builtin_verb_is_e0321() {
     let ev = run_with(
         "@target t.png 64x64\ncircle 6 at:32,32 fil:#7fd4a8\nrect 10,10 at:10,10 strok:#7fd4a8,2 nmae:box\n",
