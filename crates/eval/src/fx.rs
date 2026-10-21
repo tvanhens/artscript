@@ -10,7 +10,7 @@ use ramose_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
 use crate::brush::Slot;
 use crate::color::{self, DEFAULT_HUE_STEP, Rgba};
-use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, unknown_key};
+use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, numbers, unknown_key};
 use crate::identity::{self, Key};
 use crate::place::Place;
 use crate::scope::{FinishDef, Module};
@@ -365,7 +365,14 @@ impl Evaluator<'_> {
             "merge" => {
                 let inputs = args.iter().map(|e| input_of(e, self)).collect::<R<Vec<_>>>()?;
                 let alphas = match a.get("a") {
-                    Some(v) => v.items().map(|xs| xs.iter().filter_map(Value::num).map(|x| x as f32).collect()).unwrap_or_else(|| vec![v.num().unwrap_or(1.0) as f32]),
+                    Some(v) => numbers(v)
+                        .ok_or_else(|| {
+                            fail("E0320", format!("`a:` takes a number or a list of numbers, got {}", v.kind()))
+                                .fix("write `a:.4,1`")
+                        })?
+                        .into_iter()
+                        .map(|x| x as f32)
+                        .collect(),
                     None => vec![1.0; inputs.len()],
                 };
                 EffectOp::Merge { inputs, alphas }

@@ -51,6 +51,8 @@ fn phrase(v: &Value) -> String {
         Value::Ref(_) => "a node reference".into(),
         Value::Vec2(..) => "a vector".into(),
         Value::Size(..) => "a size".into(),
+        Value::Vec3(..) => "a three-component vector".into(),
+        Value::Size3(..) => "a three-component size".into(),
         v if warp::stages_of(v).is_some() => "a warp".into(),
         other => other.kind().to_string(),
     }

@@ -100,6 +100,9 @@ fn fmt_tight_tuple_is_canonical() {
             "let v = if (if a then b else c) then d else e\n",
             "let v = if (if a then b else c) then d else e\n",
         ),
+        ("rect 40x20x10\n", "rect 40x20x10\n"),
+        ("rect 40 x 20\n", "rect 40 x 20\n"),
+        ("box 100%x50%x8 at:14,0,8\n", "box 100%x50%x8 at:14,0,8\n"),
     ];
     for (src, expected) in cases {
         let once = format_source(src).unwrap_or_else(|errs| panic!("{src}\n{errs:?}"));

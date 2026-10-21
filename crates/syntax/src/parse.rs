@@ -1834,9 +1834,13 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Time(n)
             }
-            Tok::Size(a, b) => {
+            Tok::Size(a, b, depth) => {
                 self.bump();
-                Expr::Size(Box::new(size_part(a)), Box::new(size_part(b)))
+                Expr::Size {
+                    w: Box::new(size_part(a)),
+                    h: Box::new(size_part(b)),
+                    depth: depth.map(|d| Box::new(size_part(d))),
+                }
             }
             Tok::Hex(h) => {
                 self.bump();

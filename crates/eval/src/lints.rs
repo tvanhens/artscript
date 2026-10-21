@@ -32,7 +32,12 @@ fn diag(level: LintLevel, code: &str, span: Span, msg: String) -> Option<Diagnos
 pub(crate) fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
     f(e);
     match e {
-        Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
+        Expr::Size { w, h, depth } => {
+            walk_expr(w, f);
+            walk_expr(h, f);
+            depth.iter().for_each(|d| walk_expr(d, f));
+        }
+        Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
             walk_expr(a, f);
             walk_expr(b, f);
         }
@@ -479,7 +484,12 @@ impl WordLint<'_> {
                 inner.extend(index.iter().cloned());
                 self.expr(body, span, &inner);
             }
-            Expr::Size(a, b) | Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
+            Expr::Size { w, h, depth } => {
+                self.expr(w, span, bound);
+                self.expr(h, span, bound);
+                if let Some(d) = depth { self.expr(d, span, bound); }
+            }
+            Expr::Range(a, b) | Expr::Binary(_, a, b) | Expr::Index(a, b) => {
                 self.expr(a, span, bound);
                 self.expr(b, span, bound);
             }

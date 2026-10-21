@@ -34,7 +34,7 @@ fn literal(value: &Expr) -> bool {
     match value {
         Expr::Num(n) | Expr::Percent(n) | Expr::Angle(n) | Expr::Time(n) => n.is_finite(),
         Expr::Hex(_) | Expr::Str(_) | Expr::Ident(_) => true,
-        Expr::Size(a, b) => literal(a) && literal(b),
+        Expr::Size { w, h, depth } => literal(w) && literal(h) && depth.as_deref().is_none_or(literal),
         Expr::Tuple(xs) | Expr::List(xs) => xs.iter().all(literal),
         Expr::Unary(UnOp::Neg, value) => {
             matches!(

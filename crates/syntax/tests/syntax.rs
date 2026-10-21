@@ -168,6 +168,21 @@ fn mvp_targets_reject_reserved_alias() {
 }
 
 #[test]
+fn three_component_literals_parse() {
+    let file = must_parse("rect 40x20x10 at:14,0,8\n");
+    match node(&file) {
+        SceneKind::Draw(Draw { args, named, .. }) => {
+            assert_eq!(
+                args,
+                &vec![Expr::Size { w: Box::new(num(40.0)), h: Box::new(num(20.0)), depth: Some(Box::new(num(10.0))) }]
+            );
+            assert_eq!(named[0].value, Expr::Tuple(vec![num(14.0), num(0.0), num(8.0)]));
+        }
+        other => panic!("not a draw: {other:?}"),
+    }
+}
+
+#[test]
 fn directive_target_matrix() {
     let src = "@artboard 256x256\n@target chars/hero.png scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n";
     let file = must_parse(src);
@@ -175,7 +190,7 @@ fn directive_target_matrix() {
     assert_eq!((art.name.as_str(), art.path.as_deref()), ("artboard", None));
     assert_eq!(
         art.args,
-        vec![Expr::Size(Box::new(num(256.0)), Box::new(num(256.0)))]
+        vec![Expr::Size { w: Box::new(num(256.0)), h: Box::new(num(256.0)), depth: None }]
     );
     let d = &file.directives[1];
     assert_eq!(d.name, "target");
@@ -432,10 +447,11 @@ fn calls_members_and_colors() {
             assert_eq!(verb, "rect");
             assert_eq!(
                 args,
-                &vec![Expr::Size(
-                    Box::new(Expr::Percent(1.0)),
-                    Box::new(Expr::Percent(60.0 / 100.0))
-                )]
+                &vec![Expr::Size {
+                    w: Box::new(Expr::Percent(1.0)),
+                    h: Box::new(Expr::Percent(60.0 / 100.0)),
+                    depth: None,
+                }]
             );
             assert_eq!(named[0].key, "at");
             assert_eq!(named[0].span, Span { line: 1, col: 15 });

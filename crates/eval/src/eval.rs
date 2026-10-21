@@ -3231,6 +3231,9 @@ impl<'a> Evaluator<'a> {
         );
         let first = a.pos.first();
         let need = |what: &str, example: &str| {
+            if first.is_some_and(|v| v.triple().is_some()) {
+                return Value::three_in_2d(&format!("`{verb}`"), example);
+            }
             fail("E0320", format!("`{verb}` needs {what}")).fix(format!("write `{example}`"))
         };
         Ok(match verb {
@@ -3727,7 +3730,7 @@ impl<'a> Evaluator<'a> {
     fn parameter_literal(&mut self, value: &Expr, scope: &Scope) -> R<Value> {
         match value {
             Expr::Ident(word) if !matches!(word.as_str(), "true" | "false" | "none") => Ok(Value::Ident(word.clone())),
-            Expr::Tuple(values) => Ok(Value::tuple(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<_>>()?)),
+            Expr::Tuple(values) => Value::tuple(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<_>>()?),
             Expr::List(values) => Ok(Value::List(Rc::new(values.iter().map(|v| self.parameter_literal(v, scope)).collect::<R<Vec<_>>>()?))),
             _ => self.expr(value, scope),
         }
@@ -5215,11 +5218,13 @@ impl<'a> Evaluator<'a> {
             Expr::Percent(p) => Value::Percent(*p),
             Expr::Angle(d) => Value::Num(*d),
             Expr::Time(n) => Value::Num(*n),
-            Expr::Size(w, h) => {
+            Expr::Size { w, h, depth: d } => {
                 let (w, h) = (self.expr(w, sc)?, self.expr(h, sc)?);
-                match (w.coord(), h.coord()) {
-                    (Some(a), Some(b)) => Value::Size(a, b),
-                    _ => return Err(fail("E0320", "a size is two numbers or percents")),
+                let d = d.as_ref().map(|d| self.expr(d, sc)).transpose()?;
+                match (w.coord(), h.coord(), d.as_ref().map(Value::coord)) {
+                    (Some(a), Some(b), None) => Value::Size(a, b),
+                    (Some(a), Some(b), Some(Some(d))) => Value::size3(a, b, d)?,
+                    _ => return Err(fail("E0320", "a size is two or three numbers or percents")),
                 }
             }
             Expr::Hex(h) => Value::Color(Col::plain(
@@ -5260,7 +5265,7 @@ impl<'a> Evaluator<'a> {
                     self.member(&b, &seg, sc)?
                 }
             },
-            Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?),
+            Expr::Tuple(xs) => Value::tuple(xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?)?,
             Expr::List(xs) => Value::List(Rc::new(
                 xs.iter().map(|x| self.expr(x, sc)).collect::<R<_>>()?,
             )),
@@ -5382,6 +5387,9 @@ impl<'a> Evaluator<'a> {
                     (Some(x), Some(y), _, _) => (x - y).abs() <= tol,
                     (_, _, Some(p), Some(q)) => {
                         (p.0 - q.0).abs() <= tol && (p.1 - q.1).abs() <= tol
+                    }
+                    _ if let (Some(p), Some(q)) = (a.vec3(), b.vec3()) => {
+                        (p.0 - q.0).abs() <= tol && (p.1 - q.1).abs() <= tol && (p.2 - q.2).abs() <= tol
                     }
                     _ => {
                         return Err(fail(
@@ -5513,6 +5521,23 @@ impl<'a> Evaluator<'a> {
                         return Err(missing(
                             "a vector",
                             vec!["x".into(), "y".into(), "0".into(), "1".into()],
+                        ));
+                    }
+                };
+                match c {
+                    Coord::Num(v) => Value::Num(v),
+                    Coord::Pct(p) => Value::Percent(p),
+                }
+            }
+            Value::Vec3(x, y, z) | Value::Size3(x, y, z) => {
+                let c = match seg {
+                    "x" | "w" | "0" => *x,
+                    "y" | "h" | "1" => *y,
+                    "z" | "2" => Coord::Num(*z),
+                    _ => {
+                        return Err(missing(
+                            "a three-component vector",
+                            vec!["x".into(), "y".into(), "z".into(), "0".into(), "1".into(), "2".into()],
                         ));
                     }
                 };
@@ -6262,12 +6287,13 @@ fn mask_below(f: &ramose_ir::Field, t: f64) -> Value {
     Value::FieldMask(Rc::new(complement), 1.0 - t)
 }
 
-fn numbers(v: &Value) -> Option<Vec<f64>> {
+pub(crate) fn numbers(v: &Value) -> Option<Vec<f64>> {
     match v {
         Value::Num(n) => Some(vec![*n]),
-        _ => match v.vec2() {
-            Some((a, b)) => Some(vec![a, b]),
-            None => v.items()?.iter().map(Value::num).collect(),
+        _ => match (v.vec2(), v.vec3()) {
+            (Some((a, b)), _) => Some(vec![a, b]),
+            (_, Some((a, b, c))) => Some(vec![a, b, c]),
+            _ => v.items()?.iter().map(Value::num).collect(),
         },
     }
 }
