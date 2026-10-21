@@ -1260,7 +1260,11 @@ impl<'a> Evaluator<'a> {
                         module.lost.borrow_mut().insert(p.key.clone());
                         continue;
                     }
-                    if module.global(&p.key).is_some() && !module.parameters.borrow().contains(&p.key) {
+                    if (module.global(&p.key).is_some() && !module.parameters.borrow().contains(&p.key))
+                        || module.styles.borrow().contains_key(&p.key)
+                        || module.finishes.borrow().contains_key(&p.key)
+                        || module.anims.borrow().contains_key(&p.key)
+                    {
                         self.report(fail("E0320", format!("parameter `{}` collides with another binding", p.key)), &module.path, p.span, "");
                         continue;
                     }
@@ -1444,14 +1448,16 @@ impl<'a> Evaluator<'a> {
             return Ok(());
         }
         let exports = m.exports();
-        for name in module.parameters.borrow().iter() {
-            if (items.is_empty() && exports.iter().any(|(key, _)| key == name)) || items.contains(name) {
-                return Err(fail("E0320", format!("import `{name}` collides with an entry parameter")));
-            }
-        }
         let styles = m.styles.borrow().clone();
         let finishes = m.finishes.borrow().clone();
         let anims = m.anims.borrow().clone();
+        for name in module.parameters.borrow().iter() {
+            let exported = exports.iter().any(|(key, _)| key == name)
+                || (!name.starts_with('_') && (styles.contains_key(name) || finishes.contains_key(name) || anims.contains_key(name)));
+            if (items.is_empty() && exported) || items.contains(name) {
+                return Err(fail("E0320", format!("import `{name}` collides with an entry parameter")));
+            }
+        }
         // A declaration the library already reported as failed stays quiet at its use sites here.
         let lost = m.lost.borrow().clone();
         if items.is_empty() {

@@ -176,7 +176,11 @@ pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<ramose_ir::Re
     fn find<'a>(nodes: impl Iterator<Item = &'a ramose_ir::Node>, place: &crate::place::Place, path: &str) -> Option<ramose_ir::Rect> {
         for node in nodes {
             if node.path == path {
-                return node.bounds().map(|bounds| place.map_rect(bounds));
+                return node.local_bounds().map(|bounds| {
+                    place.inner_node(node)
+                        .map_path(&ramose_ir::Path::rect(bounds, None), crate::scope::FLATTEN_TOL)
+                        .compute_tight_bounds()
+                });
             }
             if let Some(bounds) = find(node.descendants(), &place.inner_node(node), path) {
                 return Some(bounds);

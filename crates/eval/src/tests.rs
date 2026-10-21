@@ -7700,3 +7700,54 @@ fn entry_word_comparisons_with_matrix_axes_and_target_context_are_quiet() {
     let ev = run_with("@target t_{selection}.png 8x8 each selection:[normal] clip:normal\nparam view:one_of(normal geometry)\nif view == selection or view == clip or view == target\n  circle 1\n", &[]);
     assert!(!ev.diagnostics.iter().any(|d| d.code == "L0107"), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn nested_bindings_do_not_suppress_entry_word_warnings_outside_their_scope() {
+    for nested in [
+        "if false\n  let view = normal\n",
+        "each view in [normal]\n  if view == custom\n    circle 1\n",
+        "let comparisons = [each view in [normal] -> view == custom]\n",
+        "if false\n  let geomtry = normal\n",
+        "each geomtry in [normal]\n  if view == geomtry\n    circle 1\n",
+    ] {
+        let source = format!("@target t.png 8x8\nparam view:one_of(normal geometry)\n{nested}if view == geomtry\n  circle 1\n");
+        let ev = run_with(&source, &[]);
+        let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+        assert_eq!(warnings.len(), 1, "{source}\n{}", show(&ev.diagnostics));
+        assert_eq!(warnings[0].span.line as usize, source.lines().count() - 1);
+    }
+    let ev = run_with("@target t.png 8x8\ndef part view:one_of(normal geometry)\n  if false\n    let view = normal\n  if view == geomtry\n    circle 1\npart\n", &[]);
+    let warnings: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "L0107").collect();
+    assert_eq!(warnings.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(warnings[0].span.line, 5);
+}
+
+#[test]
+fn named_preview_bounds_compose_rotations_before_boxing_the_ink() {
+    let s = scene("@target t.png 80x80\ngroup at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n");
+    let bounds = crate::node_bounds(&s, "head").unwrap();
+    for (actual, expected) in [(bounds.left, 30.0), (bounds.top, 35.0), (bounds.width(), 20.0), (bounds.height(), 10.0)] {
+        assert!((actual - expected).abs() < 1e-4, "{bounds:?}");
+    }
+    let warped = scene("@target t.png 80x80\ngroup at:40,40 rot:-45\n  rect 20,10 rot:45 warp:cylinder(20) fill:#ff0000 name:head\n");
+    let bounds = crate::node_bounds(&warped, "head").unwrap();
+    assert!((bounds.width() - 40.0 * 0.5f32.sin()).abs() < 0.01, "{bounds:?}");
+    assert!((bounds.height() - 10.0).abs() < 0.01, "{bounds:?}");
+}
+
+#[test]
+fn wildcard_style_finish_and_anim_imports_cannot_collide_with_parameters() {
+    for library in ["style theme fill:#ff0000\n", "finish theme\n  fx grain .1\n", "anim theme dur:1\n  .body rot:0\n"] {
+        for source in [
+            "@target t.png 8x8\nparam theme:normal\nuse theme\n",
+            "@target t.png 8x8\nuse theme\nparam theme:normal\n",
+        ] {
+            let ev = run_with(source, &[("lib/theme.ramo", library)]);
+            let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+            assert_eq!(errors.len(), 1, "{library}\n{source}\n{}", show(&ev.diagnostics));
+            assert!(errors[0].message.contains("collides"), "{}", show(&ev.diagnostics));
+        }
+    }
+    let ev = run_with("@target t.png 8x8\nparam _theme:normal\nuse theme\n", &[("lib/theme.ramo", "style _theme fill:#ff0000\n")]);
+    assert!(ev.diagnostics.iter().all(|d| d.severity != ramose_syntax::Severity::Error), "{}", show(&ev.diagnostics));
+}

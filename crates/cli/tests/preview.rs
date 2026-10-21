@@ -569,3 +569,37 @@ fn preview_reports_entry_word_warnings_and_lint_errors_without_losing_images() {
         assert_eq!(image(&dir.join("review/lint.png")).0, 8);
     }
 }
+
+#[test]
+fn named_crop_does_not_box_between_cancelling_rotations() {
+    let dir = fixture(
+        "cancel-rotation",
+        "@target test.png 80x80\ngroup at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n",
+    );
+    success(&dir, &["build", "--backend", "cpu"]);
+    let output = success(
+        &dir,
+        &[
+            "preview",
+            "art/test.ramo",
+            "--crop",
+            "head",
+            "--out",
+            "review/head.png",
+            "--backend",
+            "cpu",
+        ],
+    );
+    let receipt: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(receipt["crop_pixels"], serde_json::json!([30, 35, 20, 10]));
+    let (width, height, pixels) = image(&dir.join("review/head.png"));
+    assert_eq!((width, height), (20, 10));
+    let (production_width, _, production) = image(&dir.join("assets/test.png"));
+    for row in 0..10usize {
+        let begin = ((35 + row) * production_width as usize + 30) * 4;
+        assert_eq!(
+            &pixels[row * 80..(row + 1) * 80],
+            &production[begin..begin + 80]
+        );
+    }
+}
