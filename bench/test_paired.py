@@ -1,12 +1,12 @@
 import unittest
-import hashlib
+import paired
 import copy
 import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
-from paired import png, validate_replay, generation, AXES, RUBRIC, Experiment, evaluate_pair, summarize, validate_score, judge, judge_once, report, save
+from paired import png, validate_replay, generation, AXES, Experiment, evaluate_pair, summarize, validate_score, judge, judge_once, report, save, digest, evaluator_fingerprint
 
 
 def row(base, candidate, base_status="success", candidate_status="success", judgment="complete"):
@@ -94,13 +94,33 @@ class PairedReportTests(unittest.TestCase):
             out = Path(tmp)
             save(out / "experiment.json", {"prompts": [["fox", "draw fox"]], "repetitions": 1,
                  "schedule": [{"prompt_id": "fox", "repetition": 0}], "harness_sha256": "changed",
-                 "rubric_sha256": hashlib.sha256(RUBRIC.encode()).hexdigest()})
+                 "rubric_sha256": evaluator_fingerprint()})
             save(out / "pairs/000-00/pair.json", row(12, 16) | {"prompt_id": "fox", "repetition": 0})
             result = report(out)
         self.assertFalse(result["summary"]["complete"])
         self.assertIsNone(result["summary"]["paired_delta_mean"])
         self.assertEqual(result["protocol_errors"], ["harness changed since experiment was frozen"])
         self.assertEqual(result["per_prompt"]["fox"]["arms"]["candidate"]["mean"], 16)
+
+    def test_changed_scoring_definition_invalidates_report(self):
+        for name, changed in (("AXES", ("wow",)),
+                              ("SCHEMA", {"type": "object"}),
+                              ("RUBRIC", "A different rubric")):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp)
+                frozen = evaluator_fingerprint()
+                save(out / "experiment.json", {"prompts": [["fox", "draw fox"]], "repetitions": 1,
+                     "schedule": [{"prompt_id": "fox", "repetition": 0}],
+                     "harness_sha256": digest(Path(paired.__file__)), "rubric_sha256": frozen})
+                save(out / "pairs/000-00/pair.json", row(12, 16) | {"prompt_id": "fox", "repetition": 0})
+                self.assertTrue(report(out)["summary"]["complete"])
+                with patch.object(paired, name, changed):
+                    self.assertNotEqual(evaluator_fingerprint(), frozen)
+                    result = report(out)
+                self.assertFalse(result["summary"]["complete"])
+                self.assertIsNone(result["summary"]["paired_delta_mean"])
+                self.assertEqual(result["protocol_errors"],
+                                 ["scoring definition changed since experiment was frozen"])
 
     def test_clean_rebuild_cannot_reuse_delivered_png(self):
         with tempfile.TemporaryDirectory() as tmp:

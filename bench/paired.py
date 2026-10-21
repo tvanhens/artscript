@@ -70,6 +70,12 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def evaluator_fingerprint() -> str:
+    definition = {"rubric": RUBRIC, "axes": AXES, "schema": SCHEMA}
+    encoded = json.dumps(definition, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def command(args: list[str], cwd: Path, receipt: Path, env: dict | None = None,
             stdin: str | None = None, timeout: int = TIMEOUT) -> dict:
     start = time.monotonic()
@@ -326,8 +332,8 @@ def report(out: Path) -> dict:
     protocol_errors = []
     if manifest["harness_sha256"] != digest(Path(__file__)):
         protocol_errors.append("harness changed since experiment was frozen")
-    if manifest["rubric_sha256"] != hashlib.sha256(RUBRIC.encode()).hexdigest():
-        protocol_errors.append("rubric changed since experiment was frozen")
+    if manifest["rubric_sha256"] != evaluator_fingerprint():
+        protocol_errors.append("scoring definition changed since experiment was frozen")
     expected = {(entry["prompt_id"], entry["repetition"]) for entry in manifest["schedule"]}
     received = [(r["prompt_id"], r["repetition"]) for r in rows]
     if len(received) != len(set(received)) or set(received) - expected:
@@ -422,7 +428,7 @@ def main() -> int:
                          str(args.replay.resolve()) if args.replay else None)
         save(out / "prompts.json", prompts)
         manifest = asdict(exp) | {"provenance": provenance,
-             "rubric_sha256": hashlib.sha256(RUBRIC.encode()).hexdigest(),
+             "rubric_sha256": evaluator_fingerprint(),
              "harness_sha256": digest(Path(__file__)), "jobs": args.jobs,
              "invocation_form": "[$ramose](ABSOLUTE_NEUTRAL_SKILL_PATH) <prompt>",
              "schedule": [{"prompt_id": key, "repetition": rep, "directory": f"{i:03d}-{rep:02d}",

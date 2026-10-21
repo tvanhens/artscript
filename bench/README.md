@@ -67,7 +67,7 @@ Each prompt and repetition has two generations. Their launch order alternates. I
 
 Failed deliveries score zero and remain in the denominator. Missing judge results make the comparison incomplete. The runner preserves the delivered project, checks and rebuilds a separate copy with an empty output directory, compares the rebuilt pixels, and checks formatting. It judges the base PNG when scale variants exist. It rejects multiple unrelated PNGs instead of guessing which artwork to judge.
 
-The output directory retains skill and binary snapshots, hashes, schedules, transcripts, sources, images, and validation receipts. A nonempty output directory is never overwritten. Reporting checks that the runner and rubric still match the frozen hashes. Codex JSON events do not expose every skill load or image-viewer call. The runner records observed skill reads, but does not treat absent events as failed delivery.
+The output directory retains skill and binary snapshots, hashes, schedules, transcripts, sources, images, and validation receipts. A nonempty output directory is never overwritten. Reporting checks that the runner and scoring definition still match the frozen hashes. The scoring fingerprint covers the rubric, axes, and judge schema. Codex JSON events do not expose every skill load or image-viewer call. The runner records observed skill reads, but does not treat absent events as failed delivery.
 
 Choose a meaningful gain and acceptance rule before running candidates. Confirm promising changes on fresh prompts and generations. A positive mean from a few familiar prompts does not establish a general quality improvement.
 
