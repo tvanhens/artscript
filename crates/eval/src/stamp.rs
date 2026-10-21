@@ -452,7 +452,7 @@ impl Evaluator<'_> {
         let def_ids = self.ids.get(&decl.module).cloned().unwrap_or_else(|| Rc::new(identity::ModuleIds::blank()));
         let region = def_ids.region(decl.span).unwrap_or_else(|| def_ids.file());
         let root = match host.explicit {
-            Some(n) => host.key.seeded(&decl.module, &decl.name, n),
+            Some(n) => host.key.seeded(&decl.name, n),
             None => host.key.clone(),
         };
         let set_key = Key::named(&root, &set.name, &[]);

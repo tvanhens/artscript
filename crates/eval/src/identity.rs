@@ -145,14 +145,13 @@ pub struct Key {
     seed_root: Option<Rc<SeedRoot>>,
 }
 
-/// An instance's `seed:`. Every seed under the instance hashes the def and the value in place
-/// of the file and the instance's own segs, so it is the same from any caller in any file.
+/// An instance's `seed:`. Every seed under the instance hashes the def's name and the value in
+/// place of the file and the instance's own segs, so it is the same from any caller in any file,
+/// wherever the def's library lives.
 #[derive(Debug)]
 struct SeedRoot {
     /// How many leading segs the root replaces: the instance key and its loop copies.
     segs: usize,
-    /// The def's module path.
-    module: Rc<str>,
     def: Rc<str>,
     seed: u64,
 }
@@ -227,10 +226,9 @@ impl Key {
     }
 
     /// This instance key of `def` with `seed:`. An inner seeded instance replaces an outer one.
-    pub fn seeded(&self, module: &str, def: &str, seed: u64) -> Key {
+    pub fn seeded(&self, def: &str, seed: u64) -> Key {
         let root = SeedRoot {
             segs: self.segs.len(),
-            module: module.into(),
             def: def.into(),
             seed,
         };
@@ -415,14 +413,14 @@ impl PositionalUses {
 }
 
 /// The author's `seed:` when there is one, else `node_seed` over `file` and the key's seed text.
-/// Under a seeded instance the def's module stands in for `file`. When the key's seed text holds
+/// Under a seeded instance no file is hashed. When the key's seed text holds
 /// an unnamed segment, `uses` records that statement for L0104.
 pub fn seed(file: &str, key: &Key, explicit: Option<u64>, uses: &mut PositionalUses) -> u64 {
     if let Some(s) = explicit {
         return explicit_seed(s);
     }
     uses.note(key);
-    let file = key.seed_root.as_ref().map_or(file, |r| &r.module);
+    let file = if key.seed_root.is_some() { "" } else { file };
     node_seed(file, &key.seed_text())
 }
 

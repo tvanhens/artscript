@@ -3396,6 +3396,25 @@ fn a_seeded_instance_matches_across_calling_files_and_the_asset_entry() {
 }
 
 #[test]
+fn a_seeded_instance_draws_the_same_pixels_after_its_def_moves_to_another_library() {
+    let src = |lib: &str| {
+        format!(
+            "@target t.png 48x48 bg:#ffffff\nuse {lib} {{ blot }}\n\
+             blot at:24,24 seed:7 name:a\n  fx grain .3\n"
+        )
+    };
+    let draw = |path: &str, lib: &str| {
+        let ev = run_with(&src(lib), &[(path, BLOT_LIB)]);
+        assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+        crop(&ev.scene.unwrap(), 24, 24)
+    };
+    assert!(
+        draw("lib/d.ramo", "d") == draw("lib/moved/stone.ramo", "moved/stone"),
+        "seed:7 drew different pixels after blot moved to lib/moved/stone.ramo"
+    );
+}
+
+#[test]
 fn a_seeded_instance_seeds_slot_content_from_the_seed_in_any_file() {
     let fill = |indent: &str| format!("{indent}top:\n{indent}  circle 4 at:rand(0 40),0 name:c\n");
     let wrap = format!(

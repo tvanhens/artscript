@@ -3808,7 +3808,7 @@ impl<'a> Evaluator<'a> {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
             } else if k == "seed" {
-                key = key.seeded(&comp.module, &comp.name, v.seed()?);
+                key = key.seeded(&comp.name, v.seed()?);
             } else if k == "palette" {
                 if !matches!(v, Value::Palette(_) | Value::Module(_)) {
                     return Err(fail(
