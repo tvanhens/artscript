@@ -1,3 +1,4 @@
+use ramose_geom::ToSk;
 use ramose_ir::Scene;
 
 use crate::{Evaluation, Project, evaluate, plan};
@@ -110,7 +111,7 @@ fn inside_a_warped_node_clips_to_the_warped_silhouette() {
          circle 1 at:@clip.w,@clip.h name:cp\n"
     ));
     let clip = node(&s, "clip").clip.as_ref().expect("inside sets a clip");
-    let b = clip.path.compute_tight_bounds();
+    let b = clip.path.to_sk().compute_tight_bounds();
     let want = [74.0, 22.0, 150.0, 54.0];
     for (got, want) in [b.left, b.top, b.right, b.bottom].iter().zip(want) {
         assert!((got - want).abs() < 1e-2, "{b:?}");
@@ -243,7 +244,7 @@ fn adding_a_warp_does_not_reseed_the_content() {
         let s = scene(&format!(
             "@target t.png 100x100\nrect 40x24 at:50,50 {key} name:a\n  circle rand(2 6) name:dot\n"
         ));
-        shape(&s, "a.dot").geometry.compute_tight_bounds().width()
+        shape(&s, "a.dot").geometry.to_sk().compute_tight_bounds().width()
     };
     assert_eq!(radius(""), radius("warp:cylinder(60)"));
 }

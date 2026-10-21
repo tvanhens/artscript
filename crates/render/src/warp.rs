@@ -4,9 +4,12 @@
 //! under it, and any other stack draws it as a grid of projective cells whose corners the warp
 //! maps. Everything else is the warp's own geometry.
 
-use ramose_ir::{Matrix, Node, Placer, Rect, Warp, transform_scale};
+use ramose_geom::{NodeGeom, Placer, WarpGeom, transform_scale};
+use ramose_ir::{Node, Warp};
 use skia_safe::canvas::SrcRectConstraint;
-use skia_safe::{Canvas, FilterMode, IRect, Image, MipmapMode, Paint, RoundOut, SamplingOptions};
+use skia_safe::{
+    Canvas, FilterMode, IRect, Image, Matrix, MipmapMode, Paint, Rect, RoundOut, SamplingOptions,
+};
 
 use crate::RenderError;
 use crate::draw::{DrawCtx, draw_clipped, path_extent, rasterize_layer};

@@ -6,7 +6,9 @@ mod common;
 use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
-use ramose_ir::{EffectOp, Fill, NodeKind, Paint, Path, Point, RibbonMark, Sides, Stage, Stop};
+use ramose_geom::ToIr;
+use ramose_ir::{EffectOp, Fill, NodeKind, Paint, RibbonMark, Sides, Stage, Stop};
+use skia_safe::{Path, Point};
 use ramose_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
 use common::{brushed, color, effect, mark, pixel, red, scene, solid, stage, stamp, with_stamps};
 
@@ -28,8 +30,8 @@ fn a_solid_base_reaches_the_body_exactly_and_renders_the_same_bytes_twice() {
 #[test]
 fn a_gradient_base_is_read_at_each_pixel_in_local_space() {
     let gradient = Paint::Linear {
-        from: Point::new(20.0, 0.0),
-        to: Point::new(60.0, 0.0),
+        from: Point::new(20.0, 0.0).to_ir(),
+        to: Point::new(60.0, 0.0).to_ir(),
         stops: vec![Stop { pos: 0.0, color: color(0, 0, 0, 255) }, Stop { pos: 1.0, color: color(255, 255, 255, 255) }],
     };
     let plain = solid("p", Path::rect(SQUARE, None), red());
@@ -134,7 +136,7 @@ fn the_normal_points_out_of_a_fill_and_is_zero_on_its_medial_axis() {
 fn the_normal_is_in_the_local_frame_of_a_rotated_node() {
     let rect = skia_safe::Rect::from_xywh(20.0, 30.0, 40.0, 20.0);
     let mut node = brushed("a", Path::rect(rect, None), Paint::Solid(red()), vec![mark(stage(NORMAL_AS_COLOR, &[], &[], 1), 0.0)]);
-    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0));
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0)).to_ir();
     let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_normal(&png, (40, 22), [-1.0, 0.0]);
     assert_normal(&png, (48, 40), [0.0, -1.0]);
@@ -175,8 +177,8 @@ fn only_a_brushed_stamp_bakes_in_svg() {
     with_stamps(
         &mut host,
         vec![
-            stamp("line.dots.0", ramose_ir::Matrix::translate((20.0, 40.0)), vec![plain]),
-            stamp("line.dots.1", ramose_ir::Matrix::translate((60.0, 40.0)), vec![textured]),
+            stamp("line.dots.0", skia_safe::Matrix::translate((20.0, 40.0)), vec![plain]),
+            stamp("line.dots.1", skia_safe::Matrix::translate((60.0, 40.0)), vec![textured]),
         ],
         vec![],
     );
@@ -194,7 +196,7 @@ fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_ove
     let dry = stage("float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }", &[], &[], 3);
     let mut host = brushed("line", Path::rect(skia_safe::Rect::from_xywh(0.0, 38.0, 80.0, 4.0), None), Paint::Solid(color(0, 0, 0, 255)), vec![mark(dry, 0.0)]);
     let plain = solid("line.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
-    with_stamps(&mut host, vec![stamp("line.dots.0", ramose_ir::Matrix::translate((20.0, 40.0)), vec![plain])], vec![]);
+    with_stamps(&mut host, vec![stamp("line.dots.0", skia_safe::Matrix::translate((20.0, 40.0)), vec![plain])], vec![]);
     let scene = scene(80.0, 80.0, vec![host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["line brush fill"], "profile:vector still reports the host");
@@ -263,7 +265,7 @@ fn children_of_a_brushed_fill_still_blend_with_it() {
 fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
     let mut host = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
     let plain = solid("a.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
-    with_stamps(&mut host, vec![stamp("a.dots.0", ramose_ir::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
+    with_stamps(&mut host, vec![stamp("a.dots.0", skia_safe::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
     let svg = render_svg(&scene(80.0, 80.0, vec![host]), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
@@ -308,7 +310,7 @@ fn fx_outline_on_an_unbrushed_fill_traces_its_geometry() {
 fn fx_outline_over_a_brushed_fill_is_raster_only() {
     let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]), 3.0);
     let mut host = outlined(solid("h", Path::rect(SQUARE, None), red()), 3.0);
-    with_stamps(&mut host, vec![stamp("h.dots.0", ramose_ir::Matrix::translate((30.0, 25.0)), vec![node.clone()])], vec![]);
+    with_stamps(&mut host, vec![stamp("h.dots.0", skia_safe::Matrix::translate((30.0, 25.0)), vec![node.clone()])], vec![]);
     let scene = scene(80.0, 80.0, vec![node, host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a fx outline brush", "a brush fill", "h fx outline brush", "a fx outline brush", "a brush fill"]);

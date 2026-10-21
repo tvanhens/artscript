@@ -3,7 +3,8 @@
 
 use std::rc::Rc;
 
-use ramose_ir::{Paint, Point, Rect, Stop};
+use ramose_ir::{Paint, Point, Stop};
+use skia_safe::Rect;
 
 use crate::color::{Rgba, densify};
 use crate::value::Value;

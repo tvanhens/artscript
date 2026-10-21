@@ -7,7 +7,9 @@ mod common;
 use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind};
-use ramose_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
+use ramose_geom::ToIr;
+use ramose_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
+use skia_safe::Path;
 use ramose_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
 use common::{color, effect, pixel, red, scene, solid, stamp};
 
@@ -120,11 +122,11 @@ fn a_brush_reads_the_pixels_already_drawn_under_the_node_and_renders_the_same_by
 
 #[test]
 fn inside_an_isolated_group_the_backdrop_is_only_what_the_group_drew() {
-    let group = stamp("g", ramose_ir::Matrix::new_identity(), vec![brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
+    let group = stamp("g", skia_safe::Matrix::new_identity(), vec![brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
     let png = render(vec![backdrop(), group]);
     assert_eq!(pixel(&png, 40, 40), [79, 127, 224, 255], "the gold is outside the group, so m.below is transparent");
     let inner = solid("g.back", Path::rect(skia_safe::Rect::from_ltrb(10.0, 10.0, 70.0, 70.0), None), gold());
-    let group = stamp("g", ramose_ir::Matrix::new_identity(), vec![inner, brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
+    let group = stamp("g", skia_safe::Matrix::new_identity(), vec![inner, brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
     let png = render_png(&scene(80.0, 80.0, vec![group]), 1.0, Backend::Cpu).unwrap();
     assert_rgb(pixel(&png, 40, 40), mix(blue(), gold(), 0.5), "gold drawn inside the group is seen");
 }
@@ -181,7 +183,7 @@ fn a_mask_and_a_clip_keep_the_paint_only_where_they_keep_it() {
     assert_eq!(pixel(&png, 50, 40), [232, 179, 58, 255], "masked away: the gold shows");
     for feather in [0.0, 2.0] {
         let mut clipped = brushed("a", blue(), vec![area(HALF_BELOW, 1)]);
-        clipped.clip = Some(Clip { path: left.clone(), feather, invert: false });
+        clipped.clip = Some(Clip { path: left.to_ir(), feather, invert: false });
         let png = render(vec![backdrop(), clipped]);
         assert_rgb(pixel(&png, 30, 40), mix(blue(), gold(), 0.5), "inside the clip");
         assert_eq!(pixel(&png, 50, 40), [232, 179, 58, 255], "outside the clip, feather {feather}");
@@ -211,7 +213,7 @@ fn the_gpu_agrees_with_the_cpu_and_repeats_itself() {
     let node = with_child(with_stroke(fill, blue(), Some(ribbon(HALF_BELOW, 4.0))), band());
     let mut faint = brushed("b", blue(), vec![area(HALF_BELOW, 3)]);
     faint.opacity = 0.5;
-    faint.transform = ramose_ir::Matrix::translate((5.0, 5.0));
+    faint.transform = skia_safe::Matrix::translate((5.0, 5.0)).to_ir();
     let s = scene(80.0, 80.0, vec![backdrop(), node, faint]);
     let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
     let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();

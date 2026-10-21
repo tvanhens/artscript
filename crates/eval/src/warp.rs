@@ -2,6 +2,7 @@
 
 use std::rc::Rc;
 
+use ramose_geom::{ToIr, ToSk};
 use ramose_ir::{Axis, Corners, CornersError, Cylinder, Matrix, Point, WarpStage};
 use ramose_syntax::ast::Named;
 use ramose_syntax::format_expr;
@@ -107,7 +108,7 @@ pub(crate) fn cylinder(args: &[Value], named: &[Named]) -> R<Value> {
 /// maps onto. A quad then lands where it is written whatever the node's own `at:`, `rot:`,
 /// `scale:`, and `skew:`.
 pub(crate) fn pinned_in(stages: &[WarpStage], transform: &Matrix) -> R<Vec<WarpStage>> {
-    let inverse = transform.invert().ok_or_else(|| {
+    let inverse = transform.to_sk().invert().ok_or_else(|| {
         fail(
             "E0320",
             "`corners` cannot pin a node whose transform flattens it",
@@ -117,7 +118,7 @@ pub(crate) fn pinned_in(stages: &[WarpStage], transform: &Matrix) -> R<Vec<WarpS
     stages
         .iter()
         .map(|s| match s {
-            WarpStage::Corners(c) => Corners::try_new(c.quad().map(|p| inverse.map_point(p)))
+            WarpStage::Corners(c) => Corners::try_new(c.quad().map(|p| inverse.map_point(p.to_sk()).to_ir()))
                 .map(WarpStage::Corners)
                 .map_err(|_| {
                     fail("E0320", "the corners fold under this node's transform").fix(ORDER)
@@ -161,9 +162,10 @@ pub(crate) fn written(
     stages: impl Iterator<Item = WarpStage>,
     transform: &Matrix,
 ) -> Vec<WarpStage> {
+    let transform = transform.to_sk();
     stages
         .map(|s| match s {
-            WarpStage::Corners(c) => Corners::try_new(c.quad().map(|p| transform.map_point(p)))
+            WarpStage::Corners(c) => Corners::try_new(c.quad().map(|p| transform.map_point(p.to_sk()).to_ir()))
                 .map_or(s, WarpStage::Corners),
             other => other,
         })

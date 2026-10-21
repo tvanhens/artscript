@@ -4,8 +4,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use ramose_ir::Rect;
-use skia_safe::Vector;
+use skia_safe::{Rect, Vector};
 use ramose_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, Span};
 
 use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect, unseen};

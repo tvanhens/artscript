@@ -2,12 +2,13 @@
 //! PNG tile of that whole subtree, except a stamped shape whose own paint alone is raster-only:
 //! its fill and stroke become a tile, and its stamps and children stay elements over it.
 
+use ramose_geom::{NodeGeom, ShapeGeom, ToSk};
 use ramose_ir::{
-    Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node,
-    NodeKind, Paint, Path, Point, Profile, Scene, Shape, Stop, Stroke,
+    Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Node, NodeKind,
+    Paint, Profile, Scene, Shape, Stop, Stroke,
 };
 use skia_safe::path::{Iter as PathIter, Verb};
-use skia_safe::{PathFillType, PathOp, Rect};
+use skia_safe::{Matrix, Path, PathFillType, PathOp, Point, Rect};
 
 use crate::draw::{Baked, bake_node, bake_paint, visual_pad};
 use crate::effects::{Coverage, Region};
@@ -107,13 +108,14 @@ impl Writer {
             self.body.push_str("</g>\n");
             return Ok(());
         }
-        let outer = outer.to_local(&node.transform);
+        let transform = node.transform.to_sk();
+        let outer = outer.to_local(&transform);
 
         self.body.push_str(&pad);
         self.body.push_str("<g id=\"");
         self.body.push_str(&id);
         self.body.push('"');
-        if let Some(t) = matrix_attr(&node.transform) {
+        if let Some(t) = matrix_attr(&transform) {
             self.body.push_str(" transform=\"");
             self.body.push_str(&t);
             self.body.push('"');
@@ -430,14 +432,15 @@ impl Writer {
         let fid = format!("{id}-blur");
         let filter = (shape.blur > 0.0).then_some(fid.as_str());
         let fill = shape.fill.as_ref().map(|f| &f.paint);
+        let geometry = shape.geometry.to_sk();
         match shape.stroke.as_ref().and_then(|st| Some((st, st.ink.as_ref()?))) {
-            None => self.path_element(&shape.geometry, fill, shape.stroke.as_ref(), id, filter, pad),
+            None => self.path_element(&geometry, fill, shape.stroke.as_ref(), id, filter, pad),
             Some((stroke, ink)) => {
                 if fill.is_some() {
-                    self.path_element(&shape.geometry, fill, None, id, filter, pad);
+                    self.path_element(&geometry, fill, None, id, filter, pad);
                 }
                 let gid = if fill.is_some() { format!("{id}-ink") } else { id.to_string() };
-                self.path_element(ink, Some(&stroke.paint), None, &gid, filter, pad);
+                self.path_element(&ink.to_sk(), Some(&stroke.paint), None, &gid, filter, pad);
             }
         }
         if filter.is_some() {
@@ -607,7 +610,7 @@ impl Writer {
             .clip
             .as_ref()
             .filter(|clip| clip.feather <= 0.0 && !clip.invert)
-            .map(|clip| clip.path.clone());
+            .map(|clip| clip.path.to_sk());
         if let Some(path) = intersect(own, outer.cloned())? {
             self.clip_ref(&format!("{id}-clip"), &path);
         }
@@ -671,7 +674,7 @@ impl Writer {
             "#ffffff"
         };
         self.defs.push_str("      <path d=\"");
-        self.defs.push_str(&path_data(&clip.path));
+        self.defs.push_str(&path_data(&clip.path.to_sk()));
         self.defs.push_str("\" fill=\"");
         self.defs.push_str(fill);
         self.defs.push('"');
@@ -925,10 +928,10 @@ fn stroke_overshoot(node: &Node) -> f32 {
 
 fn clip_region(clip: &Clip) -> Result<Path, RenderError> {
     if !clip.invert {
-        return Ok(clip.path.clone());
+        return Ok(clip.path.to_sk());
     }
     Path::rect(Rect::from_xywh(-10000.0, -10000.0, 20000.0, 20000.0), None)
-        .op(&clip.path, PathOp::Difference)
+        .op(&clip.path.to_sk(), PathOp::Difference)
         .ok_or_else(|| RenderError::Skia("outside clip".into()))
 }
 

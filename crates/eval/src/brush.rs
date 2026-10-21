@@ -10,9 +10,9 @@ use ramose_brush::{
     HELPERS, MARK_FIELDS, MainKind, Origin, PLACEMENT_KEYS, Program, RESERVED_PREFIX,
     UniformKind, UniformValue,
 };
-use ramose_ir::{AreaMark, Knot, Path, Ribbon, RibbonContour, RibbonMark, Stage};
+use ramose_ir::{AreaMark, Knot, Ribbon, RibbonContour, RibbonMark, Stage};
 use ramose_syntax::ast::{Expr, Named, SkslBlock, Span};
-use skia_safe::{ContourMeasure, ContourMeasureIter};
+use skia_safe::{ContourMeasure, ContourMeasureIter, Path};
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
 use crate::geom::P;

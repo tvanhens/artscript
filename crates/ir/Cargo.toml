@@ -5,5 +5,4 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-skia-safe.workspace = true
 ramose-brush.workspace = true

@@ -8,9 +8,10 @@
 
 use std::collections::HashMap;
 
+use ramose_geom::{NodeGeom, ShapeGeom, ToSk, WarpGeom};
 use ramose_ir::{
-    Clip, Color, Effect, EffectInput, EffectOp, Field, Fill, Knot, Mask, MaskSource, Node, NodeKind,
-    Paint as IrPaint, Path, Ribbon, RibbonContour, RibbonMark, Shape, Sides, Stroke, ribbon_reach,
+    Color, Effect, EffectInput, EffectOp, Field, Fill, Knot, Mask, MaskSource, Node, NodeKind,
+    Paint as IrPaint, Ribbon, RibbonContour, RibbonMark, Shape, Sides, Stroke, ribbon_reach,
 };
 use skia_safe::canvas::SaveLayerRec;
 use skia_safe::paint::{Cap, Join, Style};
@@ -18,7 +19,7 @@ use skia_safe::region::RegionOp;
 use skia_safe::runtime_effect::RuntimeShaderBuilder;
 use skia_safe::{
     BlendMode, Canvas, Color4f, ColorMatrix, ContourMeasureIter, Data, FilterMode, IRect, Image,
-    ImageFilter, ImageInfo, Matrix, MipmapMode, Paint, PathBuilder, PathOp, PictureRecorder, Point,
+    ImageFilter, ImageInfo, Matrix, MipmapMode, Paint, Path, PathBuilder, PathOp, PictureRecorder, Point,
     Rect, RoundOut, RuntimeEffect, SamplingOptions, TileMode, color_filters, image_filters,
     path_utils, surfaces,
 };
@@ -109,7 +110,7 @@ fn apply(
             blur,
             color,
         } => inner(*dx, *dy, *blur, *color, input),
-        EffectOp::Rim { width, dir, color } => rim(*width, *dir, *color, input),
+        EffectOp::Rim { width, dir, color } => rim(*width, dir.to_sk(), *color, input),
         EffectOp::Outline { .. } => Ok(input),
         EffectOp::Grain {
             strength,
@@ -798,7 +799,10 @@ fn gather(
     let (here, local_to_px) = if root {
         (Matrix::new_identity(), *to_px)
     } else {
-        (node.transform, *to_px * node.transform)
+        {
+            let transform = node.transform.to_sk();
+            (transform, *to_px * transform)
+        }
     };
     let mut local = Vec::new();
     match &node.kind {
@@ -811,8 +815,9 @@ fn gather(
             for child in children {
                 let mut nested = Vec::new();
                 gather(child, &local_to_px, false, ctx, &mut nested)?;
+                let shape_clip = shape.clip();
                 local.extend(nested.into_iter().filter_map(|region| {
-                    skia_safe::op(&region.path, &shape.clip(), PathOp::Intersect)
+                    skia_safe::op(&region.path, &shape_clip, PathOp::Intersect)
                         .filter(|p| !p.is_empty())
                         .map(|path| Region { path, coverage: region.coverage })
                 }));
@@ -825,10 +830,11 @@ fn gather(
         }
     }
     if let Some(clip) = &node.clip {
+        let clip_path = clip.path.to_sk();
         local = local
             .into_iter()
             .filter_map(|region| {
-                clip_region(&region.path, clip).map(|path| Region {
+                clip_region(&region.path, &clip_path, clip.invert).map(|path| Region {
                     path,
                     coverage: if clip.feather > 0.0 {
                         Coverage::Translucent
@@ -845,7 +851,7 @@ fn gather(
     if !node.warp.is_none() {
         // Half a device pixel after the warp's largest magnification, so a bent contour's
         // chords stay under a pixel where the ring is drawn.
-        let stretch = node.warp.reference().map_or(1.0, |r| node.warp.max_stretch(r));
+        let stretch = node.warp.reference().map_or(1.0, |r| node.warp.max_stretch(r.to_sk()));
         let tol = 0.5 / (mark::device_scale(&local_to_px) * stretch);
         for region in &mut local {
             region.path = node.warp.map_path(&region.path, tol);
@@ -1029,8 +1035,8 @@ fn push_shape(
         && !shape.geometry.is_empty()
     {
         let path = match shape.coverage_clip() {
-            Some(fill) => brush_kept(&shape.geometry, fill, origin, local_to_px, ctx)?,
-            None => Some(shape.geometry.clone()),
+            Some(fill) => brush_kept(&shape.geometry.to_sk(), fill, origin, local_to_px, ctx)?,
+            None => Some(shape.geometry.to_sk()),
         };
         if let Some(path) = path {
             out.push(Region { path, coverage });
@@ -1040,8 +1046,8 @@ fn push_shape(
         && let Some(coverage) = coverage(&stroke.paint)
     {
         let filled = match &stroke.ink {
-            Some(ink) => ink.clone(),
-            None => stroke_fill(&shape.geometry, stroke)?,
+            Some(ink) => ink.to_sk(),
+            None => stroke_fill(&shape.geometry.to_sk(), stroke)?,
         };
         if !filled.is_empty() {
             out.push(Region { path: filled, coverage });
@@ -1057,13 +1063,13 @@ fn stroke_fill(path: &Path, stroke: &Stroke) -> Result<Path, RenderError> {
     Ok(dst.snapshot())
 }
 
-fn clip_region(path: &Path, clip: &Clip) -> Option<Path> {
-    let op = if clip.invert {
+fn clip_region(path: &Path, clip_path: &Path, invert: bool) -> Option<Path> {
+    let op = if invert {
         PathOp::Difference
     } else {
         PathOp::Intersect
     };
-    skia_safe::op(path, &clip.path, op).filter(|p| !p.is_empty())
+    skia_safe::op(path, clip_path, op).filter(|p| !p.is_empty())
 }
 
 /// Whether the fill paints anywhere, so the shape's children clip to it instead of adding

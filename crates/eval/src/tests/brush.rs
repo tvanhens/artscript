@@ -3,6 +3,7 @@
 
 use std::collections::BTreeMap;
 
+use ramose_geom::ToSk;
 use ramose_ir::{AreaMark, Cap, EffectOp, Join, Ribbon, RibbonMark, Scene, UniformValue};
 use ramose_syntax::Diagnostic;
 
@@ -144,7 +145,7 @@ fn a_brush_on_a_stroke_makes_a_ribbon_and_on_fill_narrows_it() {
     assert_eq!(c.knots.last().unwrap().s, c.len);
     assert!(c.knots.iter().all(|k| k.half_width == 2.0 && k.pressure == 1.0 && k.angle == 0.0 && k.tilt == 0.0));
     assert_eq!(sh.stroke.as_ref().unwrap().width, 4.0);
-    assert!(!sh.geometry.is_last_contour_closed(), "the geometry stays the open spine");
+    assert!(!sh.geometry.to_sk().is_last_contour_closed(), "the geometry stays the open spine");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\nrect 40x40 at:50,50 fill:#ff0000 stroke:#000000,2 brush:dry(on:fill) name:a\n", &[LIB]);
     assert_eq!(marks(&s, "a").len(), 1);
     assert!(shape(&s, "a").stroke.as_ref().unwrap().ribbon.is_none());
@@ -194,7 +195,7 @@ fn a_brushed_tapered_stroke_is_a_ribbon_whose_half_width_follows_the_knots() {
     let hw: Vec<(f32, f32)> = c.knots.iter().map(|k| ((k.s * 10.0).round() / 10.0, k.half_width)).collect();
     assert_eq!(hw, vec![(0.0, 1.0), (10.0, 3.0), (40.0, 1.5)], "widths sit on the knots by chord fraction");
     assert_eq!(shape(&s, "a").stroke.as_ref().unwrap().width, 6.0);
-    assert_eq!(shape(&s, "a").geometry.count_points(), 7, "three knots, two cubics: not an outline");
+    assert_eq!(shape(&s, "a").geometry.to_sk().count_points(), 7, "three knots, two cubics: not an outline");
     let s = ok("@target t.png 100x100\nuse brushes { dry }\ncurve 0,0 10,0 40,0 stroke:#000000,[2 6] brush:dry name:a\n", &[LIB]);
     let hw: Vec<(f32, f32)> = ribbon(&s, "a").contours[0].knots.iter().map(|k| ((k.s * 10.0).round() / 10.0, k.half_width)).collect();
     assert_eq!(hw, vec![(0.0, 1.0), (10.0, 1.5), (40.0, 3.0)], "two widths on three knots spread evenly; the middle knot holds the lerp");

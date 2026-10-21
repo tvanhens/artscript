@@ -1,10 +1,9 @@
 mod common;
 
 use common::{brushed, circle_at, color, effect, mark, red, scene, solid, stage};
-use ramose_ir::{
-    Axis, Blend, Corners, Cylinder, EffectOp, Matrix, Node, NodeKind, Paint, Path, Point, Profile,
-    Rect, Sides, Warp, WarpStage,
-};
+use ramose_geom::{NodeGeom, ToIr, WarpGeom};
+use ramose_ir::{Axis, Blend, Corners, Cylinder, EffectOp, Node, NodeKind, Paint, Profile, Sides, Warp, WarpStage};
+use skia_safe::{Matrix, Path, Point, Rect};
 use ramose_render::{
     Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg,
 };
@@ -95,7 +94,7 @@ fn runs_of(alphas: impl Iterator<Item = u8>) -> Vec<(i32, i32)> {
 }
 
 fn corners(quad: [(f32, f32); 4]) -> WarpStage {
-    WarpStage::Corners(Corners::try_new(quad.map(|(x, y)| Point::new(x, y))).unwrap())
+    WarpStage::Corners(Corners::try_new(quad.map(|(x, y)| Point::new(x, y).to_ir())).unwrap())
 }
 
 fn cylinder(r: f32) -> WarpStage {
@@ -167,7 +166,7 @@ fn a_cylinder_compresses_stripes_toward_its_edges_and_hides_the_back() {
         stripes.add_rect(Rect::new(cx - 5.0, -20.0, cx + 5.0, 20.0), None, None);
     }
     let mut node = solid("label", stripes.snapshot(), red());
-    node.transform = Matrix::translate((100.0, 50.0));
+    node.transform = Matrix::translate((100.0, 50.0)).to_ir();
     let node = warped(node, &[cylinder(50.0)]);
     let png = render_png(&scene(200.0, 100.0, vec![node]), 2.0, Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
@@ -228,7 +227,7 @@ fn stage_order_matters_and_each_stack_stays_inside_its_bounds() {
 fn a_warped_node_keeps_a_crisp_edge_under_a_scaled_render() {
     let disc = || {
         let mut disc = solid("disc", circle_at(0.0, 0.0, 10.0), color(140, 140, 140, 255));
-        disc.transform = Matrix::translate((48.0, 48.0));
+        disc.transform = Matrix::translate((48.0, 48.0)).to_ir();
         disc
     };
     let same_place = [(-10.0, -10.0), (10.0, -10.0), (10.0, 10.0), (-10.0, 10.0)];
@@ -256,7 +255,7 @@ fn warped_scene() -> ramose_ir::Scene {
         Path::rect(Rect::new(-60.0, -20.0, 60.0, 20.0), None),
         color(0, 90, 220, 255),
     );
-    label.transform = Matrix::translate((100.0, 140.0));
+    label.transform = Matrix::translate((100.0, 140.0)).to_ir();
     scene(
         200.0,
         200.0,
@@ -302,7 +301,7 @@ fn a_warped_group_isolates_its_children_s_blend_modes() {
             isolate: false,
             children: vec![gray],
         };
-        label.transform = Matrix::translate((100.0, 50.0));
+        label.transform = Matrix::translate((100.0, 50.0)).to_ir();
         label
     };
     let floor = || {

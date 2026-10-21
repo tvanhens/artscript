@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 use ramose_eval::{BackendChoice, OutputSpec, Parameters, Project, TargetJob};
-use ramose_ir::Rect;
+use skia_safe::Rect;
 use ramose_render::Backend;
 use ramose_syntax::{Diagnostic, Severity};
 use serde_json::json;

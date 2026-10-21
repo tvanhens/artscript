@@ -1,6 +1,8 @@
 mod common;
 
-use ramose_ir::{Field, Matrix, NodeKind, NoiseKind, Paint, Path, Point, Profile};
+use ramose_geom::ToIr;
+use ramose_ir::{Field, NodeKind, NoiseKind, Paint, Profile};
+use skia_safe::{Matrix, Path, Point};
 use ramose_render::{Backend, render_png, render_svg, raster_only_features, RenderError};
 use common::{circle_at, color, effect, pixel, red, scene, solid, stamp, with_stamps};
 
@@ -347,7 +349,7 @@ fn assert_mask_region_covers(svg: &str, left: f32, top: f32, right: f32, bottom:
 fn svg_node_mask_region_covers_a_shape_placed_away_from_the_origin() {
     let window = solid("window", circle_at(0.0, 0.0, 20.0), red());
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
-    bar.transform = skia_safe::Matrix::translate((48.0, 48.0));
+    bar.transform = skia_safe::Matrix::translate((48.0, 48.0)).to_ir();
     bar.mask = Some(Box::new(ramose_ir::Mask {
         source: ramose_ir::MaskSource::Nodes(vec![window]),
         luminance: false,
@@ -380,8 +382,8 @@ fn svg_node_mask_with_feather_or_invert_is_well_formed() {
 #[test]
 fn svg_outside_clip_region_covers_a_shape_placed_away_from_the_origin() {
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
-    bar.transform = skia_safe::Matrix::translate((48.0, 48.0));
-    bar.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 10.0), feather: 0.0, invert: true });
+    bar.transform = skia_safe::Matrix::translate((48.0, 48.0)).to_ir();
+    bar.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 10.0).to_ir(), feather: 0.0, invert: true });
     let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_mask_region_covers(&svg, -24.0, -24.0, 24.0, 24.0);
 }
@@ -394,7 +396,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
     b.line_to((-12.0, 10.0));
     b.close();
     let mut node = solid("tip", b.detach(), color(0, 0, 255, 255));
-    node.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 2.0), feather: 0.0, invert: true });
+    node.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 2.0).to_ir(), feather: 0.0, invert: true });
     match &mut node.kind {
         NodeKind::Shape(shape) => {
             shape.stroke = Some(ramose_ir::Stroke {
@@ -435,7 +437,7 @@ fn rim_brightens_the_bottom_right_edge() {
     let mut node = solid("disc", circle_at(50.0, 50.0, 30.0), color(140, 140, 140, 255));
     node.effects.push(effect(EffectOp::Rim {
         width: 12.0,
-        dir: Point::new(1.0, 1.0),
+        dir: Point::new(1.0, 1.0).to_ir(),
         color: color(255, 255, 255, 255),
     }));
     let png = render_png(&scene(120.0, 120.0, vec![node]), 1.0, Backend::Cpu).unwrap();
@@ -534,7 +536,7 @@ fn grain_changes_only_opaque_pixels() {
 fn shading_effects() -> [(&'static str, EffectOp); 3] {
     [
         ("grain", EffectOp::Grain { strength: 0.03, scale: 1.5, seed: 4 }),
-        ("rim", EffectOp::Rim { width: 3.0, dir: Point::new(1.0, 1.0), color: color(255, 255, 255, 255) }),
+        ("rim", EffectOp::Rim { width: 3.0, dir: Point::new(1.0, 1.0).to_ir(), color: color(255, 255, 255, 255) }),
         ("inner", EffectOp::Inner { dx: 0.0, dy: 4.0, blur: 2.0, color: color(0, 0, 0, 160) }),
     ]
 }
@@ -542,7 +544,7 @@ fn shading_effects() -> [(&'static str, EffectOp); 3] {
 /// The alpha of the row through a scaled disc's center, from its left edge inward.
 fn left_edge_alpha(ops: Vec<EffectOp>, node_scale: f32, render_scale: f32) -> Vec<u8> {
     let mut disc = solid("disc", circle_at(0.0, 0.0, 10.0), color(140, 140, 140, 255));
-    disc.transform = Matrix::translate((48.0, 48.0)) * Matrix::scale((node_scale, node_scale));
+    disc.transform = (Matrix::translate((48.0, 48.0)) * Matrix::scale((node_scale, node_scale))).to_ir();
     disc.effects.extend(ops.into_iter().map(effect));
     let png = render_png(&scene(96.0, 96.0, vec![disc]), render_scale, Backend::Cpu).unwrap();
     let px = node_scale * render_scale;
@@ -611,8 +613,8 @@ fn svg_emits_gradient_and_bakes_field_fill() {
     let mut disc = solid("disc", circle_at(20.0, 20.0, 12.0), red());
     if let ramose_ir::NodeKind::Shape(shape) = &mut disc.kind {
         shape.fill = Some(ramose_ir::Fill::plain(Paint::Linear {
-            from: Point::new(8.0, 8.0),
-            to: Point::new(32.0, 32.0),
+            from: Point::new(8.0, 8.0).to_ir(),
+            to: Point::new(32.0, 32.0).to_ir(),
             stops: vec![
                 ramose_ir::Stop { pos: 0.0, color: red() },
                 ramose_ir::Stop { pos: 1.0, color: color(0, 0, 255, 255) },
@@ -809,7 +811,7 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
     let clipped = |outline: bool| {
         let mut s = scene(80.0, 80.0, vec![solid("bar", Path::rect(skia_safe::Rect::from_xywh(10.0, 30.0, 60.0, 20.0), None), color(255, 255, 255, 255))]);
         s.children[0].clip = Some(ramose_ir::Clip {
-            path: Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None),
+            path: Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None).to_ir(),
             feather: 3.0,
             invert: false,
         });
@@ -854,7 +856,7 @@ fn noise_fills_the_ramp_without_clipping_its_ends() {
 fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
     for (feather, invert) in [(3.0, false), (3.0, true)] {
         let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
-        bar.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 10.0), feather, invert });
+        bar.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 10.0).to_ir(), feather, invert });
         bar.mask = Some(Box::new(ramose_ir::Mask {
             source: ramose_ir::MaskSource::Nodes(vec![solid("window", circle_at(0.0, 0.0, 20.0), red())]),
             luminance: false,
@@ -870,7 +872,7 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
 
 fn sided_tile(sides: ramose_ir::Sides, turn: f32) -> Vec<u8> {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
-    node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0));
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0)).to_ir();
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides, mask: None, brush: vec![] }));
     render_png(&scene(100.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap()
 }

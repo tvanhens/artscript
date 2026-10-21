@@ -112,7 +112,7 @@ fn input_bytes(input: &EffectInput) -> u64 {
 }
 
 fn path_bytes(path: &Path) -> u64 {
-    path.approximate_bytes_used() as u64
+    vec_bytes(&path.verbs, |_| 0) + vec_bytes(&path.points, |_| 0) + vec_bytes(&path.weights, |_| 0)
 }
 
 fn str_bytes(s: &String) -> u64 {

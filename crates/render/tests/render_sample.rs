@@ -3,10 +3,9 @@ mod common;
 use std::fs;
 use std::path::PathBuf;
 
-use ramose_ir::{
-    Blend, Color, Effect, EffectInput, EffectOp, Field, Matrix, Node, NodeKind, NoiseKind, Paint, Path,
-    Point, Scene, Shape, Stop, Warp,
-};
+use ramose_geom::ToIr;
+use ramose_ir::{Blend, Color, Effect, EffectInput, EffectOp, Field, Node, NodeKind, NoiseKind, Paint, Scene, Shape, Stop, Warp};
+use skia_safe::{Matrix, Path, Point};
 use skia_safe::PathBuilder;
 use ramose_render::{Backend, render_png};
 use common::pixel;
@@ -59,8 +58,8 @@ fn body(hi: Color, lo: Color, ink: Color) -> Node {
         "peach",
         peach_path(),
         Paint::Linear {
-            from: Point::new(90.0, 90.0),
-            to: Point::new(250.0, 300.0),
+            from: Point::new(90.0, 90.0).to_ir(),
+            to: Point::new(250.0, 300.0).to_ir(),
             stops: vec![Stop { pos: 0.0, color: hi }, Stop { pos: 1.0, color: lo }],
         },
     );
@@ -69,7 +68,7 @@ fn body(hi: Color, lo: Color, ink: Color) -> Node {
         shape.children.push(cel());
     }
     node.effects = vec![
-        fx(EffectOp::Rim { width: 16.0, dir: Point::new(1.0, 1.0), color: Color { r: 1.0, g: 0.96, b: 0.9, a: 0.85 } }),
+        fx(EffectOp::Rim { width: 16.0, dir: Point::new(1.0, 1.0).to_ir(), color: Color { r: 1.0, g: 0.96, b: 0.9, a: 0.85 } }),
         fx(EffectOp::Grain { strength: 0.07, scale: 1.6, seed: 11 }),
         fx(EffectOp::Outline { width: 2.5, color: ink, sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }),
     ];
@@ -116,7 +115,7 @@ fn leaf(right: bool) -> Node {
         ("leaf.l", skia_safe::Rect::from_xywh(96.0, 78.0, 78.0, 28.0))
     };
     let mut node = shape(name, Path::oval(rect, None), Paint::Solid(color(72, 150, 78)));
-    node.transform = Matrix::rotate_deg_pivot(if right { -18.0 } else { 16.0 }, (if right { 176.0 } else { 174.0 }, 92.0));
+    node.transform = Matrix::rotate_deg_pivot(if right { -18.0 } else { 16.0 }, (if right { 176.0 } else { 174.0 }, 92.0)).to_ir();
     node
 }
 
@@ -155,7 +154,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
     Node {
         path: path.into(),
         origin: "sample:1".into(),
-        transform: Matrix::new_identity(),
+        transform: Matrix::new_identity().to_ir(),
         warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
@@ -163,7 +162,7 @@ fn shape(path: &str, geometry: Path, fill: Paint) -> Node {
         mask: None,
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
-            geometry,
+            geometry: geometry.to_ir(),
             fill: Some(ramose_ir::Fill::plain(fill)),
             stroke: None,
             blur: 0.0,

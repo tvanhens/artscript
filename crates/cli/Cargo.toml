@@ -13,6 +13,7 @@ serde.workspace = true
 serde_json.workspace = true
 ramose-syntax.workspace = true
 ramose-ir.workspace = true
+skia-safe.workspace = true
 ramose-render.workspace = true
 ramose-eval.workspace = true
 toml = "0.8"

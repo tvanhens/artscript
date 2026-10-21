@@ -1,5 +1,6 @@
 //! Evaluator behaviour tests over in-memory projects.
 
+use ramose_geom::{NodeGeom, ToIr, ToSk};
 use ramose_ir::{Blend, EffectOp, Node, NodeKind, Paint, Scene};
 use ramose_syntax::Diagnostic;
 
@@ -62,7 +63,7 @@ fn node<'a>(s: &'a Scene, path: &str) -> &'a Node {
 }
 
 fn at(n: &Node) -> (f32, f32) {
-    (n.transform.translate_x(), n.transform.translate_y())
+    (n.transform.to_sk().translate_x(), n.transform.to_sk().translate_y())
 }
 
 fn fill_hex(n: &Node) -> String {
@@ -128,7 +129,7 @@ fn patches_rotate_hide_and_reach_nested_params() {
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
     let a = node(&s, "f.a");
-    let (sin, cos) = (a.transform.skew_y(), a.transform.scale_x());
+    let (sin, cos) = (a.transform.to_sk().skew_y(), a.transform.to_sk().scale_x());
     assert!((sin.atan2(cos).to_degrees() + 20.0).abs() < 1e-3);
     assert!(!paths(&s).iter().any(|p| p == "f.mouth"));
     assert_eq!(fill_hex(node(&s, "f.c.white.pupil")), "#ff0000");
@@ -214,9 +215,9 @@ fn mirror_draws_a_flipped_copy_with_m_suffix() {
     let m = node(&s, "ear~m");
     let b = m
         .transform
-        .map_rect(
+        .to_sk().map_rect(
             m.bounds()
-                .map(|r| m.transform.invert().unwrap().map_rect(r).0)
+                .map(|r| m.transform.to_sk().invert().unwrap().map_rect(r).0)
                 .unwrap(),
         )
         .0;
@@ -484,7 +485,7 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
          curve 0,0 50,0 100,0 stroke:#111,[each k in 0..3 -> 4+k*4] taper:0 name:ink\n\
          curve 0,0 50,0 100,0 stroke:#111,[4 8 12] taper:0 name:lit\n",
     );
-    let b = shape(&s, "ring").geometry.compute_tight_bounds();
+    let b = shape(&s, "ring").geometry.to_sk().compute_tight_bounds();
     assert!((f64::from(b.left) + 10.0).abs() < 1e-4, "left {}", b.left);
     assert!(
         (f64::from(b.right) - 10.0).abs() < 1e-4,
@@ -499,12 +500,12 @@ fn each_expr_builds_curve_points_and_stroke_widths() {
     );
     let outline = |name| shape(&s, name).stroke.as_ref().and_then(|st| st.ink.clone()).expect("tapered ink");
     assert_eq!(
-        outline("ink").to_svg(),
-        outline("lit").to_svg(),
+        outline("ink").to_sk().to_svg(),
+        outline("lit").to_sk().to_svg(),
         "a width list built with each differs from the same literal list"
     );
-    assert!(outline("ink").contains(ramose_ir::Point::new(50.0, 3.5)));
-    assert!(!outline("ink").contains(ramose_ir::Point::new(50.0, 4.6)));
+    assert!(outline("ink").to_sk().contains(skia_safe::Point::new(50.0, 3.5)));
+    assert!(!outline("ink").to_sk().contains(skia_safe::Point::new(50.0, 4.6)));
 }
 
 #[test]
@@ -760,7 +761,7 @@ fn round_cuts_corners_of_a_flat_curve_and_a_poly() {
     let has = |path: &str, x: f32, y: f32| {
         shape(&s, path)
             .geometry
-            .contains(ramose_ir::Point::new(x, y))
+            .to_sk().contains(skia_safe::Point::new(x, y))
     };
     assert!(has("sharp", -9.2, -9.2));
     assert!(!has("soft", -9.2, -9.2));
@@ -777,9 +778,9 @@ fn curve_never_goes_past_its_points() {
          curve 10,30 30,43 60,43 90,43 110,20 tension:1 name:foot\n\
          curve 20,20 60,10 100,20 60,60 closed name:loop\n",
     );
-    let foot = shape(&s, "foot").geometry.compute_tight_bounds();
+    let foot = shape(&s, "foot").geometry.to_sk().compute_tight_bounds();
     assert!(foot.bottom <= 43.0, "foot bulges to {}", foot.bottom);
-    let ring = shape(&s, "loop").geometry.compute_tight_bounds();
+    let ring = shape(&s, "loop").geometry.to_sk().compute_tight_bounds();
     assert_eq!((ring.left, ring.top, ring.right, ring.bottom), (20.0, 10.0, 100.0, 60.0));
 }
 
@@ -788,8 +789,8 @@ fn jitter_is_amplitude_and_wavelength() {
     let a = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,30\n");
     let b = scene("@target t.png 80x80\ncircle 20 name:c jitter:3,90\n");
     assert_ne!(
-        shape(&a, "c").geometry.to_svg(),
-        shape(&b, "c").geometry.to_svg()
+        shape(&a, "c").geometry.to_sk().to_svg(),
+        shape(&b, "c").geometry.to_sk().to_svg()
     );
     let bare = run_with("@target t.png 40x40\ncircle 20 jitter:2\n", &[]);
     let d = bare
@@ -806,7 +807,7 @@ fn a_closed_width_list_stroke_wraps_without_a_seam_cap() {
         "@target t.png 128x128\ncurve 30,30 98,30 98,98 30,98 closed stroke:#000,[2 14 2 14] tension:0 name:a\n",
     );
     let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
-    let inside = |x: f32, y: f32| ink.contains(ramose_ir::Point::new(x, y));
+    let inside = |x: f32, y: f32| ink.to_sk().contains(skia_safe::Point::new(x, y));
     assert!(inside(30.0, 30.5) && !inside(30.0, 26.0), "the first knot is 2 wide with no cap");
     assert!(inside(33.0, 64.0) && !inside(35.0, 64.0), "the closing side runs from 14 to 2");
     assert!(inside(64.0, 33.0) && !inside(64.0, 35.0), "the first side runs from 2 to 14");
@@ -819,7 +820,7 @@ fn a_width_list_stroke_inks_every_contour_of_a_path() {
         "@target t.png 128x64\npath \"M 10 20 L 60 20 M 10 44 L 60 44\" stroke:#000,[2 10] taper:0 name:a\n",
     );
     let ink = shape(&s, "a").stroke.as_ref().and_then(|st| st.ink.as_ref()).expect("tapered ink");
-    let inside = |x: f32, y: f32| ink.contains(ramose_ir::Point::new(x, y));
+    let inside = |x: f32, y: f32| ink.to_sk().contains(skia_safe::Point::new(x, y));
     assert!(inside(35.0, 20.0) && inside(35.0, 44.0), "both contours are inked");
 }
 
@@ -1162,7 +1163,7 @@ fn scene_with(src: &str, libs: &[(&str, &str)]) -> Scene {
 }
 
 fn assert_box(s: &Scene, path: &str, w: f64, h: f64) {
-    let b = shape(s, path).geometry.compute_tight_bounds();
+    let b = shape(s, path).geometry.to_sk().compute_tight_bounds();
     let (bw, bh) = (f64::from(b.width()), f64::from(b.height()));
     assert!(
         (bw - w).abs() < 1e-3 && (bh - h).abs() < 1e-3,
@@ -1747,7 +1748,7 @@ rect 10 at:1,2 fill:#0000ff name:box
         "{:?}",
         at(n)
     );
-    let (sin, cos) = (n.transform.skew_y(), n.transform.scale_x());
+    let (sin, cos) = (n.transform.to_sk().skew_y(), n.transform.to_sk().scale_x());
     assert!(
         (sin.atan2(cos).to_degrees() - 1.0).abs() < 1e-2,
         "{}",
@@ -2808,7 +2809,7 @@ fn an_anim_rand_ignores_a_toggling_let() {
                 .find(|n| n.path == "c")
                 .unwrap()
                 .transform
-                .translate_x()
+                .to_sk().translate_x()
         })
         .collect();
     assert!((xs[0] - xs[1]).abs() < 1e-4, "{xs:?}");
@@ -2883,7 +2884,7 @@ fn a_play_start_rand_ignores_a_toggling_let() {
                     .find(|n| n.path == "c")
                     .unwrap()
                     .transform
-                    .translate_x()
+                    .to_sk().translate_x()
             })
             .collect::<Vec<_>>()
     };
@@ -2900,7 +2901,7 @@ fn a_gif_scale_two_refines_a_tapered_stroke() {
         let frames = &out.at(scale).unwrap_or_else(|| panic!("no sample at {scale}")).frames;
         assert_eq!(frames.len(), 2, "{scale}");
         let ink = shape(&frames[0].scene, "ink").stroke.as_ref().and_then(|st| st.ink.as_ref());
-        ink.expect("tapered ink").count_points()
+        ink.expect("tapered ink").to_sk().count_points()
     };
     assert!(n(2.0) > n(1.0), "{} vs {}", n(2.0), n(1.0));
 }
@@ -3730,7 +3731,7 @@ fn walk_deep_node<'a>(n: &'a Node, out: &mut Vec<&'a Node>) {
 
 fn node_print(n: &Node) -> String {
     let geom = match &n.kind {
-        NodeKind::Shape(s) => s.geometry.to_svg(),
+        NodeKind::Shape(s) => s.geometry.to_sk().to_svg(),
         NodeKind::Group { .. } => String::new(),
     };
     format!("{:?} a:{} {geom} {:?}", n.transform, n.opacity, n.effects)
@@ -5617,7 +5618,7 @@ fn a_vector_is_a_size_and_filtered_words_still_pass() {
     let s = scene(
         "@target t.png 64x64\nlet w = 30\nlet h = 6\nrect w,h at:32,32 name:r\nlayer bg\n  group g at:32,32\n    mirror x\n      circle 4 at:10,0 name:ear\ncurve 0,0 10,-5 20,0 30,5 40,0 name:wave\ncurve 0,0 10,10 20,0 closed name:loop\n",
     );
-    let b = shape(&s, "r").geometry.compute_tight_bounds();
+    let b = shape(&s, "r").geometry.to_sk().compute_tight_bounds();
     assert_eq!((b.width(), b.height()), (30.0, 6.0));
     assert!(paths(&s).contains(&"ear~m".to_string()));
     assert!(paths(&s).iter().any(|p| p.ends_with("wave")));
@@ -6462,7 +6463,7 @@ fn outputs(src: &str) -> crate::OutputScenes {
 
 fn width_at(out: &crate::OutputScenes, scale: f32, path: &str) -> f64 {
     let scene = &out.at(scale).unwrap_or_else(|| panic!("no scene at {scale}")).scene;
-    f64::from(shape(scene, path).geometry.compute_tight_bounds().width())
+    f64::from(shape(scene, path).geometry.to_sk().compute_tight_bounds().width())
 }
 
 #[test]
@@ -6492,7 +6493,7 @@ fn scale_is_one_for_an_svg_whatever_scale_it_lists() {
     let ev = evaluate(&p, &plan.jobs[0]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
-    assert_eq!(shape(&s, "c").geometry.compute_tight_bounds().width(), 10.0);
+    assert_eq!(shape(&s, "c").geometry.to_sk().compute_tight_bounds().width(), 10.0);
 }
 
 fn gif_samples(src: &str) -> crate::OutputSamples {
@@ -6511,7 +6512,7 @@ fn scale_reads_each_gif_outputs_own_scale() {
         let frames = &out.at(scale).unwrap_or_else(|| panic!("no sample at {scale}")).frames;
         assert!(!frames.is_empty(), "{scale}");
         for f in frames {
-            let w = f64::from(shape(&f.scene, "c").geometry.compute_tight_bounds().width());
+            let w = f64::from(shape(&f.scene, "c").geometry.to_sk().compute_tight_bounds().width());
             assert!((w - 10.0 * f64::from(scale)).abs() < 0.05, "{scale}: {w}");
         }
     }
@@ -6559,7 +6560,7 @@ fn a_library_let_named_scale_wins_inside_its_own_defs() {
     );
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
     let s = ev.scene.unwrap();
-    assert_eq!(shape(&s, "d.c").geometry.compute_tight_bounds().width(), 6.0);
+    assert_eq!(shape(&s, "d.c").geometry.to_sk().compute_tight_bounds().width(), 6.0);
 }
 
 #[test]
@@ -6773,7 +6774,7 @@ fn concat_reports_what_is_not_a_list() {
 fn a_curve_takes_points_and_lists_of_points_in_order() {
     let geometry = |src: &str| {
         let s = scene(&format!("@target t.png 80x80\nlet pts = [10,10 50,10]\n{src} name:c\n"));
-        shape(&s, "c").geometry.to_svg()
+        shape(&s, "c").geometry.to_sk().to_svg()
     };
     let literal = geometry("curve 10,10 50,10 50,50 0,50");
     assert_eq!(geometry("curve pts 50,50 0,50"), literal);
@@ -6821,17 +6822,17 @@ fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
 }
 
 fn contour_len(s: &Scene, path: &str) -> f64 {
-    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry, false, None)
+    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry.to_sk(), false, None)
         .map(|m| f64::from(m.length()))
         .sum()
 }
 
 fn contour_count(s: &Scene, path: &str) -> usize {
-    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry, false, None).count()
+    skia_safe::ContourMeasureIter::new(&shape(s, path).geometry.to_sk(), false, None).count()
 }
 
 fn ends(s: &Scene, path: &str) -> ((f32, f32), (f32, f32)) {
-    let pts = shape(s, path).geometry.points().to_vec();
+    let pts = shape(s, path).geometry.to_sk().points().to_vec();
     let (a, z) = (pts[0], pts[pts.len() - 1]);
     ((a.x, a.y), (z.x, z.y))
 }
@@ -6918,16 +6919,16 @@ fn edge_of_a_path_spans_its_contours_in_order() {
     );
     assert_eq!(contour_count(&s, "e"), 2);
     assert!((contour_len(&s, "e") - 10.0).abs() < 1e-3);
-    let pts = shape(&s, "e").geometry.points().to_vec();
+    let pts = shape(&s, "e").geometry.to_sk().points().to_vec();
     assert_eq!((pts[0].x, pts[pts.len() - 1].x), (5.0, 25.0));
 }
 
 #[test]
 fn edge_of_a_jittered_shape_lies_on_the_jittered_contour() {
     let s = scene("@target t.png 100x100\ncircle 20 at:50,50 jitter:3,30 seed:1 name:c\nedge @c name:e\n");
-    let world = node(&s, "c").transform;
-    let drawn = crate::geom::sample(&shape(&s, "c").geometry.make_transform(&world), 0.25);
-    let max_off = |path: &ramose_ir::Path| {
+    let world = node(&s, "c").transform.to_sk();
+    let drawn = crate::geom::sample(&shape(&s, "c").geometry.to_sk().make_transform(&world), 0.25);
+    let max_off = |path: &skia_safe::Path| {
         crate::geom::sample(path, 1.0)
             .iter()
             .flat_map(|c| c.pos.iter())
@@ -6940,7 +6941,7 @@ fn edge_of_a_jittered_shape_lies_on_the_jittered_contour() {
             })
             .fold(0.0, f64::max)
     };
-    assert!(max_off(&shape(&s, "e").geometry) < 0.3);
+    assert!(max_off(&shape(&s, "e").geometry.to_sk()) < 0.3);
     let circle = crate::geom::ellipse(20.0, 20.0).make_transform(&world);
     assert!(max_off(&circle) > 0.5, "the jitter moved the contour");
 }
@@ -7422,7 +7423,7 @@ fn edge_to_the_end_of_an_open_curve_is_one_piece() {
         }
         let s = scene(&src);
         for i in 1..100 {
-            let moves = skia_safe::path::Iter::new(&shape(&s, &format!("e{i}")).geometry, false)
+            let moves = skia_safe::path::Iter::new(&shape(&s, &format!("e{i}")).geometry.to_sk(), false)
                 .filter(|(verb, _)| *verb == skia_safe::path::Verb::Move)
                 .count();
             assert_eq!(moves, 1, "curve {k}, from:.{i:02}");
@@ -7807,14 +7808,15 @@ fn named_subtree_crop_bounds_do_not_depend_on_group_depth() {
 
 #[test]
 fn named_subtree_bounds_intersect_rotated_clips_and_masks_before_boxing() {
-    use ramose_ir::{Clip, Mask, MaskSource, Path, Rect};
+    use ramose_ir::{Clip, Mask, MaskSource};
+    use skia_safe::{Path, Rect};
     for mask in [false, true] {
         let mut s = scene("@target t.png 80x80\ngroup outer at:40,40 rot:-45\n  rect 20,10 rot:45 fill:#ff0000 name:head\n");
         if mask {
             let source = scene("@target t.png 80x80\nrect 4,100 at:0,0 fill:#ffffff\n").children;
             s.children[0].mask = Some(Box::new(Mask { source: MaskSource::Nodes(source), luminance: false, feather: 0.0, invert: false }));
         } else {
-            s.children[0].clip = Some(Clip { path: Path::rect(Rect::new(-2.0, -50.0, 2.0, 50.0), None), feather: 0.0, invert: false });
+            s.children[0].clip = Some(Clip { path: Path::rect(Rect::new(-2.0, -50.0, 2.0, 50.0), None).to_ir(), feather: 0.0, invert: false });
         }
         let bounds = crate::node_bounds(&s, "outer").unwrap();
         assert!((bounds.width() - (10.0 + 4.0 * 2.0f32.sqrt())).abs() < 1e-4, "mask={mask}: {bounds:?}");

@@ -10,6 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 ramose-syntax.workspace = true
 ramose-ir.workspace = true
+ramose-geom.workspace = true
 ramose-brush.workspace = true
 toml = "0.8"
 

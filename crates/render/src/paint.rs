@@ -1,5 +1,6 @@
 //! Skia paints, blend modes, and gradient shaders. Stops are already dense sRGB.
 
+use ramose_geom::ToSk;
 use ramose_ir::{Blend, Cap, Color, Join, Paint as IrPaint, Stop, Stroke};
 use skia_safe::gradient::{self, Colors, Gradient, Interpolation};
 use skia_safe::paint::{Cap as SkCap, Join as SkJoin, Style};
@@ -97,13 +98,13 @@ pub fn content_paint(src: &IrPaint, blur: f32, stroke: Option<&Stroke>) -> Resul
             paint.set_color4f(color4(*c), None);
         }
         IrPaint::Linear { from, to, stops } => {
-            paint.set_shader(stops_linear(stops, *from, *to)?);
+            paint.set_shader(stops_linear(stops, from.to_sk(), to.to_sk())?);
         }
         IrPaint::Radial { center, radius, stops } => {
-            paint.set_shader(stops_radial(stops, *center, *radius)?);
+            paint.set_shader(stops_radial(stops, center.to_sk(), *radius)?);
         }
         IrPaint::Conic { center, start_deg, stops } => {
-            paint.set_shader(stops_sweep(stops, *center, *start_deg)?);
+            paint.set_shader(stops_sweep(stops, center.to_sk(), *start_deg)?);
         }
         IrPaint::Field { field, stops } => {
             paint.set_shader(field_shader(field, FieldUse::Stops(stops))?);

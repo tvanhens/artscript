@@ -3,10 +3,9 @@
 use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
-use ramose_ir::{
-    AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Matrix, Node, NodeKind, Paint, Path, Scene, Shape,
-    Stage, Warp,
-};
+use ramose_geom::ToIr;
+use ramose_ir::{AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Node, NodeKind, Paint, Scene, Shape, Stage, Warp};
+use skia_safe::{Matrix, Path};
 use skia_safe::{AlphaType, ColorType, Data, Image, ImageInfo};
 
 pub fn scene(w: f32, h: f32, children: Vec<Node>) -> Scene {
@@ -17,7 +16,7 @@ pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {
     Node {
         path: path.into(),
         origin: "test:1".into(),
-        transform: Matrix::new_identity(),
+        transform: Matrix::new_identity().to_ir(),
         warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
@@ -25,7 +24,7 @@ pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {
         mask: None,
         effects: vec![],
         kind: NodeKind::Shape(Box::new(Shape {
-            geometry,
+            geometry: geometry.to_ir(),
             fill: Some(ramose_ir::Fill::plain(Paint::Solid(fill))),
             stroke: None,
             blur: 0.0,
@@ -77,7 +76,7 @@ pub fn stamp(path: &str, transform: Matrix, children: Vec<Node>) -> Node {
     Node {
         path: path.into(),
         origin: "test:1".into(),
-        transform,
+        transform: transform.to_ir(),
         warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
