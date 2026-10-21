@@ -8028,3 +8028,12 @@ fn a_three_number_tuple_still_reads_as_a_list_of_numbers() {
     let ev = run_with("@artboard 64x64\n@target t.png\nrect 30 at:32,32 fill:#7fd4a8\n  fx blur 2 as:b\n  fx merge self b a:red\n", &[]);
     assert!(diag(&ev, "E0320").message.contains("`a:`"), "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn rot_takes_one_angle_and_reports_anything_else() {
+    for src in ["rect 4x4 rot:0,1,0\n", "rect 4x4 rot:0,1\n", "repeat 3 rot:0,1,0\n  rect 2x2\n"] {
+        let ev = run_with(&format!("@artboard 20x20\n@target t.png\n{src}"), &[]);
+        assert!(diag(&ev, "E0320").message.starts_with("`rot:` takes one angle"), "{src}: {}", show(&ev.diagnostics));
+    }
+    assert_eq!(paths(&scene("@artboard 20x20\n@target t.png\nrect 4x4 rot:.25turn name:r\n")), ["r"]);
+}

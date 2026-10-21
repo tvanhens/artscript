@@ -402,6 +402,14 @@ impl Args {
         self.get(k).and_then(Value::num)
     }
 
+    fn rot(&self) -> R<f64> {
+        let Some(v) = self.get("rot") else { return Ok(0.0) };
+        v.num().ok_or_else(|| {
+            fail("E0320", format!("`rot:` takes one angle, got {}", v.kind()))
+                .fix("write `rot:30`; a 3D rotation will take an axis and an angle, not a vector")
+        })
+    }
+
     pub fn seed(&self) -> R<Option<u64>> {
         self.get("seed").map(Value::seed).transpose()
     }
@@ -631,7 +639,7 @@ fn blend_arg(
     }
     match key {
         "rot" => {
-            let base = a.num("rot").unwrap_or(0.0);
+            let base = a.rot()?;
             let d = value.num().ok_or_else(|| {
                 fail(
                     "E0320",
@@ -1954,7 +1962,7 @@ impl<'a> Evaluator<'a> {
             None => (0.0, 0.0),
         };
         let rot = if with_rot {
-            a.num("rot").unwrap_or(0.0)
+            a.rot()?
         } else {
             0.0
         };
@@ -3136,7 +3144,7 @@ impl<'a> Evaluator<'a> {
         let n = a.pos.first().and_then(Value::num).ok_or_else(|| {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
-        let rot = a.num("rot").unwrap_or(0.0);
+        let rot = a.rot()?;
         let step = a.get("step").map(|v| v.vec2_for("step")).transpose()?.unwrap_or((0.0, 0.0));
         let mut out = Vec::new();
         for i in 0..(n.max(0.0) as usize).min(10_000) {
