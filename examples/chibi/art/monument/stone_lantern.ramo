@@ -146,7 +146,7 @@ layer mossy_rock pivot:512,820
       curve 362,548 512,552 662,548 stroke:stone_line,2.2 taper:.15 a:.45
       fx rim 5 color:lantern.rim a:.5
       fx grain .045 scale:2
-    union fill:lantern.stone z:behind
+    union fill:lantern.stone order:behind
       copy @post
       copy @kiso
       copy @kiso_lotus
