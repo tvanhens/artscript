@@ -122,11 +122,12 @@ impl Ty {
             )
     }
 
-    /// Whether a parameter of this type takes `v` from a call. Every parameter takes `none`.
+    /// Whether a parameter of this type takes `v` from a call. Every parameter but a `one_of`
+    /// takes `none`.
     pub fn accepts(&self, v: &Value) -> bool {
         match (self, v) {
-            (_, Value::None) => true,
             (Ty::Word(Some(words)), _) => matches!(v, Value::Ident(w) if words.contains(w)),
+            (_, Value::None) => true,
             _ => self.accepts_kind(v.kind()),
         }
     }
@@ -1223,6 +1224,6 @@ mod tests {
         let words = Ty::Word(Some(vec!["a".to_string()].into()));
         assert!(words.accepts(&v(Value::Ident("a".into()))));
         assert!(!words.accepts(&v(Value::Ident("b".into()))));
-        assert!(words.accepts(&v(Value::None)));
+        assert!(!words.accepts(&v(Value::None)));
     }
 }

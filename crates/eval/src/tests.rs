@@ -7681,6 +7681,13 @@ fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
 }
 
 #[test]
+fn a_one_of_parameter_rejects_none_at_the_call() {
+    let ev = run_with("@artboard 16x16\n@target t.png\ndef tile kind:one_of(floor_top fill)\n  circle 2\ntile kind:none\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!((d.span.line, d.message.as_str()), (5, "`kind` of `tile` is one of floor_top, fill, got none"), "{d}");
+}
+
+#[test]
 fn one_of_and_none_outside_a_parameter_default_are_e0320() {
     for marker in ["one_of(a b)", "none(color)"] {
         let ev = run_with(&format!("@artboard 16x16\n@target t.png\nlet k = {marker}\ncircle 2\n"), &[]);
