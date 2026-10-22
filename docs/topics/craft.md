@@ -6,7 +6,49 @@ Build and open the normal artwork at its intended display size first. Use `previ
 
 When inspection needs different source logic, declare controls such as `param view:one_of(normal geometry) guides:false`. Ordinary conditionals can reveal hidden geometry, replace texture with flat colors, or draw construction lines. Pass overrides to preview and identify the altered view when reporting it. Keep important artwork named so diagnostic additions preserve its random seeds.
 
-For moving attachments, use `--frames 8` or explicit `--times` and open the resulting strip. Compare the loop endpoints explicitly when checking a seam. Fix the source, rebuild without overrides, and inspect the normal shipping output again. The complete example in `examples/preview-debug/README.md` follows this workflow.
+For moving attachments, use `--frames 8` or explicit `--times` and open the resulting strip. Compare the loop endpoints explicitly when checking a seam. Fix the source, rebuild without overrides, and inspect the normal shipping output again.
+
+Example: an orange hand must touch a blue arm throughout its swing. The source declares diagnostic controls and draws a joint marker and guides only when they are on:
+
+```
+@target arm.png 128x128 bg:none
+@target swing.gif 128x128 bg:#f4f1ea fps:8 dur:2s clip:swing
+
+param view:one_of(normal geometry) guides:false
+
+palette paint
+  color arm #487caa
+  color hand #e5a45a
+  color ink #203449
+  color debug #dd3e98
+  color guide #16a6b3
+
+let attachment = 0
+let edge = if view == geometry then paint.debug else paint.ink
+
+group arm at:64,64
+  rect 48,18 at:0,0 fill:paint.arm stroke:edge,2 name:beam
+  circle 10 at:34+attachment,0 fill:paint.hand stroke:edge,2 name:hand
+  if view == geometry
+    circle 3 at:24,0 fill:paint.debug name:joint
+  if guides
+    curve -28,0 48,0 stroke:paint.guide,1 name:horizontal
+    curve 24,-18 24,18 stroke:paint.guide,1 name:vertical
+
+anim swing dur:2s loop
+  .arm rot:key(-30 30 -30)
+
+if clip == swing
+  play swing
+```
+
+1. Run `ramose check` and `ramose build`, and open `assets/arm.png` at 128 by 128.
+2. Suppose `attachment` is 8 and the hand floats free. Locate the joint in the altered view: `ramose preview art/arm.ramo --target arm.png --set view=geometry --set guides=true --crop hand --pad 14 --zoom 4 --bg checker --out review/joint-debug.png`. The guide crosses the arm's endpoint. The receipt records the parameters and the crop.
+3. Inspect the normal crop with `--bg light`, `--bg dark`, and `--bg checker`, one `--out` each.
+4. Inspect the motion: `--target swing.gif --frames 8 --columns 4` samples the loop evenly and leaves out the repeated endpoint. `--times 0,.5,1,1.5,2` includes both endpoints, so its first and last cells show the same pose and expose a seam.
+5. Set `attachment` back to 0, run `check` and `build` with no overrides, and open the normal output and a fresh `--times` sheet. The hand touches the arm in every pose, and neither part clips the canvas.
+
+Report the normal output, the diagnostic paths, and the parameter settings separately.
 
 Structure a piece:
 

@@ -3,7 +3,20 @@
 # dependencies = ["pillow==11.3.0"]
 # ///
 #!/usr/bin/env python3
-"""Export blinded local review packets and summarize real human annotations."""
+"""Export blinded local review packets and summarize real human annotations.
+
+  uv run bench/human_review.py export bench/out/paired/round-01 bench/out/human/round-01
+  uv run bench/human_review.py import bench/out/human/round-01 /path/to/completed-answers.json
+
+Share only the packet's `public/` directory with reviewers. Its HTML shows anonymous images and
+prompts. Reviewers fill the provided answer schema with a reviewer identifier and left, right or
+tie preferences. Keep `private.json` private until annotation is finished. Imports validate item
+identities and retained images, and write immutable `calibrations/` receipts tied to the exact
+packet and answers. No annotations means calibration is absent. Agreement is reported against
+unanimous machine orientation votes. Observed left/right counts describe position preference, not
+measured swap sensitivity. Multiple reviewers and repeated blinded judgments are needed to assess
+human reliability.
+"""
 import argparse
 import hashlib
 import html
@@ -144,7 +157,7 @@ def import_answers(packet, answers):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     commands = parser.add_subparsers(dest="command", required=True)
     export = commands.add_parser("export")
     export.add_argument("run", type=Path)

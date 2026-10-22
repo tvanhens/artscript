@@ -1,6 +1,6 @@
 //! Visual goldens for `catalog/`. A cold CPU build turns every output into a PNG view: a PNG as
 //! itself, a GIF as a strip of its frames, an SVG rasterized. Each view must match
-//! `catalog/golden/<output path>[.png]` within a small tolerance. See `catalog/README.md`.
+//! `catalog/golden/<output path>[.png]` within a small tolerance. See "When the `visual` test fails" in `AGENTS.md`.
 
 use std::collections::BTreeSet;
 use std::fs;

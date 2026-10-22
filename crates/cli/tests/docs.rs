@@ -149,3 +149,20 @@ fn the_brushes_topic_declaration_example_checks() {
         String::from_utf8_lossy(&out.stderr)
     );
 }
+
+#[test]
+fn every_markdown_file_is_a_doc_the_cli_prints_or_allowlisted() {
+    const ALLOWED: &[&str] = &["docs/", ".github/", "plugins/", "AGENTS.md", "CHANGELOG.md", "README.md", "npm/README.md"];
+    let out = Command::new("git")
+        .args(["ls-files", "--cached", "--others", "--exclude-standard", "--", "*.md"])
+        .current_dir(docs_dir().join(".."))
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let stray: Vec<&str> = std::str::from_utf8(&out.stdout)
+        .unwrap()
+        .lines()
+        .filter(|path| !ALLOWED.iter().any(|a| if a.ends_with('/') { path.starts_with(a) } else { path == a }))
+        .collect();
+    assert!(stray.is_empty(), "only `ramose docs` prints docs; move these into docs/topics/, AGENTS.md, or a tool's --help: {stray:?}");
+}
