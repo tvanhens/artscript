@@ -133,7 +133,7 @@ fn the_brushes_topic_declaration_example_checks() {
     .unwrap();
     fs::write(
         dir.join("art/scuff.ramo"),
-        format!("@target scuff.png 64x64\n\npalette p\n  color ink #2a1a2e\n  color sky #7fb8e6\n\n{example}\ncircle 20 fill:p.sky brush:scuff name:c\n"),
+        format!("@artboard 64x64\n@target scuff.png\n\npalette p\n  color ink #2a1a2e\n  color sky #7fb8e6\n\n{example}\ncircle 20 fill:p.sky brush:scuff name:c\n"),
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_ramose"))

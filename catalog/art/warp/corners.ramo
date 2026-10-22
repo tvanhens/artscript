@@ -1,5 +1,5 @@
 # warp:corners on paper, 256x128. Every quad corner is marked with a 2px ink dot drawn separately at the
-# same canvas point, so a correct pin puts each corner of the warped box exactly on a dot. Row 1 at y
+# same artboard point, so a correct pin puts each corner of the warped box exactly on a dot. Row 1 at y
 # about 38, row 2 at y about 98, left to right:
 # (1) x 40: the flat reference, a red 40x24 rect with a 2px ink stroke, no warp.
 # (2) the same rect pinned to a trapezoid, wider at the bottom: its ink box lands on the dots at
@@ -16,8 +16,9 @@
 # dots at exactly those points with the same 2px stroke as cell 2.
 # The .svg target uses profile:svg: a warped node is raster-only and bakes to a tile whose box is the
 # warped box, so every cell looks like the PNG's and no quad is cut off.
-@target warp/corners.png 256x128
-@target warp/corners.svg 256x128 profile:svg
+@artboard 256x128
+@target warp/corners.png
+@target warp/corners.svg profile:svg
 
 rect 40x24 at:40,36 fill:p.red stroke:p.ink,2
 

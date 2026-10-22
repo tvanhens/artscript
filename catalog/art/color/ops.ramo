@@ -13,8 +13,9 @@
 # gains chroma, so the docs' "more saturated" does not hold for the others.
 # Row 5 (y 148): shade(p.red k) for k = -2, -1, 0, 1, 2 on the palette ramp member p.red: the same
 # dark-to-light order as row 1, the middle cell is p.red itself.
-@target color/ops.png 192x160
-@target color/ops.svg 192x160 profile:vector
+@artboard 192x160
+@target color/ops.png
+@target color/ops.svg profile:vector
 
 rect 28x24 at:24,20 fill:shade(#4f9fd0 -2)
 rect 28x24 at:60,20 fill:shade(#4f9fd0 -1)

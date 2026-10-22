@@ -3,7 +3,8 @@
 # 2. `layer at:96,32` holding a blue 28x28 square: a blue square centered in the second cell.
 # 3. `group at:160,32` with a `mask` of a 24x24 rect and a red circle (radius 20): the mask cuts the circle to a red 24x24 square centered in the third cell. An empty cell means the mask missed the circle.
 # 4. `group at:224,32` holding `repeat 3 rot:60` of a green 4x44 rect: six green spokes, 60 degrees apart, crossing at the fourth cell's center like an asterisk.
-@target structure/group_origin.png 256x64
+@artboard 256x64
+@target structure/group_origin.png
 
 group at:32,32
   circle 14 fill:p.gold

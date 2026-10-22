@@ -9,8 +9,9 @@
 # brush with fx outline 3 (x 208) matches row 1's circle inside a clean, unbroken ink ring.
 # Nothing is drawn outside its shape. The .svg target uses profile:svg: brushed nodes are baked
 # into raster tiles, so each cell looks like the PNG's.
-@target brush/form.png 256x192
-@target brush/form.svg 256x192 profile:svg
+@artboard 256x192
+@target brush/form.png
+@target brush/form.svg profile:svg
 
 use std/brushes { form }
 

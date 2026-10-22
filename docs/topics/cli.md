@@ -13,9 +13,9 @@ ramose preview art/hero.ramo --target hero.gif --frames 8 --columns 4 --out revi
 | Option | Meaning |
 |---|---|
 | `--set name=value` | Bind a declared entry parameter. Repeat for several controls. See `values`. |
-| `--crop x,y,w,h` | Rectangle in canvas units, with positive width and height. |
+| `--crop x,y,w,h` | Rectangle in artboard units, with positive width and height. |
 | `--crop node.path` | Named node's ink bounds, including its own clipping, mask, stroke, and ancestor placement and warps, excluding effects. An optional leading `@` is accepted. |
-| `--pad N` | Nonnegative padding in canvas units, applied before raster rounding. |
+| `--pad N` | Nonnegative padding in artboard units, applied before raster rounding. |
 | `--zoom N` | Positive integer enlargement of target pixels with nearest-neighbor sampling. Default 1. |
 | `--bg checker\|light\|dark\|none\|#hex` | Presentation background. Default transparent. Light is white, dark is `#202020`, and checker uses eight-pixel squares before zoom. |
 | `--time T` | One time in seconds. The default is the target's `t:`. |
@@ -24,15 +24,15 @@ ramose preview art/hero.ramo --target hero.gif --frames 8 --columns 4 --out revi
 | `--clip NAME` | Select an output whose target declares this clip. An incompatible `--target` is an error. |
 | `--columns N` | Positive count of columns in the contact sheet. The default is one horizontal strip. |
 
-Choose one of `--time`, `--times`, and `--frames`. Explicit times can include the loop endpoint. Named crops in a sheet use the union of bounds across its frames. Raster crop edges round outward after multiplication by the selected output scale. Regions beyond the target canvas are transparent before background presentation.
+Choose one of `--time`, `--times`, and `--frames`. Explicit times can include the loop endpoint. Named crops in a sheet use the union of bounds across its frames. A crop is mapped through the output's size, fit, and align, and its raster edges round outward. Regions beyond the output are transparent before background presentation.
 
-Preview renders the full target before cropping. `canvas.w`, matrix values, scale, occlusion, drawing order, and random choices keep their target context. A named crop retains surrounding artwork. Background presentation composites transparency without replacing an existing opaque target background. Zoom enlarges pixels rather than rerendering at a higher resolution. Parameter-driven drawings use normal clipping, effects, and drawing order. Naming unchanged artwork preserves its random seeds when diagnostic draws are added.
+Preview renders the full target before cropping. `artboard.w`, matrix values, `scale`, occlusion, drawing order, and random choices keep their target context. A named crop retains surrounding artwork. Background presentation composites transparency without replacing an existing opaque target background. Zoom enlarges pixels rather than rerendering at a higher resolution. Parameter-driven drawings use normal clipping, effects, and drawing order. Naming unchanged artwork preserves its random seeds when diagnostic draws are added.
 
 The destination must be outside the manifest output directory and `.ramose`. Preview does not write the production manifest or cache. Invalid selectors, bindings, missing crop nodes, and write failures exit with an error and do not emit a success receipt. A previous image at that destination does not indicate that a failed invocation succeeded.
 
 A valid scene still produces a preview when an assertion fails or a lint fires. Diagnostics appear on stderr and in the receipt. The receipt's `exit_code` is 0 for a clean evaluation, 2 for assertion or lint errors, and 3 for warnings only. This lets authors inspect failed geometry without hiding the failed check. Compile errors prevent rendering and exit 1 without a receipt.
 
-The receipt names the source, target path and line, matrix, scale, backend, resolved parameters per frame, times, duration, clip, canvas and pixel crop rectangles, zoom, background, layout, and generated paths. Parameter text preserves numeric precision. Resolved colors use `rgba(r g b a)` and percentages use `percent(fraction)` in the receipt. These descriptions are not CLI literal syntax. `parameter_altered` compares resolved values against defaults at each requested time. An altered view is diagnostic evidence. Inspect the normal output before claiming the shipping image is correct.
+The receipt names the source, target path and line, matrix, scale, backend, resolved parameters per frame, times, duration, clip, artboard and pixel crop rectangles, zoom, background, layout, and generated paths. Parameter text preserves numeric precision. Resolved colors use `rgba(r g b a)` and percentages use `percent(fraction)` in the receipt. These descriptions are not CLI literal syntax. `parameter_altered` compares resolved values against defaults at each requested time. An altered view is diagnostic evidence. Inspect the normal output before claiming the shipping image is correct.
 
 `build --set name=value` deliberately exports the selected parameterized variant to the normal production destinations. Its cache key includes parameter bindings, so a subsequent default build restores default pixels. `check --set name=value` validates equivalent bindings without writing images. Both accept repeated `--set`. Preview is the command for separate inspection artifacts.
 

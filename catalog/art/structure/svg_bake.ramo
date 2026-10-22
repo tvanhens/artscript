@@ -8,7 +8,8 @@
 # 5. A blue 48x48 square masked by the noise field `mask simplex(10) > .5`: a scatter of blue blobs with paper gaps, same idea as the raster mask fixture.
 # 6. A gold 48x48 square masked by a `mask` block of two circles (radius 12, at local offsets -10,-10 and 10,10): two separate gold discs of radius 12, one upper left and one lower right, both full circles.
 # 7. A gold 48x48 square masked by `mask @m7`, an invisible circle (radius 20), with `feather:5` on the draw: a gold disc centered at (224,96) that fades softly into paper with no hard rim: solid gold out to r 6, about half strength at the radius-20 edge, and paper by r 24 where the square ends.
-@target structure/svg_bake.svg 256x128 profile:svg
+@artboard 256x128
+@target structure/svg_bake.svg profile:svg
 
 rect 24x48 at:20,32 fill:p.blue
 rect 24x48 at:44,32 fill:p.gold

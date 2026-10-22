@@ -16,7 +16,7 @@ bg      = "none"
 profile = "auto"
 
 [lint]
-off-canvas = "off"
+off-artboard = "off"
 ```
 
 Every table and key is optional, and a missing key takes the default named below. An unknown table or key, a lint name that is not in the list below, and a value of the wrong type are each E0200 at the line that has the problem. Nothing builds until the manifest is fixed.
@@ -43,7 +43,7 @@ Every table and key is optional, and a missing key takes the default named below
 | name | code | reports |
 |---|---|---|
 | `raw-color` | L0101 | a hex or `oklch(…)` color outside a palette |
-| `off-canvas` | L0102 | a node that the canvas edge cuts (see `checks`) |
+| `off-artboard` | L0102 | a node that the artboard edge cuts (see `checks`) |
 | `unused` | L0103 | an imported or private name that nothing reads (see `targets`) |
 | `positional-seed` | L0104 | an unnamed statement whose randomness comes from its position (see `fields`) |
 | `hidden-child` | L0105 | a line nested under a shape that draws nothing there (see `checks`) |
@@ -51,4 +51,4 @@ Every table and key is optional, and a missing key takes the default named below
 | `unknown-word` | L0107 | a comparison of a `one_of` parameter with a word its list leaves out (see `components`) |
 | `warp-cut` | L0108 | content past the visible half of a `cylinder` warp, which is not drawn, and an anchor a warp hides, which the manifest leaves out (see `warp`) |
 
-Each lint is `warn` unless the table sets it. The levels are `off`, `info`, `warn`, and `error`. `off` drops the lint. `info` prints it and keeps exit code 0. `warn` makes `build` and `check` exit 3, unless `build --allow-warnings` is set. `error` makes them exit 2. A compile error still exits 1. A scene that draws past the canvas edge on purpose marks its target `@target <path> <W>x<H> viewport` (see `targets`); `off-canvas = "off"` turns the lint off for every target.
+Each lint is `warn` unless the table sets it. The levels are `off`, `info`, `warn`, and `error`. `off` drops the lint. `info` prints it and keeps exit code 0. `warn` makes `build` and `check` exit 3, unless `build --allow-warnings` is set. `error` makes them exit 2. A compile error still exits 1. A scene that draws past the artboard edge on purpose marks its artboard `@artboard <W>x<H> viewport` (see `targets`); `off-artboard = "off"` turns the lint off for every target.

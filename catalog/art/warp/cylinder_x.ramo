@@ -8,7 +8,8 @@
 # and the width is unchanged. The 2px top and bottom strokes are squeezed to under a pixel by the
 # turn, so they show as soft gray bands rather than crisp ink lines. A green 3px dot sits at @wrapped.cx,@wrapped.bottom, on the wrapped
 # label's bottom edge, because measurements report the warped box.
-@target warp/cylinder_x.png 128x112
+@artboard 128x112
+@target warp/cylinder_x.png
 
 group at:32,56
   rect 40x96 fill:p.gold.4 stroke:p.ink,2

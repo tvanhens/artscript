@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
+use ramose_geom::{ToIr, ToSk};
 use ramose_eval::{BackendChoice, OutputSpec, Parameters, Project, TargetJob};
 use skia_safe::Rect;
 use ramose_render::Backend;
@@ -26,7 +27,7 @@ pub struct Options {
 #[derive(Default)]
 enum Crop {
     #[default]
-    Canvas,
+    Output,
     Rect(Rect),
     Node(String),
 }
@@ -267,7 +268,8 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<PreviewResul
         _ => return Err("gpu backend is unavailable; use --backend cpu".into()),
     };
     let mut job = selected.job.clone();
-    job.bake_scale = job.sample_scale(&selected.output);
+    job.sample_scale = job.draw_scale(&selected.output);
+    let view = selected.output.framing.view(job.artboard.rect());
     job.parameters = opts.parameters.clone();
     let mut probe_job = job.clone();
     probe_job.frame_t = match &opts.frames {
@@ -311,7 +313,7 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<PreviewResul
         }
         let scene = evaluated.scene.ok_or("target produced no scene")?;
         let bounds = match &opts.crop {
-            Crop::Canvas => Rect::from_xywh(0.0, 0.0, scene.width, scene.height),
+            Crop::Output => view.visible().to_sk(),
             Crop::Rect(rect) => *rect,
             Crop::Node(path) => ramose_eval::node_bounds(&scene, path)
                 .ok_or_else(|| format!("crop node `{path}` has no ink bounds at t={time}"))?,
@@ -323,19 +325,19 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<PreviewResul
         }
         parameters.push(evaluated.parameters);
         images.push(
-            ramose_render::render_rgba(&scene, selected.output.scale, backend)
+            ramose_render::render_rgba(&scene, &selected.output.framing, backend)
                 .map_err(|e| format!("cannot render preview: {e:?}"))?,
         );
     }
     let bounds = crop
         .ok_or("preview has no frames")?
         .with_outset((opts.pad, opts.pad));
-    let scale = f64::from(selected.output.scale);
+    let px = view.rect_to_px(bounds.to_ir());
     let coordinates = [
-        f64::from(bounds.left) * scale,
-        f64::from(bounds.top) * scale,
-        f64::from(bounds.right) * scale,
-        f64::from(bounds.bottom) * scale,
+        f64::from(px.left),
+        f64::from(px.top),
+        f64::from(px.right),
+        f64::from(px.bottom),
     ];
     if coordinates
         .iter()
@@ -444,10 +446,10 @@ fn preview(project: &Project, cwd: &Path, opts: &Options) -> Result<PreviewResul
         "source": source, "target": selected.output.path, "target_line": job.line,
         "exit_code": crate::exit_code(&diagnostics, false), "diagnostics": diagnostics,
         "matrix": job.matrix.iter().map(|(key, value)| (key.clone(), value.text())).collect::<std::collections::BTreeMap<_, _>>(),
-        "scale": selected.output.scale, "backend": format!("{backend:?}").to_lowercase(),
+        "scale": selected.output.framing.scale, "backend": format!("{backend:?}").to_lowercase(),
         "parameters": parameters, "parameter_altered": altered, "clip": job.clip,
         "times": times, "duration": duration, "sampling": "even samples exclude loop end; explicit times include it",
-        "crop_canvas": [bounds.left, bounds.top, bounds.width(), bounds.height()],
+        "crop_artboard": [bounds.left, bounds.top, bounds.width(), bounds.height()],
         "crop_pixels": [left, top, width as i64, height as i64], "zoom": opts.zoom,
         "background": match opts.background { Background::Transparent => json!("none"), Background::Checker => json!("checker"), Background::Color(color) => json!(color) },
         "columns": columns, "rows": rows, "size": [sheet_w, sheet_h], "paths": [destination],

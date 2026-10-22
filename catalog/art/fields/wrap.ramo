@@ -1,9 +1,10 @@
-# Periodic noise on a 256x128 canvas. Every cell draws one wrapped tile several times edge to edge, and the copies join with no seam: no line, step, or repeated edge where tiles meet.
+# Periodic noise on a 256x128 artboard. Every cell draws one wrapped tile several times edge to edge, and the copies join with no seam: no line, step, or repeated edge where tiles meet.
 # Top row, left to right, four 64x64 cells of a 32x32 tile drawn in a 2x2 grid, each with wrap:32 and seed:1 through the blue ramp: simplex (winding blobs), perlin (soft blobs), worley (round bright cells with dark seams), value (soft low-contrast blobs).
 # Each top cell shows the same 32x32 pattern four times, so the top-left quarter of a cell matches its other three quarters exactly.
 # Bottom row, left to right: fbm(simplex(16 wrap:64)) through the gold ramp, one 64x64 tile drawn twice side by side; ridged(worley(16 wrap:64,32)) through the red ramp, a 64x32 tile drawn in a 2x2 grid.
 # The bottom-left pair reads as one 128x64 grainy texture whose right half equals its left half. The bottom-right cell repeats a 64-wide, 32-tall pattern, so its halves match left to right and top to bottom.
-@target fields/wrap.png 256x128
+@artboard 256x128
+@target fields/wrap.png
 
 def quad noise:value(8 wrap:32 seed:1)
   rect 32x32 at:-16,-16 fill:noise -> p.blue name:tl

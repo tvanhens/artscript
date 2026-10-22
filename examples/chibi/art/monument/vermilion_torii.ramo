@@ -1,5 +1,6 @@
-@target monument/vermilion_torii.png 1024x1024
-@target monument/vermilion_torii.svg 1024x1024
+@artboard 1024x1024
+@target monument/vermilion_torii.png
+@target monument/vermilion_torii.svg
 use face/parts { sparkle }
 palette torii
   ramp verm #d9543a 5
@@ -245,4 +246,4 @@ layer leaf_b pivot:870,474
   _leaf 870 474 r:36 rot:28 tint:.35 name:maple_b
 layer leaf_c pivot:836,690
   _leaf 836 690 r:30 rot:64 tint:.15 name:maple_c
-assert inside(@cap canvas margin:24)
+assert inside(@cap artboard margin:24)

@@ -153,31 +153,35 @@ fn mvp_targets_reject_reserved_alias() {
         .replace(" as t", " as teams")
         .replace("t.{team}", "teams.{team}");
     let file = must_parse(&fixed);
-    assert_eq!(file.directives.len(), 2);
-    assert_eq!(file.directives[0].path.as_deref(), Some("icons/{name}.svg"));
+    assert_eq!(file.directives.len(), 3);
+    assert_eq!(file.directives[0].name, "artboard");
+    assert_eq!(file.directives[1].path.as_deref(), Some("icons/{name}.svg"));
     assert_eq!(
-        file.directives[1].path.as_deref(),
+        file.directives[2].path.as_deref(),
         Some("chars/knight-{armor}-{team}.png")
     );
-    assert_eq!(file.directives[1].each.len(), 2);
-    assert_eq!(file.directives[1].each[0].key, "armor");
-    assert_eq!(file.directives[1].each[1].key, "team");
+    assert_eq!(file.directives[2].each.len(), 2);
+    assert_eq!(file.directives[2].each[0].key, "armor");
+    assert_eq!(file.directives[2].each[1].key, "team");
     round_trip_ast(&file);
     round_trip_source(&fixed);
 }
 
 #[test]
 fn directive_target_matrix() {
-    let src = "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n";
+    let src = "@artboard 256x256\n@target chars/hero.png scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n";
     let file = must_parse(src);
-    let d = &file.directives[0];
-    assert_eq!(d.name, "target");
-    assert_eq!(d.path.as_deref(), Some("chars/hero.png"));
-    assert_eq!(d.span, Span { line: 1, col: 1 });
+    let art = &file.directives[0];
+    assert_eq!((art.name.as_str(), art.path.as_deref()), ("artboard", None));
     assert_eq!(
-        d.args,
+        art.args,
         vec![Expr::Size(Box::new(num(256.0)), Box::new(num(256.0)))]
     );
+    let d = &file.directives[1];
+    assert_eq!(d.name, "target");
+    assert_eq!(d.path.as_deref(), Some("chars/hero.png"));
+    assert_eq!(d.span, Span { line: 2, col: 1 });
+    assert!(d.args.is_empty());
     assert_eq!(d.named[0].key, "scale");
     assert_eq!(d.named[0].value, Expr::Tuple(vec![num(1.0), num(2.0)]));
     assert_eq!(d.named[1].key, "as");
@@ -194,16 +198,16 @@ fn directive_target_matrix() {
     );
     assert_eq!(
         format(&file),
-        "@target chars/hero.png 256x256 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
+        "@artboard 256x256\n@target chars/hero.png scale:1,2 as:knights each armor:[plate leather] team:[red blue]\n"
     );
     assert_eq!(
-        format(&must_parse("@target a.png 8x8 viewport\n")),
-        "@target a.png 8x8 viewport\n"
+        format(&must_parse("@artboard 8x8 viewport\n@target a.png\n")),
+        "@artboard 8x8 viewport\n@target a.png\n"
     );
-    let clip = must_parse("@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n");
-    assert_eq!(clip.directives[0].each[0].key, "c");
+    let clip = must_parse("@artboard 512x512\n@target monk_{c}.gif bg:#f1ede4 each c:[idle blink] clip:c\n");
+    assert_eq!(clip.directives[1].each[0].key, "c");
     assert_eq!(
-        clip.directives[0]
+        clip.directives[1]
             .named
             .iter()
             .map(|n| n.key.as_str())
@@ -212,17 +216,17 @@ fn directive_target_matrix() {
     );
     assert_eq!(
         format(&clip),
-        "@target monk_{c}.gif 512x512 bg:#f1ede4 each c:[idle blink] clip:c\n"
+        "@artboard 512x512\n@target monk_{c}.gif bg:#f1ede4 each c:[idle blink] clip:c\n"
     );
-    let listed = must_parse("@target t-{clip}.gif 8x8 clip:[idle blink] each x:[one]\n");
+    let listed = must_parse("@artboard 8x8\n@target t-{clip}.gif clip:[idle blink] each x:[one]\n");
     assert_eq!(
         format(&listed),
-        "@target t-{clip}.gif 8x8 each x:[one] clip:[idle blink]\n"
+        "@artboard 8x8\n@target t-{clip}.gif each x:[one] clip:[idle blink]\n"
     );
     let again = must_parse(&format(&listed));
-    assert_eq!(again.directives[0].each.len(), 1);
-    assert_eq!(again.directives[0].each[0].key, "x");
-    assert!(again.directives[0].named.iter().any(|n| n.key == "clip"));
+    assert_eq!(again.directives[1].each.len(), 1);
+    assert_eq!(again.directives[1].each[0].key, "x");
+    assert!(again.directives[1].named.iter().any(|n| n.key == "clip"));
 }
 
 #[test]
@@ -1100,7 +1104,7 @@ fn target_is_reserved() {
         assert_eq!(e.code, "E0105", "{src}");
         assert_eq!(e.message, "`target` is reserved");
     }
-    must_parse("@target a.png 8x8 as:hero\nif target == hero\n  circle 4\n");
+    must_parse("@artboard 8x8\n@target a.png as:hero\nif target == hero\n  circle 4\n");
 }
 
 #[test]

@@ -2,7 +2,7 @@ mod common;
 
 use ramose_ir::EffectOp;
 use ramose_render::{Backend, gpu_available, render_png};
-use common::{circle_at, color, effect, red, scene, solid};
+use common::{circle_at, color, effect, framed, red, scene, solid};
 
 fn decode(png: &[u8]) -> (i32, i32, Vec<u8>) {
     let image = skia_safe::Image::from_encoded(skia_safe::Data::new_copy(png)).expect("png");
@@ -37,13 +37,13 @@ fn gpu_render_is_close_to_cpu_and_repeatable() {
         return;
     }
     let scene = layered_scene();
-    let cpu = render_png(&scene, 1.0, Backend::Cpu).unwrap();
-    let gpu = render_png(&scene, 1.0, Backend::Gpu).unwrap();
+    let cpu = render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap();
+    let gpu = render_png(&scene, &framed(&scene, 1.0), Backend::Gpu).unwrap();
     let (cw, ch, cpu_px) = decode(&cpu);
     let (gw, gh, gpu_px) = decode(&gpu);
     assert_eq!((cw, ch), (gw, gh));
     let total: u64 = cpu_px.iter().zip(&gpu_px).map(|(a, b)| a.abs_diff(*b) as u64).sum();
     let mean = total as f64 / cpu_px.len() as f64;
     assert!(mean < 2.0, "mean channel difference {mean}");
-    assert_eq!(gpu, render_png(&scene, 1.0, Backend::Gpu).unwrap());
+    assert_eq!(gpu, render_png(&scene, &framed(&scene, 1.0), Backend::Gpu).unwrap());
 }

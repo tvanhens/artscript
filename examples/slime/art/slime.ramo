@@ -1,4 +1,5 @@
-@target slime_{flavor}.png 512x512 each flavor:[mint grape peach]
+@artboard 512x512
+@target slime_{flavor}.png each flavor:[mint grape peach]
 @target slime_{flavor}.gif 240x240 bg:#fbf6ee fps:24 each flavor:[mint grape peach]
 
 palette goo
@@ -10,7 +11,7 @@ palette goo
 
 let jelly = if flavor == grape then goo.grape else if flavor == peach then goo.peach else goo.mint
 
-layer slime scale:canvas.w/512
+layer slime
   ellipse 160,22 at:256,392 fill:goo.ink a:.2 blur:10
   group at:256,380 name:squash
     curve -150,0 -140,-120 -60,-220 60,-220 140,-120 150,0 closed tension:.5 fill:grad(down jelly.3 jelly.1) name:body
@@ -31,4 +32,4 @@ anim wobble dur:1.2s loop
 play wobble
 
 assert level(@body.eye.0 @body.eye.1)
-assert inside(@body canvas margin:24)
+assert inside(@body artboard margin:24)

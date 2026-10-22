@@ -9,8 +9,9 @@
 # Row 3 (y 92): ramp base against its steps. Cell 1 is p.red (the ramp base), cell 2 is p.red.2, and
 # they are the same red. Cell 3 is p.red.0 (deep, a dark magenta-plum) and cell 4 is p.red.4 (highlight,
 # a lighter orange-salmon).
-@target color/literals.png 192x112
-@target color/literals.svg 192x112 profile:vector
+@artboard 192x112
+@target color/literals.png
+@target color/literals.svg profile:vector
 
 rect 192x28 at:96,20 fill:#2b2440
 rect 40x28 at:24,20 fill:#f55

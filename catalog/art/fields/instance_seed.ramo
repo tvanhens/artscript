@@ -1,7 +1,8 @@
-# Four 56x56 squares in a row on a 256x64 canvas, each an instance of one def: a square of fbm(simplex) noise through the blue ramp, a red dot whose size and place come from rand, and a gold blob placed by rand and drawn over the dot where they overlap. None of these has a seed: of its own.
+# Four 56x56 squares in a row on a 256x64 artboard, each an instance of one def: a square of fbm(simplex) noise through the blue ramp, a red dot whose size and place come from rand, and a gold blob placed by rand and drawn over the dot where they overlap. None of these has a seed: of its own.
 # Left to right: seed:7, seed:7 again inside a group that moves it, seed:8, and no seed:.
 # The first two squares are identical pixel for pixel: the same noise, the same dot, the same blob. The third and fourth each differ from them and from each other in noise layout, dot, and blob.
-@target fields/instance_seed.png 256x64
+@artboard 256x64
+@target fields/instance_seed.png
 
 def stone
   rect 56x56 fill:fbm(simplex(12)) -> p.blue name:face

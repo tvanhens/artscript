@@ -177,5 +177,5 @@ fn fmt_round_trip_preserves_ast() {
 
 #[test]
 fn entry_parameters_round_trip() {
-    assert_stable("@target t.png 20x20\nparam view:one_of(normal geometry) guides:false\nparam width:8 height:width\nrect width,height\n");
+    assert_stable("@artboard 20x20\n@target t.png\nparam view:one_of(normal geometry) guides:false\nparam width:8 height:width\nrect width,height\n");
 }

@@ -1,0 +1,20 @@
+# One 64x32 viewport artboard framed into six outputs. The artboard is a blue fill with an ink border inset 1, a red circle (r 10) at 16,16, a gold 12x12 square at 48,16, and a green circle (r 8) at -2,16 that hangs half outside the left edge. Every output shows only the artboard: the green circle is cut at the artboard's left edge in every image, and no green reaches a bar.
+# fit_contain.png (48x48, contain): a 48x24 blue band centered, with paper bars 12px above and below. The green circle shows only its right half, cut at the band's left edge.
+# fit_contain_top.png (48x48, contain, align:center,top): the same band at y 0-24 and a 24px paper bar below it.
+# fit_cover.png (48x48, cover): the artboard at zoom 1.5 fills the image. The middle 48 of its 96px width shows, so the red circle is cut at the left edge and the gold square at the right edge, and no green is visible.
+# fit_cover_left.png (48x48, cover, align:left,center): the left 48 of the 96px: the green half circle at the left edge, the red circle whole, and no gold.
+# fit_none.png (96x48, none, align:right,bottom): the artboard at 1:1 in the bottom-right 64x32, with paper on the left 32px and the top 16px.
+# fit_contain.svg (48x48, contain): the same picture as fit_contain.png.
+@artboard 64x32 viewport
+@target targets/fit_contain.png 48x48
+@target targets/fit_contain_top.png 48x48 align:center,top
+@target targets/fit_cover.png 48x48 fit:cover
+@target targets/fit_cover_left.png 48x48 fit:cover align:left,center
+@target targets/fit_none.png 96x48 fit:none align:right,bottom
+@target targets/fit_contain.svg 48x48
+
+rect 64x32 at:32,16 fill:p.blue
+rect 62x30 at:32,16 fill:none stroke:p.ink,2
+circle 10 at:16,16 fill:p.red
+rect 12x12 at:48,16 fill:p.gold
+circle 8 at:-2,16 fill:p.green

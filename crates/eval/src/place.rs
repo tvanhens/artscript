@@ -1,8 +1,8 @@
-//! Where a frame sits on the canvas: the affine steps and the warps of every ancestor, in
+//! Where a frame sits on the artboard: the affine steps and the warps of every ancestor, in
 //! application order. A warped ancestor's warp is known only when its body closes, so a place
 //! inside it holds a cell that the ancestor fills once, and every record placed inside shares
 //! that cell. Until the fill, the cell reads as no warp, which is the flat frame the parts of a
-//! warped node lay out in and read each other in. A warp is never inverted: canvas points come
+//! warped node lay out in and read each other in. A warp is never inverted: artboard points come
 //! back into a frame through its affine steps only.
 
 use std::cell::OnceCell;
@@ -117,7 +117,7 @@ impl Place {
         self.map_rect_then(r, &Matrix::new_identity())
     }
 
-    /// The box of `r` on the canvas and then under `after`, with the affine steps between two
+    /// The box of `r` on the artboard and then under `after`, with the affine steps between two
     /// warps composed before they map, so a chain with no warp maps the box once.
     pub fn map_rect_then(&self, r: Rect, after: &Matrix) -> Rect {
         let (runs, tail) = self.runs();
@@ -125,7 +125,7 @@ impl Place {
         (*after * tail).map_rect(r).0
     }
 
-    /// `tol` is in canvas units; each warp flattens to it in its own frame.
+    /// `tol` is in artboard units; each warp flattens to it in its own frame.
     pub fn map_path(&self, path: &Path, tol: f32) -> Path {
         let (runs, tail) = self.runs();
         let mut scale_after = vec![axis_scale(&tail) as f32];

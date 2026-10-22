@@ -10,8 +10,9 @@
 # the PNG's. Cell 3's tile covers the stroke too, so it starts on a half pixel (x 134.5, y 6.5), and
 # the brush samples its noise on a grid shifted by half a pixel: the streaks look the same in style
 # and density but fall in different places than in the PNG.
-@target brush/stack.png 192x64
-@target brush/stack.svg 192x64 profile:svg
+@artboard 192x64
+@target brush/stack.png
+@target brush/stack.svg profile:svg
 
 use std/brushes { dry chip }
 

@@ -1,6 +1,7 @@
 # An entry file that is also a building block. `use_entry.ramo` imports its `tile` def.
 # use_entry_part.png: one tile centered at (32,32): a blue 24x24 square with an ink outline and a gold circle (r 6) at its center.
-@target targets/use_entry_part.png 64x64
+@artboard 64x64
+@target targets/use_entry_part.png
 
 def tile tone:p.blue
   rect 24x24 fill:tone stroke:p.ink,2

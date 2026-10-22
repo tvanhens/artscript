@@ -11,7 +11,7 @@ use ramose_geom::ToIr;
 use ramose_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
 use skia_safe::Path;
 use ramose_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
-use common::{color, effect, pixel, red, scene, solid, stamp};
+use common::{color, effect, frame, framed, pixel, red, scene, solid, stamp};
 
 /// Mixes the paint halfway toward the backdrop, weighted by the backdrop's alpha, so a pixel
 /// over nothing stays the paint and a pixel over an opaque color is the mean of the two.
@@ -103,14 +103,14 @@ fn assert_rgb(got: [u8; 4], want: [u8; 3], what: &str) {
 }
 
 fn render(nodes: Vec<ramose_ir::Node>) -> Vec<u8> {
-    render_png(&scene(80.0, 80.0, nodes), 1.0, Backend::Cpu).unwrap()
+    render_png(&scene(80.0, 80.0, nodes), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap()
 }
 
 #[test]
 fn a_brush_reads_the_pixels_already_drawn_under_the_node_and_renders_the_same_bytes_twice() {
     let s = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(BELOW, 1)])]);
-    let same = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    assert_eq!(same, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let same = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    assert_eq!(same, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
     assert_eq!(pixel(&same, 40, 40), [232, 179, 58, 255], "returning m.below draws the backdrop back");
     assert_eq!(pixel(&same, 21, 21), [232, 179, 58, 255]);
     let half = render(vec![backdrop(), brushed("a", blue(), vec![area(HALF_BELOW, 1)])]);
@@ -127,7 +127,7 @@ fn inside_an_isolated_group_the_backdrop_is_only_what_the_group_drew() {
     assert_eq!(pixel(&png, 40, 40), [79, 127, 224, 255], "the gold is outside the group, so m.below is transparent");
     let inner = solid("g.back", Path::rect(skia_safe::Rect::from_ltrb(10.0, 10.0, 70.0, 70.0), None), gold());
     let group = stamp("g", skia_safe::Matrix::new_identity(), vec![inner, brushed("g.a", blue(), vec![area(HALF_BELOW, 1)])]);
-    let png = render_png(&scene(80.0, 80.0, vec![group]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![group]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_rgb(pixel(&png, 40, 40), mix(blue(), gold(), 0.5), "gold drawn inside the group is seen");
 }
 
@@ -215,8 +215,8 @@ fn the_gpu_agrees_with_the_cpu_and_repeats_itself() {
     faint.opacity = 0.5;
     faint.transform = skia_safe::Matrix::translate((5.0, 5.0)).to_ir();
     let s = scene(80.0, 80.0, vec![backdrop(), node, faint]);
-    let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();
+    let cpu = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    let gpu = render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap();
     let mut worst = 0u8;
     for y in 0..80 {
         for x in 0..80 {
@@ -225,14 +225,14 @@ fn the_gpu_agrees_with_the_cpu_and_repeats_itself() {
         }
     }
     assert!(worst <= 4, "max channel difference {worst}");
-    assert_eq!(gpu, render_png(&s, 1.0, Backend::Gpu).unwrap());
+    assert_eq!(gpu, render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap());
 }
 
 #[test]
 fn an_outline_on_a_node_whose_brush_reads_below_is_a_render_error_not_a_wrong_backdrop() {
     let mut node = brushed("a", blue(), vec![area(HALF_BELOW, 1)]);
     node.effects.push(effect(EffectOp::Outline { width: 2.0, color: red(), sides: Sides::ALL, mask: None, brush: vec![] }));
-    let err = render_png(&scene(80.0, 80.0, vec![backdrop(), node]), 1.0, Backend::Cpu).unwrap_err();
+    let err = render_png(&scene(80.0, 80.0, vec![backdrop(), node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap_err();
     assert!(matches!(err, RenderError::AtNode { .. }), "{err:?}");
 }
 
@@ -241,11 +241,11 @@ fn svg_refuses_to_bake_a_node_whose_brush_reads_below_under_both_profiles() {
     let s = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(HALF_BELOW, 1)])]);
     let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a brush fill", "a brush below"]);
-    assert!(matches!(render_svg(&s, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(RenderError::NotVector(_))));
-    match render_svg(&s, ramose_ir::Profile::Svg, 1.0, Backend::Cpu) {
+    assert!(matches!(render_svg(&s, &framed(&s, 1.0), ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(RenderError::NotVector(_))));
+    match render_svg(&s, &framed(&s, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu) {
         Err(RenderError::NoBackdrop(list)) => assert_eq!(list.len(), 1, "{list:?}"),
         other => panic!("{other:?}"),
     }
     let plain = scene(80.0, 80.0, vec![backdrop(), brushed("a", blue(), vec![area(PLAIN, 1)])]);
-    assert!(render_svg(&plain, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).is_ok(), "a brush that reads nothing still bakes");
+    assert!(render_svg(&plain, &framed(&plain, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).is_ok(), "a brush that reads nothing still bakes");
 }

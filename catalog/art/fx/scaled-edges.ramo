@@ -4,7 +4,8 @@
 # 3. fx rim 3 dir:1,1: a pale lavender band about 9 px wide along the lower-right inside edge, and the same crisp edge as cell 1.
 # 4. fx inner 0,3 blur:1 in ink at a:.7: a dark ink-purple crescent along the top inside edge, about 9 px deep at the top and thinning to nothing along the sides, and the same crisp edge as cell 1.
 # No cell has a soft or blurred outer edge, and nothing is drawn outside the circles.
-@target fx/scaled-edges.png 256x80
+@artboard 256x80
+@target fx/scaled-edges.png
 
 circle 8 at:32,40 scale:3 fill:p.red
 circle 8 at:96,40 scale:3 fill:p.red name:grained

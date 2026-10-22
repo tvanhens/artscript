@@ -12,8 +12,9 @@
 # The .svg target uses profile:svg: cells 1 and 2 are a fill path under an ink path and match the
 # PNG. Cell 3 is baked to a raster tile whose streaks fall in different places than the PNG's, as in
 # brush/stack.
-@target shapes/ink_fill.png 192x64
-@target shapes/ink_fill.svg 192x64 profile:svg
+@artboard 192x64
+@target shapes/ink_fill.png
+@target shapes/ink_fill.svg profile:svg
 
 use std/brushes { dry }
 

@@ -6,12 +6,13 @@
 # 4. fx inner 0,6 (dark ink at a:.7): a green circle with a dark green band along its top inside edge that fades downward. The bottom half stays plain green and nothing is drawn outside the circle.
 # Bottom row, left to right:
 # 5. fx blur 1: a red circle whose edge is only slightly soft, clearly crisper than cell 1.
-# 6. fx shadow 0,0 blur:6 in red: a crisp blue square (28x28) with a red halo of blur 6 on all four sides, evenly spread, with no offset. The halo ends before x=128, so it does not touch cell 7, and the canvas edge does not cut it.
+# 6. fx shadow 0,0 blur:6 in red: a crisp blue square (28x28) with a red halo of blur 6 on all four sides, evenly spread, with no offset. The halo ends before x=128, so it does not touch cell 7, and the artboard edge does not cut it.
 # 7. fx glow 6 in gold at a:.3: a dark ink circle with a gold halo much fainter than cell 3, barely visible.
 # 8. fx inner 0,6 in blue: a green circle with a blue band along its top inside edge, the bottom half plain green.
 # The same file as an SVG (profile:svg) draws cells 1, 2, 5 and 6 with native SVG filters (blur uses feGaussianBlur, shadow uses feDropShadow) and bakes cells 3, 4, 7 and 8 (glow, inner) to image tiles, so the SVG view shows the same eight cells, within a slight softness difference.
-@target fx/soft.png 256x128
-@target fx/soft.svg 256x128 profile:svg
+@artboard 256x128
+@target fx/soft.png
+@target fx/soft.svg profile:svg
 
 circle 18 at:32,32 fill:p.red
   fx blur 5

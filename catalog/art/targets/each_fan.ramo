@@ -1,6 +1,7 @@
 # `each n:[3 4 5]` fans one file out into three 64x64 PNGs, each_fan_3.png, each_fan_4.png, each_fan_5.png, with {n} in the path.
 # Each shows one red regular polygon (r 22) with an ink outline, centered at (32,32), whose side count is n:
 # 3 sides (a triangle), 4 sides (a diamond: a square standing on a corner), 5 sides (a pentagon). Nothing else is drawn.
-@target targets/each_fan_{n}.png 64x64 each n:[3 4 5]
+@artboard 64x64
+@target targets/each_fan_{n}.png each n:[3 4 5]
 
 poly n r:22 at:32,32 fill:p.red stroke:p.ink,2

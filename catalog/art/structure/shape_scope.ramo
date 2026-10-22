@@ -10,7 +10,8 @@
 # red ring (radius 6, no fill) placed at `@b3.abdomen.sheen.cx,@b3.abdomen.sheen.cy` is centered
 # on the abdomen's gold sheen, which stays gold. The group around that sheen is not part of the
 # path.
-@target structure/shape_scope.png 192x64
+@artboard 192x64
+@target structure/shape_scope.png
 
 def bug
   circle 14 at:-14,4 fill:p.blue name:thorax

@@ -5,7 +5,8 @@
 # `early` plays at once: the green square slides right in frames 1-4 (x=12, 30, 48, 66), then the anim has ended and it is back at its rest x=12 in frames 5-8.
 # `late` plays with start:.5s: the gold square rests at x=12 in frames 1-5 and slides right in frames 6-8, at x=30, 48, 66 in frames 6, 7, 8.
 # Undocumented, current behavior: a play that is not `loop` is live only in [start, start+dur); outside that window the node sits at its rest pose.
-@target anim/play_order.gif 96x96 fps:8 dur:1s
+@artboard 96x96
+@target anim/play_order.gif fps:8 dur:1s
 
 circle 8 at:24,20 fill:p.gold stroke:p.ink,1 name:a
 circle 8 at:48,20 fill:p.gold stroke:p.ink,1 name:b

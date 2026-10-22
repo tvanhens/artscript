@@ -6,7 +6,7 @@ fn fixture(name: &str, source: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("ramose-preview-{name}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(dir.join("art")).unwrap();
-    fs::write(dir.join("ramose.toml"), "[project]\nout = \"assets\"\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-canvas = \"off\"\npositional-seed = \"off\"\nhidden-child = \"off\"\n").unwrap();
+    fs::write(dir.join("ramose.toml"), "[project]\nout = \"assets\"\n[lint]\nraw-color = \"off\"\nunused = \"off\"\noff-artboard = \"off\"\npositional-seed = \"off\"\nhidden-child = \"off\"\n").unwrap();
     fs::write(dir.join("art/test.ramo"), source).unwrap();
     dir
 }
@@ -66,7 +66,7 @@ fn snapshot(dir: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn production_pixels_context_occlusion_and_nearest_zoom_are_preserved() {
     let dir = fixture(
         "pixels",
-        "@target test_{tone}.png 16x12 scale:1,2 as:small each tone:[red blue]\nparam guides:false\nrect canvas.w,canvas.h at:canvas.w/2,canvas.h/2 fill:if tone == red then #ff0000 else #0000ff name:back\nrect 6,4 at:5,5 fill:#00ff00 name:head\nrect 2,2 at:4,4 fill:#ffffff name:occluder\nif guides\n  rect 1,12 fill:#ff00ff name:guide\n",
+        "@artboard 16x12\n@target test_{tone}.png scale:1,2 as:small each tone:[red blue]\nparam guides:false\nrect artboard.w,artboard.h at:artboard.w/2,artboard.h/2 fill:if tone == red then #ff0000 else #0000ff name:back\nrect 6,4 at:5,5 fill:#00ff00 name:head\nrect 2,2 at:4,4 fill:#ffffff name:occluder\nif guides\n  rect 1,12 fill:#ff00ff name:guide\n",
     );
     success(&dir, &["build", "--backend", "cpu"]);
     let before_assets = snapshot(&dir.join("assets"));
@@ -132,7 +132,7 @@ fn production_pixels_context_occlusion_and_nearest_zoom_are_preserved() {
 fn parameters_check_build_cache_and_import_scope_share_binding() {
     let dir = fixture(
         "params",
-        "@target test.png 12x12\nparam view:one_of(normal geometry) size:4 guides:false\nparam width:size\nrect width,4 at:width/2,2 fill:if view == normal then #ff0000 else #00ff00 name:body\nif guides\n  rect 1,12 at:11,0 fill:#0000ff name:guide\n",
+        "@artboard 12x12\n@target test.png\nparam view:one_of(normal geometry) size:4 guides:false\nparam width:size\nrect width,4 at:width/2,2 fill:if view == normal then #ff0000 else #00ff00 name:body\nif guides\n  rect 1,12 at:11,0 fill:#0000ff name:guide\n",
     );
     success(&dir, &["build", "--backend", "cpu"]);
     let normal = fs::read(dir.join("assets/test.png")).unwrap();
@@ -175,10 +175,10 @@ fn parameters_check_build_cache_and_import_scope_share_binding() {
     assert_eq!(receipt["parameter_altered"], true);
     assert_eq!(fs::read(dir.join("assets/test.png")).unwrap(), normal);
     fs::create_dir_all(dir.join("lib")).unwrap();
-    fs::write(dir.join("art/other.ramo"), "@target other.png 12x12\nparam view:one_of(normal geometry)\ndef part\n  rect 4,4 fill:if view == normal then #ff0000 else #00ff00\n").unwrap();
+    fs::write(dir.join("art/other.ramo"), "@artboard 12x12\n@target other.png\nparam view:one_of(normal geometry)\ndef part\n  rect 4,4 fill:if view == normal then #ff0000 else #00ff00\n").unwrap();
     fs::write(
         dir.join("art/test.ramo"),
-        "@target test_{view}.png 12x12 each view:[geometry]\nuse art/other { part }\npart\n",
+        "@artboard 12x12\n@target test_{view}.png each view:[geometry]\nuse art/other { part }\npart\n",
     )
     .unwrap();
     success(
@@ -187,7 +187,7 @@ fn parameters_check_build_cache_and_import_scope_share_binding() {
     );
     let (_, _, pixels) = image(&dir.join("assets/test_geometry.png"));
     assert_eq!(&pixels[..4], &[255, 0, 0, 255]);
-    fs::write(dir.join("art/test.ramo"), "@target test.png 12x12\nuse art/other { part }\nparam view:one_of(normal geometry)\npart\n").unwrap();
+    fs::write(dir.join("art/test.ramo"), "@artboard 12x12\n@target test.png\nuse art/other { part }\nparam view:one_of(normal geometry)\npart\n").unwrap();
     success(
         &dir,
         &[
@@ -208,7 +208,7 @@ fn parameters_check_build_cache_and_import_scope_share_binding() {
 fn invalid_inputs_fail_without_reporting_a_stale_image() {
     let dir = fixture(
         "invalid",
-        "@target test.png 8x8 scale:1,2\nparam view:one_of(normal geometry) guides:false\nrect 4,4 fill:#f00\n",
+        "@artboard 8x8\n@target test.png scale:1,2\nparam view:one_of(normal geometry) guides:false\nrect 4,4 fill:#f00\n",
     );
     for args in [
         vec!["--set", "unknown=1"],
@@ -297,11 +297,11 @@ fn invalid_inputs_fail_without_reporting_a_stale_image() {
 fn rejected_parameter_is_reported_once_without_cascade_errors() {
     let dir = fixture(
         "rejected",
-        "@target a.png 8x8\n@target b.png 8x8\nparam view:one_of(normal geometry)\nlet edge = if view == geometry then #f00 else #000\nrect 4,4 stroke:edge,1\n",
+        "@artboard 8x8\n@target a.png\n@target b.png\nparam view:one_of(normal geometry)\nlet edge = if view == geometry then #f00 else #000\nrect 4,4 stroke:edge,1\n",
     );
     for (set, line, message) in [
         ("bogus=1", 0, "unknown entry parameter `bogus` in --set"),
-        ("view=nope", 3, "`view` of `entry file` is one of normal, geometry, got nope"),
+        ("view=nope", 4, "`view` of `entry file` is one of normal, geometry, got nope"),
     ] {
         let output = run(&dir, &["check", "--json", "--set", set]);
         assert_eq!(output.status.code(), Some(1), "{set}");
@@ -328,7 +328,7 @@ fn rejected_parameter_is_reported_once_without_cascade_errors() {
 fn frame_sheets_union_motion_and_define_loop_end_sampling() {
     let dir = fixture(
         "frames",
-        "@target test.png 12x8 dur:1 clip:idle\nrect 2,2 at:(1+t*4),1 fill:#ff0000 name:head\n",
+        "@artboard 12x8\n@target test.png dur:1 clip:idle\nrect 2,2 at:(1+t*4),1 fill:#ff0000 name:head\n",
     );
     let output = success(
         &dir,
@@ -374,7 +374,7 @@ fn frame_sheets_union_motion_and_define_loop_end_sampling() {
 
 #[test]
 fn backgrounds_composite_pixels_and_padding_does_not_replace_opaque_canvas() {
-    let dir = fixture("background", "@target test.png 4x4 bg:#ff0000\n");
+    let dir = fixture("background", "@artboard 4x4\n@target test.png bg:#ff0000\n");
     success(
         &dir,
         &[
@@ -400,7 +400,7 @@ fn backgrounds_composite_pixels_and_padding_does_not_replace_opaque_canvas() {
 fn receipt_compares_defaults_at_requested_times() {
     let dir = fixture(
         "time-default",
-        "@target test.png 8x8\nparam offset:t\nrect 2,2 at:4+offset,4 fill:#ff0000\n",
+        "@artboard 8x8\n@target test.png\nparam offset:t\nrect 2,2 at:4+offset,4 fill:#ff0000\n",
     );
     let output = success(
         &dir,
@@ -426,7 +426,7 @@ fn receipt_compares_defaults_at_requested_times() {
 fn svg_preview_preserves_the_production_evaluation_scale() {
     let dir = fixture(
         "mixed",
-        "@target test.svg 8x8 scale:1,2\nrect scale*2,2 at:4,4 fill:#ff0000 name:body\n",
+        "@artboard 8x8\n@target test.svg scale:1,2\nrect scale*2,2 at:4,4 fill:#ff0000 name:body\n",
     );
     let project = ramose_eval::load(&dir).unwrap();
     let plan = ramose_eval::plan(&project);
@@ -439,8 +439,8 @@ fn svg_preview_preserves_the_production_evaluation_scale() {
         .unwrap();
     let evaluated = ramose_eval::evaluate_outputs(&project, job);
     let expected = ramose_render::render_rgba(
-        &evaluated.at(job.sample_scale(output)).unwrap().scene,
-        output.scale,
+        &evaluated.at(job.draw_scale(output)).unwrap().scene,
+        &output.framing,
         ramose_render::Backend::Cpu,
     )
     .unwrap();
@@ -464,7 +464,7 @@ fn svg_preview_preserves_the_production_evaluation_scale() {
 fn receipt_preserves_parameter_precision() {
     let dir = fixture(
         "precision",
-        "@target test.png 8x8\nparam offset:.001\nrect 2,2 at:4+offset,4 fill:#ff0000\n",
+        "@artboard 8x8\n@target test.png\nparam offset:.001\nrect 2,2 at:4+offset,4 fill:#ff0000\n",
     );
     let output = success(
         &dir,
@@ -488,7 +488,7 @@ fn receipt_preserves_parameter_precision() {
 fn still_preview_probes_the_requested_time_when_zero_is_invalid() {
     let dir = fixture(
         "probe-time",
-        "@target test.png 8x8 t:1\nlet width = if t == 0 then false else 4/t\nrect width,4 at:4,4 fill:#ff0000 name:body\n",
+        "@artboard 8x8\n@target test.png t:1\nlet width = if t == 0 then false else 4/t\nrect width,4 at:4,4 fill:#ff0000 name:body\n",
     );
     success(&dir, &["build", "--backend", "cpu"]);
     let production = image(&dir.join("assets/test.png"));
@@ -526,7 +526,7 @@ fn still_preview_probes_the_requested_time_when_zero_is_invalid() {
 fn check_failures_still_generate_preview_with_diagnostics_and_nonzero_status() {
     let dir = fixture(
         "check-failure",
-        "@target test.png 8x8\nrect 4,4 at:4,4 fill:#ff0000\nassert false\n",
+        "@artboard 8x8\n@target test.png\nrect 4,4 at:4,4 fill:#ff0000\nassert false\n",
     );
     let built = run(&dir, &["build", "--backend", "cpu"]);
     assert_eq!(built.status.code(), Some(2));
@@ -569,7 +569,7 @@ fn check_failures_still_generate_preview_with_diagnostics_and_nonzero_status() {
 fn preview_reports_entry_word_warnings_and_lint_errors_without_losing_images() {
     let dir = fixture(
         "word-warning",
-        "@target test.png 8x8\nparam view:one_of(normal geometry)\nrect 4,4 at:4,4 fill:#ff0000\nif view == typo\n  circle 1\n",
+        "@artboard 8x8\n@target test.png\nparam view:one_of(normal geometry)\nrect 4,4 at:4,4 fill:#ff0000\nif view == typo\n  circle 1\n",
     );
     for expected in [3, 2] {
         if expected == 2 {
@@ -605,7 +605,7 @@ fn preview_reports_entry_word_warnings_and_lint_errors_without_losing_images() {
 fn named_crop_does_not_box_between_cancelling_rotations() {
     let dir = fixture(
         "cancel-rotation",
-        "@target test.png 80x80\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 fill:#ff0000 name:head\n",
+        "@artboard 80x80\n@target test.png\ngroup outer at:40,40 rot:-45\n  group inner\n    rect 20,10 rot:45 fill:#ff0000 name:head\n",
     );
     success(&dir, &["build", "--backend", "cpu"]);
     for name in ["head", "inner", "outer"] {

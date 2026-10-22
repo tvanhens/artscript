@@ -8,12 +8,12 @@ use ramose_ir::{Blend, Color, Effect, EffectInput, EffectOp, Field, Node, NodeKi
 use skia_safe::{Matrix, Path, Point};
 use skia_safe::PathBuilder;
 use ramose_render::{Backend, render_png};
-use common::pixel;
+use common::{framed, pixel};
 
 #[test]
 fn showcase_png() {
     let scene = showcase();
-    let png = render_png(&scene, 2.0, Backend::Cpu).expect("showcase");
+    let png = render_png(&scene, &framed(&scene, 2.0), Backend::Cpu).expect("showcase");
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/render-samples/showcase.png");
     fs::create_dir_all(path.parent().unwrap()).unwrap();
     fs::write(&path, &png).unwrap();
@@ -27,8 +27,7 @@ fn showcase() -> Scene {
     let skin_lo = color(224, 112, 86);
     let ink = color(92, 42, 48);
     Scene {
-        width: 360.0,
-        height: 420.0,
+        view: ramose_ir::Rect::new(0.0, 0.0, 360.0, 420.0),
         background: Some(color(0, 0, 0)),
         children: vec![
             ground(),

@@ -7,9 +7,10 @@
 # Bottom row, left to right:
 # 5. Empty. A red circle at x=32 that runs `blur 5 of:@src` takes the blue circle named src as its input, so its own picture is replaced by a blurred copy of src and no red shows at x=32.
 # 6. The blue circle named src at x=96, with the blurred copy from cell 5 composited on top of it. The red node is written after src, so its copy draws over the crisp blue circle: a blue circle with a soft blue halo, whose edge is softened by the copy over it.
-# Undocumented, current behavior: an `of:@node` output replaces the node's own picture and lands at that node's position (x=96, not the red node's x=32), and src still draws itself. Bottom-row circles sit at y=90 so no halo is cut by the canvas edge.
+# Undocumented, current behavior: an `of:@node` output replaces the node's own picture and lands at that node's position (x=96, not the red node's x=32), and src still draws itself. Bottom-row circles sit at y=90 so no halo is cut by the artboard edge.
 # 7. Gray circle at x=160: adjust sat:-1 as:gray, then merge gray alone: a flat gray circle where the green circle would be, with no green left.
-@target fx/compose.png 256x128
+@artboard 256x128
+@target fx/compose.png
 
 circle 16 at:32,32 fill:p.red
   fx blur 5 as:soft

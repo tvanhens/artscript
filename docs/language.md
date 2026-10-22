@@ -6,11 +6,11 @@ ramose is a declarative language for procedural art. `ramose build` turns every 
 
 A line that does not draw says so with its first word: `use palette style finish def rule fn let param brush stamp anim` declare, `if else each` branch and loop, `assert expect` check, `slot` exposes a slot, `play` starts an anim, `ramp color` are palette rows, `fx` adds an effect, `mask` masks, `.part` patches, and `name:` at the end of a line fills a slot. Every other line is a draw: a shape, a structure verb, or a component. `fx`, `mask`, `slot`, `finish`, `anim`, and `play` are reserved, so `let fx = 1` is an error. `light` is reserved for a later draft, and a `light` line is an error today. `brush`, `stamp`, `fn`, and `param` open a declaration only as a line's first word; elsewhere they are plain names, so `brush:` and `stamp:` are keys and `brush` and `stamp` are parameters.
 
-An entry file declares controls with `param view:one_of(normal geometry) guides:false`. Defaults and types follow component parameters. `check`, `build`, and `preview` accept repeated `--set name=value`. `ramose preview art/hero.ramo --target hero.png --crop head --pad 12 --zoom 4 --bg checker --out review/head.png` inspects rendered pixels without changing the canvas or production outputs. See `values` for parameter scope and `cli` for preview controls.
+An entry file declares controls with `param view:one_of(normal geometry) guides:false`. Defaults and types follow component parameters. `check`, `build`, and `preview` accept repeated `--set name=value`. `ramose preview art/hero.ramo --target hero.png --crop head --pad 12 --zoom 4 --bg checker --out review/head.png` inspects rendered pixels without changing the artboard or production outputs. See `values` for parameter scope and `cli` for preview controls.
 
 Hold these before you draw:
 
-- The canvas origin is top-left, with y down, so `at:256,256` is the center of a 512x512 canvas. Shapes are centered on their local origin, and `at:` places that origin in the parent.
+- `@artboard 512x512` declares the space the file draws in, once per entry file. Its origin is top-left, with y down, so `at:256,256` is the center of a 512x512 artboard. Shapes are centered on their local origin, and `at:` places that origin in the parent. Each `@target` frames the artboard into its own output size, with `fit:` and `align:`, and the file reads the output pixels per artboard unit as `scale`. See `targets`.
 - **Nesting under a shape clips the children to that shape.** Highlights, shadows, and textures go inside the form they belong to. A boolean is the exception: every child of `union`, `subtract`, `intersect`, or `xor` is an operand, so draw its shading in `inside @<boolean>`.
 - A child is placed in its parent's local frame. Under `circle 40 at:100,80`, a child at `0,0` sits at the circle's center. A `curve` or `path` is not centered, so under one a child at `0,0` sits at the `0,0` of its points.
 - `warp:corners(tl tr br bl)` pins a node's content box onto four points written in the parent's frame, and `warp:cylinder(r)` wraps it around a cylinder through the node's origin. A list is a stack, applied left to right. The order of application is the content in its own frame, then the warp stages, then `scale:` and `skew:` about `pivot:`, then `rot:`, then `at:`, then the parent; a pinned quad lands where it is written whatever the node's own keys. Everything the node draws follows the warp, effects run after it, and every measurement of the node (`.w`, `.cx`, `.outer`, checks) reports the warped result, never the unwarped content. A warped node is raster-only. See `warp`.
@@ -24,7 +24,8 @@ Hold these before you draw:
 A complete entry file:
 
 ```
-@target plum.png 256x256 scale:1,2
+@artboard 256x256
+@target plum.png scale:1,2
 
 palette orchard
   ramp plum #8e4a8f 5

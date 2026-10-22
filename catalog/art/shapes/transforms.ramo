@@ -13,7 +13,8 @@
 # the left fully opaque, the right with a:.5, so the right one is a clearly paler, see-through blue than the left.
 # (8) order:behind: a red circle declared after a blue circle that overlaps it but order:behind puts it under, so the blue
 # circle covers part of the red one and only a red crescent shows on the right.
-@target shapes/transforms.png 256x128
+@artboard 256x128
+@target shapes/transforms.png
 
 rect 36x20 at:32,32 fill:p.red stroke:p.ink,2
 circle 2 at:32,32 fill:p.ink

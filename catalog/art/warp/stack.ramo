@@ -11,7 +11,8 @@
 # quad's slanted top and bottom edges bow slightly as the turn compresses their outer ends, and
 # the shape is about 67 wide instead of 80, so it no longer reaches the dots at (152,18) (232,26)
 # (228,78) (156,72), which sit outside it on the left and right.
-@target warp/stack.png 256x96
+@artboard 256x96
+@target warp/stack.png
 
 group at:64,48 warp:[cylinder(40) corners(24,18 104,26 100,78 28,72)]
   rect 96x40 fill:p.gold.4 stroke:p.ink,2

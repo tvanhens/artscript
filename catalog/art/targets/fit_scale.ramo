@@ -1,0 +1,11 @@
+# The 64x32 artboard of fit.ramo (blue fill, ink border, red circle at 16,16, gold square at 48,16) contained in a 48x48 output at scale:1,2, so `scale` is the fit zoom times `scale:`: .75 in fit_scale_48.png and 1.5 in fit_scale_96.png.
+# fit_scale_48.png (48x48): a 48x24 blue band centered with 12px paper bars above and below. An ink ring (r 12, drawn with stroke:p.ink,1/scale) around the red circle is one pixel wide.
+# fit_scale_96.png (96x96): the same picture at twice the pixels, with a 96x48 band and 24px bars. The ring is still one pixel wide, while the border and every shape are twice as large.
+@artboard 64x32
+@target targets/fit_scale_{w}.png 48x48 scale:1,2
+
+rect 64x32 at:32,16 fill:p.blue
+rect 62x30 at:32,16 fill:none stroke:p.ink,2
+circle 10 at:16,16 fill:p.red
+circle 12 at:16,16 fill:none stroke:p.ink,1/scale
+rect 12x12 at:48,16 fill:p.gold

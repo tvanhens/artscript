@@ -1,5 +1,6 @@
-@target monument/stone_lantern.png 1024x1024
-@target monument/stone_lantern.svg 1024x1024
+@artboard 1024x1024
+@target monument/stone_lantern.png
+@target monument/stone_lantern.svg
 use face/parts { blush smile sparkle }
 palette lantern
   ramp stone #a1aa95 5
@@ -91,7 +92,7 @@ layer mossy_rock pivot:512,820
     fx rim 5 color:lantern.rim a:.5
     fx grain .045 scale:2.2
     fx outline 6 color:rock_line
-  assert inside(@rock canvas margin:24)
+  assert inside(@rock artboard margin:24)
   layer pedestal pivot:512,770
     curve 452,598 572,598 566,646 578,700 446,700 458,646 closed tension:.4 fill:grad(0 lantern.stone.3 lantern.stone,.35 lantern.stone.1,.72 stone_cel) name:post
       rect 46x120 at:567,650 fill:stone_cel a:.6 blur:2
@@ -241,7 +242,7 @@ layer mossy_rock pivot:512,820
           fx rim 5 color:lantern.rim a:.55
           fx grain .05 scale:2.2
           fx outline 6.5 color:stone_line
-        assert inside(@hat canvas margin:16)
+        assert inside(@hat artboard margin:16)
         layer finial pivot:512,212
           union name:cap_src fill:none
             curve 478,214 482,202 512,196 542,202 546,214 512,222 closed tension:.45
@@ -257,7 +258,7 @@ layer mossy_rock pivot:512,820
             fx rim 4 color:lantern.rim a:.55
             fx grain .04 scale:1.8
             fx outline 5 color:stone_line
-          assert inside(@cap canvas margin:16)
+          assert inside(@cap artboard margin:16)
   layer moss_tufts pivot:512,790
     union name:tuft_src fill:none
       curve 356,784 362,760 384,744 410,748 432,740 456,756 470,780 452,794 400,798 closed tension:.55 jitter:3.5,13 name:c1

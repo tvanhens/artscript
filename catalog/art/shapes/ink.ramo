@@ -8,7 +8,8 @@
 # no taper: a thick start thinning steadily to a thin end. (7) stroke:p.ink,[1 12 1] taper:.5: a fat leaf-shaped
 # stroke pointed at both ends. (8) a wavy 4-point curve with [2 8 2 8] widths: the thickness swells at point 2 and
 # 4 and is thin at points 1 and 3.
-@target shapes/ink.png 256x128
+@artboard 256x128
+@target shapes/ink.png
 
 curve -22,8 0,-8 22,8 stroke:p.ink,6 at:32,32
 curve -22,8 0,-8 22,8 stroke:p.ink,[2 10 2] at:96,32

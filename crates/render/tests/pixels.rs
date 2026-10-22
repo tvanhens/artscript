@@ -4,14 +4,14 @@ use ramose_geom::ToIr;
 use ramose_ir::{Field, NodeKind, NoiseKind, Paint, Profile};
 use skia_safe::{Matrix, Path, Point};
 use ramose_render::{Backend, render_png, render_svg, raster_only_features, RenderError};
-use common::{circle_at, color, effect, pixel, red, scene, solid, stamp, with_stamps};
+use common::{circle_at, color, effect, frame, framed, pixel, red, scene, solid, stamp, with_stamps};
 
 use ramose_ir::EffectOp;
 
 #[test]
 fn red_circle_center_is_red_and_corner_is_clear() {
     let scene = scene(80.0, 80.0, vec![solid("dot", circle_at(40.0, 40.0, 20.0), red())]);
-    let png = render_png(&scene, 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255]);
     assert_eq!(pixel(&png, 0, 0), [0, 0, 0, 0]);
 }
@@ -24,7 +24,7 @@ fn nested_child_never_paints_outside_parent() {
         ramose_ir::NodeKind::Shape(shape) => shape.children.push(child),
         _ => unreachable!(),
     }
-    let png = render_png(&scene(80.0, 80.0, vec![parent]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![parent]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 8, 40), [0, 0, 0, 0]);
     assert_eq!(pixel(&png, 40, 8), [0, 0, 0, 0]);
@@ -32,16 +32,16 @@ fn nested_child_never_paints_outside_parent() {
 
 #[test]
 fn a_fill_none_parent_still_clips_and_shows_its_children() {
-    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), red());
+    let mut framed_rect = solid("frame", Path::rect(skia_safe::Rect::from_xywh(12.0, 12.0, 40.0, 40.0), None), red());
     let child = solid("dot", circle_at(32.0, 32.0, 30.0), color(0, 0, 255, 255));
-    match &mut frame.kind {
+    match &mut framed_rect.kind {
         NodeKind::Shape(shape) => {
             shape.fill = None;
             shape.children.push(child);
         }
         _ => unreachable!(),
     }
-    let png = render_png(&scene(64.0, 64.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(64.0, 64.0, vec![framed_rect]), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 32, 32), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 14, 32), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 32, 6), [0, 0, 0, 0]);
@@ -56,24 +56,24 @@ fn an_opaque_child_of_a_translucent_parent_stays_opaque() {
         NodeKind::Shape(shape) => shape.children.push(dot),
         _ => unreachable!(),
     }
-    let png = render_png(&scene(64.0, 64.0, vec![glass]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(64.0, 64.0, vec![glass]), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 32, 32), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 16, 16), [0, 0, 255, 77]);
 }
 
 #[test]
 fn outline_traces_the_children_a_fill_none_parent_shows() {
-    let mut frame = solid("frame", Path::rect(skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0), None), red());
+    let mut framed_rect = solid("frame", Path::rect(skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0), None), red());
     let child = solid("dot", circle_at(40.0, 40.0, 30.0), color(0, 0, 255, 255));
-    match &mut frame.kind {
+    match &mut framed_rect.kind {
         NodeKind::Shape(shape) => {
             shape.fill = None;
             shape.children.push(child);
         }
         _ => unreachable!(),
     }
-    frame.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-    let png = render_png(&scene(80.0, 80.0, vec![frame]), 1.0, Backend::Cpu).unwrap();
+    framed_rect.effects.push(effect(EffectOp::Outline { width: 4.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
+    let png = render_png(&scene(80.0, 80.0, vec![framed_rect]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 0]);
@@ -87,7 +87,7 @@ fn svg_isolates_a_shape_with_children() {
         NodeKind::Shape(shape) => shape.children.push(child),
         _ => unreachable!(),
     }
-    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), &frame(80.0, 80.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<g id=\"body\" style=\"isolation:isolate\""), "{svg}");
 }
 
@@ -103,7 +103,7 @@ fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
         NodeKind::Shape(shape) => shape.children.push(child),
         _ => unreachable!(),
     }
-    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(80.0, 80.0, vec![parent]), &frame(80.0, 80.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let clip = svg.split("<clipPath id=\"ring-nest\">").nth(1).unwrap().split("</clipPath>").next().unwrap();
     assert!(clip.contains("clip-rule=\"evenodd\""), "{svg}");
 }
@@ -112,7 +112,7 @@ fn svg_nesting_clip_keeps_an_even_odd_parent_hole() {
 fn outline_ring_is_round() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-    let png = render_png(&scene(140.0, 140.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(140.0, 140.0, vec![node]), &frame(140.0, 140.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 80, 60), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 85, 60), [0, 0, 0, 244]);
@@ -131,7 +131,7 @@ fn svg_outline_is_a_round_stroked_path() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
     let scene = scene(140.0, 140.0, vec![node]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let outline_at = svg.find("stroke-linejoin=\"round\"").expect(&svg);
     let fill_at = svg.find("fill=\"#ffffff\"").expect(&svg);
     assert!(outline_at < fill_at, "{svg}");
@@ -139,7 +139,7 @@ fn svg_outline_is_a_round_stroked_path() {
     assert!(svg.contains("stroke-width=\"12\""), "{svg}");
     assert!(!svg.contains("<image"), "{svg}");
     assert_eq!(raster_only_features(&scene), Vec::new());
-    render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).unwrap();
+    render_svg(&scene, &framed(&scene, 1.0), Profile::Vector, 1.0, Backend::Cpu).unwrap();
 }
 
 fn glass(outline: bool) -> ramose_ir::Scene {
@@ -153,15 +153,15 @@ fn glass(outline: bool) -> ramose_ir::Scene {
 
 #[test]
 fn outline_ring_keeps_its_alpha_around_a_translucent_fill() {
-    let png = render_png(&glass(true), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&glass(true), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 10, 32), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 32, 54), [0, 0, 0, 255]);
 }
 
 #[test]
 fn outline_shows_nothing_inside_a_translucent_fill() {
-    let outlined = render_png(&glass(true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&glass(false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&glass(true), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&glass(false), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     for (x, y) in [(32, 32), (13, 32), (50, 50)] {
         assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
     }
@@ -181,8 +181,8 @@ fn translucent_group(outline: bool) -> ramose_ir::Scene {
 
 #[test]
 fn outline_around_translucent_children_keeps_its_alpha() {
-    let outlined = render_png(&translucent_group(true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&translucent_group(false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&translucent_group(true), &frame(80.0, 64.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&translucent_group(false), &frame(80.0, 64.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&outlined, 12, 32), [0, 0, 0, 255]);
     assert_eq!(pixel(&outlined, 67, 32), [0, 0, 0, 255]);
     for (x, y) in [(24, 32), (56, 32)] {
@@ -207,7 +207,7 @@ fn glow() -> EffectOp {
 fn glow_strength_multiplies_the_halo_alpha_up_to_opaque() {
     let alpha_at = |strength: f32, x: i32| {
         let halo = EffectOp::Glow { radius: 4.0, color: color(232, 179, 58, 255), strength };
-        let png = render_png(&haloed(Some(halo), false), 1.0, Backend::Cpu).unwrap();
+        let png = render_png(&haloed(Some(halo), false), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
         i32::from(pixel(&png, x, 32)[3])
     };
     let faint = alpha_at(1.0, 9);
@@ -228,7 +228,7 @@ fn drop_shadow() -> EffectOp {
 
 fn outline_ring_stays_on_top_of(halo: EffectOp) {
     for scale in [1, 2] {
-        let render = |s| render_png(&s, scale as f32, Backend::Cpu).unwrap();
+        let render = |s: ramose_ir::Scene| render_png(&s, &framed(&s, scale as f32), Backend::Cpu).unwrap();
         let at = |png: &[u8], x: i32| pixel(png, x * scale, 32 * scale);
         let plain = render(haloed(None, true));
         let ringed = render(haloed(Some(halo.clone()), true));
@@ -262,10 +262,10 @@ fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
     let rings = |halo: bool| {
         let mut s = haloed(halo.then(glow), true);
         s.children[0].effects.push(effect(EffectOp::Outline { width: 8.0, color: color(200, 30, 30, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-        render_png(&s, 1.0, Backend::Cpu).unwrap()
+        render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap()
     };
     let (plain, ringed) = (rings(false), rings(true));
-    let bare = render_png(&haloed(Some(glow()), false), 1.0, Backend::Cpu).unwrap();
+    let bare = render_png(&haloed(Some(glow()), false), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     for x in [12, 8] {
         let (got, want) = (pixel(&ringed, x, 32), pixel(&plain, x, 32));
         assert!(got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1), "at {x},32 got {got:?}, want {want:?}");
@@ -276,8 +276,8 @@ fn nested_outline_rings_stay_on_top_of_an_earlier_glow() {
 #[test]
 fn an_earlier_effect_that_stays_inside_the_shape_keeps_the_outlined_edge() {
     let unchanged = EffectOp::Adjust { hue: 0.0, sat: 0.0, light: 0.0 };
-    let plain = render_png(&haloed(None, true), 1.0, Backend::Cpu).unwrap();
-    let adjusted = render_png(&haloed(Some(unchanged), true), 1.0, Backend::Cpu).unwrap();
+    let plain = render_png(&haloed(None, true), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
+    let adjusted = render_png(&haloed(Some(unchanged), true), &frame(64.0, 64.0, 1.0), Backend::Cpu).unwrap();
     for x in 8..20 {
         let (got, want) = (pixel(&adjusted, x, 32), pixel(&plain, x, 32));
         assert!(got.iter().zip(want).all(|(g, w)| g.abs_diff(w) <= 1), "at {x},32 got {got:?}, want {want:?}");
@@ -287,7 +287,7 @@ fn an_earlier_effect_that_stays_inside_the_shape_keeps_the_outlined_edge() {
 #[test]
 fn svg_outline_ring_is_drawn_again_over_an_earlier_blur_or_shadow() {
     for halo in [blur(), drop_shadow()] {
-        let svg = render_svg(&haloed(Some(halo), true), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let svg = render_svg(&haloed(Some(halo), true), &frame(64.0, 64.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
         let body = svg.lines().find(|l| l.contains("fill=\"#4f7fe0\"")).expect(&svg);
         let d = body.split("d=\"").nth(1).and_then(|s| s.split('"').next()).expect(&svg);
         let content_at = svg.find(body).unwrap();
@@ -306,7 +306,7 @@ fn svg_outline_ring_is_drawn_again_over_an_earlier_blur_or_shadow() {
 
 #[test]
 fn svg_outline_on_a_translucent_fill_is_not_faded() {
-    let svg = render_svg(&glass(true), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&glass(true), &frame(64.0, 64.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let ink = svg.lines().find(|l| l.contains("stroke-linejoin=\"round\"")).expect(&svg);
     assert!(ink.contains("fill=\"#000000\""), "{svg}");
     assert!(!ink.contains("opacity"), "{svg}");
@@ -321,7 +321,7 @@ fn svg_outline_mask_covers_a_ring_far_from_the_origin() {
     let rect = Path::rect(skia_safe::Rect::from_xywh(20000.0, -30000.0, 40.0, 40.0), None);
     let mut node = solid("far", rect, color(0, 0, 255, 128));
     node.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-    let svg = render_svg(&scene(64.0, 64.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(64.0, 64.0, vec![node]), &frame(64.0, 64.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let mask = svg.split("<mask").nth(1).and_then(|s| s.split('>').next()).expect(&svg);
     let attr = |name: &str| -> f32 {
         let key = format!(" {name}=\"");
@@ -356,7 +356,7 @@ fn svg_node_mask_region_covers_a_shape_placed_away_from_the_origin() {
         feather: 0.0,
         invert: false,
     }));
-    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), &frame(96.0, 96.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_mask_region_covers(&svg, -20.0, -20.0, 20.0, 20.0);
 }
 
@@ -370,7 +370,7 @@ fn svg_node_mask_with_feather_or_invert_is_well_formed() {
             feather,
             invert,
         }));
-        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), &frame(96.0, 96.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
         let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
         let group = doc.descendants().find(|n| n.has_tag_name("mask")).and_then(|m| m.children().find(|n| n.has_tag_name("g"))).expect(&svg);
         let filter = group.attribute("filter").expect(&svg);
@@ -384,7 +384,7 @@ fn svg_outside_clip_region_covers_a_shape_placed_away_from_the_origin() {
     let mut bar = solid("bar", Path::rect(skia_safe::Rect::from_xywh(-24.0, -24.0, 48.0, 48.0), None), color(0, 0, 255, 255));
     bar.transform = skia_safe::Matrix::translate((48.0, 48.0)).to_ir();
     bar.clip = Some(ramose_ir::Clip { path: circle_at(0.0, 0.0, 10.0).to_ir(), feather: 0.0, invert: true });
-    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(96.0, 96.0, vec![bar]), &frame(96.0, 96.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_mask_region_covers(&svg, -24.0, -24.0, 24.0, 24.0);
 }
 
@@ -411,7 +411,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
         }
         _ => unreachable!(),
     }
-    let svg = render_svg(&scene(96.0, 96.0, vec![node]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(96.0, 96.0, vec![node]), &frame(96.0, 96.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let miter = 4.0 / (12.0_f32 / 40.0).atan().sin();
     assert_mask_region_covers(&svg, -12.0, -30.0 - miter, 12.0, 10.0);
 }
@@ -420,7 +420,7 @@ fn svg_mask_region_covers_a_mitered_stroke_tip() {
 fn outline_width_scales_with_the_canvas() {
     let mut node = solid("mark", circle_at(60.0, 60.0, 20.0), color(255, 255, 255, 255));
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-    let png = render_png(&scene(140.0, 140.0, vec![node]), 2.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(140.0, 140.0, vec![node]), &frame(140.0, 140.0, 2.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 120, 120), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 160, 120), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 170, 120), [0, 0, 0, 255]);
@@ -440,7 +440,7 @@ fn rim_brightens_the_bottom_right_edge() {
         dir: Point::new(1.0, 1.0).to_ir(),
         color: color(255, 255, 255, 255),
     }));
-    let png = render_png(&scene(120.0, 120.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(120.0, 120.0, vec![node]), &frame(120.0, 120.0, 1.0), Backend::Cpu).unwrap();
     let center = pixel(&png, 50, 50);
     let lit = pixel(&png, 68, 68);
     let shade = pixel(&png, 32, 32);
@@ -496,7 +496,7 @@ fn grain_rect(strength: f32, scale: f32, seed: u32) -> Vec<u8> {
         color(128, 128, 128, 255),
     );
     node.effects.push(effect(EffectOp::Grain { strength, scale, seed }));
-    render_png(&scene(192.0, 192.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+    render_png(&scene(192.0, 192.0, vec![node]), &frame(192.0, 192.0, 1.0), Backend::Cpu).unwrap()
 }
 
 fn rgba(png: &[u8]) -> Vec<[u8; 4]> {
@@ -524,8 +524,8 @@ fn grain_changes_only_opaque_pixels() {
     let plain = solid("disc", circle_at(40.0, 40.0, 24.0), color(180, 140, 120, 255));
     let mut gritty = plain.clone();
     gritty.effects.push(effect(EffectOp::Grain { strength: 0.45, scale: 3.0, seed: 9 }));
-    let a = render_png(&scene(80.0, 80.0, vec![plain]), 1.0, Backend::Cpu).unwrap();
-    let b = render_png(&scene(80.0, 80.0, vec![gritty]), 1.0, Backend::Cpu).unwrap();
+    let a = render_png(&scene(80.0, 80.0, vec![plain]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let b = render_png(&scene(80.0, 80.0, vec![gritty]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&a, 40, 40), [180, 140, 120, 255]);
     assert_ne!(pixel(&b, 40, 40), pixel(&a, 40, 40));
     assert_eq!(pixel(&a, 2, 2), [0, 0, 0, 0]);
@@ -546,7 +546,7 @@ fn left_edge_alpha(ops: Vec<EffectOp>, node_scale: f32, render_scale: f32) -> Ve
     let mut disc = solid("disc", circle_at(0.0, 0.0, 10.0), color(140, 140, 140, 255));
     disc.transform = (Matrix::translate((48.0, 48.0)) * Matrix::scale((node_scale, node_scale))).to_ir();
     disc.effects.extend(ops.into_iter().map(effect));
-    let png = render_png(&scene(96.0, 96.0, vec![disc]), render_scale, Backend::Cpu).unwrap();
+    let png = render_png(&scene(96.0, 96.0, vec![disc]), &frame(96.0, 96.0, render_scale), Backend::Cpu).unwrap();
     let px = node_scale * render_scale;
     let (cx, edge) = (48.0 * render_scale, 48.0 * render_scale - 10.0 * px);
     let left = (edge - 8.0) as i32;
@@ -584,7 +584,7 @@ fn adjust_keeps_soft_edges_dark() {
     layer.effects.push(effect(EffectOp::Adjust { hue: 0.0, sat: 0.05, light: -0.06 }));
     let mut canvas = scene(80.0, 80.0, vec![layer]);
     canvas.background = Some(color(40, 20, 20, 255));
-    let png = render_png(&canvas, 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&canvas, &framed(&canvas, 1.0), Backend::Cpu).unwrap();
     let brightest = rgba(&png).iter().map(|p| p[0].max(p[1]).max(p[2])).max().unwrap();
     assert!(brightest < 80, "an edge pixel brightened to {brightest}");
 }
@@ -594,7 +594,7 @@ fn adjust_leaves_black_black() {
     for (sat, light) in [(-0.2, 0.0), (0.0, -0.12), (-0.35, -0.12), (0.5, 0.0)] {
         let mut node = solid("black", circle_at(40.0, 40.0, 24.0), color(0, 0, 0, 255));
         node.effects.push(effect(EffectOp::Adjust { hue: 30.0, sat, light }));
-        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
         assert_eq!(pixel(&png, 40, 40), [0, 0, 0, 255], "sat {sat} light {light}");
     }
 }
@@ -602,8 +602,8 @@ fn adjust_leaves_black_black() {
 #[test]
 fn png_bytes_are_deterministic() {
     let scene = scene(80.0, 80.0, vec![solid("dot", circle_at(40.0, 40.0, 20.0), red())]);
-    let a = render_png(&scene, 1.0, Backend::Cpu).unwrap();
-    let b = render_png(&scene, 1.0, Backend::Cpu).unwrap();
+    let a = render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap();
+    let b = render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap();
     assert_eq!(a, b);
     assert_eq!(pixel(&a, 40, 40), [255, 0, 0, 255]);
 }
@@ -635,7 +635,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
         node
     };
     let scene = scene(100.0, 40.0, vec![disc, rock]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("linearGradient"), "{svg}");
     assert!(svg.contains("gradientUnits=\"userSpaceOnUse\""), "{svg}");
     assert!(svg.contains("id=\"disc\""), "{svg}");
@@ -648,7 +648,7 @@ fn svg_emits_gradient_and_bakes_field_fill() {
     assert_eq!(hits[0].node, "rock");
     assert_eq!(hits[0].feature, "field fill");
 
-    match render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu) {
+    match render_svg(&scene, &framed(&scene, 1.0), Profile::Vector, 1.0, Backend::Cpu) {
         Err(RenderError::NotVector(list)) => {
             assert_eq!(list.len(), 1);
             assert_eq!(list[0].node, "rock");
@@ -683,14 +683,14 @@ fn svg_path_data_follows_each_segment() {
     b.cubic_to((60.0, -20.0), (80.0, -20.0), (90.0, 0.0));
     b.close();
     let scene = scene(100.0, 100.0, vec![solid("mark", b.detach(), red())]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("d=\"M 0 0L 30 0C 30 20 20 30 0 30ZM 50 0C 60 -20 80 -20 90 0Z\""), "{svg}");
 }
 
 #[test]
 fn svg_circle_stays_on_its_radius() {
     let scene = scene(100.0, 100.0, vec![solid("dot", circle_at(50.0, 50.0, 40.0), red())]);
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     let d = svg.split("<path d=\"").nth(1).and_then(|s| s.split('"').next()).expect(&svg);
     let mut ends = 0;
     for segment in d.split(['M', 'C', 'Z']).filter(|s| !s.trim().is_empty()) {
@@ -717,7 +717,7 @@ fn a_baked_svg_tile_keeps_a_blurred_mask_fringe() {
         feather: 0.0,
         invert: false,
     }));
-    let svg = render_svg(&scene(64.0, 64.0, vec![cell]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(64.0, 64.0, vec![cell]), &frame(64.0, 64.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<image x=\"10\" y=\"10\" width=\"44\" height=\"44\""), "{svg}");
 }
 
@@ -733,7 +733,7 @@ fn masked_bar(mask: ramose_ir::MaskSource, outline: bool) -> ramose_ir::Scene {
 #[test]
 fn outline_traces_the_shape_a_node_mask_keeps() {
     let window = solid("window", Path::rect(skia_safe::Rect::from_xywh(30.0, 20.0, 20.0, 40.0), None), red());
-    let png = render_png(&masked_bar(ramose_ir::MaskSource::Nodes(vec![window]), true), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&masked_bar(ramose_ir::MaskSource::Nodes(vec![window]), true), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 255, 255, 255]);
     assert_eq!(pixel(&png, 28, 40), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 40, 28), [0, 0, 0, 255]);
@@ -744,8 +744,8 @@ fn outline_traces_the_shape_a_node_mask_keeps() {
 #[test]
 fn outline_shows_nothing_through_a_field_mask() {
     let half = || ramose_ir::MaskSource::Field { field: Field::Const(0.5), threshold: None };
-    let outlined = render_png(&masked_bar(half(), true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&masked_bar(half(), false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&masked_bar(half(), true), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&masked_bar(half(), false), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     for (x, y) in [(40, 40), (12, 32), (68, 48)] {
         assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
     }
@@ -759,8 +759,8 @@ fn outline_hugs_what_a_thresholded_field_keeps(invert: bool) {
         s.children[0].mask.as_mut().unwrap().invert = invert;
         s
     };
-    let outlined = render_png(&blobs(true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&blobs(false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&blobs(true), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&blobs(false), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let px = |png: &[u8]| (0..80).flat_map(|y| (0..80).map(move |x| (x, y))).map(|(x, y)| ((x, y), pixel(png, x, y))).collect::<Vec<_>>();
     let (outlined, bare) = (px(&outlined), px(&bare));
     let kept: Vec<(i32, i32)> = bare.iter().filter(|(_, p)| p[3] > 0).map(|(at, _)| *at).collect();
@@ -799,8 +799,8 @@ fn outline_shows_nothing_through_a_feathered_mask_edge() {
         s.children[0].mask.as_mut().unwrap().feather = 3.0;
         s
     };
-    let outlined = render_png(&feathered(true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&feathered(false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&feathered(true), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&feathered(false), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     for (x, y) in [(31, 40), (49, 40), (40, 31)] {
         assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
     }
@@ -820,8 +820,8 @@ fn outline_shows_nothing_through_a_feathered_clip_edge() {
         }
         s
     };
-    let outlined = render_png(&clipped(true), 1.0, Backend::Cpu).unwrap();
-    let bare = render_png(&clipped(false), 1.0, Backend::Cpu).unwrap();
+    let outlined = render_png(&clipped(true), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let bare = render_png(&clipped(false), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     for (x, y) in [(31, 40), (49, 40)] {
         assert_eq!(pixel(&outlined, x, y), pixel(&bare, x, y), "at {x},{y}");
     }
@@ -838,7 +838,7 @@ fn noise_ramp(kind: NoiseKind) -> Vec<u8> {
             ],
         }));
     }
-    render_png(&scene(192.0, 192.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+    render_png(&scene(192.0, 192.0, vec![node]), &frame(192.0, 192.0, 1.0), Backend::Cpu).unwrap()
 }
 
 #[test]
@@ -863,7 +863,7 @@ fn svg_feathered_clip_with_a_node_mask_is_well_formed() {
             feather: 0.0,
             invert: false,
         }));
-        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+        let svg = render_svg(&scene(96.0, 96.0, vec![bar]), &frame(96.0, 96.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
         let doc = roxmltree::Document::parse(&svg).unwrap_or_else(|e| panic!("{e}\n{svg}"));
         let bar = doc.descendants().find(|n| n.attribute("id") == Some("bar")).expect(&svg);
         assert!(bar.attribute("mask").is_some(), "{svg}");
@@ -874,7 +874,7 @@ fn sided_tile(sides: ramose_ir::Sides, turn: f32) -> Vec<u8> {
     let mut node = solid("tile", Path::rect(skia_safe::Rect::from_xywh(30.0, 30.0, 40.0, 40.0), None), color(255, 255, 255, 255));
     node.transform = skia_safe::Matrix::rotate_deg_pivot(turn, (50.0, 50.0)).to_ir();
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides, mask: None, brush: vec![] }));
-    render_png(&scene(100.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap()
+    render_png(&scene(100.0, 100.0, vec![node]), &frame(100.0, 100.0, 1.0), Backend::Cpu).unwrap()
 }
 
 const TOP_ONLY: ramose_ir::Sides = ramose_ir::Sides { top: true, right: false, bottom: false, left: false };
@@ -936,8 +936,8 @@ fn svg_bakes_a_one_sided_outline_like_the_png() {
     node.effects.push(effect(EffectOp::Outline { width: 6.0, color: color(0, 0, 0, 255), sides: TOP_ONLY, mask: None, brush: vec![] }));
     let scene = scene(100.0, 100.0, vec![node]);
     assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline sides"));
-    assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(render_svg(&scene, &framed(&scene, 1.0), Profile::Vector, 1.0, Backend::Cpu).is_err());
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<image"), "{svg}");
 }
 
@@ -961,7 +961,7 @@ fn left_half(feather: f32) -> ramose_ir::Mask {
 
 #[test]
 fn outline_mask_keeps_the_ring_where_the_mask_keeps_it_and_leaves_the_content_alone() {
-    let png = render_png(&masked_ring(left_half(0.0)), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&masked_ring(left_half(0.0)), &frame(120.0, 120.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 37, 60), [0, 0, 0, 255], "ring on the kept side");
     assert_eq!(pixel(&png, 83, 60), [0, 0, 0, 0], "no ring on the cut side");
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
@@ -971,8 +971,8 @@ fn outline_mask_keeps_the_ring_where_the_mask_keeps_it_and_leaves_the_content_al
 
 #[test]
 fn outline_mask_feather_fades_the_ring_alpha_and_keeps_its_width() {
-    let soft = render_png(&masked_ring(left_half(4.0)), 1.0, Backend::Cpu).unwrap();
-    let hard = render_png(&masked_ring(left_half(0.0)), 1.0, Backend::Cpu).unwrap();
+    let soft = render_png(&masked_ring(left_half(4.0)), &frame(120.0, 120.0, 1.0), Backend::Cpu).unwrap();
+    let hard = render_png(&masked_ring(left_half(0.0)), &frame(120.0, 120.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&soft, 45, 43), [0, 0, 0, 255], "three sigmas into the kept side");
     assert_eq!(pixel(&soft, 75, 43), [0, 0, 0, 0], "three sigmas into the cut side");
     let at_edge = pixel(&soft, 60, 37)[3];
@@ -996,22 +996,22 @@ fn outline_field_mask_breaks_the_ring_and_renders_the_same_every_time() {
         invert: false,
     };
     let scene = masked_ring(mask);
-    let png = render_png(&scene, 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap();
     let ring: Vec<u8> = (0..360).step_by(5).map(|deg| {
         let a = (deg as f32).to_radians();
         pixel(&png, (60.0 + 23.0 * a.cos()).round() as i32, (60.0 + 23.0 * a.sin()).round() as i32)[3]
     }).collect();
     assert!(ring.contains(&255) && ring.contains(&0), "{ring:?}");
     assert_eq!(pixel(&png, 60, 60), [255, 255, 255, 255]);
-    assert_eq!(png, render_png(&scene, 1.0, Backend::Cpu).unwrap());
+    assert_eq!(png, render_png(&scene, &framed(&scene, 1.0), Backend::Cpu).unwrap());
 }
 
 #[test]
 fn svg_bakes_a_masked_outline_like_the_png() {
     let scene = masked_ring(left_half(0.0));
     assert!(raster_only_features(&scene).iter().any(|u| u.feature == "fx outline mask"));
-    assert!(render_svg(&scene, Profile::Vector, 1.0, Backend::Cpu).is_err());
-    let svg = render_svg(&scene, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(render_svg(&scene, &framed(&scene, 1.0), Profile::Vector, 1.0, Backend::Cpu).is_err());
+    let svg = render_svg(&scene, &framed(&scene, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(svg.contains("<image"), "{svg}");
 }
 
@@ -1026,7 +1026,7 @@ fn ramp_tile(field: Field, w: f32, h: f32) -> Vec<f64> {
             ],
         }));
     }
-    let png = render_png(&scene(w, h, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(w, h, vec![node]), &frame(w, h, 1.0), Backend::Cpu).unwrap();
     rgba(&png).iter().map(|p| p[0] as f64).collect()
 }
 
@@ -1128,7 +1128,7 @@ fn stamped_circle() -> ramose_ir::Node {
 
 #[test]
 fn a_stamp_draws_unclipped_over_the_fill_and_under_the_children() {
-    let png = render_png(&scene(80.0, 80.0, vec![stamped_circle()]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![stamped_circle()]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 70, 40), [0, 0, 255, 255], "past the edge, where a child would be clipped");
     assert_eq!(pixel(&png, 43, 40), [0, 0, 255, 255], "over the fill");
     assert_eq!(pixel(&png, 40, 40), [0, 255, 0, 255], "under the child");
@@ -1139,7 +1139,7 @@ fn a_stamp_draws_unclipped_over_the_fill_and_under_the_children() {
 fn the_host_s_opacity_and_mask_cover_its_stamps() {
     let mut host = stamped_circle();
     host.opacity = 0.5;
-    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![host]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 70, 40)[3], 128);
     let mut host = stamped_circle();
     host.mask = Some(Box::new(ramose_ir::Mask {
@@ -1148,14 +1148,14 @@ fn the_host_s_opacity_and_mask_cover_its_stamps() {
         feather: 0.0,
         invert: false,
     }));
-    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![host]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 70, 40), [0, 0, 0, 0], "the mask ends at x 60");
     assert_eq!(pixel(&png, 43, 40), [0, 0, 255, 255]);
 }
 
 #[test]
 fn svg_writes_stamps_as_paths_before_the_clipped_children() {
-    let svg = render_svg(&scene(80.0, 80.0, vec![stamped_circle()]), Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(80.0, 80.0, vec![stamped_circle()]), &frame(80.0, 80.0, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert!(!svg.contains("<image"), "{svg}");
     let at = |needle: &str| svg.find(needle).unwrap_or_else(|| panic!("no {needle} in {svg}"));
     assert!(at("<g id=\"body\" style=\"isolation:isolate\"") < at("id=\"body.dots.0\""), "{svg}");
@@ -1168,7 +1168,7 @@ fn svg_writes_stamps_as_paths_before_the_clipped_children() {
 fn fx_outline_traces_the_stamps_unclipped() {
     let mut host = stamped_circle();
     host.effects.push(effect(EffectOp::Outline { width: 3.0, color: color(0, 0, 0, 255), sides: ramose_ir::Sides::ALL, mask: None, brush: vec![] }));
-    let png = render_png(&scene(80.0, 80.0, vec![host]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![host]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 76, 40), [0, 0, 0, 255], "a ring around the stamp past the circle's edge");
     assert_eq!(pixel(&png, 70, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 18, 40), [0, 0, 0, 255], "and around the circle");

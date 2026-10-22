@@ -1,10 +1,11 @@
-# Control flow and style inside defs. 256x128 canvas, two rows of four 64x64 cells. Outlines come from `style ink`, a 2-wide dark ink stroke.
+# Control flow and style inside defs. 256x128 artboard, two rows of four 64x64 cells. Outlines come from `style ink`, a 2-wide dark ink stroke.
 # Top row, left to right: dots 2 (two red circles of radius 6 side by side, centered on the cell, made by each over 0..n); dots 3 (three of the same circles in a centered row, wider than cell 1);
-# dots 3 big:1 (three larger red circles of radius 8 in a centered row, chosen by an if/else on the big parameter; they nearly fill the cell width); ramp_row (four blue circles of radii 3, 5, 7, 9 from a list comprehension, centers at x=200, 214, 228, 242 and y=32, so the row is centered on the cell; centers are 14 apart, so the gaps between neighbors shrink from 6 to 2 and the last two circles overlap by 2; the r9 circle ends at x=251, clear of the canvas edge).
+# dots 3 big:1 (three larger red circles of radius 8 in a centered row, chosen by an if/else on the big parameter; they nearly fill the cell width); ramp_row (four blue circles of radii 3, 5, 7, 9 from a list comprehension, centers at x=200, 214, 228, 242 and y=32, so the row is centered on the cell; centers are 14 apart, so the gaps between neighbors shrink from 6 to 2 and the last two circles overlap by 2; the r9 circle ends at x=251, clear of the artboard edge).
 # All top-row circles have the ink outline.
 # Bottom row, left to right: a gold square and a blue circle each drawn with `style:ink` (both outlined); the same pair with no style (no outlines, flat fills);
 # a group with `style:ink` holding the same gold square and blue circle without style of their own (both outlined, inherited from the group); a group with no style holding the same pair (no outlines).
-@target components/control.png 256x128
+@artboard 256x128
+@target components/control.png
 
 style ink stroke:p.ink,2
 

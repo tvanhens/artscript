@@ -10,7 +10,7 @@ use ramose_geom::ToIr;
 use ramose_ir::{EffectOp, Fill, NodeKind, Paint, RibbonMark, Sides, Stage, Stop};
 use skia_safe::{Path, Point};
 use ramose_render::{Backend, gpu_available, raster_only_features, render_png, render_svg};
-use common::{brushed, color, effect, mark, pixel, red, scene, solid, stage, stamp, with_stamps};
+use common::{brushed, color, effect, frame, framed, mark, pixel, red, scene, solid, stage, stamp, with_stamps};
 
 const IDENTITY: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n";
 const SQUARE: skia_safe::Rect = skia_safe::Rect { left: 20.0, top: 20.0, right: 60.0, bottom: 60.0 };
@@ -19,8 +19,8 @@ const SQUARE: skia_safe::Rect = skia_safe::Rect { left: 20.0, top: 20.0, right: 
 fn a_solid_base_reaches_the_body_exactly_and_renders_the_same_bytes_twice() {
     let node = brushed("a", Path::rect(SQUARE, None), Paint::Solid(color(200, 40, 10, 255)), vec![mark(stage(IDENTITY, &[], &[], 3), 0.0)]);
     let s = scene(80.0, 80.0, vec![node]);
-    let png = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    assert_eq!(png, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let png = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    assert_eq!(png, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
     assert_eq!(pixel(&png, 40, 40), [200, 40, 10, 255]);
     assert_eq!(pixel(&png, 21, 21), [200, 40, 10, 255]);
     assert_eq!(pixel(&png, 10, 40)[3], 0, "nothing past the edge");
@@ -40,8 +40,8 @@ fn a_gradient_base_is_read_at_each_pixel_in_local_space() {
         shape.fill = Some(Fill::plain(gradient.clone()));
     }
     let brushed = brushed("b", Path::rect(SQUARE, None), gradient, vec![mark(stage(IDENTITY, &[], &[], 3), 0.0)]);
-    let a = render_png(&scene(80.0, 80.0, vec![plain]), 1.0, Backend::Cpu).unwrap();
-    let b = render_png(&scene(80.0, 80.0, vec![brushed]), 1.0, Backend::Cpu).unwrap();
+    let a = render_png(&scene(80.0, 80.0, vec![plain]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let b = render_png(&scene(80.0, 80.0, vec![brushed]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     for x in [22, 30, 40, 50, 58] {
         let (pa, pb) = (pixel(&a, x, 40), pixel(&b, x, 40));
         for c in 0..3 {
@@ -61,7 +61,7 @@ fn a_later_stage_reads_the_previous_stage_and_coverages_multiply() {
         2,
     );
     let node = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(first, 0.0), mark(second, 0.0)]);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let p = pixel(&png, 40, 40);
     assert!(p[3] == 127 || p[3] == 128, "coverage .5 * 1: {p:?}");
     assert_eq!(p[0], 0, "{p:?}");
@@ -76,9 +76,9 @@ fn reach_lets_a_brush_paint_past_the_geometry_inside_a_layer_too() {
     layered.path = "layered".into();
     layered.opacity = 0.5;
     let tight = brushed("tight", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), 0.0)]);
-    let a = render_png(&scene(80.0, 80.0, vec![far]), 1.0, Backend::Cpu).unwrap();
-    let b = render_png(&scene(80.0, 80.0, vec![layered]), 1.0, Backend::Cpu).unwrap();
-    let c = render_png(&scene(80.0, 80.0, vec![tight]), 1.0, Backend::Cpu).unwrap();
+    let a = render_png(&scene(80.0, 80.0, vec![far]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let b = render_png(&scene(80.0, 80.0, vec![layered]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let c = render_png(&scene(80.0, 80.0, vec![tight]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&a, 16, 40)[3], 255, "4 px outside the square is painted with reach");
     assert_eq!(pixel(&a, 11, 40)[3], 0, "but not 9 px outside");
     assert!(pixel(&b, 16, 40)[3] > 100, "a layer does not crop the reach: {:?}", pixel(&b, 16, 40));
@@ -90,7 +90,7 @@ fn ink_never_lands_past_the_bounds_plus_reach() {
     let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 6, m)); }\n";
     for reach in [0.0_f32, 3.0] {
         let node = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), reach)]);
-        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
         let (lo, hi) = (20 - reach as i32, 60 + reach as i32);
         for y in 0..80 {
             for x in 0..80 {
@@ -122,7 +122,7 @@ fn assert_normal(png: &[u8], at: (i32, i32), want: [f32; 2]) {
 #[test]
 fn the_normal_points_out_of_a_fill_and_is_zero_on_its_medial_axis() {
     let node = brushed("a", Path::circle((40.5, 40.5), 28.0, None), Paint::Solid(red()), vec![mark(stage(NORMAL_AS_COLOR, &[], &[], 1), 0.0)]);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_normal(&png, (15, 40), [-1.0, 0.0]);
     assert_normal(&png, (65, 40), [1.0, 0.0]);
     assert_normal(&png, (40, 15), [0.0, -1.0]);
@@ -137,7 +137,7 @@ fn the_normal_is_in_the_local_frame_of_a_rotated_node() {
     let rect = skia_safe::Rect::from_xywh(20.0, 30.0, 40.0, 20.0);
     let mut node = brushed("a", Path::rect(rect, None), Paint::Solid(red()), vec![mark(stage(NORMAL_AS_COLOR, &[], &[], 1), 0.0)]);
     node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0)).to_ir();
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_normal(&png, (40, 22), [-1.0, 0.0]);
     assert_normal(&png, (48, 40), [0.0, -1.0]);
     assert_normal(&png, (40, 58), [1.0, 0.0]);
@@ -152,8 +152,8 @@ fn gpu_brush_render_is_close_to_cpu_and_repeatable() {
     let noisy = "float4 shade(Mark m) {\n  float n = fbm(m.uv / 9 + seeded(m), 3);\n  return float4(m.paint.rgb * (.7 + .5 * n), cover(m.edge, m) * step(.35, n));\n}\n";
     let node = brushed("a", Path::circle((40.0, 40.0), 28.0, None), Paint::Solid(color(90, 140, 200, 255)), vec![mark(stage(noisy, &[], &[], 77), 0.0)]);
     let s = scene(80.0, 80.0, vec![node]);
-    let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();
+    let cpu = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    let gpu = render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap();
     let mut worst = 0u8;
     let mut differing = 0usize;
     for y in 0..80 {
@@ -165,7 +165,7 @@ fn gpu_brush_render_is_close_to_cpu_and_repeatable() {
         }
     }
     assert!(worst <= 16, "max channel difference {worst}, {differing} pixels differ");
-    assert_eq!(gpu, render_png(&s, 1.0, Backend::Gpu).unwrap());
+    assert_eq!(gpu, render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap());
 }
 
 #[test]
@@ -185,7 +185,7 @@ fn only_a_brushed_stamp_bakes_in_svg() {
     let scene = scene(80.0, 80.0, vec![host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["line.dots.1.c brush fill"]);
-    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(svg.contains("<g id=\"line.dots.0.c\""), "the plain stamp stays a path: {svg}");
     assert!(svg.contains("<g id=\"line.dots.1.c\">"), "the brushed stamp's shape is the baked node: {svg}");
@@ -200,7 +200,7 @@ fn a_brushed_host_bakes_only_its_own_paint_in_svg_and_its_stamps_stay_vector_ove
     let scene = scene(80.0, 80.0, vec![host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["line brush fill"], "profile:vector still reports the host");
-    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene, &framed(&scene, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     let (host_at, image_at, stamp_at) = (svg.find("<g id=\"line\"").unwrap(), svg.find("<image").unwrap(), svg.find("<g id=\"line.dots.0.c\"").unwrap());
     assert!(host_at < image_at && image_at < stamp_at, "the tile sits in the host and the stamp draws over it: {svg}");
@@ -223,7 +223,7 @@ fn band() -> ramose_ir::Node {
 #[test]
 fn children_of_a_brushed_fill_clip_to_its_coverage_not_its_geometry() {
     let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
-    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 30, 40), [0, 0, 255, 255], "the child shows over covered fill");
     assert_eq!(pixel(&png, 40, 40)[3], 0, "the child does not fill the gap the brush leaves");
     assert_eq!(pixel(&png, 15, 40)[3], 0, "the child does not spill past the geometry");
@@ -238,7 +238,7 @@ fn children_of_a_brushed_fill_clip_to_its_coverage_not_its_geometry() {
 fn a_translucent_brushed_fill_keeps_its_children_opaque() {
     let faint = Paint::Solid(color(255, 0, 0, 51));
     let parent = brushed("a", Path::rect(SQUARE, None), faint, vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
-    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, band())]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 30, 40), [0, 0, 255, 255], "paint alpha does not dim the child");
     assert_eq!(pixel(&png, 40, 40)[3], 0);
 }
@@ -246,7 +246,7 @@ fn a_translucent_brushed_fill_keeps_its_children_opaque() {
 #[test]
 fn children_of_an_unbrushed_fill_still_clip_to_its_geometry() {
     let parent = with_child(solid("a", Path::rect(SQUARE, None), red()), band());
-    let png = render_png(&scene(80.0, 80.0, vec![parent]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![parent]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [0, 0, 255, 255]);
     assert_eq!(pixel(&png, 15, 40)[3], 0);
 }
@@ -256,7 +256,7 @@ fn children_of_a_brushed_fill_still_blend_with_it() {
     let parent = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
     let mut gray = solid("band", Path::rect(skia_safe::Rect::from_ltrb(10.0, 30.0, 70.0, 50.0), None), color(128, 128, 128, 255));
     gray.blend = ramose_ir::Blend::Multiply;
-    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, gray)]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![with_child(parent, gray)]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let px = pixel(&png, 30, 40);
     assert!(px[0].abs_diff(128) <= 2 && px[1] <= 2 && px[2] <= 2 && px[3] == 255, "gray multiplied over red is dark red: {px:?}");
 }
@@ -266,7 +266,7 @@ fn a_stamped_brushed_host_with_children_bakes_its_children_in_svg() {
     let mut host = brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]);
     let plain = solid("a.dots.0.c", Path::rect(skia_safe::Rect::from_xywh(-2.0, -2.0, 4.0, 4.0), None), red());
     with_stamps(&mut host, vec![stamp("a.dots.0", skia_safe::Matrix::translate((30.0, 25.0)), vec![plain])], vec![band()]);
-    let svg = render_svg(&scene(80.0, 80.0, vec![host]), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&scene(80.0, 80.0, vec![host]), &frame(80.0, 80.0, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
     assert!(!svg.contains("id=\"band\""), "the child clips to the brushed coverage inside the tile, not as an element: {svg}");
 }
@@ -279,7 +279,7 @@ fn outlined(mut node: ramose_ir::Node, width: f32) -> ramose_ir::Node {
 #[test]
 fn fx_outline_follows_the_coverage_a_brushed_fill_leaves() {
     let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(GAPPED, &[], &[], 3), 0.0)]), 1.0);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40)[3], 0, "the middle of the 4 px gap shows nothing, not the ring's ink");
     assert_eq!(pixel(&png, 38, 40), [0, 0, 0, 255], "the ring runs along the gap's edge");
     assert_eq!(pixel(&png, 30, 40), [255, 0, 0, 255], "covered fill stays the fill");
@@ -292,7 +292,7 @@ fn fx_outline_follows_the_coverage_a_brushed_fill_leaves() {
 fn fx_outline_follows_a_brushed_fill_past_its_geometry_by_its_reach() {
     let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 6, m)); }\n";
     let node = outlined(brushed("a", Path::rect(SQUARE, None), Paint::Solid(red()), vec![mark(stage(body, &[], &[], 1), 8.0)]), 2.0);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 15, 40), [255, 0, 0, 255], "ink 5 px past the geometry is the fill");
     assert_eq!(pixel(&png, 12, 40), [0, 0, 0, 255], "the ring sits past the reach, not at the geometry");
     assert_eq!(pixel(&png, 11, 40)[3], 0);
@@ -300,7 +300,7 @@ fn fx_outline_follows_a_brushed_fill_past_its_geometry_by_its_reach() {
 
 #[test]
 fn fx_outline_on_an_unbrushed_fill_traces_its_geometry() {
-    let png = render_png(&scene(80.0, 80.0, vec![outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0)]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0)]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255]);
     assert_eq!(pixel(&png, 17, 40), [0, 0, 0, 255]);
     assert_eq!(pixel(&png, 15, 40)[3], 0);
@@ -314,8 +314,8 @@ fn fx_outline_over_a_brushed_fill_is_raster_only() {
     let scene = scene(80.0, 80.0, vec![node, host]);
     let census: Vec<String> = raster_only_features(&scene).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a fx outline brush", "a brush fill", "h fx outline brush", "a fx outline brush", "a brush fill"]);
-    assert!(matches!(render_svg(&scene, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
-    let svg = render_svg(&scene, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(matches!(render_svg(&scene, &framed(&scene, 1.0), ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
+    let svg = render_svg(&scene, &framed(&scene, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 2, "{svg}");
     assert!(!svg.contains("-outline"), "the ring is in the tile, not a path: {svg}");
 }
@@ -346,8 +346,8 @@ fn holed() -> Path {
 
 #[test]
 fn a_brushed_outline_runs_with_the_traced_area_on_its_right_around_the_outside_and_each_hole() {
-    let inner = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, INNER_HALF, 0.0)]), 1.0, Backend::Cpu).unwrap();
-    let outer = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, OUTER_HALF, 0.0)]), 1.0, Backend::Cpu).unwrap();
+    let inner = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, INNER_HALF, 0.0)]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let outer = render_png(&scene(80.0, 80.0, vec![ring_outlined(solid("a", holed(), red()), 4.0, OUTER_HALF, 0.0)]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     for (x, where_) in [(8, "outside the square"), (32, "inside the hole")] {
         assert_eq!(pixel(&inner, x, 40)[3], 0, "the inner half (m.d > 0) lies under the fill, so nothing shows {where_}");
         assert_eq!(pixel(&outer, x, 40), [0, 0, 0, 255], "the outer half (m.d < 0) shows {where_}");
@@ -360,11 +360,11 @@ fn a_brushed_outline_runs_with_the_traced_area_on_its_right_around_the_outside_a
 fn a_brushed_outline_renders_the_same_bytes_twice_and_is_raster_only() {
     let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 3 * hash12(floor(m.uv / 4)), m)); }\n";
     let s = scene(80.0, 80.0, vec![ring_outlined(solid("a", Path::rect(SQUARE, None), red()), 3.0, body, 3.0)]);
-    let png = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    assert_eq!(png, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let png = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    assert_eq!(png, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
     let census: Vec<String> = raster_only_features(&s).iter().map(|u| format!("{} {}", u.node, u.feature)).collect();
     assert_eq!(census, ["a brush outline"]);
-    assert!(matches!(render_svg(&s, ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
-    let svg = render_svg(&s, ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    assert!(matches!(render_svg(&s, &framed(&s, 1.0), ramose_ir::Profile::Vector, 1.0, Backend::Cpu), Err(ramose_render::RenderError::NotVector(_))));
+    let svg = render_svg(&s, &framed(&s, 1.0), ramose_ir::Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 1, "{svg}");
 }

@@ -1,5 +1,6 @@
-@target prop/matcha_teacup.png 1024x1024
-@target prop/matcha_teacup.svg 1024x1024
+@artboard 1024x1024
+@target prop/matcha_teacup.png
+@target prop/matcha_teacup.svg
 use face/parts { eye blush open_mouth sparkle }
 palette tea
   ramp matcha #8db54a 5
@@ -124,5 +125,5 @@ layer saucer pivot:512,800
     layer sparkle
       sparkle 56 at:300,440 color:tea.twinkle
       sparkle 30 at:748,418 color:tea.twinkle
-assert inside(@saucer_shell canvas margin:24)
-assert inside(@cup_shell canvas margin:24)
+assert inside(@saucer_shell artboard margin:24)
+assert inside(@cup_shell artboard margin:24)

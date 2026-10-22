@@ -511,8 +511,8 @@ const JUNK_STMTS: &[&str] = &[
     "light l at:1,2",
     "brush b",
     "brush b size:4\n  circle 3",
-    "canvas fill:",
-    "canvas",
+    "artboard fill:",
+    "artboard",
     "fx blur 3",
     "slot orphan",
     "play missing",
@@ -2214,7 +2214,7 @@ impl<'u, 'd> Gen<'u, 'd> {
             K::Check => self.check_stmt(c),
             K::Canvas => {
                 let fill = self.paint(1);
-                self.line(c.ind, format!("canvas fill:{fill}"));
+                self.line(c.ind, format!("artboard fill:{fill}"));
             }
             K::Junk => {
                 let j = self.pick(JUNK_STMTS).to_string();
@@ -2507,7 +2507,7 @@ impl<'u, 'd> Gen<'u, 'd> {
             let chk = self.pick(CHECKS);
             let mut args: Vec<String> = (0..chk.refs).map(|_| self.word(Ty::Ref)).collect();
             if chk.name == "inside" && self.chance(8) {
-                args[1] = "canvas".into();
+                args[1] = "artboard".into();
             }
             if chk.name == "same_size" {
                 args.truncate(self.n(1, 3));
@@ -2991,7 +2991,7 @@ impl<'u, 'd> Gen<'u, 'd> {
     }
 
     fn targets(&mut self, anims: &[String]) -> Vec<String> {
-        let mut out = Vec::new();
+        let mut out = vec![format!("@artboard {}x{}", self.cw, self.ch)];
         let count = self.weighted(&[(10, 1), (5, 2)]);
         for i in 0..count {
             let kind = if i == 0 {
@@ -3001,12 +3001,10 @@ impl<'u, 'd> Gen<'u, 'd> {
             };
             let axis = self.chance(3);
             let stem = if axis { format!("a{i}_{{k}}") } else { format!("a{i}") };
-            let (w, h) = if self.chance(8) {
-                (self.cw, self.cw)
-            } else {
-                (self.cw, self.ch)
-            };
-            let mut s = format!("@target out/{stem}.{kind} {w}x{h}");
+            let mut s = format!("@target out/{stem}.{kind}");
+            if self.chance(8) {
+                let _ = write!(s, " {}x{}", self.cw, self.cw);
+            }
             if kind == "png" && self.chance(4) {
                 let _ = write!(s, " scale:{}", self.pick(&["1,2", "2", "1.5", "1"]));
             }
@@ -3076,7 +3074,7 @@ impl<'u, 'd> Gen<'u, 'd> {
             String::new()
         };
         format!(
-            "[project]\nname = \"fuzz\"\nout = \"out\"\nlib = [\"lib\"]\n{std_line}\n[defaults]\npalette = \"{default_palette}\"\nscale = {scale}\nbg = \"{bg}\"\nprofile = \"{profile}\"\n\n[lint]\nraw-color = \"{a}\"\nunused = \"{b}\"\noff-canvas = \"{c}\"\n{build}"
+            "[project]\nname = \"fuzz\"\nout = \"out\"\nlib = [\"lib\"]\n{std_line}\n[defaults]\npalette = \"{default_palette}\"\nscale = {scale}\nbg = \"{bg}\"\nprofile = \"{profile}\"\n\n[lint]\nraw-color = \"{a}\"\nunused = \"{b}\"\noff-artboard = \"{c}\"\n{build}"
         )
     }
 
@@ -3112,7 +3110,7 @@ impl<'u, 'd> Gen<'u, 'd> {
                 header.push(format!("use gen/l{}", self.n(0, nlibs - 1)));
             }
             if self.bad() {
-                header.push("@target out/lib.png 8x8".into());
+                header.push("@artboard 8x8\n@target out/lib.png".into());
             }
             self.decls(true);
             let src = header

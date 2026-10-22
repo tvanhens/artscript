@@ -1,8 +1,9 @@
-# Eight 64x64 squares in two rows of four on a 256x128 canvas, all simplex fields through the green ramp, so only the field settings differ.
+# Eight 64x64 squares in two rows of four on a 256x128 artboard, all simplex fields through the green ramp, so only the field settings differ.
 # Top row, left to right: feature size 8 (fine, many small blobs), feature size 32 (coarse, about six dark blobs per square), oct:1 at size 24 (smooth, no fine detail), oct:5 at size 24 (the same blob layout as the oct:1 cell, since the same seed gives the same noise, with extra small-scale grain on top). The simplex cells reach the full dark and light ends of the ramp, with no flat patches.
 # Bottom row, left to right: fbm(simplex(24)) (layered, grainy detail, the same layout as the oct:5 cell above), ridged(simplex(24)) (sharp bright creases/ridges instead of soft blobs),
 # simplex(24)*worley(24) (a product: darker overall than the plain simplex cells, since multiplying shrinks values), simplex(24 seed:2) (the two seed cells differ from each other in arrangement).
-@target fields/shaping.png 256x128
+@artboard 256x128
+@target fields/shaping.png
 
 rect 64x64 at:32,32 fill:simplex(8 seed:1) -> p.green name:a
 rect 64x64 at:96,32 fill:simplex(32 seed:1) -> p.green name:b

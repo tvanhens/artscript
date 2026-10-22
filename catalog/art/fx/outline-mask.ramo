@@ -1,9 +1,10 @@
-# A row of three cells on a 192x64 paper canvas, 64 px wide each. Every cell is a blue circle of radius 18 with fx outline 4 in ink, and a mask under the fx line cuts the ring. The blue disc is whole in every cell: the mask cuts the ring and never the fill.
+# A row of three cells on a 192x64 paper artboard, 64 px wide each. Every cell is a blue circle of radius 18 with fx outline 4 in ink, and a mask under the fx line cuts the ring. The blue disc is whole in every cell: the mask cuts the ring and never the fill.
 # Left to right:
 # 1. The mask is a rect over the left half of the cell. The ink ring runs around the left half of the disc only and ends in a hard, straight, vertical cut on the disc's center line. No ink on the right half.
 # 2. The same mask with feather:6. The ring is full strength on the far left, fades out across the middle of the disc, and is gone on the right. Where it fades it is as wide as the full-strength ring, only paler.
 # 3. mask simplex(6 seed:1) > .5. The ring is broken into separate ink dashes around the disc with hard ends, like a painted, broken line, with about half of the ring's length inked.
-@target fx/outline-mask.png 192x64
+@artboard 192x64
+@target fx/outline-mask.png
 
 circle 18 at:32,32 fill:p.blue
   fx outline 4 color:p.ink

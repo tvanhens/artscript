@@ -10,7 +10,7 @@ use ramose_geom::ToIr;
 use ramose_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
 use skia_safe::Path;
 use ramose_render::{Backend, gpu_available, render_png};
-use common::{color, pixel, red, scene, solid};
+use common::{color, frame, framed, pixel, red, scene, solid};
 
 fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
     let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
@@ -67,8 +67,8 @@ fn ink() -> Paint {
 fn a_ribbon_covers_its_half_width_with_round_caps_and_renders_the_same_bytes_twice() {
     let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, vec![knot(0.0, 4.0, 1.0, 0.0, 0.0), knot(60.0, 4.0, 1.0, 0.0, 0.0)], ink(), vec![stage(IDENTITY, &[], &[], 3)], 0.0);
     let s = scene(80.0, 80.0, vec![node]);
-    let png = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    assert_eq!(png, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let png = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    assert_eq!(png, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
     assert_eq!(pixel(&png, 40, 40), INK, "on the spine");
     assert_eq!(pixel(&png, 40, 36), INK, "3.5 px above, inside the half width of 4");
     assert_eq!(pixel(&png, 40, 35)[3], 0, "4.5 px above");
@@ -88,7 +88,7 @@ fn the_channels_s_and_half_width_reach_the_body_from_the_knots() {
     let body = "float4 shade(Mark m) { return float4(m.pressure, m.angle / 360, m.u, cover(m.edge, m)); }\n";
     let knots = vec![knot(0.0, 1.0, 0.0, 90.0, 0.0), knot(60.0, 4.0, 1.0, 90.0, 0.0)];
     let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let quarter = pixel(&png, 25, 40);
     let three_quarters = pixel(&png, 55, 40);
     assert!((quarter[0] as i32 - 64).abs() <= 2, "pressure .25 at s 15: {quarter:?}");
@@ -110,7 +110,7 @@ fn a_later_stage_reads_the_previous_stage_and_coverages_multiply() {
     );
     let knots = vec![knot(0.0, 4.0, 1.0, 0.0, 0.0), knot(60.0, 4.0, 1.0, 0.0, 0.0)];
     let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![first, second], 0.0);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let p = pixel(&png, 40, 40);
     assert!(p[0] <= 2 && p[1] <= 2, "{p:?}");
     assert!((p[2] as i32 - 128).abs() <= 2, "half of stage 1's blue: {p:?}");
@@ -123,8 +123,8 @@ fn reach_lets_the_body_paint_past_the_edge_and_the_cut_follows_it() {
     let knots = vec![knot(0.0, 2.0, 1.0, 0.0, 0.0), knot(60.0, 2.0, 1.0, 0.0, 0.0)];
     let with = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots.clone(), ink(), vec![stage(body, &[], &[], 1)], 3.0);
     let without = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
-    let with = render_png(&scene(80.0, 80.0, vec![with]), 1.0, Backend::Cpu).unwrap();
-    let without = render_png(&scene(80.0, 80.0, vec![without]), 1.0, Backend::Cpu).unwrap();
+    let with = render_png(&scene(80.0, 80.0, vec![with]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
+    let without = render_png(&scene(80.0, 80.0, vec![without]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&with, 40, 36), INK, "3.5 px off a 2 px half width is within reach 3");
     assert_eq!(pixel(&with, 40, 34)[3], 0, "5.5 px off is past reach");
     assert_eq!(pixel(&without, 40, 36)[3], 0, "without reach the field is cut at the half width plus a pixel");
@@ -135,7 +135,7 @@ fn a_closed_contour_outlines_a_rect_and_leaves_its_middle_empty() {
     let rect = skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0);
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(160.0, 3.0, 1.0, 0.0, 0.0)];
     let node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 20), INK, "on the top edge");
     assert_eq!(pixel(&png, 20, 40), INK, "on the left edge");
     assert_eq!(pixel(&png, 20, 20), INK, "the start corner is closed, not capped");
@@ -158,7 +158,7 @@ fn a_brushed_fill_and_a_brushed_stroke_share_one_node() {
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Fill { paint: Paint::Solid(red()), marks: vec![ramose_ir::AreaMark { stage: area, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }] });
     }
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 40), [255, 0, 0, 255], "the brushed fill in the middle");
     assert_eq!(pixel(&png, 40, 20), INK, "the brushed stroke on the edge, over the fill");
 }
@@ -177,9 +177,9 @@ fn gpu_output_is_within_a_few_levels_of_cpu_and_repeatable() {
     let knots = vec![knot(0.0, 2.0, 0.3, 0.0, 0.0), knot(len * 0.5, 6.0, 1.0, 0.0, 0.0), knot(len, 3.0, 0.6, 0.0, 0.0)];
     let node = ribbon(path, len, false, knots, ink(), vec![stage(body, &[], &[], 9)], 2.0);
     let s = scene(80.0, 80.0, vec![node]);
-    let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();
-    assert_eq!(gpu, render_png(&s, 1.0, Backend::Gpu).unwrap(), "two GPU builds match");
+    let cpu = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    let gpu = render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap();
+    assert_eq!(gpu, render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap(), "two GPU builds match");
     let mut worst = 0u8;
     let mut inked = 0;
     for y in 0..80 {
@@ -209,7 +209,7 @@ fn the_normal_points_away_from_the_spine_whatever_the_taper() {
     for hw_end in [6.0, 10.0] {
         let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, hw_end, 1.0, 0.0, 0.0)];
         let node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
-        let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+        let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
         assert_normal(&png, (40, 36), [0.0, -1.0]);
         assert_normal(&png, (40, 45), [0.0, 1.0]);
         assert_normal(&png, (72, 40), [1.0, 0.0]);
@@ -223,7 +223,7 @@ fn the_normal_is_in_the_local_frame_of_a_rotated_stroke() {
     let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, 6.0, 1.0, 0.0, 0.0)];
     let mut node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
     node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0)).to_ir();
-    let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_normal(&png, (43, 40), [0.0, -1.0]);
     assert_normal(&png, (36, 40), [0.0, 1.0]);
     assert_normal(&png, (39, 73), [1.0, 0.0]);
@@ -238,7 +238,7 @@ fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
     b.line_to((10.0, 36.0));
     let knots = vec![knot(0.0, 12.0, 1.0, 0.0, 0.0), knot(180.0, 12.0, 1.0, 0.0, 0.0), knot(186.0, 1.0, 1.0, 0.0, 0.0), knot(366.0, 1.0, 1.0, 0.0, 0.0)];
     let node = ribbon(b.detach(), 366.0, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
-    let png = render_png(&scene(200.0, 60.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(200.0, 60.0, vec![node]), &frame(200.0, 60.0, 1.0), Backend::Cpu).unwrap();
     for y in 19..42 {
         assert_eq!(pixel(&png, 100, y), INK, "y {y}: inside the wide leg's half width of 12, whichever leg is nearer");
     }
@@ -251,7 +251,7 @@ fn s_stays_exact_80000_px_along_a_stroke() {
     let body = "float4 shade(Mark m) { return float4(fract(m.s / 128), 0, 0, cover(m.edge, m)); }\n";
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(80128.0, 3.0, 1.0, 0.0, 0.0)];
     let node = ribbon(line(-80000.0, 20.0, 128.0), 80128.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
-    let png = render_png(&scene(128.0, 40.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(128.0, 40.0, vec![node]), &frame(128.0, 40.0, 1.0), Backend::Cpu).unwrap();
     for x in 0..127 {
         let want = (x as f32 + 0.5) / 128.0 * 255.0;
         let got = pixel(&png, x, 20)[0];
@@ -270,7 +270,7 @@ fn a_strip_that_holds_more_length_than_the_field_encodes_is_an_error() {
     let len = skia_safe::ContourMeasureIter::new(&path, false, None).next().unwrap().length();
     let knots = vec![knot(0.0, 1.0, 1.0, 0.0, 0.0), knot(len, 1.0, 1.0, 0.0, 0.0)];
     let node = ribbon(path, len, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
-    let err = render_png(&scene(128.0, 40.0, vec![node]), 1.0, Backend::Cpu).unwrap_err();
+    let err = render_png(&scene(128.0, 40.0, vec![node]), &frame(128.0, 40.0, 1.0), Backend::Cpu).unwrap_err();
     let message = format!("{err:?}");
     assert!(message.contains("more than the ribbon field encodes"), "{message}");
 }

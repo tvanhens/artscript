@@ -518,6 +518,7 @@ dependencies = [
  "gif 0.13.3",
  "png",
  "ramose-eval",
+ "ramose-geom",
  "ramose-ir",
  "ramose-render",
  "ramose-syntax",

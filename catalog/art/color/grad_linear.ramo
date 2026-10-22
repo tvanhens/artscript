@@ -20,8 +20,9 @@
 # color down every column. Cell 2 is grad(45 gold plum): a true 45 degree diagonal across the wide rect,
 # gold at the top-left corner, plum at the bottom-right corner; the top-right corner (#673c5d) is nearer
 # plum and the bottom-left corner (#cb7654) nearer gold, so the bands slant.
-@target color/grad_linear.png 192x192
-@target color/grad_linear.svg 192x192 profile:vector
+@artboard 192x192
+@target color/grad_linear.png
+@target color/grad_linear.svg profile:vector
 
 palette g
   ramp gold #e8b33a 5

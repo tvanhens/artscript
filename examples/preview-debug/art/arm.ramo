@@ -1,7 +1,8 @@
 # The orange hand touches the blue arm throughout the swing. Geometry mode
 # reveals the joint, and cyan guides cross its center.
-@target arm.png 128x128 bg:none
-@target swing.gif 128x128 bg:#f4f1ea fps:8 dur:2s clip:swing
+@artboard 128x128
+@target arm.png bg:none
+@target swing.gif bg:#f4f1ea fps:8 dur:2s clip:swing
 
 param view:one_of(normal geometry) guides:false
 

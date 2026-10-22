@@ -672,23 +672,23 @@ pub fn unused(file: &File, path: &str, library: bool, manifest: &Manifest) -> Ve
     out
 }
 
-/// Nodes whose drawn extent ([`Node::outer_bounds`], effects included) leaves the canvas. Each
+/// Nodes whose drawn extent ([`Node::outer_bounds`], effects included) leaves the artboard. Each
 /// shape not clipped by a parent shape is measured, cut to every `inside` clip and node mask on
 /// its groups. A group or layer with effects is measured as well when none of its shapes left
-/// the canvas, so one cut is reported once.
-pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
-    let level = manifest.lint_level("off-canvas");
-    let canvas = Rect::from_wh(scene.width, scene.height).with_outset((1.0, 1.0));
+/// the artboard, so one cut is reported once.
+pub fn off_artboard(scene: &ramose_ir::Scene, artboard: Rect, manifest: &Manifest, file: &str) -> Vec<Diagnostic> {
+    let level = manifest.lint_level("off-artboard");
+    let artboard = artboard.with_outset((1.0, 1.0));
     let mut out = Vec::new();
     type Hit<'n> = (String, String, Rect, Option<&'n str>);
     struct Walk<'n, 'f> {
-        canvas: Rect,
+        artboard: Rect,
         entry: &'f str,
         find: &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>,
         hits: Vec<Hit<'n>>,
     }
     impl<'n> Walk<'n, '_> {
-        /// `kept` is what the ancestors' clips and masks keep, in canvas coordinates.
+        /// `kept` is what the ancestors' clips and masks keep, in artboard coordinates.
         fn node(
             &mut self,
             n: &'n Node,
@@ -739,7 +739,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
             {
                 return false;
             }
-            let c = self.canvas;
+            let c = self.artboard;
             let inside =
                 b.left >= c.left && b.top >= c.top && b.right <= c.right && b.bottom <= c.bottom;
             if !inside {
@@ -752,7 +752,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
     index(&scene.children, &Place::identity(), &mut paths);
     let find = |p: &str| paths.get(p).map(|(n, place)| (*n, place.flat()));
     let mut walk = Walk {
-        canvas,
+        artboard,
         entry: file,
         find: &find,
         hits: Vec::new(),
@@ -763,10 +763,10 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
     let hits = walk.hits;
     for (path, origin, b, site) in hits {
         let (src, span) = source_span(&origin, file);
-        let msg = if b.intersects(canvas) {
-            "is clipped by the canvas edge"
+        let msg = if b.intersects(artboard) {
+            "is clipped by the artboard edge"
         } else {
-            "is entirely outside the canvas"
+            "is entirely outside the artboard"
         };
         if let Some(d) = diag(
             level,
@@ -784,7 +784,7 @@ pub fn off_canvas(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> 
                     b.width().round(),
                     b.height().round()
                 ))
-                .with_fix("move or shrink it to fit the canvas, or clip it by nesting under a shape");
+                .with_fix("move or shrink it to fit the artboard, or clip it by nesting under a shape");
             if let Some(site) = site.filter(|_| src != file) {
                 d = d.with_note(site_note(site));
             }
@@ -835,7 +835,7 @@ pub fn hidden_child(
     struct Walk<'n, 'f> {
         entry: &'f str,
         find: Find<'n, 'f>,
-        /// The clipping shapes above the current node, innermost last, in canvas coordinates.
+        /// The clipping shapes above the current node, innermost last, in artboard coordinates.
         clips: Vec<(Rect, &'n str)>,
         lines: Vec<Line<'n>>,
         by_key: HashMap<(&'n str, Option<&'n str>), usize>,
@@ -1012,7 +1012,7 @@ pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Ve
     out
 }
 
-/// An anchor a warp hides has no canvas point, so the rig leaves it out.
+/// An anchor a warp hides has no artboard point, so the rig leaves it out.
 pub fn hidden_anchors(hidden: &[(String, Site)], manifest: &Manifest) -> Vec<Diagnostic> {
     let level = manifest.lint_level("warp-cut");
     hidden

@@ -13,7 +13,7 @@ use crate::value::{Coord, Value, num};
 const ORDER: &str = "write the corners clockwise from the top-left: `corners(tl tr br bl)`";
 const CYLINDER: &str = "write `cylinder(60)` or `cylinder(60 axis:x)`";
 
-/// `corners(tl tr br bl)`: four points in canvas units, no keys.
+/// `corners(tl tr br bl)`: four points in artboard units, no keys.
 pub(crate) fn corners(args: &[Value], named: &[(String, Value)]) -> R<Value> {
     if let Some((k, _)) = named.first() {
         return Err(fail("E0370", format!("`corners` takes no keys, got `{k}:`")).fix(ORDER));
@@ -31,7 +31,7 @@ pub(crate) fn corners(args: &[Value], named: &[(String, Value)]) -> R<Value> {
             return Err(fail(
                 "E0370",
                 format!(
-                    "`corners` point {} must be a point in canvas units like 84,22, got {}",
+                    "`corners` point {} must be a point in artboard units like 84,22, got {}",
                     i + 1,
                     v.show()
                 ),

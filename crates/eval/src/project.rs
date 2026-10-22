@@ -55,7 +55,7 @@ impl std::str::FromStr for BackendChoice {
 /// The lints a `[lint]` table may set, with the level each has when the table leaves it out.
 pub const LINTS: &[(&str, LintLevel)] = &[
     ("raw-color", LintLevel::Warn),
-    ("off-canvas", LintLevel::Warn),
+    ("off-artboard", LintLevel::Warn),
     ("unused", LintLevel::Warn),
     ("positional-seed", LintLevel::Warn),
     ("hidden-child", LintLevel::Warn),
@@ -167,6 +167,9 @@ impl Manifest {
         let mut lint = BTreeMap::new();
         for (k, v) in levels {
             if !LINTS.iter().any(|(name, _)| *name == k) {
+                if k == "off-canvas" {
+                    return Err(bad_at(v.span().start, "[lint] `off-canvas` is now `off-artboard`".to_string()));
+                }
                 let names: Vec<_> = LINTS.iter().map(|(name, _)| *name).collect();
                 return Err(bad_at(v.span().start, format!("[lint] has no lint `{k}`; use {}", names.join(", "))));
             }

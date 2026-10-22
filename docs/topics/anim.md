@@ -1,6 +1,6 @@
 # anim: t, key, anim, play, preview frame sheets, node keys, explain
 
-`preview --time .5` draws one time in seconds. `--times 0,.5,1` draws explicit times, and `--frames 8` samples a target's duration evenly in `[0,dur)`. Even sampling excludes the loop endpoint. Include the endpoint explicitly with `--times` to compare a seam. `--columns 4` lays the frames out as a contact sheet. Without it, frames form one horizontal strip. `--clip swing` selects a target with `clip:swing`, preserving its clip context. A named crop uses the union of its bounds across the sampled frames, so all cells share a canvas region. See `cli`.
+`preview --time .5` draws one time in seconds. `--times 0,.5,1` draws explicit times, and `--frames 8` samples a target's duration evenly in `[0,dur)`. Even sampling excludes the loop endpoint. Include the endpoint explicitly with `--times` to compare a seam. `--columns 4` lays the frames out as a contact sheet. Without it, frames form one horizontal strip. `--clip swing` selects a target with `clip:swing`, preserving its clip context. A named crop uses the union of its bounds across the sampled frames, so all cells share an artboard region. See `cli`.
 
 `t` is the anim's local time in seconds. `clip` is the target's `clip:` name, or `none`. It is fixed for each output, so `if clip == idle` may choose what to play.
 

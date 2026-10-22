@@ -330,8 +330,8 @@ impl InputEnv<'_, '_, '_> {
             EffectInput::Named(name) => named.get(name.as_str()).copied().flatten(),
             EffectInput::Node(path) => {
                 let (node, parent_world) = (self.find)(path)?;
-                let canvas = parent_world.map_rect(outer(node, &parent_world, self.find, self.visiting)?).0;
-                Some(self.world.invert()?.map_rect(canvas).0)
+                let artboard = parent_world.map_rect(outer(node, &parent_world, self.find, self.visiting)?).0;
+                Some(self.world.invert()?.map_rect(artboard).0)
             }
         }
     }

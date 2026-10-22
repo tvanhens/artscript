@@ -3,7 +3,8 @@
 # 2. The same two circles in the same order, but the red one has `order:front`: now the red circle is on top, and the red circle's full outline is visible across the blue one.
 # 3. The same two circles in the same order, but the blue one has `order:behind`: the blue circle is under the red one, so the red circle is on top as in cell 2.
 # 4. Three 22x22 squares written in the order red, blue, green, each offset 8px right and 8px down from the one before, with `order:2`, `order:0`, `order:1`: from bottom to top the stack is blue, green, red, so red is fully visible on top, green overlaps blue, and blue is the lowest, which is the reverse of the written order for red and blue.
-@target structure/z_order.png 192x48
+@artboard 192x48
+@target structure/z_order.png
 
 circle 14 at:17,24 fill:p.red stroke:p.ink,2
 circle 14 at:31,24 fill:p.blue stroke:p.ink,2

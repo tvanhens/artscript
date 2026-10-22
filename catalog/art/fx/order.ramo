@@ -8,7 +8,8 @@
 # 5. fx shadow 6,6 in red then adjust sat:-1: the green circle is gray and its shadow, down and right, is gray too, with no red.
 # 6. fx adjust sat:-1 then shadow 6,6 in red: the circle is gray and its shadow, down and right, stays red.
 # 7. A blue circle parent with `fx adjust hue:120` and a gold circle child (radius 8, at -6,-6). Undocumented, current behavior: the fx runs on the node's rendered subtree, so the child is hue-shifted with the parent: the blue circle turns red (208,85,86) and the gold child turns cyan (0,213,228).
-@target fx/order.png 256x128
+@artboard 256x128
+@target fx/order.png
 
 circle 16 at:32,32 fill:p.blue
   fx blur 4

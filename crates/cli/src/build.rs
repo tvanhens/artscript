@@ -222,7 +222,7 @@ fn render_error(job: &TargetJob, e: ramose_render::RenderError) -> Diagnostic {
                 format!("a gif raster is larger than {mib}MiB"),
             )
             .in_file(&job.source)
-            .with_fix("lower `fps`, shorten `dur`, or shrink the canvas")
+            .with_fix("lower `fps`, shorten `dur`, or shrink the output")
         }
     }
 }
@@ -244,14 +244,20 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
     if !compile_error {
         for out in &job.outputs {
-            if let Some(at) = evaluated.at(job.sample_scale(out)) {
+            if let Some(at) = evaluated.at(job.draw_scale(out)) {
                 rigs.insert(out.path.clone(), at.rig.clone());
             }
         }
         let render = |out: &OutputSpec, scene: &Scene| match out.format {
-            Format::Png => ramose_render::render_png(scene, out.scale, backend),
-            Format::Svg => ramose_render::render_svg(scene, job.profile, job.bake_scale, backend)
-                .map(String::into_bytes),
+            Format::Png => ramose_render::render_png(scene, &out.framing, backend),
+            Format::Svg => ramose_render::render_svg(
+                scene,
+                &out.framing,
+                job.profile,
+                job.bake_scale(out),
+                backend,
+            )
+            .map(String::into_bytes),
             Format::Gif => Err(ramose_render::RenderError::Skia(
                 "gif is rendered through sample".into(),
             )),
@@ -262,7 +268,7 @@ fn run_job(project: &Project, out_dir: &Path, job: &TargetJob, backend: Backend)
                 .outputs
                 .iter()
                 .map(|out| {
-                    let scene = evaluated.at(job.sample_scale(out)).map(|at| at.scene.clone());
+                    let scene = evaluated.at(job.draw_scale(out)).map(|at| at.scene.clone());
                     s.spawn(move || scene.map(|scene| render(out, &scene)))
                 })
                 .collect();
@@ -330,7 +336,7 @@ fn run_gif(
         .any(|d| d.severity == Severity::Error && d.code.starts_with('E'));
     if !compile_error {
         for out in &job.outputs {
-            let Some(sample) = sampled.at(job.sample_scale(out)) else {
+            let Some(sample) = sampled.at(job.draw_scale(out)) else {
                 continue;
             };
             let Ok(delays) = frame_delays(sample.frames.len(), sample.dur) else {
@@ -340,7 +346,7 @@ fn run_gif(
                 continue;
             }
             let scenes: Vec<_> = sample.frames.iter().map(|f| &f.scene).collect();
-            let bytes = ramose_render::render_gif(&scenes, out.scale, &delays, sample.loops, backend);
+            let bytes = ramose_render::render_gif(&scenes, &out.framing, &delays, sample.loops, backend);
             let bytes = match bytes {
                 Ok(b) => b,
                 Err(ramose_render::RenderError::TransparentGif) => {
@@ -425,14 +431,17 @@ fn manifest_entry(o: &Outcome, path: &str, hash: &str) -> Json {
         "line": o.job.line,
         "target": o.job.label,
         "matrix": matrix,
-        "scale": spec.map(|s| s.scale),
+        "scale": spec.map(|s| s.framing.scale),
         "hash": hash,
         "status": status(&o.diagnostics),
         "checks": checks,
     });
     if let Some(spec) = spec.filter(|s| s.format != Format::Gif) {
-        let scale = f64::from(spec.scale);
-        let point = |(x, y): (f64, f64)| json!([pixels(x * scale), pixels(y * scale)]);
+        let view = spec.framing.view(o.job.artboard.rect());
+        let point = |p: (f64, f64)| {
+            let (x, y) = view.to_px(p);
+            json!([pixels(x), pixels(y)])
+        };
         let rig = o.rigs.get(path).cloned().unwrap_or_default();
         entry["pivot"] = rig.pivot.map_or(Json::Null, point);
         let anchors: serde_json::Map<String, Json> = rig
@@ -609,7 +618,7 @@ mod tests {
     fn a_render_error_at_a_node_points_at_its_file_line_and_column() {
         let project = Project::from_sources(
             "[project]\nout = \"out\"\n",
-            [("art/t.ramo".to_string(), "@target t.png 8x8\n".to_string())].into(),
+            [("art/t.ramo".to_string(), "@artboard 8x8\n@target t.png\n".to_string())].into(),
         )
         .unwrap();
         let job = &ramose_eval::plan(&project).jobs[0];

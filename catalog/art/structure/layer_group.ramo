@@ -7,7 +7,8 @@
 # Bottom row, same blue 72x72 backdrops, each holding one instance of a `def`:
 # Left (def with `blend:multiply` inside): the instance is isolated, so the gold circle's multiply sees only the instance's own red square. It matches the top-left layer cell: pure gold over the blue backdrop, dark red-brown only where it overlaps the red square.
 # Right (`blend:multiply` on the call): the finished instance, a plain gold circle (radius 22) from a def with no blend, multiplies onto the blue backdrop, so it is the dark olive green of the top-right group cell, not pure gold.
-@target structure/layer_group.png 192x192
+@artboard 192x192
+@target structure/layer_group.png
 
 rect 72x72 at:48,48 fill:p.blue
 layer isolated at:48,48

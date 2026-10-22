@@ -1,7 +1,7 @@
 use std::io::Cursor;
 use std::sync::{Condvar, Mutex};
 
-use ramose_ir::Scene;
+use ramose_ir::{Framing, Scene};
 use gif::{Encoder, Frame, Repeat};
 
 use crate::Backend;
@@ -39,7 +39,7 @@ fn reserve_raster(bytes: u64) -> GifSlot {
 
 pub fn encode(
     scenes: &[&Scene],
-    scale: f32,
+    framing: &Framing,
     delays: &[u16],
     loop_forever: bool,
     backend: Backend,
@@ -51,47 +51,34 @@ pub fn encode(
     if bg.a < 1.0 - 1e-4 {
         return Err(RenderError::TransparentGif);
     }
-    if !(scale.is_finite() && scale > 0.0) {
+    if !(framing.scale.is_finite() && framing.scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let mut bytes = 0u64;
-    let mut dims = Vec::with_capacity(scenes.len());
-    for scene in scenes {
-        let w = (scene.width * scale).ceil().max(1.0);
-        let h = (scene.height * scale).ceil().max(1.0);
-        if !w.is_finite() || !h.is_finite() {
-            return Err(RenderError::Skia("gif frame has no size".into()));
-        }
-        let (w, h) = (w as u32, h as u32);
-        if w > u16::MAX as u32 || h > u16::MAX as u32 {
-            return Err(RenderError::Skia("gif is larger than 65535px".into()));
-        }
-        bytes = bytes.saturating_add(u64::from(w).saturating_mul(u64::from(h)).saturating_mul(4));
-        dims.push((w, h));
+    let px = framing.pixels();
+    let (w, h) = (px.w, px.h);
+    if w > u16::MAX as u32 || h > u16::MAX as u32 {
+        return Err(RenderError::Skia("gif is larger than 65535px".into()));
     }
-    let (w, h) = dims[0];
-    if dims.iter().any(|(fw, fh)| *fw != w || *fh != h) {
-        return Err(RenderError::Skia("gif frames differ in size".into()));
-    }
+    let bytes = u64::from(w)
+        .saturating_mul(u64::from(h))
+        .saturating_mul(4)
+        .saturating_mul(scenes.len() as u64);
     if bytes > RASTER_BUDGET {
         return Err(RenderError::GifTooLarge);
     }
     let _slot = reserve_raster(bytes);
-    let rendered: Result<Vec<(u32, u32, Vec<u8>)>, RenderError> = scenes
+    let rendered: Result<Vec<Vec<u8>>, RenderError> = scenes
         .iter()
         .map(|scene| {
-            let (fw, fh, px) = draw::render_rgba(scene, scale, backend)?;
+            let (_, _, px) = draw::render_rgba(scene, framing, backend)?;
             if !opaque(&px) {
                 return Err(RenderError::TransparentGif);
             }
-            Ok((fw, fh, px))
+            Ok(px)
         })
         .collect();
     let rendered = rendered?;
-    if rendered.iter().any(|(fw, fh, _)| *fw != w || *fh != h) {
-        return Err(RenderError::Skia("gif frames differ in size".into()));
-    }
-    let rasters: Vec<&[u8]> = rendered.iter().map(|(_, _, px)| px.as_slice()).collect();
+    let rasters: Vec<&[u8]> = rendered.iter().map(Vec::as_slice).collect();
     let flat: Vec<u8> = rasters.iter().flat_map(|px| px.iter().copied()).collect();
     let nq = color_quant::NeuQuant::new(10, 256, &flat);
     let palette = rgb_palette(&nq.color_map_rgba());
@@ -128,14 +115,17 @@ fn opaque(px: &[u8]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use ramose_ir::{Color, Scene};
+    use ramose_ir::{Color, Rect, Scene, Size};
 
     use super::*;
 
+    fn plain(size: f32) -> Framing {
+        Framing::plain(Size::new(size, size).unwrap(), 1.0)
+    }
+
     fn blank(size: f32) -> Scene {
         Scene {
-            width: size,
-            height: size,
+            view: Rect::new(0.0, 0.0, size, size),
             background: Some(Color {
                 r: 1.0,
                 g: 1.0,
@@ -150,7 +140,7 @@ mod tests {
     fn a_raster_over_the_budget_is_rejected_before_render() {
         let scene = blank(4096.0);
         let frames = vec![&scene; 5];
-        let err = encode(&frames, 1.0, &[4; 5], false, Backend::Cpu).unwrap_err();
+        let err = encode(&frames, &plain(4096.0), &[4; 5], false, Backend::Cpu).unwrap_err();
         assert!(matches!(err, RenderError::GifTooLarge));
     }
 
@@ -166,7 +156,7 @@ mod tests {
     #[test]
     fn a_small_gif_still_encodes() {
         let scene = blank(8.0);
-        let bytes = encode(&[&scene], 1.0, &[4], false, Backend::Cpu).unwrap();
+        let bytes = encode(&[&scene], &plain(8.0), &[4], false, Backend::Cpu).unwrap();
         assert!(bytes.starts_with(b"GIF"));
     }
 }

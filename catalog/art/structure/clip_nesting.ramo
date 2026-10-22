@@ -11,7 +11,8 @@
 # 7. A gold ellipse parent (radii 22,16, x 98 to 142) holding a blue circle (radius 10, at the ellipse center, x 110 to 130) that lies fully inside it, and a small red circle (radius 6, centered at x=130 on the blue circle's right edge) as the blue circle's child.
 # The red is cut by the blue circle's round edge at x=130, so only a red half-disc (x 124 to 130) shows inside the blue circle's right side, and no red lies on the gold; the ellipse's edge cuts nothing.
 # 8. A gold 36x36 rect parent with r:10 round corners and a blue circle child placed at its top-right corner; the blue is cut off along the rounded corner, not at the square bounding box.
-@target structure/clip_nesting.png 192x96
+@artboard 192x96
+@target structure/clip_nesting.png
 
 rect 36x36 at:24,24 fill:p.red stroke:p.ink,2
   circle 16 at:16,0 fill:p.blue

@@ -4,12 +4,23 @@ use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
 use ramose_geom::ToIr;
-use ramose_ir::{AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Node, NodeKind, Paint, Scene, Shape, Stage, Warp};
+use ramose_ir::{
+    AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Framing, Node, NodeKind, Paint, Rect, Scene, Shape,
+    Size, Stage, Warp,
+};
 use skia_safe::{Matrix, Path};
 use skia_safe::{AlphaType, ColorType, Data, Image, ImageInfo};
 
 pub fn scene(w: f32, h: f32, children: Vec<Node>) -> Scene {
-    Scene { width: w, height: h, background: None, children }
+    Scene { view: Rect::new(0.0, 0.0, w, h), background: None, children }
+}
+
+pub fn framed(scene: &Scene, scale: f32) -> Framing {
+    Framing::plain(Size::of(scene.view).unwrap(), scale)
+}
+
+pub fn frame(w: f32, h: f32, scale: f32) -> Framing {
+    Framing::plain(Size::new(w, h).unwrap(), scale)
 }
 
 pub fn solid(path: &str, geometry: Path, fill: Color) -> Node {

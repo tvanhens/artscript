@@ -1,9 +1,10 @@
-# A 4x4 autotile grid of 24 px ink cells with a 2 px gap, centered on a 128x128 paper canvas, so it spans 13 to 115 on both axes. `fn solid(c r)` reads a 4x4 map and says whether the cell at column c, row r is solid; a column or row off the map is not solid. Each solid cell is an ink square, and on each of its four edges whose neighbour is not solid it carries a 24x4 gold bar flush with that edge, so gold outlines the outside of every solid region and never sits between two solid cells.
+# A 4x4 autotile grid of 24 px ink cells with a 2 px gap, centered on a 128x128 paper artboard, so it spans 13 to 115 on both axes. `fn solid(c r)` reads a 4x4 map and says whether the cell at column c, row r is solid; a column or row off the map is not solid. Each solid cell is an ink square, and on each of its four edges whose neighbour is not solid it carries a 24x4 gold bar flush with that edge, so gold outlines the outside of every solid region and never sits between two solid cells.
 # The map, rows from the top, columns from the left, 1 solid: `1 1 0 0`, `1 1 0 1`, `0 0 1 1`, `0 1 1 1`. Paper shows at every 0.
 # 1. Rows 0 and 1, columns 0 and 1: a 2x2 ink block with gold along its whole outside: the top of row 0, the left of column 0, the right of column 1, and the bottom of row 1. No gold where its four cells meet.
 # 2. Row 1, column 3: one ink cell with gold on its top, left, and right, and none on its bottom, where row 2 is solid.
 # 3. Rows 2 and 3, columns 1 to 3: an L of five ink cells. Gold on the top and left of (row 2, column 2), the right of (row 2, column 3) and (row 3, column 3), the top and left of (row 3, column 1), and the bottom of all three cells in row 3. No gold between any two of the five.
-@target structure/fn.png 128x128
+@artboard 128x128
+@target structure/fn.png
 
 let map = [[1 1 0 0] [1 1 0 1] [0 0 1 1] [0 1 1 1]]
 

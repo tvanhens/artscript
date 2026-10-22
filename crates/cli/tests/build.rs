@@ -114,7 +114,7 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
     let src = fs::read_to_string(&art).unwrap();
     fs::write(
         &art,
-        src.replace("@target produce/momo_peach.svg 1024x1024\n", ""),
+        src.replace("@target produce/momo_peach.svg\n", ""),
     )
     .unwrap();
     let third = ramose(&dir, &only);
@@ -175,7 +175,7 @@ fn gif_frames_match_the_sampled_palette() {
     .unwrap();
     fs::write(
         dir.join("art/orb.ramo"),
-        "@target orb_{c}.gif 96x96 bg:#f1ede4 fps:24 each c:[spin pulse] clip:c
+        "@artboard 96x96\n@target orb_{c}.gif bg:#f1ede4 fps:24 each c:[spin pulse] clip:c
 
 palette p
   ramp moss #6f8f4e 5
@@ -238,7 +238,7 @@ if clip == pulse
             let (w, h, px) =
                 ramose_render::render_rgba(
                 &frame.scene,
-                job.outputs[0].scale,
+                &job.outputs[0].framing,
                 ramose_render::Backend::Cpu,
             )
             .unwrap();
@@ -286,7 +286,7 @@ fn a_gif_with_more_frames_than_centiseconds_is_e0206() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
+        "@artboard 8x8\n@target tiny.gif bg:#ffffff fps:120 dur:1s\n",
     )
     .unwrap();
     let out = ramose(&dir, &["build"]);
@@ -314,7 +314,7 @@ fn a_gif_writes_one_file_per_scale() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target dot.gif 64x64 scale:.5,1 bg:#ffffff fps:2 dur:1s\ncircle 8*scale at:32,32\n",
+        "@artboard 64x64\n@target dot.gif scale:.5,1 bg:#ffffff fps:2 dur:1s\ncircle 8*scale at:32,32\n",
     )
     .unwrap();
     let size = |name: &str| {
@@ -353,7 +353,7 @@ fn a_gif_frame_longer_than_the_field_is_e0206() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target tiny.gif 8x8 bg:#ffffff fps:.001 dur:700s\n",
+        "@artboard 8x8\n@target tiny.gif bg:#ffffff fps:.001 dur:700s\n",
     )
     .unwrap();
     let out = ramose(&dir, &["build"]);
@@ -381,7 +381,7 @@ fn check_samples_a_gif_so_a_later_assert_fails() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target still.png 16x16\n@target clip.gif 16x16 bg:#ffffff fps:2 dur:1s\ncircle 4\nassert t < .5\n",
+        "@artboard 16x16\n@target still.png\n@target clip.gif bg:#ffffff fps:2 dur:1s\ncircle 4\nassert t < .5\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -403,7 +403,7 @@ fn check_reports_a_gif_build_would_refuse() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target tiny.gif 8x8 bg:#ffffff fps:120 dur:1s\n",
+        "@artboard 8x8\n@target tiny.gif bg:#ffffff fps:120 dur:1s\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -415,7 +415,7 @@ fn check_reports_a_gif_build_would_refuse() {
     );
     fs::write(
         dir.join("art/main.ramo"),
-        "@target tiny.gif 8x8 bg:#ffffff\n",
+        "@artboard 8x8\n@target tiny.gif bg:#ffffff\n",
     )
     .unwrap();
     let bare = ramose(&dir, &["check"]);
@@ -448,7 +448,7 @@ fn check_reports_a_gif_wider_than_65535px() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target wide.gif 70000x1 bg:#ffffff dur:1s fps:1\ncircle 1\n",
+        "@artboard 70000x1\n@target wide.gif bg:#ffffff dur:1s fps:1\ncircle 1\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -473,7 +473,7 @@ fn check_reports_a_gif_that_would_retain_too_many_scenes() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target heavy.gif 8x8 bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n",
+        "@artboard 8x8\n@target heavy.gif bg:#ffffff dur:10s fps:100\neach i in 0..1500\n  circle 1 at:i,0\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -498,7 +498,7 @@ fn check_reports_a_gif_raster_over_the_budget() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target huge.gif 4096x4096 bg:#ffffff dur:1s fps:5\ncircle 1\n",
+        "@artboard 4096x4096\n@target huge.gif bg:#ffffff dur:1s fps:5\ncircle 1\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -523,7 +523,7 @@ fn check_reports_a_gif_without_an_opaque_background() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@target tiny.gif 8x8 dur:1s fps:2\ncircle 1\n",
+        "@artboard 8x8\n@target tiny.gif dur:1s fps:2\ncircle 1\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -561,7 +561,7 @@ fn backend_flag_is_validated_and_switching_backends_rebuilds() {
         let plan = ramose_eval::plan(&project);
         let job = plan.jobs.iter().find(|j| j.source.ends_with("momo_peach.ramo")).unwrap();
         let scene = ramose_eval::evaluate(&project, job).scene.unwrap();
-        let want = ramose_render::render_png(&scene, 1.0, ramose_render::Backend::Gpu).unwrap();
+        let want = ramose_render::render_png(&scene, &job.outputs[0].framing, ramose_render::Backend::Gpu).unwrap();
         assert_eq!(fs::read(&png).unwrap(), want, "a backend switch must re-render on the gpu");
     }
 }
@@ -572,7 +572,7 @@ fn forced_gpu_without_a_gpu_still_reports_plan_errors() {
         return;
     }
     let dir = fixture("nogpu", &[]);
-    fs::write(dir.join("art/broken.ramo"), "@target broken.png 64x64 scale:-1\n").unwrap();
+    fs::write(dir.join("art/broken.ramo"), "@artboard 64x64\n@target broken.png scale:-1\n").unwrap();
     let out = ramose(&dir, &["build", "--backend", "gpu"]);
     let report = text(&out);
     assert_ne!(out.status.code(), Some(0), "{report}");
@@ -612,8 +612,8 @@ fn adding_2x_leaves_the_1x_taper_png_unchanged() {
     let curve = "curve 40,200 128,40 216,200 stroke:p.ink,[2 14 2] taper:.3\n";
     let mut builds = Vec::new();
     for target in [
-        "@target taper.png 256x256",
-        "@target taper.png 256x256 scale:1,2",
+        "@artboard 256x256\n@target taper.png",
+        "@artboard 256x256\n@target taper.png scale:1,2",
     ] {
         fs::write(dir.join("art/taper.ramo"), format!("{target}\n{curve}")).unwrap();
         let out = ramose(&dir, &["build", "--backend", "cpu"]);
@@ -632,7 +632,7 @@ fn a_tapered_stroke_draws_over_the_fill() {
     let dir = fixture("taper-fill", &[]);
     fs::write(
         dir.join("art/t.ramo"),
-        "@target t.png 96x96\nblob 30 at:48,48 fill:#d8a840 stroke:#202030,[2 8 2] name:a\n",
+        "@artboard 96x96\n@target t.png\nblob 30 at:48,48 fill:#d8a840 stroke:#202030,[2 8 2] name:a\n",
     )
     .unwrap();
     let out = ramose(&dir, &["build", "--backend", "cpu", "--allow-warnings"]);
@@ -671,7 +671,7 @@ fn a_bad_target_profile_is_e0206_on_every_format() {
         .unwrap();
         fs::write(
             dir.join("art/main.ramo"),
-            format!("@target {path} 8x8 bg:#ffffff dur:1s profile:{profile}\nrect 4x4\n"),
+            format!("@artboard 8x8\n@target {path} bg:#ffffff dur:1s profile:{profile}\nrect 4x4\n"),
         )
         .unwrap();
         let out = ramose(&dir, &["build"]);
@@ -693,7 +693,7 @@ fn a_warped_node_is_e0209_under_profile_vector_and_a_tile_under_profile_svg() {
         "[project]\nname = \"warp\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[lint]\nraw-color = \"off\"\n",
     )
     .unwrap();
-    let art = "@target w.svg 64x64 profile:{profile}\nrect 20x12 fill:#ff0000 warp:corners(10,10 54,14 50,52 12,48) name:pin\nrect 20x12 at:32,32 fill:#0000ff warp:cylinder(10 axis:x) name:bent\n";
+    let art = "@artboard 64x64\n@target w.svg profile:{profile}\nrect 20x12 fill:#ff0000 warp:corners(10,10 54,14 50,52 12,48) name:pin\nrect 20x12 at:32,32 fill:#0000ff warp:cylinder(10 axis:x) name:bent\n";
     fs::write(dir.join("art/main.ramo"), art.replace("{profile}", "vector")).unwrap();
     let out = ramose(&dir, &["build"]);
     let err = text(&out);
@@ -719,8 +719,8 @@ fn a_manifest_profile_still_applies_to_raster_targets() {
         "[project]\nname = \"mprofile\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = \"vector\"\n",
     )
     .unwrap();
-    fs::write(dir.join("art/a.ramo"), "@target ok.png 8x8\nrect 4x4\n").unwrap();
-    fs::write(dir.join("art/b.ramo"), "@target ok.svg 8x8\nrect 4x4\n").unwrap();
+    fs::write(dir.join("art/a.ramo"), "@artboard 8x8\n@target ok.png\nrect 4x4\n").unwrap();
+    fs::write(dir.join("art/b.ramo"), "@artboard 8x8\n@target ok.svg\nrect 4x4\n").unwrap();
     let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
     assert!(dir.join("assets/ok.png").exists() && dir.join("assets/ok.svg").exists());
@@ -738,8 +738,8 @@ fn a_bad_manifest_profile_is_e0200_once_at_the_manifest() {
             format!("[project]\nname = \"m\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n\n[defaults]\nprofile = {value}\n"),
         )
         .unwrap();
-        fs::write(dir.join("art/a.ramo"), "@target a.png 8x8\nrect 4x4\n").unwrap();
-        fs::write(dir.join("art/b.ramo"), "@target b.png 8x8\nrect 4x4\n").unwrap();
+        fs::write(dir.join("art/a.ramo"), "@artboard 8x8\n@target a.png\nrect 4x4\n").unwrap();
+        fs::write(dir.join("art/b.ramo"), "@artboard 8x8\n@target b.png\nrect 4x4\n").unwrap();
         let out = ramose(&dir, &["build"]);
         let err = text(&out);
         assert_eq!(out.status.code(), Some(1), "{err}");
@@ -766,13 +766,13 @@ fn an_error_on_every_gif_frame_prints_once_with_the_png_targets() {
     .unwrap();
     fs::write(
         dir.join("art/x.ramo"),
-        "@target a.png 32x32\n@target b.png 32x32\n@target c.gif 32x32 bg:#000000 dur:1s fps:2\n\npalette k\n  color red #ff0000\n\ngroup name:g\n  anchor j 0,0\n  group name:h\n    anchor j 0,0\n",
+        "@artboard 32x32\n@target a.png\n@target b.png\n@target c.gif bg:#000000 dur:1s fps:2\n\npalette k\n  color red #ff0000\n\ngroup name:g\n  anchor j 0,0\n  group name:h\n    anchor j 0,0\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
     let err = text(&out);
     assert_eq!(out.status.code(), Some(1), "{err}");
-    assert_eq!(err.matches("error[E0333] art/x.ramo:11:5").count(), 1, "{err}");
+    assert_eq!(err.matches("error[E0333] art/x.ramo:12:5").count(), 1, "{err}");
     assert!(!err.contains("first at") && !err.contains("worst at"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
@@ -789,7 +789,7 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     .unwrap();
     for (file, out) in [("tiles/x/a", "a"), ("tiles/x/b", "b"), ("props/x/c", "c")] {
         fs::create_dir_all(dir.join("art").join(file).parent().unwrap()).unwrap();
-        fs::write(dir.join(format!("art/{file}.ramo")), format!("@target {out}.png 8x8\nrect 4x4\n")).unwrap();
+        fs::write(dir.join(format!("art/{file}.ramo")), format!("@artboard 8x8\n@target {out}.png\nrect 4x4\n")).unwrap();
     }
     let built = |args: &[&str]| -> (Option<i32>, String, Vec<String>) {
         let _ = fs::remove_dir_all(dir.join("assets"));
@@ -822,7 +822,7 @@ fn only_globs_build_their_union_and_a_glob_that_matches_nothing_is_e0200() {
     assert_eq!(code, Some(1), "{err}");
     assert!(err.contains("`{` without `}` in glob `art/{tiles`"), "{err}");
 
-    fs::write(dir.join("art/props/x/c.ramo"), "@target c.png 8x8\nrect (\n").unwrap();
+    fs::write(dir.join("art/props/x/c.ramo"), "@artboard 8x8\n@target c.png\nrect (\n").unwrap();
     let (code, err, _) = built(&["--only", "art/props/x/c.ramo"]);
     assert_eq!(code, Some(1), "{err}");
     assert!(!err.contains("matches no target"), "{err}");
@@ -843,13 +843,13 @@ fn check_limits_itself_to_the_selected_entries_and_their_libraries() {
     fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect 8x8\n").unwrap();
     fs::write(
         dir.join("art/a.ramo"),
-        "@target a.png 8x8\nuse kit/cell { cell }\n\ncell at:4,4\n",
+        "@artboard 8x8\n@target a.png\nuse kit/cell { cell }\n\ncell at:4,4\n",
     )
     .unwrap();
-    fs::write(dir.join("art/b.ramo"), "@target b.png 8x8\nrect (\n").unwrap();
+    fs::write(dir.join("art/b.ramo"), "@artboard 8x8\n@target b.png\nrect (\n").unwrap();
     fs::write(
         dir.join("art/c.ramo"),
-        "@target c.png 8x8\nrect 4x4\nassert false\n",
+        "@artboard 8x8\n@target c.png\nrect 4x4\nassert false\n",
     )
     .unwrap();
     let check = |args: &[&str]| {
@@ -937,9 +937,9 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
     .unwrap();
     fs::write(dir.join("lib/kit/cell.ramo"), "def cell\n  rect 80x20 fill:#88ccff name:wide\n").unwrap();
     let body = "use kit/cell { cell }\n\ncell at:32,32 name:tile\n";
-    fs::write(dir.join("art/a.ramo"), format!("@target a.png 64x64\n{body}")).unwrap();
-    fs::write(dir.join("art/b.ramo"), format!("@target b.png 64x64\n{body}")).unwrap();
-    fs::write(dir.join("art/c.ramo"), format!("@target c_{{k}}.png 64x64 each k:[x y]\n{body}")).unwrap();
+    fs::write(dir.join("art/a.ramo"), format!("@artboard 64x64\n@target a.png\n{body}")).unwrap();
+    fs::write(dir.join("art/b.ramo"), format!("@artboard 64x64\n@target b.png\n{body}")).unwrap();
+    fs::write(dir.join("art/c.ramo"), format!("@artboard 64x64\n@target c_{{k}}.png each k:[x y]\n{body}")).unwrap();
 
     let out = ramose(&dir, &["check", "--json"]);
     assert_eq!(out.status.code(), Some(3), "{}", text(&out));
@@ -961,9 +961,9 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
         .collect();
     sites.sort();
     let want = [
-        (r#"["a.png"]"#, "in art/a.ramo:4"),
-        (r#"["b.png"]"#, "in art/b.ramo:4"),
-        (r#"["c_x.png","c_y.png"]"#, "in art/c.ramo:4"),
+        (r#"["a.png"]"#, "in art/a.ramo:5"),
+        (r#"["b.png"]"#, "in art/b.ramo:5"),
+        (r#"["c_x.png","c_y.png"]"#, "in art/c.ramo:5"),
     ]
     .map(|(t, s)| (t.to_string(), s.to_string()));
     assert_eq!(sites, want, "{json}");
@@ -972,7 +972,7 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
 
     let plain = text(&ramose(&dir, &["check"]));
     assert_eq!(plain.matches("warning[L0102]").count(), 3, "{plain}");
-    assert!(plain.contains("in art/a.ramo:4"), "{plain}");
+    assert!(plain.contains("in art/a.ramo:5"), "{plain}");
     assert!(plain.contains("in 2 targets: c_x.png, c_y.png"), "{plain}");
     let _ = fs::remove_dir_all(&dir);
 }
@@ -980,7 +980,7 @@ fn a_library_diagnostic_names_each_target_that_reached_it() {
 #[test]
 fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
     let dir = fixture("fx-cut", &[]);
-    let art = "@target t.png 64x64\nrect 10x20 at:32,55 fill:p.rim name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:p.rim name:bar\n  fx glow 12\nassert inside(@bar canvas margin:3)\n";
+    let art = "@artboard 64x64\n@target t.png\nrect 10x20 at:32,55 fill:p.rim name:r\n  fx outline 3\nrect 40x10 at:32,8 fill:p.rim name:bar\n  fx glow 12\nassert inside(@bar artboard margin:3)\n";
     fs::write(dir.join("art/t.ramo"), art).unwrap();
 
     let out = ramose(&dir, &["check", "--json"]);
@@ -1000,13 +1000,13 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
         .collect();
     assert_eq!(
         cut,
-        [("r".to_string(), 2), ("bar".to_string(), 4)],
+        [("r".to_string(), 3), ("bar".to_string(), 5)],
         "{json}"
     );
 
     fs::write(
         dir.join("art/t.ramo"),
-        art.replace("inside(@bar canvas margin:3)", "inside(@bar.outer canvas)"),
+        art.replace("inside(@bar artboard margin:3)", "inside(@bar.outer artboard)"),
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
@@ -1015,24 +1015,23 @@ fn check_warns_when_an_effect_is_cut_by_the_canvas_edge() {
 }
 
 #[test]
-fn a_viewport_target_skips_the_off_canvas_lint() {
+fn a_viewport_artboard_skips_the_off_artboard_lint_for_every_target() {
     let dir = fixture("viewport", &[]);
-    let body = "rect 40x20 at:60,32 fill:p.rim\n";
-    fs::write(
-        dir.join("art/t.ramo"),
-        format!("@target a.png 64x64\n@target b.png 64x64 viewport\n{body}"),
-    )
-    .unwrap();
-    let out = ramose(&dir, &["check", "--json"]);
-    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
-    let cut: Vec<&serde_json::Value> = json["diagnostics"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|d| d["code"] == "L0102")
-        .map(|d| &d["targets"])
-        .collect();
-    assert_eq!(cut, [&serde_json::json!(["a.png"])], "{json}");
+    let body = "@target a.png\n@target b.png\nrect 40x20 at:60,32 fill:p.rim\n";
+    let cuts = |artboard: &str| {
+        fs::write(dir.join("art/t.ramo"), format!("{artboard}\n{body}")).unwrap();
+        let out = ramose(&dir, &["check", "--json"]);
+        let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        json["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|d| d["code"] == "L0102")
+            .map(|d| d["targets"].clone())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(cuts("@artboard 64x64"), [serde_json::json!(["a.png", "b.png"])]);
+    assert_eq!(cuts("@artboard 64x64 viewport"), Vec::<serde_json::Value>::new());
     let _ = fs::remove_dir_all(&dir);
 }
 
@@ -1041,7 +1040,7 @@ fn a_diagnostic_several_targets_raise_alike_prints_once_with_its_targets() {
     let dir = fixture("across-targets", &[]);
     fs::write(
         dir.join("art/t.ramo"),
-        "@target a.png 64x64\n@target b.png 64x64\n@target c_{k}.png 64x64 each k:[x y]\nrect 40x20 at:60,32 fill:p.rim name:wide\n",
+        "@artboard 64x64\n@target a.png\n@target b.png\n@target c_{k}.png each k:[x y]\nrect 40x20 at:60,32 fill:p.rim name:wide\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check", "--json"]);
@@ -1066,9 +1065,9 @@ fn a_diagnostic_several_targets_raise_alike_prints_once_with_its_targets() {
 fn an_unknown_target_word_or_key_is_an_error() {
     let dir = fixture("target-unknown", &[]);
     for (line, what) in [
-        ("@target t.png 64x64 foo", "unknown target word `foo`"),
+        ("@artboard 64x64\n@target t.png foo", "unknown target word `foo`"),
         (
-            "@target t.png 64x64 viewport:yes",
+            "@artboard 64x64\n@target t.png viewport:yes",
             "unknown target key `viewport`",
         ),
     ] {
@@ -1084,13 +1083,13 @@ fn an_unknown_target_word_or_key_is_an_error() {
 #[test]
 fn a_word_outside_one_of_fails_check_at_the_call() {
     let dir = fixture("one-of", &[]);
-    let def = "@target t.png 16x16\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2\n";
+    let def = "@artboard 16x16\n@target t.png\ndef tile kind:one_of(floor_top fill fill_b)\n  if kind == fill\n    circle 2\n";
     fs::write(dir.join("art/t.ramo"), format!("{def}tile kind:flor_top\n")).unwrap();
     let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
     let err = text(&out);
     assert!(
-        err.contains("E0320") && err.contains("t.ramo:5") && err.contains("floor_top, fill, fill_b"),
+        err.contains("E0320") && err.contains("t.ramo:6") && err.contains("floor_top, fill, fill_b"),
         "{err}"
     );
     fs::write(dir.join("art/t.ramo"), format!("{def}tile kind:fill_b\n")).unwrap();
@@ -1103,7 +1102,7 @@ fn a_word_outside_one_of_fails_check_at_the_call() {
 fn a_closed_output_pipe_keeps_the_exit_code() {
     let dir = fixture("closed-pipe", &[]);
     let art: String = (1..=3000).map(|i| format!("circl{i} 4\n")).collect();
-    fs::write(dir.join("art/t.ramo"), format!("@target t.png 64x64\n{art}")).unwrap();
+    fs::write(dir.join("art/t.ramo"), format!("@artboard 64x64\n@target t.png\n{art}")).unwrap();
     for args in [&["build"][..], &["check"], &["check", "--json"]] {
         let mut child = Command::new(env!("CARGO_BIN_EXE_ramose"))
             .args(args)
@@ -1157,11 +1156,28 @@ fn entry(dir: &Path, path: &str) -> serde_json::Value {
 }
 
 #[test]
+fn the_manifest_maps_a_pivot_and_an_anchor_through_the_fit() {
+    let dir = rig_project(
+        "fit-rig",
+        "@artboard 64x32\n@target x.png 48x48 pivot:50%,100%\n@target y.png 48x48 fit:cover align:left,center pivot:@body.neck\n\n\
+         def doll\n  circle 8\n  anchor neck 0,-10\n\n\
+         doll at:16,16 name:body\n",
+    );
+    let built = ramose(&dir, &["build"]);
+    assert_eq!(built.status.code(), Some(0), "{}", text(&built));
+    let x = entry(&dir, "x.png");
+    assert_eq!(x["pivot"], serde_json::json!([24, 36]));
+    assert_eq!(x["anchors"], serde_json::json!({ "body.neck": [12, 16.5] }));
+    let y = entry(&dir, "y.png");
+    assert_eq!(y["pivot"], serde_json::json!([24, 9]));
+}
+
+#[test]
 fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
     let dir = rig_project(
         "rig",
-        "@target x.png 64x64 scale:1,2 pivot:@body.neck\n\
-         @target y.svg 64x64 pivot:50%,100%\n\n\
+        "@artboard 64x64\n@target x.png scale:1,2 pivot:@body.neck\n\
+         @target y.svg pivot:50%,100%\n\n\
          def doll\n  circle 8\n  anchor neck 0,-10\n  anchor _hidden 3,3\n\n\
          doll at:30,40 name:body\n",
     );
@@ -1188,7 +1204,7 @@ fn the_manifest_carries_each_outputs_pivot_and_anchors_in_its_pixels() {
 fn a_target_without_pivot_writes_null_and_a_gif_writes_neither_key() {
     let dir = rig_project(
         "rig-none",
-        "@target a.png 8x8\n@target b.gif 8x8 bg:#ffffff dur:1s\nrect 4x4\n",
+        "@artboard 8x8\n@target a.png\n@target b.gif bg:#ffffff dur:1s\nrect 4x4\n",
     );
     let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -1204,15 +1220,15 @@ fn a_target_without_pivot_writes_null_and_a_gif_writes_neither_key() {
 fn a_pivot_that_is_not_a_point_is_e0206() {
     let cases = [
         (
-            "@target a.png 8x8 pivot:@body\ncircle 4 name:body\n",
+            "@artboard 8x8\n@target a.png pivot:@body\ncircle 4 name:body\n",
             "is a node, not a point",
         ),
         (
-            "@target a.png 8x8 pivot:red\ncircle 4\n",
+            "@artboard 8x8\n@target a.png pivot:red\ncircle 4\n",
             "`pivot:` needs a point",
         ),
         (
-            "@target a.gif 8x8 bg:#ffffff dur:1s pivot:4,4\ncircle 4\n",
+            "@artboard 8x8\n@target a.gif bg:#ffffff dur:1s pivot:4,4\ncircle 4\n",
             "`pivot:` needs a .png or .svg target",
         ),
     ];
@@ -1238,7 +1254,7 @@ fn png_size(path: &Path) -> (u32, u32) {
 fn size_placeholders_name_the_files_a_build_writes() {
     let dir = rig_project(
         "sized",
-        "@target icon_{w}.png 32x20 scale:.5,1,2\n@target vec_{w}x{h}_{scale}.svg 32x20 scale:2\nrect 4x4\n",
+        "@artboard 32x20\n@target icon_{w}.png scale:.5,1,2\n@target vec_{w}x{h}_{scale}.svg scale:2\nrect 4x4\n",
     );
     let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
@@ -1261,7 +1277,7 @@ fn size_placeholders_name_the_files_a_build_writes() {
 fn a_diagnostic_that_only_one_scale_raises_is_reported() {
     let dir = rig_project(
         "scale-diag",
-        "@target x.png 8x8 scale:1,2\nrect 4x4\nexpect scale in 0..1.5 \"small scale only\"\nexpect 5 in 0..1 \"every scale\"\n",
+        "@artboard 8x8\n@target x.png scale:1,2\nrect 4x4\nexpect scale in 0..1.5 \"small scale only\"\nexpect 5 in 0..1 \"every scale\"\n",
     );
     for cmd in ["check", "build"] {
         let out = ramose(&dir, &[cmd]);
@@ -1276,7 +1292,7 @@ fn a_diagnostic_that_only_one_scale_raises_is_reported() {
 fn a_compile_error_only_one_scale_raises_stops_the_build() {
     let dir = rig_project(
         "scale-error",
-        "@target x.png 8x8 scale:1,2\nrect 4x4\nif scale > 1\n  circle bogus\n",
+        "@artboard 8x8\n@target x.png scale:1,2\nrect 4x4\nif scale > 1\n  circle bogus\n",
     );
     let out = ramose(&dir, &["build"]);
     assert_eq!(out.status.code(), Some(1), "{}", text(&out));
@@ -1288,7 +1304,7 @@ fn a_compile_error_only_one_scale_raises_stops_the_build() {
 fn each_outputs_anchors_come_from_its_own_scene() {
     let dir = rig_project(
         "scale-rig",
-        "@target x.png 64x64 scale:1,2 pivot:@body.hip\n\
+        "@artboard 64x64\n@target x.png scale:1,2 pivot:@body.hip\n\
          def doll\n  circle 8\n  anchor hip 0,10*scale\n\n\
          doll at:30,40 name:body\n",
     );
@@ -1307,7 +1323,7 @@ fn each_outputs_anchors_come_from_its_own_scene() {
 fn build_only_keeps_outputs_of_unselected_targets_in_a_rebuilt_file() {
     let dir = fixture("only-sibling", &[]);
     let art = dir.join("art/x.ramo");
-    let src = "@target a.png 32x32 as:a\n@target b.png 32x32 as:b\n\npalette k\n  color red #ff0000\n\ncircle 10 at:16,16 fill:k.red\n";
+    let src = "@artboard 32x32\n@target a.png as:a\n@target b.png as:b\n\npalette k\n  color red #ff0000\n\ncircle 10 at:16,16 fill:k.red\n";
     fs::write(&art, src).unwrap();
     let full = ramose(&dir, &["build"]);
     assert_eq!(full.status.code(), Some(0), "{}", text(&full));

@@ -5,7 +5,7 @@ use ramose_ir::{Cap, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Node
 use skia_safe::{Matrix, Path, Rect};
 use skia_safe::PathBuilder;
 use ramose_render::{Backend, render_rgba};
-use common::{color, effect, scene, solid};
+use common::{color, effect, frame, scene, solid};
 
 const SIDE: f32 = 240.0;
 
@@ -34,7 +34,7 @@ fn shape_blur(sigma: f32) -> Node {
 /// Bounds of the CPU pixels whose stored alpha is nonzero.
 fn inked(node: &Node) -> Rect {
     let (w, h, px) =
-        render_rgba(&scene(SIDE, SIDE, vec![node.clone()]), 1.0, Backend::Cpu).unwrap();
+        render_rgba(&scene(SIDE, SIDE, vec![node.clone()]), &frame(SIDE, SIDE, 1.0), Backend::Cpu).unwrap();
     let mut out: Option<Rect> = None;
     for y in 0..h {
         for x in 0..w {
@@ -233,7 +233,7 @@ fn an_input_node_keeps_its_whole_glow() {
         ..solid("c", Path::new(), color(0, 0, 0, 0))
     };
     let (w, _, px) =
-        render_rgba(&scene(400.0, 400.0, vec![masked, reader]), 1.0, Backend::Cpu).unwrap();
+        render_rgba(&scene(400.0, 400.0, vec![masked, reader]), &frame(400.0, 400.0, 1.0), Backend::Cpu).unwrap();
     let alpha = px[((200 * w + 280) * 4 + 3) as usize];
     assert!(alpha > 0, "the glow of @b is cut 70 units past its edge");
 }

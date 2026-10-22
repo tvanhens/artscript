@@ -1,4 +1,4 @@
-# Eight shapes on a 256x128 canvas, two rows of four 56-64px cells.
+# Eight shapes on a 256x128 artboard, two rows of four 56-64px cells.
 # Top row, left to right: a square of simplex noise through the red ramp (smooth dark-red to light-orange blobs); a circle of worley noise through the color list red, gold, blue (orange-gold seams, blue-cyan spot centers ringed by green and teal, almost no red);
 # a square of simplex noise through the gold ramp (dark brown to light yellow blobs); a square of fbm(simplex) through the blue ramp (grainy, finer detail than the simplex cells).
 # Undocumented, current behavior: a color list interpolates in OKLCH, so the hues between red, gold and blue pass through green and cyan.
@@ -6,8 +6,9 @@
 # a green square masked by simplex(16) > .5 (about half of the square stays green, 53 percent measured, the rest is paper-colored holes and notches along the edges);
 # two blue simplex circles of the same size with seed:3 and seed:4 (soft blobby blue textures; the two cells differ from each other).
 # The .svg target uses profile:svg: the fields are baked into raster tiles inside the SVG, so each cell looks like the PNG's.
-@target fields/fills_masks.png 256x128
-@target fields/fills_masks.svg 256x128 profile:svg
+@artboard 256x128
+@target fields/fills_masks.png
+@target fields/fills_masks.svg profile:svg
 
 rect 56x56 at:32,32 fill:simplex(14 seed:1) -> p.red name:a
 circle 28 at:96,32 fill:worley(14 seed:1) -> [p.red.2 p.gold.2 p.blue.2] name:b

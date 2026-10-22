@@ -13,7 +13,7 @@ impl Point {
     }
 }
 
-/// Edges in canvas units, y down. `left <= right` and `top <= bottom` for a non-empty rect.
+/// Edges in artboard units, y down. `left <= right` and `top <= bottom` for a non-empty rect.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Rect {
     pub left: f32,

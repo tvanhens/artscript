@@ -545,7 +545,7 @@ const INIT_PALETTE: &str =
     "palette house\n  ramp sky #7fb8e6 5\n  ramp leaf #6cbf6a 5\n  ramp ink #3b2a2a 5\n";
 
 const INIT_ART: &str =
-    "@target hello.png 512x512 scale:1,2\n\ncircle 160 fill:p.sky stroke:p.ink.line,6\n";
+    "@artboard 512x512\n@target hello.png scale:1,2\n\ncircle 160 fill:p.sky stroke:p.ink.line,6\n";
 
 fn init(cwd: &Path) -> u8 {
     if cwd.join("ramose.toml").exists() {

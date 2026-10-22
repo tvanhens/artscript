@@ -424,7 +424,7 @@ pub(crate) struct Evaluator<'a> {
     pub parsed: HashMap<String, Rc<File>>,
     loading: Vec<String>,
     pub diags: Vec<Diagnostic>,
-    pub canvas: Rect,
+    pub artboard: Rect,
     pub background: Option<Rgba>,
     pub check: Option<CheckState>,
     pub(crate) ids: HashMap<String, Rc<ModuleIds>>,
@@ -485,6 +485,10 @@ pub(crate) struct SeedSnap {
     file: String,
     key: Key,
     count: u64,
+}
+
+fn canvas_renamed() -> Fail {
+    fail("E0320", "`canvas` is now `artboard`").fix("write `artboard`")
 }
 
 /// A prepass read of the drawn scene. The `let`s and guards that hit it are checked again while
@@ -585,7 +589,7 @@ fn holds_play(scenes: &[Scene]) -> bool {
 }
 
 /// A percent rest and a numeric offset are different units. Resolve only the percent
-/// axes the offset measures in canvas units, and leave a percent offset on a percent rest.
+/// axes the offset measures in artboard units, and leave a percent offset on a percent rest.
 fn ground_percent_rest(rest: &Value, offset: &Value, frame: Rect, sc: &Scope) -> R<Value> {
     let (Some((rx, ry)), Some((ox, oy))) = (rest.pair(), offset.pair()) else {
         return Ok(rest.clone());
@@ -1005,7 +1009,7 @@ impl<'a> Evaluator<'a> {
             parsed: HashMap::new(),
             loading: Vec::new(),
             diags: Vec::new(),
-            canvas: Rect::from_wh(job.size.0, job.size.1),
+            artboard: job.artboard.rect().to_sk(),
             background: None,
             check: None,
             ids: HashMap::new(),
@@ -1161,7 +1165,7 @@ impl<'a> Evaluator<'a> {
                     self.report(fail("E0320", "param declarations require an entry file with @target"), file, decl.span, "");
                 }
                 for p in params {
-                    let reserved = ["target", "t", "clip", "scale", "canvas", "p", "true", "false", "none"];
+                    let reserved = ["target", "t", "clip", "scale", "artboard", "p", "true", "false", "none"];
                     let collision = reserved.contains(&p.key.as_str())
                         || (file == self.job.source && self.job.matrix.iter().any(|(k, _)| k == &p.key))
                         || parsed.scenes().any(|s| matches!(&s.kind, SceneKind::Let { name, .. } if name == &p.key));
@@ -1571,7 +1575,7 @@ impl<'a> Evaluator<'a> {
             .cloned()
             .unwrap_or_else(|| Rc::new(ModuleIds::blank()));
         Scope {
-            frame: self.canvas,
+            frame: self.artboard,
             top: true,
             publish: true,
             ..self.scope_shell(module, ids)
@@ -2194,7 +2198,7 @@ impl<'a> Evaluator<'a> {
         let verb = verb.as_str();
         match verb {
             "anchor" => return self.anchor(st.span, args, sc),
-            "canvas" if sc.top => {
+            "artboard" if sc.top => {
                 let (file, node) = (sc.file().to_string(), sc.node_name());
                 for n in named.iter().filter(|n| n.key != "fill") {
                     self.report(unknown_key(verb, &["fill"], &n.key), &file, st.span, &node);
@@ -2215,6 +2219,9 @@ impl<'a> Evaluator<'a> {
         if comp.is_none() && builtin.is_none() {
             if sc.module.lost(verb) {
                 return Err(Fail::reported());
+            }
+            if verb == "canvas" {
+                return Err(canvas_renamed());
             }
             let mut f = fail("E0301", format!("unknown verb `{verb}`"))
                 .note("shapes: rect circle ellipse poly star curve path blob copy edge subtract union intersect xor")
@@ -2972,7 +2979,7 @@ impl<'a> Evaluator<'a> {
         }
     }
 
-    /// The target's `pivot:` point in canvas units.
+    /// The target's `pivot:` point in artboard units.
     pub(crate) fn pivot(&mut self, e: &Expr, sc: &Scope) -> R<(f64, f64)> {
         let bad = || {
             fail("E0206", "`pivot:` needs a point")
@@ -2980,7 +2987,7 @@ impl<'a> Evaluator<'a> {
         };
         let value = self.expr(e, sc)?;
         if let Value::Ref(r) = &value {
-            return match (r.record.anchor.is_some(), r.canvas) {
+            return match (r.record.anchor.is_some(), r.artboard) {
                 (true, None) => {
                     let p = r.record.anchor_canvas().ok_or_else(|| hidden_anchor(&r.label))?;
                     Ok((p.x as f64, p.y as f64))
@@ -2996,8 +3003,8 @@ impl<'a> Evaluator<'a> {
             };
         }
         let (x, y) = value.pair().ok_or_else(bad)?;
-        let (w, h) = self.job.size;
-        let at = (x.pos(0.0, w as f64), y.pos(0.0, h as f64));
+        let size = self.job.artboard.size;
+        let at = (x.pos(0.0, f64::from(size.w())), y.pos(0.0, f64::from(size.h())));
         if at.0.is_finite() && at.1.is_finite() {
             Ok(at)
         } else {
@@ -3613,7 +3620,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
             let ink = tapered.then(|| {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
-                let px = (axis_scale(&world.flat()) * f64::from(self.job.bake_scale)).max(1e-6);
+                let px = (axis_scale(&world.flat()) * self.job.sample_scale).max(1e-6);
                 geom::ribbon_ink(&geometry, &ribbon, 0.75 / px)
             });
             return Ok((
@@ -3641,7 +3648,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), Vec::new());
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
-            let px = (axis_scale(&world.flat()) * f64::from(self.job.bake_scale)).max(1e-6);
+            let px = (axis_scale(&world.flat()) * self.job.sample_scale).max(1e-6);
             let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
             // The gradient spans the ink, not the spine.
             let ob = geom::bounds(&outline);
@@ -4527,7 +4534,7 @@ impl<'a> Evaluator<'a> {
     /// The stub has no geometry: `@name` is visible, `@name.w` is not. The skips match `eval_node`.
     fn collect_draw(&mut self, draw: &Draw, sc: &Scope, span: Span) {
         let verb = draw.verb.as_str();
-        if verb == "canvas" || matches!(self.binding(verb, sc), Some(Value::None | Value::Unseen)) {
+        if verb == "artboard" || matches!(self.binding(verb, sc), Some(Value::None | Value::Unseen)) {
             return;
         }
         let key = sc.node_key(span);
@@ -5174,14 +5181,14 @@ impl<'a> Evaluator<'a> {
             return Some(v);
         }
         match name {
-            "scale" => Some(Value::Num(self.job.draw_scale())),
+            "scale" => Some(Value::Num(self.job.sample_scale)),
             "true" => Some(Value::Bool(true)),
             "false" => Some(Value::Bool(false)),
             "none" => Some(Value::None),
-            "canvas" => Some(Value::Ref(Rc::new(RefVal {
-                label: "canvas".into(),
+            "artboard" => Some(Value::Ref(Rc::new(RefVal {
+                label: "artboard".into(),
                 record: Record {
-                    path: "canvas".into(),
+                    path: "artboard".into(),
                     key: Key::root(),
                     copies: Vec::new(),
                     parent_world: Place::identity(),
@@ -5195,7 +5202,7 @@ impl<'a> Evaluator<'a> {
                     seam: 0.0,
                 },
                 source: None,
-                canvas: Some(self.canvas),
+                artboard: Some(self.artboard),
                 extent: Extent::Visual,
             }))),
             _ => None,
@@ -5222,6 +5229,7 @@ impl<'a> Evaluator<'a> {
             Expr::Ident(name) => match self.lookup_ident(name, sc) {
                 Some(Value::Unseen) => return Err(unseen(name)),
                 Some(v) => v,
+                None if name == "canvas" => return Err(canvas_renamed()),
                 None if sc.module.lost.borrow().contains(name) => return Err(Fail::reported()),
                 None if sc.module.skipped.borrow().contains(name) => {
                     return Err(fail(
@@ -5513,7 +5521,7 @@ impl<'a> Evaluator<'a> {
                     Coord::Pct(p) => Value::Percent(p),
                 }
             }
-            Value::Ref(r) if self.prepass && r.canvas.is_none() => {
+            Value::Ref(r) if self.prepass && r.artboard.is_none() => {
                 return Err(unseen(&format!("@{}.{seg}", r.label)));
             }
             Value::Ref(r) => self.measure(r, seg, sc)?,
@@ -5546,7 +5554,7 @@ impl<'a> Evaluator<'a> {
         })
     }
 
-    /// Checks measure in canvas coordinates. Everything else reads a ref in the current local frame.
+    /// Checks measure in artboard coordinates. Everything else reads a ref in the current local frame.
     fn view(&self, sc: &Scope) -> Place {
         if self.check.is_some() { Place::identity() } else { sc.world.clone() }
     }
@@ -5592,7 +5600,7 @@ impl<'a> Evaluator<'a> {
         }
         let one_shape = || {
             let Some(Value::Ref(r)) = a.pos.first() else { return None };
-            let node = r.record.node.as_ref().filter(|_| r.canvas.is_none() && r.extent == Extent::Visual)?;
+            let node = r.record.node.as_ref().filter(|_| r.artboard.is_none() && r.extent == Extent::Visual)?;
             matches!(node.kind, NodeKind::Shape(_)).then_some((r, node))
         };
         let Some((r, node)) = one_shape() else {
@@ -5613,7 +5621,7 @@ impl<'a> Evaluator<'a> {
     /// `at:@body.neck`: the anchor's position in the current local frame, the same point
     /// `at:@body.neck.x,@body.neck.y` reads.
     fn anchor_point(&mut self, r: &RefVal, sc: &Scope) -> R<(f64, f64)> {
-        if r.record.anchor.is_none() || r.canvas.is_some() {
+        if r.record.anchor.is_none() || r.artboard.is_some() {
             return Err(
                 fail("E0320", format!("`at:@{}` is a node, not a point", r.label)).fix(format!(
                     "name an anchor such as `at:@{0}.neck`, or write `at:@{0}.cx,@{0}.cy`",
@@ -5644,7 +5652,7 @@ impl<'a> Evaluator<'a> {
         Ok(Value::Num(v))
     }
 
-    /// `@x.outer`: the box of everything `r` draws, in canvas coordinates. The canvas and an
+    /// `@x.outer`: the box of everything `r` draws, in artboard coordinates. The artboard and an
     /// anchor draw only themselves.
     fn outer(&self, r: &RefVal, label: &str) -> R<RefVal> {
         let no_ink = || fail("E0351", format!("@{label} draws nothing"));
@@ -5690,16 +5698,19 @@ impl<'a> Evaluator<'a> {
                 label: "self".into(),
                 record: rec.borrow().clone(),
                 source: Some(Rc::as_ptr(&rec) as usize),
-                canvas: None,
+                artboard: None,
                 extent: Extent::Visual,
             };
             return self.walk_ref(vec![cur], segs, 1, "self".into(), sc, 0);
         }
         if first == "canvas" {
-            let Some(Value::Ref(r)) = self.lookup_ident("canvas", sc) else {
-                unreachable!("canvas is a reference");
+            return Err(canvas_renamed());
+        }
+        if first == "artboard" {
+            let Some(Value::Ref(r)) = self.lookup_ident("artboard", sc) else {
+                unreachable!("artboard is a reference");
             };
-            return self.walk_ref(vec![(*r).clone()], segs, 1, "canvas".into(), sc, 0);
+            return self.walk_ref(vec![(*r).clone()], segs, 1, "artboard".into(), sc, 0);
         }
         let resolved = identity::resolve(&sc.lookup, first, &sc.scope_copies, &sc.scope_loops);
         if self.prepass && matches!(resolved, Resolved::Undrawn(..)) {
@@ -5868,7 +5879,7 @@ impl<'a> Evaluator<'a> {
                         label: format!("{label}.{seg}"),
                         record: r.borrow().clone(),
                         source: Some(Rc::as_ptr(r) as usize),
-                        canvas: None,
+                        artboard: None,
                         extent: Extent::Visual,
                     }));
                     through_row = true;
@@ -6199,7 +6210,7 @@ fn is_paint_key(k: &str) -> bool {
     PAINT_KEYS.contains(&k)
 }
 
-/// An anchor past the visible half of a cylinder, or behind a corners horizon, has no canvas point.
+/// An anchor past the visible half of a cylinder, or behind a corners horizon, has no artboard point.
 fn hidden_anchor(label: &str) -> Fail {
     fail("E0320", format!("`@{label}` is hidden by the warp of the node that holds it"))
         .fix("move the anchor onto the part of the content the warp shows")

@@ -3,7 +3,8 @@
 # Per-frame steps: linear red moves the same distance each frame; in blue moves little at first and most in the last frames;
 # out green moves most in the first frames and little at the end; in_out gold is slow at both ends and fastest mid-strip;
 # hold ink stays at x=12 in every frame (it never leaves the left edge). The five rows keep y 12, 30, 48, 66, 84.
-@target anim/key_ease.gif 96x96 fps:8 dur:1s
+@artboard 96x96
+@target anim/key_ease.gif fps:8 dur:1s
 
 circle 6 at:key(12 84 ease:linear dur:1s),12 fill:p.red stroke:p.ink,1
 circle 6 at:key(12 84 ease:in dur:1s),30 fill:p.blue stroke:p.ink,1

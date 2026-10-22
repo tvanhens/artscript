@@ -14,8 +14,9 @@
 # Every cell's edge is antialiased; nothing is drawn outside its 48px square.
 # The .svg target uses profile:svg: brushed nodes are baked into raster tiles, so each cell looks
 # like the PNG's.
-@target brush/area.png 256x256
-@target brush/area.svg 256x256 profile:svg
+@artboard 256x256
+@target brush/area.png
+@target brush/area.svg profile:svg
 
 use std/brushes { dry chip }
 
