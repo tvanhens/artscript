@@ -1,0 +1,18 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "c6bccd7725157033",
+      "line": 3,
+      "matrix": {},
+      "path": "mark.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "mark.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

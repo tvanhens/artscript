@@ -1,0 +1,14 @@
+# The hero: one luna specimen, large, pinned through the thorax.
+@target specimen/luna_tailed.png 1600x1600
+
+use moth { moth }
+
+moth wing:luna shape:broad tails:on eyes:on pattern:2 at:800,722 scale:5.2 name:hero
+
+layer pin
+  curve 810,612 830,540 stroke:fade(p.ink .3),12 blur:7 name:pin_shadow
+  circle 26 at:810,604 fill:fade(p.ink .4) blur:9 name:pin_contact
+  curve 800,604 818,520 stroke:p.steel,9 taper:0,.15 name:shaft
+  curve 802,600 819,522 stroke:fade(p.paper .85),2.4 taper:0,.15 name:shaft_lit
+  circle 19 at:820,510 fill:radial(shade(p.ink 2) p.ink at:.35,.3 r:24) name:pin_head
+    circle 5.5 at:-5.5,-5.5 fill:fade(p.paper .8) blur:1.5

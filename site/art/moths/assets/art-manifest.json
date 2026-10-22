@@ -1,0 +1,962 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "f1d8d096c6a040c0",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "off",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_1_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "380d927981901ff5",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "on",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_1_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a54c51a68c05f259",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "off",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_2_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "492bdf973acb0033",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "on",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_2_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "6b286e8813162ca5",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "off",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_3_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "c758395d3644bbb2",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "on",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_3_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "40c7209ba5c7b094",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "off",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_4_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "9d210f13f06d1aa1",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "on",
+        "wing": "bone"
+      },
+      "path": "demo/moth_bone_4_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "e195de7edea8e07e",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "off",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_1_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "1fcc0f65ab5f8098",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "on",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_1_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "068689a71d99aa95",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "off",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_2_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "51a3f69e4fa905f4",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "on",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_2_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "fb064d9325aee606",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "off",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_3_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "1357b93eb0541f42",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "on",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_3_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "843b8c38c6d98b9c",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "off",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_4_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "43a614f07b4c9245",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "on",
+        "wing": "dusk"
+      },
+      "path": "demo/moth_dusk_4_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "f1dc09b6d5cbb6ac",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "off",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_1_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "da3295c217f01a1b",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "on",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_1_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "d2eb2fe83c16d5ff",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "off",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_2_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "4cc3842293085213",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "on",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_2_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "c0b333594a15206e",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "off",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_3_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "333276cd5f4315ea",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "on",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_3_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "0a63578095b312d6",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "off",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_4_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "0724070ca3ba44a6",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "on",
+        "wing": "ember"
+      },
+      "path": "demo/moth_ember_4_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "b27df7e021028517",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "off",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_1_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "8bc9a7b1aca93e8c",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "on",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_1_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "1611c8ca8674dd93",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "off",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_2_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "20966932247e5120",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "on",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_2_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "5daed21bbfdda94d",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "off",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_3_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "9776d9fde539acf4",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "on",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_3_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "235b6193d0cc00c8",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "off",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_4_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a10bb0ff9229c29a",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "on",
+        "wing": "luna"
+      },
+      "path": "demo/moth_luna_4_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "acfa9d7219a0a798",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "off",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_1_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "08dfc12894b03d2b",
+      "line": 3,
+      "matrix": {
+        "pattern": "1",
+        "tails": "on",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_1_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "32f56f73edd4f635",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "off",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_2_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "18644028fa8bd472",
+      "line": 3,
+      "matrix": {
+        "pattern": "2",
+        "tails": "on",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_2_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "5307c55b1d671345",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "off",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_3_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "dbd03d906fcc570f",
+      "line": 3,
+      "matrix": {
+        "pattern": "3",
+        "tails": "on",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_3_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "05f7d0ebd52f68a4",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "off",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_4_off.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "d026a271e61ec3f9",
+      "line": 3,
+      "matrix": {
+        "pattern": "4",
+        "tails": "on",
+        "wing": "rosy"
+      },
+      "path": "demo/moth_rosy_4_on.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/demo.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "fcf4aaef3e65948c",
+      "line": 2,
+      "matrix": {},
+      "path": "flutter/dusk.gif",
+      "scale": 1.0,
+      "source": "art/flutter.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "5d177f09da7e8421",
+      "line": 3,
+      "matrix": {},
+      "path": "flutter/dusk_mid.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/flutter.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "4938f7769d45960a",
+      "line": 2,
+      "matrix": {
+        "name": "bone_pale"
+      },
+      "path": "plate/bone_pale.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "bd71209787290126",
+      "line": 2,
+      "matrix": {
+        "name": "bone_scribe"
+      },
+      "path": "plate/bone_scribe.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a5c7bfa3cde7f6e0",
+      "line": 2,
+      "matrix": {
+        "name": "bone_tailed"
+      },
+      "path": "plate/bone_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "9f84d6945f682692",
+      "line": 2,
+      "matrix": {
+        "name": "dusk_ember"
+      },
+      "path": "plate/dusk_ember.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "caab30b8311b0c5d",
+      "line": 2,
+      "matrix": {
+        "name": "dusk_lantern"
+      },
+      "path": "plate/dusk_lantern.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "afec04e6ebc710a2",
+      "line": 2,
+      "matrix": {
+        "name": "dusk_plain"
+      },
+      "path": "plate/dusk_plain.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "cd9d0a0a4711e2da",
+      "line": 2,
+      "matrix": {
+        "name": "dusk_tailed"
+      },
+      "path": "plate/dusk_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "f6f0e4e844e187b8",
+      "line": 2,
+      "matrix": {
+        "name": "ember_brindle"
+      },
+      "path": "plate/ember_brindle.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "9ef2f1998b72772f",
+      "line": 2,
+      "matrix": {
+        "name": "ember_falcate"
+      },
+      "path": "plate/ember_falcate.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "8270a3e4923e0ce6",
+      "line": 2,
+      "matrix": {
+        "name": "ember_tailed"
+      },
+      "path": "plate/ember_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "f1e66615a2df99b3",
+      "line": 2,
+      "matrix": {
+        "name": "luna_sickle"
+      },
+      "path": "plate/luna_sickle.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "54baafd62b9ad0e9",
+      "line": 2,
+      "matrix": {
+        "name": "luna_tailed"
+      },
+      "path": "plate/luna_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "6386e6d43f6138e2",
+      "line": 2,
+      "matrix": {
+        "name": "luna_veil"
+      },
+      "path": "plate/luna_veil.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "398157d794349138",
+      "line": 2,
+      "matrix": {
+        "name": "rosy_lanternfly"
+      },
+      "path": "plate/rosy_lanternfly.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "b301faf84a4c9f32",
+      "line": 2,
+      "matrix": {
+        "name": "rosy_sash"
+      },
+      "path": "plate/rosy_sash.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "3b8dbd836673a5dc",
+      "line": 2,
+      "matrix": {
+        "name": "rosy_tailed"
+      },
+      "path": "plate/rosy_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/plate.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "9c8def76c6a68eca",
+      "line": 2,
+      "matrix": {},
+      "path": "specimen/luna_tailed.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/specimen.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

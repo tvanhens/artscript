@@ -1,0 +1,11 @@
+# A close look at a bone moth's antennae, twitching from their roots.
+@target sway.gif 400x400 viewport bg:#f7f6f3 fps:24 dur:2s
+@target sway.png 400x400 viewport t:500ms
+
+use moth { moth }
+
+anim twitch dur:2s loop
+  .m.antenna pivot:3,-55 rot:key(0 5 -2 0 ease:in_out)
+play twitch
+
+moth wing:bone shape:sharp pattern:8 at:200,470 scale:3.6 name:m

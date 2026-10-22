@@ -1,0 +1,158 @@
+# One moth, seen from above, pinned. The family: `wing` names a palette row, `pattern` seeds every
+# field and band, `shape` and `tails` change the wing outlines, `eyes` turns the eyespots into a stigma.
+use palette/moths { marks }
+
+# A thin wash: granulated paint, dry streaks along `dir`, and a slightly ragged edge.
+brush wash strength:.3 scale:1 streak:.5 rag:1 reach:1.5 dir:-25
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float g = fbm(m.uv / (16 * scale) + o, 3) - .5;
+    float s = fbm(float2(m.uv.x / (50 * scale), m.uv.y / (3.5 * scale)) + o * 1.7, 3) - .5;
+    float v = g * .6 + s * streak;
+    float3 toward = v > 0 ? float3(1, 1, 1) : float3(.1, .08, .16);
+    float3 c = mix(m.paint.rgb, toward, abs(v) * strength);
+    float e = m.edge + g * 2 * rag;
+    return float4(c, cover(e, m));
+  }
+  """
+
+# A furred silhouette: the rim thins out over `h` units and breaks into soft radial tufts,
+# darker toward the edge. The displacement varies slowly so the coverage stays antialiased.
+brush fuzz h:4 scale:1 lo:p.ink reach:6
+  sksl """
+  float4 shade(Mark m) {
+    float2 o = seeded(m);
+    float R = min(m.len, m.width) * .5;
+    float ang = atan(m.uv.y, m.uv.x);
+    float hair = fbm(float2(ang * R / (2.5 * scale), m.edge / (10 * scale)) + o, 2) - .5;
+    float grain = fbm(m.uv / (4 * scale) + o * 2, 2) - .5;
+    float e = m.edge + hair * h * 1.2;
+    float rim = smoothstep(h * .8, -h * .6, m.edge);
+    float3 c = mix(m.paint.rgb, lo.rgb, rim * .4 + grain * .2);
+    float a = cover(e, m) * (.5 + .5 * smoothstep(-h * .4, h * .6, m.edge));
+    return float4(c, a);
+  }
+  """
+
+# Light hairs standing off a closed outline, laid over the fuzz for a lit rim.
+stamp fur spacing:1.6 h:5 tint:p.ink
+  curve 0,0 rand(-1 1),0-h*(.4+.8*rand(0 1)) stroke:pick([tint shade(tint -1) shade(tint 1)]),.35 taper:0,1 rot:rand(-35 35) a:.6 name:hair
+
+# Barbs on both sides of an antenna, longest a third of the way out.
+stamp barbs spacing:2 h:9 tint:p.ink
+  let l = h*(.25+.75*sin(u*180))*(1-u*.35)
+  curve 0,0 l*.35,0-l stroke:tint,.6 taper:0,.7 name:barb_l
+  curve 0,0 l*.35,l stroke:tint,.6 taper:0,.7 name:barb_r
+
+def moth wing:luna shape:broad tails:off eyes:on pattern:1 size:300
+  let c = p.{wing}
+  let m = marks.{wing}
+  let body = mix(c p.ink .55)
+  let deep = mix(shade(c -3) p.ember.1 .35)
+  let pale = shade(c 2)
+  let halo = mix(shade(c 2) p.ember.4 .4)
+  let ring = mix(p.ink c .2)
+  # forewing outline, root at the thorax
+  let fw_root = 5,-32
+  let fw_costa = if shape == sharp then 56,-66 else 50,-62
+  let fw_apex = if shape == sharp then 134,-84 else 120,-72
+  let fw_hook = if shape == sharp then 118,-60 else 128,-40
+  let fw_outer = if shape == sharp then 112,-14 else 112,-6
+  let fw_tornus = if shape == sharp then 80,10 else 84,14
+  let fw_inner = 30,10
+  let fw_base = 6,-6
+  let fw_pts = [fw_root fw_costa fw_apex fw_hook fw_outer fw_tornus fw_inner fw_base]
+  # hindwing outline, with a tail when asked
+  let hw_root = 4,-8
+  let hw_top = if shape == sharp then 42,-2 else 46,-4
+  let hw_out = if shape == sharp then 80,14 else 86,18
+  let hw_low = if shape == sharp then 78,46 else 88,52
+  let hw_tip = if shape == sharp then 48,64 else 58,72
+  let hw_tip2 = if shape == sharp then 22,52 else 24,58
+  let hw_pts = if tails == on then [hw_root hw_top hw_out hw_low 84,78 76,108 68,134 58,132 52,104 44,78 26,60 4,28] else [hw_root hw_top hw_out hw_low hw_tip hw_tip2 4,28]
+  # pattern positions drawn from the seed
+  let band_out = .58+.2*rand(0 1 seed:pattern)
+  let band_in = .26+.14*rand(0 1 seed:pattern+1)
+  let bulge = 4+8*rand(0 1 seed:pattern+3)
+  let mottle = 14+18*rand(0 1 seed:pattern+5)
+  let eye_r = 10.5+3.5*rand(0 1 seed:pattern+6)
+  let sub = rand(0 1 seed:pattern+7) > .5
+  let apex_patch = rand(0 1 seed:pattern+8) > .5
+  let eye = fw_root+(fw_apex-fw_root)*.5+(4,16)
+  let sub_top = fw_root+(fw_apex-fw_root)*.9
+  let sub_bot = fw_base+(fw_tornus-fw_base)*.86
+  let sub_mid = (sub_top+sub_bot)*.5+(bulge*1.4,2)
+  # a band runs from the costa to the inner margin, bowed out toward the apex
+  let out_top = fw_root+(fw_apex-fw_root)*band_out
+  let out_bot = fw_base+(fw_tornus-fw_base)*(band_out*.92)
+  let out_mid = (out_top+out_bot)*.5+(bulge,2)
+  let in_top = fw_root+(fw_apex-fw_root)*band_in
+  let in_bot = fw_base+(fw_tornus-fw_base)*(band_in*.9)
+  let in_mid = (in_top+in_bot)*.5+(bulge*.5,0)
+  let hb = band_out*.95
+  mirror x
+    group name:wings
+      curve hw_pts closed tension:.45 fill:grad(hw_root hw_low deep c,.4 shade(c 1)) stroke:fade(line(c) .45),1 brush:wash(dir:-60) name:hw
+        copy @hw fill:fbm(simplex(22 seed:pattern+3)) -> [fade(m 0) fade(m .3)] a:.7
+        copy @hw fill:(worley(mottle*.08 seed:pattern+10)-.72)*5+.5 -> [fade(m 0) fade(m 0) fade(m .4)] name:hw_dust
+          mask (fbm(simplex(mottle*1.6 seed:pattern+11))-.5)*2.5+.5
+        copy @hw fill:none stroke:fade(deep .35),2 name:hw_rim
+        each k in 0..3
+          let e = hw_root+(hw_out+(hw_tip-hw_out)*((k+.5)/3)-hw_root)*1.05
+          curve hw_root hw_root+(e-hw_root)*.5+(6,-6) e stroke:fade(deep .22),.7 taper:.05,.4 name:hw_vein
+        curve hw_root+(hw_out-hw_root)*hb hw_root+(hw_low-hw_root)*hb hw_root+(hw_tip-hw_root)*hb stroke:fade(m .85),[2 3 2] taper:.25 jitter:1,12 name:hw_band
+        if tails == on
+          curve 54,96 62,126 stroke:fade(m .75),[5 2] taper:0,.6 blur:1 name:tail_streak
+          circle 9 at:hw_root+(hw_low-hw_root)*.58+(0,4) fill:fade(halo .3) blur:3 name:hw_halo
+          ellipse 6.5,6 at:hw_root+(hw_low-hw_root)*.58+(0,4) rot:-20 fill:fade(ring .8) blur:.8 name:hw_eye
+            circle 4.6 at:.5,.5 fill:mix(shade(c 1) m .35) blur:.4
+            circle 1.8 at:1,1 fill:p.coral
+            ellipse 2.2,1 at:-2,-2 rot:-40 fill:fade(p.paper .7) blur:.6
+        curve fw_pts closed tension:.45 at:3,7 fill:fade(p.ink .3) blur:6 name:fw_cast
+      curve fw_pts closed tension:.45 fill:grad(fw_base fw_apex deep c,.45 shade(c 1),.8 pale) stroke:fade(line(c) .5),1.2 brush:wash name:fw
+        copy @fw fill:simplex(mottle*1.4 seed:pattern) -> [fade(m 0) fade(m .22)] a:.8
+        copy @fw fill:(worley(mottle*.08 seed:pattern+9)-.72)*5+.5 -> [fade(m 0) fade(m 0) fade(m .6)] name:dust
+          mask (fbm(simplex(mottle*1.6 seed:pattern+4))-.5)*2.5+.5
+        copy @fw fill:none stroke:fade(deep .35),2 name:fw_rim
+        ellipse 28,18 at:fw_base+(12,-12) fill:fade(deep .5) blur:10 name:basal_shade
+        ellipse 40,22 at:fw_root+(fw_apex-fw_root)*.34+(6,12) rot:-20 fill:fade(pale .25) blur:14 name:wing_light
+        curve fw_root fw_costa fw_apex stroke:fade(pale .55),4 blur:1.5 name:costa_lit
+        curve fw_root+(fw_costa-fw_root)*.15 fw_costa fw_apex stroke:fade(p.paper .4),1.2 taper:.2 name:costa_edge
+        each k in 0..6
+          let e = fw_root+(fw_apex+(fw_tornus-fw_apex)*((k+.5)/6)-fw_root)*1.2
+          curve fw_base+(0,-14) fw_base+(e-fw_base)*.55+(0,-3) e stroke:fade(deep .25),.7 taper:.05,.3 name:vein
+        curve out_top out_mid out_bot stroke:fade(m .9),[2.2 3.6 2.4] taper:.2 jitter:1.2,14 name:band_out
+        curve out_top+(-2,-4) out_mid+(-3,-2) out_bot+(-3,-2) stroke:fade(p.ink .35),.8 jitter:1,10 name:band_ink
+        curve in_top in_mid in_bot stroke:fade(m .75),[1.6 2.4 1.6] taper:.2 jitter:1,12 name:band_in
+        if sub
+          curve sub_top sub_mid sub_bot stroke:fade(m .65),[1.2 1.8 1.2] taper:.2 jitter:1.6,6 name:band_sub
+        if apex_patch
+          ellipse 16,9 at:fw_apex+(-16,8) rot:-30 fill:fade(deep .45) blur:5 name:apex_shade
+          ellipse 5,3 at:fw_apex+(-12,2) rot:-30 fill:fade(pale .8) name:apex_spot
+        if eyes == on
+          circle eye_r*1.5 at:eye fill:fade(halo .3) blur:4 name:eye_halo
+          ellipse eye_r*1.05,eye_r*.95 at:eye rot:-20 fill:fade(ring .8) blur:1 name:eye_ring
+            circle eye_r*.76 at:.8,.8 fill:mix(shade(c 1) m .35) blur:.5
+            circle eye_r*.3 at:1.5,1.5 fill:p.coral
+            ellipse eye_r*.42,eye_r*.18 at:eye_r*-.3,eye_r*-.34 rot:-40 fill:fade(p.paper .85) blur:.7 name:eye_glint
+        else
+          ellipse 7,4 at:eye rot:-25 fill:fade(m .9) stroke:fade(ring .9),1.2 name:stigma
+            ellipse 3,1.6 at:-1,-1 rot:-25 fill:fade(pale .8)
+  curve 0,-18 7,-8 8,10 6,32 3,50 0,56 -3,50 -6,32 -8,10 -7,-8 closed tension:.45 fill:grad(0 shade(body -1) shade(body 1),.4 body,.7 shade(body -2)) brush:fuzz(h:2 scale:.8) name:abdomen
+    each k in 0..6
+      curve -9,-2+k*8 0,1+k*8 9,-2+k*8 stroke:fade(p.ink .3),1.8 blur:1 name:segment
+    curve 0,-12 0,48 stroke:fade(shade(body 3) .35),3.5 blur:2.5 name:abdomen_lit
+    ellipse 9,10 at:0,50 fill:fade(p.ink .3) blur:4 name:abdomen_tip
+  curve 0,-18 7,-8 8,10 6,32 3,50 0,56 -3,50 -6,32 -8,10 -7,-8 closed tension:.45 fill:none stamp:fur(tint:body h:1.8 spacing:1) name:abdomen_fur
+  ellipse 12,17 at:0,-32 fill:body brush:fuzz(h:2 scale:1) name:thorax
+    ellipse 6,9 at:-2,-4 fill:fade(shade(body 2) .35) blur:3
+  ellipse 11.5,16 at:0,-32 fill:none stamp:fur(tint:body h:3 spacing:1) name:thorax_fur
+  circle 6.5 at:0,-52 fill:shade(body -1) brush:fuzz(h:1.5 scale:.5) name:head
+    circle 2.2 at:-3.5,-1 fill:p.ink
+    circle 2.2 at:3.5,-1 fill:p.ink
+    circle .7 at:-4,-1.7 fill:p.paper
+    circle .7 at:3,-1.7 fill:p.paper
+  mirror x
+    curve 3,-55 14,-72 32,-92 54,-104 stroke:body,[1.8 1.4 1 .5] taper:0,.4 stamp:barbs(tint:body h:9) name:antenna
+  fx shadow 0,4 blur:9 color:p.ink a:.14

@@ -1,0 +1,9 @@
+# The five wing palettes, one ramp per row, each stop a painted chip.
+@target ramp.png 800x500
+
+use moth { wash }
+
+each r, wing in [luna dusk ember bone rosy]
+  each i in 0..7
+    rect 70x54 r:5 at:124+i*92,82+r*84 fill:p.{wing}.{i} brush:wash(dir:-12) jitter:.8,18 name:chip
+      fx shadow 0,2 blur:3 color:p.ink a:.14

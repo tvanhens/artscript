@@ -1,0 +1,27 @@
+# One luna forewing. Every mark on it is a child of the wing, so the veins and the dust end at its edge.
+@target clip.png 800x800
+
+use moth { wash }
+use palette/moths { marks }
+
+let c = p.luna
+let m = marks.luna
+let deep = mix(shade(c -3) p.ember.1 .35)
+let pts = [5,-32 50,-62 120,-72 128,-40 112,-6 84,14 30,10 6,-6]
+group at:40,560 scale:5.6
+  curve pts closed tension:.45 fill:grad(6,-6 120,-72 deep c,.45 shade(c 1),.8 shade(c 2)) stroke:fade(line(c) .5),1.2 brush:wash name:fw
+    rect 300x300 at:66,-30 fill:simplex(36 seed:1) -> [fade(m 0) fade(m .22)] a:.8 name:mottle
+    rect 300x300 at:66,-30 fill:(worley(2 seed:9)-.72)*5+.5 -> [fade(m 0) fade(m 0) fade(m .6)] name:dust
+      mask (fbm(simplex(16 seed:4))-.5)*2.5+.5
+    copy @fw fill:none stroke:fade(deep .35),2 name:rim
+    ellipse 28,18 at:18,-18 fill:fade(deep .5) blur:10 name:basal_shade
+    curve 5,-32 50,-62 120,-72 stroke:fade(shade(c 2) .55),4 blur:1.5 name:costa
+    each k in 0..6
+      curve 6,-20 60,-46+k*12 150,-110+k*20 stroke:fade(deep .25),.7 taper:.05,.3 name:vein
+    curve 83,-59 77,-24 55,6 stroke:fade(m .9),[2.2 3.6 2.4] taper:.2 jitter:1.2,14 name:band_out
+    curve 43,-45 40,-22 29,0 stroke:fade(m .75),[1.6 2.4 1.6] taper:.2 jitter:1,12 name:band_in
+    circle 18 at:66,-36 fill:fade(mix(shade(c 2) p.ember.4 .4) .3) blur:4 name:halo
+    ellipse 12.6,11.4 at:66,-36 rot:-20 fill:fade(mix(p.ink c .2) .8) blur:1 name:eye
+      circle 9.1 at:.8,.8 fill:mix(shade(c 1) m .35) blur:.5
+      circle 3.6 at:1.5,1.5 fill:p.coral
+      ellipse 5,2.2 at:-3.6,-4 rot:-40 fill:fade(p.paper .85) blur:.7

@@ -1,0 +1,9 @@
+# The moth's wash brush on four wide strokes: granulated paint, dry streaks, a ragged edge.
+@target brush.png 800x500
+
+use moth { wash }
+
+curve 70,96 300,70 530,100 740,76 stroke:p.luna.3,[52 78 70 26] taper:.04,.3 brush:wash(dir:0) name:luna
+curve 740,206 500,186 270,222 60,196 stroke:p.dusk.3,[52 80 70 24] taper:.04,.3 brush:wash(dir:0) name:dusk
+curve 76,316 300,296 540,326 736,306 stroke:p.ember.3,[50 76 68 28] taper:.04,.3 brush:wash(dir:0) name:ember
+curve 728,426 500,402 260,436 66,416 stroke:p.rosy.3,[54 78 70 22] taper:.04,.3 brush:wash(dir:0) name:rosy

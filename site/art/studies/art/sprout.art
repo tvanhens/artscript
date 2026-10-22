@@ -1,0 +1,19 @@
+# The agent-loop subject: one luna moth with its hindwing eyespots drawn here, over the def.
+@target sprout.png 512x512 palette:study
+
+use moth { moth }
+use palette/moths { moths marks }
+
+palette study from moths
+  ramp luna #b8a8d6 7
+
+moth wing:luna pattern:2 at:256,250 scale:1.6 name:specimen
+each k in [-1 1]
+  circle 16 at:256+k*84,299 fill:fade(p.ember.4 .3) blur:5 name:halo
+  ellipse 11,10 at:256+k*84,299 rot:-20*k fill:fade(mix(p.ink p.luna .2) .8) blur:1 name:eye
+    circle 7.5 at:.8,.8 fill:mix(p.luna.4 marks.luna .35) blur:.5
+    circle 3 at:1.5,1.5 fill:p.coral
+    ellipse 4.5,2 at:-3,-3.5 rot:-40 fill:fade(p.paper .85) blur:.7
+
+assert level(@eye.0 @eye.1) tol:.5
+assert inside(@specimen canvas margin:24)

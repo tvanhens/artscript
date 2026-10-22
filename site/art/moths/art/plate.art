@@ -1,0 +1,11 @@
+# The specimen plate: sixteen moths from one def, one file per name.
+@target plate/{name}.png 640x640 each name:[luna_veil luna_tailed dusk_ember dusk_lantern ember_brindle ember_falcate bone_scribe bone_pale rosy_sash rosy_lanternfly luna_sickle dusk_tailed ember_tailed bone_tailed rosy_tailed dusk_plain]
+
+use moth { moth }
+
+# name, wing, shape, tails, eyes, pattern
+let specs = [[luna_veil luna broad off on 1] [luna_tailed luna broad on on 2] [dusk_ember dusk broad off on 3] [dusk_lantern dusk sharp off on 4] [ember_brindle ember broad off off 5] [ember_falcate ember sharp off on 6] [bone_scribe bone sharp off off 7] [bone_pale bone broad off on 8] [rosy_sash rosy broad off on 9] [rosy_lanternfly rosy sharp off on 10] [luna_sickle luna sharp off off 11] [dusk_tailed dusk broad on on 12] [ember_tailed ember sharp on off 13] [bone_tailed bone broad on on 14] [rosy_tailed rosy broad on off 15] [dusk_plain dusk sharp off off 16]]
+
+each s in specs
+  if s.0 == name
+    moth wing:s.1 shape:s.2 tails:s.3 eyes:s.4 pattern:s.5 at:320,296 scale:1.9 name:specimen

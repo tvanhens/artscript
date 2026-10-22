@@ -1,0 +1,122 @@
+{
+  "outputs": [
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "8fe0f0487b22a41d",
+      "line": 2,
+      "matrix": {},
+      "path": "brush.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/brush.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a7df5f1d0478ed7a",
+      "line": 2,
+      "matrix": {},
+      "path": "clip.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/clip.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "2225b7f1ffccfa0c",
+      "line": 2,
+      "matrix": {},
+      "path": "field.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/field.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "368fc32506217a9f",
+      "line": 2,
+      "matrix": {},
+      "path": "ramp.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/ramp.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "a512dce4233634d1",
+      "line": 2,
+      "matrix": {},
+      "path": "sprout.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/sprout.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [
+        "C0101: assert level(@eye.0 @eye.1) tol:.5"
+      ],
+      "hash": "56df2c71eb6ecb3b",
+      "line": 2,
+      "matrix": {},
+      "path": "sprout_broken.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/sprout_broken.art",
+      "status": "fail",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "3526af0512767ffb",
+      "line": 2,
+      "matrix": {},
+      "path": "stamp.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/stamp.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "checks": [],
+      "hash": "95842e3ea0d9474e",
+      "line": 2,
+      "matrix": {},
+      "path": "sway.gif",
+      "scale": 1.0,
+      "source": "art/sway.art",
+      "status": "pass",
+      "target": null
+    },
+    {
+      "anchors": {},
+      "checks": [],
+      "hash": "46e01385301fab0d",
+      "line": 3,
+      "matrix": {},
+      "path": "sway.png",
+      "pivot": null,
+      "scale": 1.0,
+      "source": "art/sway.art",
+      "status": "pass",
+      "target": null
+    }
+  ],
+  "version": 1
+}

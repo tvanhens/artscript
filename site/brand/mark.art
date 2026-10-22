@@ -1,0 +1,15 @@
+# The site's mark: the logo's brush A in paper with its coral bar, on no ground,
+# so it sits on the ink tiles of the page. The def is copied from assets/logo.art.
+@target mark.png 512x512
+
+palette brand
+  ramp ink #1d1b2e 5
+  ramp coral #ff6b5b 5
+  color paper #fbf6ee
+
+def brush_a ink:brand.ink bar:brand.coral bw:1
+  curve -21,-195 -32,-151 -50,-99 -74,-37 -100,27 -122,87 -140,135 -154,167 -168,184 -184,191 stroke:ink,[3 16 26 33 36 38 34 26 15 5] taper:0,0 name:left
+  curve -22,-197 4,-139 34,-69 64,3 92,71 118,131 142,171 166,187 186,192 stroke:ink,[6 40 54 62 66 62 48 26 6] taper:.04,0 name:right
+  curve -136,97 -116,92 -68,82 -4,65 64,49 130,35 stroke:bar,[each v in [26 36 36 31 22 10] -> v*bw] taper:.14,.08 name:bar
+
+brush_a ink:brand.paper bar:brand.coral at:251,255 scale:1.066 name:letter

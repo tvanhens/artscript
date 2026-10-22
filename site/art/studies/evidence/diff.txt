@@ -1,0 +1,5 @@
+--- a/art/sprout.art
++++ b/art/sprout.art
+@@ -8 +8 @@
+-  ramp luna #b9cfae 7
++  ramp luna #b8a8d6 7
