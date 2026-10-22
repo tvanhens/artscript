@@ -87,8 +87,19 @@ pub struct Sample {
 /// Evaluates one target into a scene, with every diagnostic, check failure and lint it produced.
 pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
     let mut ev = evaluate_frame(project, job);
+    ev.diagnostics.extend(hidden_children(project, job, ev.scene.iter()));
     ev.diagnostics = fold_copies(ev.diagnostics);
     ev
+}
+
+fn hidden_children<'s>(
+    project: &Project,
+    job: &TargetJob,
+    frames: impl IntoIterator<Item = &'s Scene>,
+) -> Vec<Diagnostic> {
+    let mut out = lints::hidden_child(frames, &project.manifest, &job.source);
+    stamp_target(job, &mut out);
+    out
 }
 
 /// One target's scene drawn at one scale, with the rig that scene placed.
@@ -300,7 +311,6 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
     if !job.artboard.viewport {
         placement = lints::off_artboard(&scene, job.artboard.rect().to_sk(), &project.manifest, &job.source);
     }
-    placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
     placement.extend(lints::warp_cut(&scene, &project.manifest, &job.source));
     placement.extend(lints::hidden_anchors(&anchors.hidden, &project.manifest));
     stamp_target(job, &mut placement);
@@ -363,7 +373,9 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let n = match frame_count(dur, fps) {
         Ok(n) => n,
         Err(msg) => {
-            let mut diagnostics = fold_copies(probe.diagnostics);
+            let mut diagnostics = probe.diagnostics;
+            diagnostics.extend(hidden_children(project, job, probe.scene.iter()));
+            let mut diagnostics = fold_copies(diagnostics);
             let own = diagnostics.len();
             diagnostics.push(
                 Diagnostic::error("E0206", job.span, msg)
@@ -385,8 +397,10 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     let mut kept = 0u64;
     let mut peak = 0u64;
     let mut retained_error = None;
+    let mut hidden = Vec::new();
     if n == 0 {
         acc.fold(0.0, &probe.diagnostics);
+        hidden = hidden_children(project, job, probe.scene.iter());
     } else if let Some(err) = probe
         .scene
         .as_ref()
@@ -394,6 +408,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
     {
         retained_error = Some(err);
         acc.fold(0.0, &probe.diagnostics);
+        hidden = hidden_children(project, job, probe.scene.iter());
     } else {
         if let Some(scene) = probe.scene {
             frames.push(Frame { t: 0.0, scene });
@@ -413,6 +428,7 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
                 .and_then(|scene| gif_retained_error(job, scene, &mut kept, &mut peak, left))
             {
                 retained_error = Some(err);
+                hidden = hidden_children(project, job, frames.iter().map(|f| &f.scene).chain(ev.scene.iter()));
                 frames.clear();
                 acc.fold(t, &ev.diagnostics);
                 break;
@@ -423,7 +439,10 @@ pub fn sample(project: &Project, job: &TargetJob) -> Sample {
             acc.fold(t, &ev.diagnostics);
         }
     }
-    let mut diagnostics = fold_copies(acc.finish());
+    hidden.extend(hidden_children(project, job, frames.iter().map(|f| &f.scene)));
+    let mut diagnostics = acc.finish();
+    diagnostics.extend(hidden);
+    let mut diagnostics = fold_copies(diagnostics);
     let own = diagnostics.len();
     if let Some(d) = retained_error {
         diagnostics.push(d);
@@ -631,7 +650,7 @@ impl AggAcc {
                     .collect::<Vec<_>>(),
             );
             if let Some(agg) = self.groups.iter_mut().find(|g| g.key == key) {
-                agg.frames += 1;
+                agg.raised += 1;
                 agg.varies |= *d != agg.diag;
                 let mag = note_magnitude(d);
                 if let Some(mag) = mag
@@ -654,7 +673,7 @@ impl AggAcc {
                     worst: t,
                     mag: mag.unwrap_or(0.0),
                     has_mag: mag.is_some(),
-                    frames: 1,
+                    raised: 1,
                     varies: false,
                 });
             }
@@ -672,13 +691,7 @@ impl AggAcc {
     fn finish(mut self) -> Vec<Diagnostic> {
         let frames = self.frames;
         for mut agg in self.groups {
-            if agg.diag.code == "L0105" {
-                if agg.frames == frames {
-                    self.out.push(agg.diag);
-                }
-                continue;
-            }
-            if agg.frames < frames || agg.varies {
+            if agg.raised < frames || agg.varies {
                 agg.diag
                     .notes
                     .push(format!("first at {}s", num_s(agg.first)));
@@ -699,16 +712,14 @@ struct Agg {
     worst: f64,
     mag: f64,
     has_mag: bool,
-    /// The frames that raised it. A child hidden only on some frames, such as an eye
-    /// highlight under a blink, is drawn on the others and L0105 drops it.
-    frames: usize,
+    raised: usize,
     /// A frame raised it differently. One raised the same on every frame is not about time, so it
     /// takes no frame notes and reads like the same failure from a png target.
     varies: bool,
 }
 
 fn folded_lint(code: &str) -> bool {
-    matches!(code, "L0102" | "L0104" | "L0105" | "L0108")
+    matches!(code, "L0102" | "L0104" | "L0108")
 }
 
 /// A note naming the call site that produced a failure. It separates failures and is not a magnitude.

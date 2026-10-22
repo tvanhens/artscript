@@ -4,4 +4,7 @@
 @target anim/key_bounce.gif fps:6 dur:1s
 
 rect 80x2 at:48,83 fill:p.ink
-circle 10 at:48,key(72 24 72 dur:1s) fill:p.blue
+circle 10 at:48,72 fill:p.blue name:ball
+anim bounce dur:1s
+  .ball at:abs(48,key(72 24 72))
+play bounce

@@ -328,7 +328,7 @@ fn rejected_parameter_is_reported_once_without_cascade_errors() {
 fn frame_sheets_union_motion_and_define_loop_end_sampling() {
     let dir = fixture(
         "frames",
-        "@artboard 12x8\n@target test.png dur:1 clip:idle\nrect 2,2 at:(1+t*4),1 fill:#ff0000 name:head\n",
+        "@artboard 12x8\n@target test.png dur:1 clip:idle\nrect 2,2 at:1,1 fill:#ff0000 name:head\nanim slide dur:1s\n  .head at:key(0 4 ease:linear),0\nplay slide\n",
     );
     let output = success(
         &dir,
@@ -488,7 +488,7 @@ fn receipt_preserves_parameter_precision() {
 fn still_preview_probes_the_requested_time_when_zero_is_invalid() {
     let dir = fixture(
         "probe-time",
-        "@artboard 8x8\n@target test.png t:1\nlet width = if t == 0 then false else 4/t\nrect width,4 at:4,4 fill:#ff0000 name:body\n",
+        "@artboard 8x8\n@target test.png t:1\nrect 4,4 at:4,4 fill:#ff0000 name:body\nanim grow dur:1s\n  .body scale:1/t\nplay grow\n",
     );
     success(&dir, &["build", "--backend", "cpu"]);
     let production = image(&dir.join("assets/test.png"));

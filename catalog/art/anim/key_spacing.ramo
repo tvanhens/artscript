@@ -6,7 +6,13 @@
 @artboard 96x96
 @target anim/key_spacing.gif fps:8 dur:1s
 
-circle 6 at:key(12 84 12 ease:linear dur:1s),12 fill:p.red stroke:p.ink,1
-circle 6 at:key(12 84 12 at:[0 .25 1] ease:linear dur:1s),30 fill:p.blue stroke:p.ink,1
-circle 6 at:key(12 84 12 ease:[hold linear] dur:1s),48 fill:p.green stroke:p.ink,1
-circle 6 at:key(12 84 loop ease:linear dur:500ms),66 fill:p.gold stroke:p.ink,1
+circle 6 at:12,12 fill:p.red stroke:p.ink,1 name:even
+circle 6 at:12,30 fill:p.blue stroke:p.ink,1 name:early
+circle 6 at:12,48 fill:p.green stroke:p.ink,1 name:held
+circle 6 at:12,66 fill:p.gold stroke:p.ink,1 name:wrap
+anim spacing dur:1s
+  .even at:abs(key(12 84 12 ease:linear),12)
+  .early at:abs(key(12 84 12 at:[0 .25 1] ease:linear),30)
+  .held at:abs(key(12 84 12 ease:[hold linear]),48)
+  .wrap at:abs(key(12 84 loop ease:linear dur:500ms),66)
+play spacing

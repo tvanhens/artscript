@@ -183,6 +183,8 @@ pub(crate) struct Host {
 #[derive(Clone)]
 pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
+    /// The names in `env` whose value follows an anim patch, with that patch.
+    pub timed: BTreeMap<String, Rc<Timed>>,
     /// Def and stamp parameters whose default is a brush or a stamp, by their index in `env`,
     /// with that default. A call on one is checked against the default's declaration whatever
     /// the instance bound.
@@ -258,8 +260,10 @@ impl Scope {
     fn bind_loop(&mut self, index: Option<&str>, var: &str, i: usize, v: Value) {
         if let Some(index) = index {
             self.env.push((index.to_string(), Value::Num(i as f64)));
+            self.timed.remove(index);
         }
         self.env.push((var.to_string(), v));
+        self.timed.remove(var);
     }
 
     fn iteration(&self, span: Span, i: u32) -> Scope {
@@ -384,9 +388,14 @@ impl Siblings {
 }
 
 /// Evaluated arguments of one statement. Later named values win.
+#[derive(Default)]
 pub(crate) struct Args {
     pub pos: Vec<Value>,
     pub named: Vec<(String, Value)>,
+    /// The anim patch a positional argument follows, by index.
+    pub timed_pos: Vec<(usize, Rc<Timed>)>,
+    /// The anim patch a named argument follows, by key.
+    pub timed: Vec<(String, Rc<Timed>)>,
 }
 
 impl Args {
@@ -403,7 +412,18 @@ impl Args {
     }
 
     pub fn seed(&self) -> R<Option<u64>> {
+        if let Some(by) = self.timed_key("seed") {
+            return Err(by.sink("`seed:`"));
+        }
         self.get("seed").map(Value::seed).transpose()
+    }
+
+    fn timed_at(&self, i: usize) -> Option<&Rc<Timed>> {
+        self.timed_pos.iter().find(|(j, _)| *j == i).map(|(_, by)| by)
+    }
+
+    pub(crate) fn timed_key(&self, k: &str) -> Option<&Rc<Timed>> {
+        self.timed.iter().find(|(n, _)| n == k).map(|(_, by)| by)
     }
 
     fn word(&self, k: &str) -> Option<String> {
@@ -441,6 +461,8 @@ pub(crate) struct Evaluator<'a> {
     unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
     anim_clock: Option<AnimClock>,
+    /// The anim patch a value read since the enclosing `timed_by` follows, if any.
+    timed: Option<Rc<Timed>>,
     pub plays: Vec<PlayMark>,
     /// What the prepass decided at each `if` and `each` that holds an entry-file play, keyed by
     /// position: the branch or item count, or `None` when it could not evaluate the guard.
@@ -479,6 +501,41 @@ pub struct PlayMark {
 struct AnimClock {
     local: f64,
     dur: f64,
+    patch: Option<Rc<Timed>>,
+}
+
+/// The anim patch a value follows: the key it set, and where.
+pub(crate) struct Timed {
+    key: String,
+    anim: String,
+    file: String,
+    line: u32,
+}
+
+impl Timed {
+    /// E0345 at a position that decides the scene's structure.
+    fn sink(&self, what: &str) -> Fail {
+        fail("E0345", format!("{what} follows an anim patch"))
+            .note(format!(
+                "`{}:` is set by anim `{}` at {}:{}",
+                self.key, self.anim, self.file, self.line
+            ))
+            .fix("a scene's structure does not change over time; draw every variant always and animate its `a:`")
+    }
+}
+
+fn secs(v: Value) -> R<f64> {
+    match v {
+        Value::Num(n) if n.is_finite() => Ok(n),
+        _ => Err(fail("E0320", format!("expected a time, got {}", v.kind()))
+            .fix("write `1s`, `200ms`, or a number of seconds")),
+    }
+}
+
+fn outside_anim(what: &str) -> Fail {
+    fail("E0345", format!("{what} is read outside an anim patch value")).fix(
+        "move it into an `anim` patch and `play` it; to show a part for only some of a clip, draw it always and animate its `a:`",
+    )
 }
 
 pub(crate) struct SeedSnap {
@@ -496,7 +553,7 @@ fn canvas_renamed() -> Fail {
 pub(crate) fn unseen(what: &str) -> Fail {
     fail("E0344", format!("`{what}` reads the drawn scene"))
         .note("top-level plays are scheduled before anything is drawn")
-        .fix("compute it from `let`s, `t`, or `clip`, or move the `play` under the instance it drives")
+        .fix("compute it from `let`s or `clip`, or move the `play` under the instance it drives")
 }
 
 /// A statement's place in evaluation order: each enclosing loop's line and copy index, then its
@@ -1026,6 +1083,7 @@ impl<'a> Evaluator<'a> {
             unstable_calls: BTreeSet::new(),
             time: job.frame_t,
             anim_clock: None,
+            timed: None,
             plays: Vec::new(),
             guards: HashMap::new(),
             prepass: false,
@@ -1536,6 +1594,7 @@ impl<'a> Evaluator<'a> {
         let names = Rc::new(RefCell::new(Names::new(ids.file())));
         Scope {
             env: Vec::new(),
+            timed: BTreeMap::new(),
             typed_params: Rc::default(),
             module: module.clone(),
             owner: Key::root(),
@@ -1681,6 +1740,35 @@ impl<'a> Evaluator<'a> {
         v
     }
 
+    /// Runs `f` and returns the anim patch its reads followed, leaving the enclosing read as it was.
+    pub(crate) fn timed_by<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> (T, Option<Rc<Timed>>) {
+        let outer = self.timed.take();
+        let v = f(self);
+        (v, std::mem::replace(&mut self.timed, outer))
+    }
+
+    /// Evaluates an expression that decides the scene's structure, where a value that follows an
+    /// anim patch is E0345.
+    pub(crate) fn untimed(&mut self, what: &str, e: &Expr, sc: &Scope) -> R<Value> {
+        let (v, by) = self.timed_by(|ev| ev.expr(e, sc));
+        let v = v?;
+        match by {
+            Some(by) => Err(by.sink(what)),
+            None => Ok(v),
+        }
+    }
+
+    fn bind_let(&mut self, sc: &mut Scope, name: &str, value: &Expr) -> R<Value> {
+        let (v, by) = self.timed_by(|ev| ev.expr(value, sc));
+        let v = v?;
+        match by {
+            Some(by) => sc.timed.insert(name.to_string(), by),
+            None => sc.timed.remove(name),
+        };
+        sc.env.push((name.to_string(), v.clone()));
+        Ok(v)
+    }
+
     fn eval_block<'s>(
         &mut self,
         stmts: impl IntoIterator<Item = &'s Scene>,
@@ -1762,8 +1850,7 @@ impl<'a> Evaluator<'a> {
         match &st.kind {
             SceneKind::Let { name, value } => {
                 self.seed_stmt(sc, st.span);
-                let v = self.expr(value, sc);
-                let v = match v {
+                let v = match self.bind_let(sc, name, value) {
                     Ok(v) => v,
                     Err(f) => {
                         sc.env.push((name.clone(), Value::None));
@@ -1771,9 +1858,8 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 if sc.top && sc.publish {
-                    sc.module.bind(name, v.clone());
+                    sc.module.bind(name, v);
                 }
-                sc.env.push((name.clone(), v));
                 Ok(())
             }
             SceneKind::If {
@@ -1782,7 +1868,7 @@ impl<'a> Evaluator<'a> {
                 otherwise,
             } => {
                 self.seed_stmt(sc, st.span);
-                let c = self.expr(cond, sc)?;
+                let c = self.untimed("this `if`", cond, sc)?;
                 self.confirm_guard(st, "if", usize::from(c.truthy()), sc);
                 let mut inner = sc.clone();
                 inner.publish = false;
@@ -1796,7 +1882,7 @@ impl<'a> Evaluator<'a> {
                 body,
             } => {
                 self.seed_stmt(sc, st.span);
-                let items = each_items(self.expr(iter, sc)?)?;
+                let items = each_items(self.untimed("this `each`", iter, sc)?)?;
                 self.confirm_guard(st, "each", items.len(), sc);
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
@@ -1836,19 +1922,23 @@ impl<'a> Evaluator<'a> {
         sc: &Scope,
         skip_pos: usize,
     ) -> R<Args> {
-        let mut out = Args {
-            pos: Vec::new(),
-            named: Vec::new(),
-        };
+        let mut out = Args::default();
         for e in args.iter().skip(skip_pos) {
-            out.pos.push(self.expr(e, sc)?);
+            let (v, by) = self.timed_by(|ev| ev.expr(e, sc));
+            if let Some(by) = by {
+                out.timed_pos.push((out.pos.len(), by));
+            }
+            out.pos.push(v?);
         }
         for n in named {
             if n.key == "name" {
                 continue;
             }
-            let v = self.expr(&n.value, sc)?;
-            out.named.push((n.key.clone(), v));
+            let (v, by) = self.timed_by(|ev| ev.expr(&n.value, sc));
+            if let Some(by) = by {
+                out.timed.push((n.key.clone(), by));
+            }
+            out.named.push((n.key.clone(), v?));
         }
         Ok(out)
     }
@@ -2120,7 +2210,9 @@ impl<'a> Evaluator<'a> {
         let mut statics: Vec<&PendingPatch> = own.iter().filter(|p| p.channel.is_none()).collect();
         statics.sort_by(win);
         for p in statics {
+            a.timed.retain(|(k, _)| !p.named.iter().any(|(n, _)| n == k));
             a.named.extend(p.named.iter().cloned());
+            a.timed.extend(p.timed.iter().cloned());
         }
         if let Some(Value::Ref(r)) = a.get("at").cloned()
             && let Ok((x, y)) = self.anchor_point(&r, sc)
@@ -2133,6 +2225,17 @@ impl<'a> Evaluator<'a> {
         let mut hide = false;
         for p in chans {
             let Some(ch) = &p.channel else { continue };
+            if !ch.key.is_empty() {
+                a.timed.push((
+                    ch.key.clone(),
+                    Rc::new(Timed {
+                        key: ch.key.clone(),
+                        anim: ch.anim.clone(),
+                        file: ch.patch_file.clone(),
+                        line: ch.patch_span.line,
+                    }),
+                ));
+            }
             if !ch.live {
                 continue;
             }
@@ -2178,6 +2281,7 @@ impl<'a> Evaluator<'a> {
         let rest = Args {
             pos: a.pos.clone(),
             named: a.named[..a.named.len() - animated].to_vec(),
+            ..Args::default()
         };
         let (m, _) = self.transform(&rest, default_at, frame, sc, with_rot)?;
         let local = inverse(&m).map_rect(frame).0;
@@ -2210,6 +2314,9 @@ impl<'a> Evaluator<'a> {
                 return Ok(());
             }
             _ => {}
+        }
+        if let Some(by) = sc.timed.get(verb) {
+            return Err(by.sink(&format!("the verb `{verb}`")));
         }
         let comp = self.component_for(verb, sc);
         if matches!(comp, Some(None)) {
@@ -2843,6 +2950,9 @@ impl<'a> Evaluator<'a> {
         for (key, v) in open.iter().zip(pos) {
             a.named.push((key.to_string(), v));
         }
+        for (i, by) in std::mem::take(&mut a.timed_pos) {
+            a.timed.push((open[i].to_string(), by));
+        }
         let mut palette = a.get("palette").cloned().or_else(|| sc.palette.clone());
         let fixed_palette = alias.fixed.iter().position(|f| f.key == "palette");
         let order = fixed_palette
@@ -3133,6 +3243,9 @@ impl<'a> Evaluator<'a> {
         a: &Args,
         span: Span,
     ) -> R<Vec<Node>> {
+        if let Some(by) = a.timed_at(0) {
+            return Err(by.sink("the `repeat` count"));
+        }
         let n = a.pos.first().and_then(Value::num).ok_or_else(|| {
             fail("E0320", "`repeat` needs a count").fix("write `repeat 8 rot:45`")
         })?;
@@ -3161,6 +3274,9 @@ impl<'a> Evaluator<'a> {
         a: &Args,
         span: Span,
     ) -> R<Vec<Node>> {
+        if let Some(by) = a.timed_at(0) {
+            return Err(by.sink("the `grid` count"));
+        }
         let (cols, rows) = a.pos.first().and_then(Value::vec2).ok_or_else(|| {
             fail("E0320", "`grid` needs columns x rows").fix("write `grid 4x3 gap:8`")
         })?;
@@ -3317,6 +3433,9 @@ impl<'a> Evaluator<'a> {
                 (path, vec![pts], closed, first)
             }
             "path" => {
+                if let Some(by) = a.timed_at(0) {
+                    return Err(by.sink("the `path` data"));
+                }
                 let d = first.and_then(|v| match v {
                     Value::Str(s) => Some(s.clone()),
                     _ => None,
@@ -3816,12 +3935,12 @@ impl<'a> Evaluator<'a> {
             })?;
             given.push((p.key.clone(), v.clone()));
         }
-        let mut node_args = Args {
-            pos: Vec::new(),
-            named: Vec::new(),
-        };
+        let mut node_args = Args::default();
         let mut key = key;
         let mut palette = sc.palette.clone();
+        if let Some(by) = a.timed_key("seed") {
+            return Err(by.sink("`seed:`"));
+        }
         for (k, v) in &a.named {
             if param_names.contains(&k.as_str()) {
                 given.push((k.clone(), v.clone()));
@@ -3847,12 +3966,22 @@ impl<'a> Evaluator<'a> {
         let mut box_frame = Rect::new_empty();
         let mut def_scope = self.module_scope(&module);
         def_scope.palette = palette.clone();
+        for (i, by) in &a.timed_pos {
+            if let Some(p) = comp.params.get(*i) {
+                def_scope.timed.insert(p.key.clone(), by.clone());
+            }
+        }
+        for (k, by) in &a.timed {
+            if param_names.contains(&k.as_str()) {
+                def_scope.timed.insert(k.clone(), by.clone());
+            }
+        }
         let mut env: Vec<(String, Value)> = Vec::new();
         let mut typed_params = Vec::new();
         for p in &comp.params {
             let mut dsc = def_scope.clone();
             dsc.env = env.clone();
-            let (default, words) = self.param_default(p, &dsc);
+            let ((default, words), by) = self.timed_by(|ev| ev.param_default(p, &dsc));
             let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
             if let Ok(d @ (Value::Brush(_) | Value::Stamp(_))) = &default {
                 typed_params.push((env.len(), d.clone()));
@@ -3862,12 +3991,17 @@ impl<'a> Evaluator<'a> {
                     check_param(&comp.name, p, &default, words.as_deref(), v)?;
                     v.clone()
                 }
-                None => default.map_err(|f| {
-                    f.note(format!(
-                        "in the default of `{}` ({}:{})",
-                        p.key, comp.module, comp.span.line
-                    ))
-                })?,
+                None => {
+                    if let Some(by) = by {
+                        def_scope.timed.insert(p.key.clone(), by);
+                    }
+                    default.map_err(|f| {
+                        f.note(format!(
+                            "in the default of `{}` ({}:{})",
+                            p.key, comp.module, comp.span.line
+                        ))
+                    })?
+                }
             };
             let value = if p.key == "size" {
                 let (value, rect) =
@@ -3938,6 +4072,7 @@ impl<'a> Evaluator<'a> {
             sc.depth + 1,
         );
         body_scope.env = env;
+        body_scope.timed = def_scope.timed;
         body_scope.typed_params = Rc::new(typed_params);
         body_scope.module = module;
         body_scope.ids = def_ids;
@@ -4646,7 +4781,7 @@ impl<'a> Evaluator<'a> {
                 format!("this `{word}` decides a top-level `play` and reads the drawn scene"),
             )
             .note("top-level plays are scheduled before anything is drawn, so `@name.w` and names inside other draws are not known yet")
-            .fix("guard the play with `let`s, `t`, `clip`, or `@name` of an earlier top-level draw, or move it under the instance it drives"),
+            .fix("guard the play with `let`s, `clip`, or `@name` of an earlier top-level draw, or move it under the instance it drives"),
             &file,
             st.span,
             &sc.node_name(),
@@ -4698,7 +4833,7 @@ impl<'a> Evaluator<'a> {
                 otherwise,
             } => {
                 self.seed_stmt(sc, st.span);
-                let c = self.expr(cond, sc)?;
+                let c = self.untimed("this `if`", cond, sc)?;
                 let mut inner = sc.clone();
                 let branch = if c.truthy() { then } else { otherwise };
                 for child in branch {
@@ -4713,7 +4848,7 @@ impl<'a> Evaluator<'a> {
                 body,
             } => {
                 self.seed_stmt(sc, st.span);
-                let items = each_items(self.expr(iter, sc)?)?;
+                let items = each_items(self.untimed("this `each`", iter, sc)?)?;
                 for (i, v) in items.into_iter().enumerate() {
                     let mut inner = sc.iteration(st.span, i as u32);
                     inner.bind_loop(index.as_deref(), var, i, v);
@@ -4729,8 +4864,7 @@ impl<'a> Evaluator<'a> {
             }
             SceneKind::Let { name, value } => {
                 self.seed_stmt(sc, st.span);
-                let v = self.expr(value, sc)?;
-                sc.env.push((name.clone(), v));
+                self.bind_let(sc, name, value)?;
                 Ok(())
             }
             SceneKind::Check { .. } if !nested => {
@@ -4777,6 +4911,7 @@ impl<'a> Evaluator<'a> {
         dest: &mut Vec<PendingPatch>,
     ) -> R<()> {
         let mut vals = Vec::new();
+        let mut timed = Vec::new();
         for n in named {
             if n.key == "name" {
                 let note = anim
@@ -4791,7 +4926,11 @@ impl<'a> Evaluator<'a> {
                 self.report(f, sc.file(), n.span, &sc.node_name());
                 continue;
             }
-            vals.push((n.key.clone(), self.expr(&n.value, sc)?));
+            let (v, by) = self.timed_by(|ev| ev.expr(&n.value, sc));
+            if let Some(by) = by {
+                timed.push((n.key.clone(), by));
+            }
+            vals.push((n.key.clone(), v?));
         }
         let Some(rest) = identity::hops_from(segs) else {
             self.report(
@@ -4816,6 +4955,7 @@ impl<'a> Evaluator<'a> {
             origin_depth: sc.depth,
             order: Order::Evaluated(self.next_order()),
             named: vals,
+            timed,
             off,
             channel: None,
             report,
@@ -4859,7 +4999,7 @@ impl<'a> Evaluator<'a> {
         let tag = sc.ids.tag(span).unwrap_or_default();
         self.begin_seed(sc.file(), owner.at_stmt(&[], tag));
         let start_v = match start {
-            Some(e) => match self.time_secs(e, sc) {
+            Some(e) => match self.untimed("`start:`", e, sc).and_then(secs) {
                 Ok(n) => n,
                 Err(f) => {
                     self.restore_seed(snap);
@@ -4879,7 +5019,7 @@ impl<'a> Evaluator<'a> {
             None => sc.clone(),
         };
         self.begin_seed(&anim.module, owner.at_stmt(&[], &format!("anim {}", anim.name)));
-        let dur = self.time_secs(&anim.dur, &dur_scope);
+        let dur = self.expr(&anim.dur, &dur_scope).and_then(secs);
         self.restore_seed(snap);
         let dur = match dur {
             Ok(n) if n > 0.0 => n,
@@ -4926,7 +5066,7 @@ impl<'a> Evaluator<'a> {
         } else {
             raw.clamp(0.0, dur)
         };
-        let saved = self.anim_clock.replace(AnimClock { local, dur });
+        let saved = self.anim_clock.replace(AnimClock { local, dur, patch: None });
         let snap = self.snap_seed();
         let play = Site::new(sc.file(), span);
         let mut out = Vec::new();
@@ -4963,6 +5103,7 @@ impl<'a> Evaluator<'a> {
                     origin_depth: sc.depth,
                     order: ord.clone(),
                     named: Vec::new(),
+                    timed: Vec::new(),
                     off: patch.off,
                     channel: Some(ChannelPatch {
                         key: String::new(),
@@ -4995,13 +5136,22 @@ impl<'a> Evaluator<'a> {
                     Some(inner) => (true, inner),
                     None => (!offset_channel(&n.key), &n.value),
                 };
-                match self.expr(expr, &dur_scope) {
+                if let Some(clock) = &mut self.anim_clock {
+                    clock.patch = Some(Rc::new(Timed {
+                        key: n.key.clone(),
+                        anim: name.to_string(),
+                        file: anim.module.clone(),
+                        line: n.span.line,
+                    }));
+                }
+                match self.timed_by(|ev| ev.expr(expr, &dur_scope)).0 {
                     Ok(value) => out.push(PendingPatch {
                         written: rest.clone(),
                         rest: rest.clone(),
                         origin_depth: sc.depth,
                         order: ord.clone(),
                         named: Vec::new(),
+                        timed: Vec::new(),
                         off: false,
                         channel: Some(ChannelPatch {
                             key: n.key.clone(),
@@ -5030,16 +5180,12 @@ impl<'a> Evaluator<'a> {
         out
     }
 
-    fn time_secs(&mut self, e: &Expr, sc: &Scope) -> R<f64> {
-        let v = self.expr(e, sc)?;
-        match v {
-            Value::Num(n) if n.is_finite() => Ok(n),
-            _ => Err(fail("E0320", format!("expected a time, got {}", v.kind()))
-                .fix("write `1s`, `200ms`, or a number of seconds")),
-        }
-    }
-
     pub fn key_call(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
+        let Some(clock) = &self.anim_clock else {
+            return Err(outside_anim("`key(...)`"));
+        };
+        let (local, anim_dur) = (clock.local, clock.dur);
+        self.timed = clock.patch.clone().or(self.timed.take());
         for n in named {
             if !matches!(n.key.as_str(), "at" | "ease" | "dur") {
                 return Err(fail("E0320", format!("`key` does not take `{}:`", n.key))
@@ -5056,16 +5202,12 @@ impl<'a> Evaluator<'a> {
             }
         }
         let dur = match named.iter().find(|n| n.key == "dur") {
-            Some(n) => self.time_secs(&n.value, sc)?,
-            None => self.anim_clock.as_ref().map(|c| c.dur).ok_or_else(|| {
-                fail("E0320", "`key` needs `dur:` outside an anim")
-                    .fix("write `dur:1s`, or place the key in an anim")
-            })?,
+            Some(n) => secs(self.expr(&n.value, sc)?)?,
+            None => anim_dur,
         };
         if !(dur.is_finite() && dur > 0.0) {
             return Err(fail("E0320", "`key` duration must be positive").fix("write `dur:1s`"));
         }
-        let local = self.local_time();
         let u = if loop_ {
             local.rem_euclid(dur) / dur
         } else if local <= 0.0 {
@@ -5130,13 +5272,6 @@ impl<'a> Evaluator<'a> {
         crate::key::sample_track(&values, &at, &eases, u).map_err(|m| fail("E0320", m))
     }
 
-    fn local_time(&self) -> f64 {
-        self.anim_clock
-            .as_ref()
-            .map(|c| c.local)
-            .unwrap_or(self.time)
-    }
-
     pub fn lookup_ident(&self, name: &str, sc: &Scope) -> Option<Value> {
         if let Some((_, v)) = sc.env.iter().rev().find(|(k, _)| k == name) {
             return Some(v.clone());
@@ -5154,7 +5289,7 @@ impl<'a> Evaluator<'a> {
             );
         }
         if name == "t" {
-            return Some(Value::Num(self.local_time()));
+            return self.anim_clock.as_ref().map(|c| Value::Num(c.local));
         }
         if name == "clip" {
             return Some(
@@ -5228,8 +5363,18 @@ impl<'a> Evaluator<'a> {
             Expr::Str(s) => Value::Str(s.clone()),
             Expr::Ident(name) => match self.lookup_ident(name, sc) {
                 Some(Value::Unseen) => return Err(unseen(name)),
-                Some(v) => v,
+                Some(v) => {
+                    if let Some(by) = sc.timed.get(name) {
+                        self.timed = Some(by.clone());
+                    } else if name == "t"
+                        && let Some(by) = self.anim_clock.as_ref().and_then(|c| c.patch.clone())
+                    {
+                        self.timed = Some(by);
+                    }
+                    v
+                }
                 None if name == "canvas" => return Err(canvas_renamed()),
+                None if name == "t" => return Err(outside_anim("`t`")),
                 None if sc.module.lost.borrow().contains(name) => return Err(Fail::reported()),
                 None if sc.module.skipped.borrow().contains(name) => {
                     return Err(fail(

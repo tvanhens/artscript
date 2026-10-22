@@ -381,13 +381,41 @@ fn check_samples_a_gif_so_a_later_assert_fails() {
     .unwrap();
     fs::write(
         dir.join("art/main.ramo"),
-        "@artboard 16x16\n@target still.png\n@target clip.gif bg:#ffffff fps:2 dur:1s\ncircle 4\nassert t < .5\n",
+        "@artboard 16x16\n@target still.png\n@target clip.gif bg:#ffffff fps:2 dur:1s\ncircle 4 at:0,0 name:c\nanim slide dur:1s\n  .c at:key(0 8 ease:linear),0\nplay slide\nassert @c.cx < 2\n",
     )
     .unwrap();
     let out = ramose(&dir, &["check"]);
     assert_eq!(out.status.code(), Some(2), "{}", text(&out));
     let err = text(&out);
     assert!(err.contains("C0101"), "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn check_reports_a_branch_on_time_as_e0345() {
+    let dir = std::env::temp_dir().join(format!("ramose-cli-timed-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("art")).unwrap();
+    fs::create_dir_all(dir.join("lib")).unwrap();
+    fs::write(
+        dir.join("ramose.toml"),
+        "[project]\nname = \"timed\"\nout = \"assets\"\nlib = [\"lib\"]\nstd = \"0.1\"\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("lib/parts.ramo"),
+        "def eye lid:0\n  if lid >= 1\n    circle 2\n  else\n    circle 4\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.join("art/main.ramo"),
+        "@artboard 16x16\n@target still.png\nuse parts { eye }\neye lid:.6 name:eye\nanim blink dur:200ms\n  .eye lid:key(.6 1 .6)\nplay blink\nif t > .5\n  circle 1\n",
+    )
+    .unwrap();
+    let out = ramose(&dir, &["check"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let err = text(&out);
+    assert!(err.contains("E0345") && err.contains("lib/parts.ramo:2") && err.contains("art/main.ramo:8"), "{err}");
     let _ = fs::remove_dir_all(&dir);
 }
 

@@ -813,13 +813,12 @@ fn site_note(site: &str) -> String {
 /// under or a clipping shape above it, so the line draws nothing. A loop whose copies only partly
 /// land outside, the line's own copies or its parent's, is not reported. A hidden node's children
 /// are not measured.
-pub fn hidden_child(
-    scene: &ramose_ir::Scene,
+pub fn hidden_child<'n>(
+    frames: impl IntoIterator<Item = &'n ramose_ir::Scene>,
     manifest: &Manifest,
     file: &str,
 ) -> Vec<Diagnostic> {
     let level = manifest.lint_level("hidden-child");
-    type Find<'n, 'f> = &'f dyn Fn(&str) -> Option<(&'n Node, Matrix)>;
     struct Hit<'n> {
         node: &'n Node,
         by: &'n str,
@@ -834,7 +833,7 @@ pub fn hidden_child(
     }
     struct Walk<'n, 'f> {
         entry: &'f str,
-        find: Find<'n, 'f>,
+        paths: HashMap<&'n str, (&'n Node, Place)>,
         /// The clipping shapes above the current node, innermost last, in artboard coordinates.
         clips: Vec<(Rect, &'n str)>,
         lines: Vec<Line<'n>>,
@@ -842,11 +841,16 @@ pub fn hidden_child(
     }
     impl<'n> Walk<'n, '_> {
         fn node(&mut self, n: &'n Node, parent: &Place, mut site: Option<&'n str>) {
+            if n.opacity == 0.0 {
+                return;
+            }
             if source_span(&n.origin, "").0 == self.entry {
                 site = Some(&n.origin);
             }
             if !self.clips.is_empty()
-                && let Some(b) = n.outer_bounds(&parent.flat(), self.find)
+                && let Some(b) = n.outer_bounds(&parent.flat(), &|p| {
+                    self.paths.get(p).map(|(n, place)| (*n, place.flat()))
+                })
             {
                 let bounds = parent.map_rect(b);
                 let next = self.lines.len();
@@ -893,18 +897,19 @@ pub fn hidden_child(
             self.clips.pop();
         }
     }
-    let mut paths = HashMap::new();
-    index(&scene.children, &Place::identity(), &mut paths);
-    let find = |p: &str| paths.get(p).map(|(n, place)| (*n, place.flat()));
     let mut walk = Walk {
         entry: file,
-        find: &find,
+        paths: HashMap::new(),
         clips: Vec::new(),
         lines: Vec::new(),
         by_key: HashMap::new(),
     };
-    for c in &scene.children {
-        walk.node(c, &Place::identity(), None);
+    for scene in frames {
+        walk.paths.clear();
+        index(&scene.children, &Place::identity(), &mut walk.paths);
+        for c in &scene.children {
+            walk.node(c, &Place::identity(), None);
+        }
     }
     let mut out = Vec::new();
     for line in walk.lines {

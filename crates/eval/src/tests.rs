@@ -76,6 +76,14 @@ fn fill_hex(n: &Node) -> String {
     }
 }
 
+/// A top-level draw whose center x is `4t` over 1s, so `@probe.cx > 1` holds only after t=0.
+const PROBE: &str = "\
+rect 2x2 at:0,0 name:probe
+anim slide dur:1s
+  .probe at:key(0,0 4,0 ease:linear)
+play slide
+";
+
 const EYE_LIB: &str = "\
 def eye size:10 iris:#3366cc
   circle size fill:#ffffff name:white
@@ -1683,34 +1691,29 @@ fn toggling_an_if_keeps_later_sibling_paths_and_seeds() {
 
 #[test]
 fn key_samples_smooth_easing_and_steps() {
-    let s = scene("@artboard 100x100\n@target t.png t:.25s\nrect 4 at:key(0 10 0 dur:1s),0 name:box\n");
+    let keyed = |t: &str, patch: &str| {
+        scene(&format!(
+            "@artboard 100x100\n@target t.png t:{t}\nanim k dur:1s\n  .box {patch}\nrect 4 at:0,0 name:box\nplay k\n"
+        ))
+    };
+    let s = keyed(".25s", "at:key(0 10 0),0");
     assert!(
         (at(node(&s, "box")).0 - 5.625).abs() < 1e-3,
         "{}",
         at(node(&s, "box")).0
     );
-    let linear =
-        scene("@artboard 100x100\n@target t.png t:.5s\nrect 4 at:key(0 10 ease:linear dur:1s),0 name:box\n");
+    let linear = keyed(".5s", "at:key(0 10 ease:linear),0");
     assert!((at(node(&linear, "box")).0 - 5.0).abs() < 1e-3);
-    let inn = scene("@artboard 100x100\n@target t.png t:.5s\nrect 4 at:key(0 10 ease:in dur:1s),0 name:box\n");
+    let inn = keyed(".5s", "at:key(0 10 ease:in),0");
     assert!((at(node(&inn, "box")).0 - 2.5).abs() < 1e-3);
-    let out =
-        scene("@artboard 100x100\n@target t.png t:.5s\nrect 4 at:key(0 10 ease:out dur:1s),0 name:box\n");
+    let out = keyed(".5s", "at:key(0 10 ease:out),0");
     assert!((at(node(&out, "box")).0 - 7.5).abs() < 1e-3);
-    let hold =
-        scene("@artboard 100x100\n@target t.png t:.9s\nrect 4 at:key(1 9 ease:hold dur:1s),0 name:box\n");
+    let hold = keyed(".9s", "at:key(1 9 ease:hold),0");
     assert!((at(node(&hold, "box")).0 - 1.0).abs() < 1e-3);
-    let ev = run_with(
-        "@artboard 100x100\n@target t.png t:.9s\nlet w = key(red blue dur:1s)\nassert w == red\nrect 4\n",
-        &[],
-    );
-    assert!(
-        ev.diagnostics.iter().all(|d| !d.code.starts_with('C')),
-        "{}",
-        show(&ev.diagnostics)
-    );
+    let stepped = keyed(".9s", "blend:key(normal multiply)");
+    assert_eq!(node(&stepped, "box").blend, Blend::Normal);
     let bad = run_with(
-        "@artboard 100x100\n@target t.png\nlet w = key([1] [2] dur:1s)\nrect 4\n",
+        "@artboard 100x100\n@target t.png\nanim k dur:1s\n  .box a:key([1] [2])\nrect 4 name:box\nplay k\n",
         &[],
     );
     assert!(
@@ -1794,9 +1797,13 @@ rect 8 at:10,10 name:box
 #[test]
 fn per_frame_checks_report_first_and_worst() {
     let src = "\
-@artboard 20x20\n@target t.gif bg:#ffffff dur:1s fps:4
-assert t < .5
-circle 2
+@artboard 20x20
+@target t.gif bg:#ffffff dur:1s fps:4
+anim slide dur:1s
+  .c at:key(0 10 ease:linear),0
+circle 2 at:0,0 name:c
+play slide
+assert @c.cx < 5
 ";
     let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
@@ -2139,6 +2146,32 @@ fn a_child_hidden_on_only_some_frames_is_not_reported() {
     assert_eq!(every.len(), 1, "{}", show(&every));
 }
 
+#[test]
+fn a_frame_at_a_0_neither_hides_nor_shows_a_child() {
+    let shown = |a: &str| {
+        hidden_children(&format!(
+            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:4\ncircle 6 at:20,20 fill:#ff0000 name:shut\n  circle 2 at:30,0 fill:#000000\nanim show dur:1s\n  .shut a:{a}\nplay show\n"
+        ))
+    };
+    let fades_in = shown("key(0 1 ease:linear)");
+    assert_eq!(fades_in.len(), 1, "{}", show(&fades_in));
+    assert_eq!(shown("key(.5 1 ease:linear)").len(), 1);
+    let never = shown("0");
+    assert!(never.is_empty(), "{}", show(&never));
+    let still = hidden_children(
+        "@artboard 40x40\n@target t.png\ncircle 6 at:20,20 fill:#ff0000 a:0 name:shut\n  circle 2 at:30,0 fill:#000000\n",
+    );
+    assert!(still.is_empty(), "{}", show(&still));
+}
+
+#[test]
+fn a_child_hidden_in_a_clip_over_the_frame_budget_still_warns() {
+    let hits = hidden_children(
+        "@artboard 40x40\n@target t.gif bg:#ffffff dur:200000s fps:1\ncircle 6 at:20,20 fill:#ff0000\n  circle 2 at:30,0 fill:#000000\n",
+    );
+    assert_eq!(hits.len(), 1, "{}", show(&hits));
+}
+
 fn unknown_targets(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
     run_with(src, libs)
         .diagnostics
@@ -2304,10 +2337,10 @@ fn sample_reports_a_gif_that_build_would_refuse_to_encode() {
 fn a_play_reached_after_t0_that_outlasts_the_clip_is_e0206() {
     let src = |dur: &str| {
         format!(
-            "@artboard 8x8\n@target t.gif bg:#ffffff fps:10{dur}\nrect 2x2 name:box\n\
+            "@artboard 8x8\n@target t.gif bg:#ffffff fps:10{dur}\n{PROBE}def d\n  rect 2x2 name:box\n\
              anim short dur:1s\n  .box at:key(0,0 2,0)\n\
              anim long dur:3s\n  .box at:key(0,0 0,2)\n\
-             play short\nif t > .5\n  play long\n"
+             d name:d\n  play short\n  if @probe.cx > 1\n    play long\n"
         )
     };
     let p = project(&[("art/t.ramo", &src(""))]);
@@ -2500,10 +2533,12 @@ fn a_list_clip_stays_a_target_option_after_format() {
 
 #[test]
 fn a_loop_reached_after_the_first_frame_loops_the_clip() {
-    let late = project(&[(
-        "art/t.ramo",
-        "@artboard 8x8\n@target t.gif bg:#ffffff dur:2s fps:2\nanim pulse dur:1s loop\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
-    )]);
+    let src = |loop_: &str| {
+        format!(
+            "@artboard 8x8\n@target t.gif bg:#ffffff dur:2s fps:2\n{PROBE}anim pulse dur:1s{loop_}\n  .c a:.5\ndef d\n  circle 4 name:c\nd name:d\n  if @probe.cx > 1\n    play pulse\n"
+        )
+    };
+    let late = project(&[("art/t.ramo", &src(" loop"))]);
     let late_plan = plan(&late);
     assert!(
         late_plan.diagnostics.is_empty(),
@@ -2512,10 +2547,7 @@ fn a_loop_reached_after_the_first_frame_loops_the_clip() {
     );
     let late_sample = crate::sample(&late, &late_plan.jobs[0]);
     assert!(late_sample.loops, "{}", show(&late_sample.diagnostics));
-    let once = project(&[(
-        "art/t.ramo",
-        "@artboard 8x8\n@target t.gif bg:#ffffff dur:2s fps:2\nanim pulse dur:1s\n  .c a:.5\ncircle 4 name:c\nif t > 1\n  play pulse\n",
-    )]);
+    let once = project(&[("art/t.ramo", &src(""))]);
     let once_plan = plan(&once);
     assert!(!crate::sample(&once, &once_plan.jobs[0]).loops);
 }
@@ -2821,7 +2853,9 @@ fn a_geometry_guard_keeps_an_instance_play_ahead_of_a_later_play() {
 fn an_anim_rand_ignores_a_toggling_let() {
     let p = project(&[(
         "art/t.ramo",
-        "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:2\nanim idle dur:1s\n  .c at:rand(0 10),0\ncircle 4 name:c\nif t > 0\n  let n = 1\nplay idle\n",
+        &format!(
+            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:2\n{PROBE}anim idle dur:1s\n  .c at:rand(0 10),0\ncircle 4 name:c\nif @probe.cx > 1\n  let n = 1\nplay idle\n"
+        ),
     )]);
     let plan = plan(&p);
     assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
@@ -2891,11 +2925,11 @@ fn an_unreadable_each_keeps_an_instance_play_ahead_of_a_later_play() {
 fn a_play_start_rand_ignores_a_toggling_let() {
     let body = |guard: &str| {
         format!(
-            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:2\nanim idle dur:1s\n  .c at:t*10,0\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle start:rand(0 1)\n"
+            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:2\n{PROBE}anim idle dur:1s\n  .c at:t*10,0\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle start:rand(0 1)\n"
         )
     };
     let quiet_src = body("false");
-    let noisy_src = body("t > 0");
+    let noisy_src = body("@probe.cx > 1");
     let quiet = project(&[("art/t.ramo", &quiet_src)]);
     let noisy = project(&[("art/t.ramo", &noisy_src)]);
     let xs = |p: &Project| {
@@ -2979,7 +3013,7 @@ fn a_duration_error_is_reported_on_the_anim() {
 fn an_anim_duration_rand_ignores_a_toggling_let() {
     let body = |guard: &str| {
         format!(
-            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:4\nanim idle dur:rand(1 2)\n  .c at:key(0,0 10,0)\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle\n"
+            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:4\n{PROBE}anim idle dur:rand(1 2)\n  .c at:key(0,0 10,0)\ncircle 4 name:c\nif {guard}\n  let n = rand(0 1)\nplay idle\n"
         )
     };
     let xs = |src: &str| {
@@ -2998,7 +3032,7 @@ fn an_anim_duration_rand_ignores_a_toggling_let() {
             .map(|f| at(node(&f.scene, "c")).0)
             .collect::<Vec<_>>()
     };
-    assert_eq!(xs(&body("false")), xs(&body("t > 0")));
+    assert_eq!(xs(&body("false")), xs(&body("@probe.cx > 1")));
 }
 
 #[test]
@@ -3052,7 +3086,7 @@ fn an_animated_style_error_is_reported_on_the_anim() {
 #[test]
 fn a_boolean_key_position_is_e0320() {
     let ev = run_with(
-        "@artboard 40x40\n@target t.png\ncircle 4 at:key(0,0 10,0 dur:1s at:[false true]) name:c\n",
+        "@artboard 40x40\n@target t.png\nanim idle dur:1s\n  .c at:key(0,0 10,0 at:[false true])\ncircle 4 name:c\nplay idle\n",
         &[],
     );
     assert!(
@@ -3060,6 +3094,224 @@ fn a_boolean_key_position_is_e0320() {
         "{}",
         show(&ev.diagnostics)
     );
+}
+
+/// The `(file, line)` of each E0345, with the whole list shown on a miss.
+fn e0345(ev: &Evaluation) -> Vec<(String, u32)> {
+    let hits: Vec<(String, u32)> = ev
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0345")
+        .map(|d| (d.file.clone(), d.span.line))
+        .collect();
+    assert!(!hits.is_empty(), "no E0345 in {}", show(&ev.diagnostics));
+    hits
+}
+
+#[test]
+fn t_and_key_outside_an_anim_patch_value_are_e0345() {
+    let cases = [
+        ("if t > .5\n  circle 4\n", 3, "`t`"),
+        ("circle 4 at:key(0 10 dur:1s),0\n", 3, "`key(...)`"),
+        ("let k = t\ncircle 4\n", 3, "`t`"),
+        ("fn f(x) = x + t\ncircle f(1)\n", 4, "`t`"),
+        ("circle 4\nassert t < .5\n", 4, "`t`"),
+    ];
+    for (body, line, what) in cases {
+        let ev = run_with(&format!("@artboard 40x40\n@target t.png\n{body}"), &[]);
+        assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), line)], "{body}");
+        let d = ev.diagnostics.iter().find(|d| d.code == "E0345").unwrap();
+        assert!(d.message.starts_with(what), "{body}: {d}");
+        assert!(d.fix.as_deref().unwrap_or("").contains("`anim`"), "{body}: {d}");
+        assert!(!ev.diagnostics.iter().any(|d| d.code == "E0320"), "{body}: {}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn a_gif_reports_t_outside_a_patch_once() {
+    let p = project(&[(
+        "art/t.ramo",
+        "@artboard 20x20\n@target t.gif bg:#ffffff dur:1s fps:4\nif t > .5\n  circle 4\n",
+    )]);
+    let sampled = crate::sample(&p, &plan(&p).jobs[0]);
+    let hits: Vec<u32> = sampled
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == "E0345")
+        .map(|d| d.span.line)
+        .collect();
+    assert_eq!(hits, [3], "{}", show(&sampled.diagnostics));
+}
+
+#[test]
+fn time_in_a_patch_value_and_a_clip_guard_are_fine() {
+    let s = scene(
+        "@artboard 40x40\n@target t.png t:.5s clip:idle\nanim idle dur:1s\n  .c at:key(0 10),0\n  .c a:t\n  .c rot:key(0 90 dur:500ms)\ncircle 4 at:0,0 name:c\nif clip == idle\n  play idle\n",
+    );
+    near(at(node(&s, "c")), (5.0, 0.0));
+}
+
+const LID_LIB: &str = "\
+def eye lid:0
+  if lid >= 1
+    circle 2 name:shut
+  else
+    circle 4 name:open
+";
+
+#[test]
+fn a_def_may_not_branch_on_a_patched_param() {
+    for play in ["play blink", "play blink start:5s"] {
+        let ev = run_with(
+            &format!(
+                "@artboard 40x40\n@target t.png clip:blink\nuse parts {{ eye }}\neye lid:.6 name:eye\nanim blink dur:200ms\n  .eye lid:key(.6 1 .6)\nif clip == blink\n  {play}\n"
+            ),
+            &[("lib/parts.ramo", LID_LIB)],
+        );
+        assert_eq!(e0345(&ev), [("lib/parts.ramo".to_string(), 2)], "{play}");
+        let d = ev.diagnostics.iter().find(|d| d.code == "E0345").unwrap();
+        assert!(d.message.contains("`if`"), "{d}");
+        assert!(
+            d.notes.iter().any(|n| n.contains("`lid:`") && n.contains("anim `blink`") && n.contains("art/t.ramo:6")),
+            "{d}"
+        );
+    }
+}
+
+#[test]
+fn a_gif_reports_a_patched_branch_once_for_every_instance() {
+    let p = project(&[
+        (
+            "art/t.ramo",
+            "@artboard 40x40\n@target t.gif bg:#ffffff dur:1s fps:4\nuse parts { eye }\neach s in [-1 1]\n  eye lid:.6 at:20+8*s,20 name:eye\nanim blink dur:200ms\n  .eye lid:key(.6 1 .6)\nplay blink\n",
+        ),
+        ("lib/parts.ramo", LID_LIB),
+    ]);
+    let sampled = crate::sample(&p, &plan(&p).jobs[0]);
+    let hits: Vec<&Diagnostic> = sampled.diagnostics.iter().filter(|d| d.code == "E0345").collect();
+    assert_eq!(hits.len(), 1, "{}", show(&sampled.diagnostics));
+    assert!(hits[0].notes.iter().any(|n| n.starts_with("also in ")), "{}", hits[0]);
+}
+
+#[test]
+fn a_patched_param_may_feed_a_value_position() {
+    let s = scene(
+        "@artboard 40x40\n@target t.png t:100ms\ndef eye lid:0\n  circle 4 a:1-lid name:white\n  circle 2 at:lid*10,0 fill:#000000 name:pupil\neye lid:.6 name:eye\nanim blink dur:200ms\n  .eye lid:key(.6 1 .6)\nplay blink\n",
+    );
+    near(at(node(&s, "eye.pupil")), (10.0, 0.0));
+}
+
+#[test]
+fn time_follows_a_let_and_a_fn_into_a_branch() {
+    let cases = [
+        ("def eye lid:0\n  let shut = lid >= 1\n  if shut\n    circle 2\n", 5),
+        ("fn shut(x) = x >= 1\ndef eye lid:0\n  if shut(lid)\n    circle 2\n", 5),
+        ("def eye lid:0 shut:lid>=1\n  if shut\n    circle 2\n", 4),
+        ("def eye lid:0\n  if (if lid >= 1 then 1 else 0) == 1\n    circle 2\n", 4),
+    ];
+    for (def, line) in cases {
+        let ev = run_with(
+            &format!("@artboard 40x40\n@target t.png\n{def}eye name:eye\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n"),
+            &[],
+        );
+        assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), line)], "{def}");
+    }
+}
+
+#[test]
+fn a_rebound_name_sheds_its_patch() {
+    let ev = run_with(
+        "@artboard 40x40\n@target t.png\ndef eye lid:0\n  circle 4 a:lid\n  let lid = 1\n  if lid >= 1\n    circle 2\neye name:eye\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n",
+        &[],
+    );
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn structure_from_a_patched_param_is_e0345_at_the_sink() {
+    let cases = [
+        ("def row n:3\n  repeat n step:4,0\n    circle 1\n", "n:key(1 5)", 4, "`repeat` count"),
+        ("def row n:2x2\n  grid n gap:2\n    circle 1\n", "n:key(2x2 3x3)", 4, "`grid` count"),
+        ("def row n:3\n  each i in 0..n\n    circle 1 at:i*4,0\n", "n:key(1 5)", 4, "`each`"),
+        ("def row k:1\n  blob 4 seed:k wobble:.2\n", "k:key(1 5)", 4, "`seed:`"),
+        ("def row d:\"M0 0 L4 0\"\n  path d\n", "d:\"M0 0 L8 0\"", 4, "`path`"),
+        ("def dot\n  circle 1\ndef box\n  rect 2x2\ndef row part:dot\n  part\n", "part:box", 8, "`part`"),
+        ("anim nod dur:1s\n  .c at:0,key(0 2)\ndef dot\n  circle 2 name:c\ndef row k:0\n  dot name:d\n    play nod start:k\n", "k:key(0 1)", 9, "`start:`"),
+    ];
+    for (def, patch, line, what) in cases {
+        let ev = run_with(
+            &format!("@artboard 40x40\n@target t.png\n{def}row name:row\nanim go dur:1s\n  .row {patch}\nplay go\n"),
+            &[],
+        );
+        assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), line)], "{def}");
+        let d = ev.diagnostics.iter().find(|d| d.code == "E0345").unwrap();
+        assert!(d.message.contains(what), "{def}: {d}");
+    }
+}
+
+#[test]
+fn a_stamp_block_may_not_branch_on_a_patched_arg() {
+    const DOTS: &str = "stamp dots spacing:5 k:0\n  if k >= 1\n    circle 1\n";
+    let cases = [
+        (format!("{DOTS}def eye lid:0\n  curve 0,0 20,0 stroke:#000000,1 stamp:dots(k:lid)\n"), 4, "`if`"),
+        (format!("{DOTS}def eye lid:0\n  let s = dots(k:lid*3)\n  curve 0,0 20,0 stroke:#000000,1 stamp:s\n"), 4, "`if`"),
+        ("stamp dots count:3\n  circle 1\ndef eye lid:0\n  curve 0,0 20,0 stroke:#000000,1 stamp:dots(count:lid+1)\n".into(), 6, "`count:`"),
+        ("stamp dots spacing:5\n  circle 1\ndef eye lid:0\n  curve 0,0 20,0 stroke:#000000,1 stamp:dots(spacing:lid+5)\n".into(), 6, "`spacing:`"),
+        ("stamp dots spacing:k k:5\n  circle 1\ndef eye lid:0\n  curve 0,0 20,0 stroke:#000000,1 stamp:dots(k:lid+5)\n".into(), 3, "`spacing:`"),
+    ];
+    for (def, line, what) in cases {
+        let ev = run_with(
+            &format!("@artboard 40x40\n@target t.png\n{def}eye name:eye\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n"),
+            &[],
+        );
+        assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), line)], "{def}");
+        let d = ev.diagnostics.iter().find(|d| d.code == "E0345").unwrap();
+        assert!(d.message.contains(what), "{def}: {d}");
+        assert!(d.notes.iter().any(|n| n.contains("`lid:`")), "{def}: {d}");
+    }
+}
+
+#[test]
+fn a_stamp_built_in_a_patch_value_carries_time_into_its_block() {
+    let src = |k: &str| format!("@artboard 40x40\n@target t.png\nstamp dots spacing:5 k:0\n  if k >= 1\n    circle 1\ndef eye s:dots\n  curve 0,0 20,0 stroke:#000000,1 stamp:s\neye name:eye\nanim blink dur:1s\n  .eye s:dots(k:{k})\nplay blink\n");
+    for k in ["t*2", "key(0 1)"] {
+        let ev = run_with(&src(k), &[]);
+        assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), 4)], "{k}");
+    }
+    let ev = run_with(&src("2"), &[]);
+    assert!(ev.diagnostics.iter().all(|d| d.code != "E0345"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_constant_patch_that_wins_sheds_the_time_it_replaces() {
+    for (body, patch) in [("outer name:o\n    .in n:lid", ".o.in n:0"), ("inner n:lid name:in", ".in n:0")] {
+        let ev = run_with(
+            &format!("@artboard 40x40\n@target t.png\ndef inner n:0\n  if n >= 1\n    circle 2\ndef outer\n  inner name:in\ndef eye lid:0\n  {body}\neye name:eye\n  {patch}\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n"),
+            &[],
+        );
+        assert!(ev.diagnostics.iter().all(|d| d.code != "E0345"), "{body}\n{}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn a_patch_in_an_instance_block_carries_a_patched_param() {
+    let ev = run_with(
+        "@artboard 40x40\n@target t.png\ndef inner n:0\n  if n >= 1\n    circle 2\ndef outer\n  inner name:in\ndef eye lid:0\n  outer name:o\n    .in n:lid\neye name:eye\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n",
+        &[],
+    );
+    assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), 4)]);
+    let d = ev.diagnostics.iter().find(|d| d.code == "E0345").unwrap();
+    assert!(d.message.contains("`if`"), "{d}");
+    assert!(d.notes.iter().any(|n| n.contains("`lid:`") && n.contains("art/t.ramo:13")), "{d}");
+}
+
+#[test]
+fn an_alias_keeps_the_patch_on_its_positional_argument() {
+    const D: &str = "@artboard 40x40\n@target t.png\ndef d a:0 b:0\n  if {guard} >= 1\n    circle 2\ndef d2 = d a:5\ndef eye lid:0\n  d2 lid name:in\neye name:eye\nanim blink dur:200ms\n  .eye lid:key(0 1)\nplay blink\n";
+    let ev = run_with(&D.replace("{guard}", "b"), &[]);
+    assert_eq!(e0345(&ev), [("art/t.ramo".to_string(), 4)]);
+    let ev = run_with(&D.replace("{guard}", "a"), &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
 }
 
 #[test]
@@ -6223,7 +6475,7 @@ fn a_failure_in_a_def_body_is_reported_once_for_every_instance() {
 
 #[test]
 fn a_gif_names_each_failing_loop_copy_once() {
-    let src = "@artboard 20x20\n@target t.gif bg:#ffffff dur:1s fps:4\ndef dot k:0\n  circle 2\n  assert t > k\neach i in 0..3\n  dot k:i*.25 name:d\n";
+    let src = "@artboard 20x20\n@target t.gif bg:#ffffff dur:1s fps:4\nanim slide dur:1s\n  .c at:key(0 4 ease:linear),0\ndef dot k:0\n  circle 2 at:0,0 name:c\n  assert @c.cx > k\neach i in 0..3\n  dot k:i*1.5 name:d\n    play slide\n";
     let p = project(&[("art/t.ramo", src)]);
     let plan = plan(&p);
     let sampled = crate::sample(&p, &plan.jobs[0]);
