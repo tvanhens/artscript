@@ -22,8 +22,8 @@ baseline gets a warning.
 
 Run it on a pull request
 
-Comment `@artbench` on the pull request. To use a different model, add it, for example `@artbench
-model=claude-sonnet-5-5`. Only owners, members, and collaborators can start a run. The workflow
+Comment `@artbench` on the pull request. To use a different model, add it, for example
+`@artbench model=claude-sonnet-5-5`. Only owners, members, and collaborators can start a run. The workflow
 posts the summary as a comment and uploads the art and `report.json` as an artifact.
 
 GitHub runs a workflow for a plain PR comment only from the default branch. Until `artbench.yml`
