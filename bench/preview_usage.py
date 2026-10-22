@@ -2,7 +2,19 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow==11.3.0"]
 # ///
-"""Read-only preview evidence, counted per command event rather than invocation."""
+"""Read-only preview evidence, counted per command event rather than invocation.
+
+Inspect preview use in captured author traces with:
+
+  uv run bench/preview_usage.py bench/out/paired/round-01
+
+The report separates command events containing preview invocations, structured preview receipts,
+and retained PNGs. It reads incomplete runs too. A command event can contain several invocations.
+Shell recognition is conservative, and events containing heredocs or here-strings remain
+unobserved. Missing events do not establish non-use. Image-viewer calls are not exposed by the
+current author trace, so viewing remains unknown. Agent prose does not count as evidence. Verify
+the bundle separately before reporting adoption from a completed run.
+"""
 
 import argparse
 import json
@@ -161,7 +173,7 @@ def analyze(bundle: Path) -> dict:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("bundle", type=Path)
     args = parser.parse_args()
     print(json.dumps(analyze(args.bundle.resolve()), indent=2))

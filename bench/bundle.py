@@ -2,7 +2,21 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow==11.3.0"]
 # ///
-"""Verify portable experiment receipts and record comparable benchmark history."""
+r"""Verify portable experiment receipts and record comparable benchmark history.
+
+  uv run bench/bundle.py record bench/out/paired/round-01 \
+    --out bench/history/round-01.json
+  uv run bench/bundle.py history bench/history/*.json
+
+History records are immutable compact JSON files. Recording requires a verified, complete strict
+run. Keep records outside the run bundle. Groups match the protocol, suite, compute settings and
+environment. Fixed-image runs must share the reference fingerprint. Fresh pairs must share the
+baseline skill and binary. Candidate hashes may differ. Compare paired candidate-minus-reference
+deltas within a group. Absolute judge scores from different paired contexts or unmatched baselines
+are not a trend.
+
+For combining disjoint prompt batches, see `uv run bench/combine_paired.py --help`.
+"""
 from __future__ import annotations
 
 import argparse
@@ -177,7 +191,7 @@ def history(paths: list[Path]) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="action", required=True)
     for action in ("seal", "verify"):
         sub.add_parser(action).add_argument("root", type=Path)

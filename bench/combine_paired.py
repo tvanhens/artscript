@@ -2,7 +2,14 @@
 # requires-python = ">=3.11"
 # dependencies = ["pillow==11.3.0"]
 # ///
-"""Recompute and combine sealed evaluations over disjoint prompt batches."""
+"""Recompute and combine sealed evaluations over disjoint prompt batches.
+
+  uv run bench/combine_paired.py first/run second/run --out bench/out/paired/combined/report.json
+
+The command verifies each source bundle and recomputes its report. All protocol fields except the
+suite hash must match, as must both treatments. Duplicate prompt IDs are rejected. A combined
+report is an analysis artifact, not a new sealed run or history entry.
+"""
 import argparse
 import json
 from pathlib import Path
@@ -41,7 +48,7 @@ def combine(paths: list[Path]) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("reports", nargs="+", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
