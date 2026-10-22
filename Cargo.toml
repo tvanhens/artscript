@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/syntax", "crates/ir", "crates/brush", "crates/render", "crates/eval", "crates/cli"]
+members = ["crates/syntax", "crates/ir", "crates/geom", "crates/brush", "crates/render", "crates/eval", "crates/cli"]
 
 [workspace.package]
 version = "0.4.0"
@@ -13,7 +13,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ramose-syntax = { path = "crates/syntax" }
 ramose-ir = { path = "crates/ir" }
-ramose-brush = { path = "crates/brush" }
+ramose-geom = { path = "crates/geom" }
+ramose-brush = { path = "crates/brush", default-features = false }
 ramose-render = { path = "crates/render" }
 ramose-eval = { path = "crates/eval" }
 

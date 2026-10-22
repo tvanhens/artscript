@@ -1,9 +1,8 @@
 mod common;
 
-use ramose_ir::{
-    Cap, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Rect, Stroke,
-};
+use ramose_geom::NodeGeom;
+use ramose_ir::{Cap, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Node, NodeKind, Paint, Stroke};
+use skia_safe::{Matrix, Path, Rect};
 use skia_safe::PathBuilder;
 use ramose_render::{Backend, render_rgba};
 use common::{color, effect, scene, solid};

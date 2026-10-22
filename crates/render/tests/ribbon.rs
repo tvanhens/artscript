@@ -6,7 +6,9 @@ mod common;
 use std::sync::Arc;
 
 use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
-use ramose_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Path, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
+use ramose_geom::ToIr;
+use ramose_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
+use skia_safe::Path;
 use ramose_render::{Backend, gpu_available, render_png};
 use common::{color, pixel, red, scene, solid};
 
@@ -220,7 +222,7 @@ fn the_normal_points_away_from_the_spine_whatever_the_taper() {
 fn the_normal_is_in_the_local_frame_of_a_rotated_stroke() {
     let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, 6.0, 1.0, 0.0, 0.0)];
     let mut node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
-    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0));
+    node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0)).to_ir();
     let png = render_png(&scene(80.0, 80.0, vec![node]), 1.0, Backend::Cpu).unwrap();
     assert_normal(&png, (43, 40), [0.0, -1.0]);
     assert_normal(&png, (36, 40), [0.0, 1.0]);

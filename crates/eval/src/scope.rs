@@ -5,7 +5,9 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc, Weak};
 
-use ramose_ir::{Matrix, Node, NodeKind, Path, Point, Rect};
+use ramose_geom::{NodeGeom, ShapeGeom, ToSk};
+use ramose_ir::{Node, NodeKind};
+use skia_safe::{Matrix, Path, Point, Rect};
 use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 
 use crate::geom;
@@ -498,7 +500,7 @@ fn geom_bounds(node: &Node, parent_world: &Place, after: &Matrix) -> Option<Rect
     let world = parent_world.inner_node(node);
     match &node.kind {
         NodeKind::Shape(s) => (!s.geometry.is_empty())
-            .then(|| world.map_rect_then(s.geometry.compute_tight_bounds(), after)),
+            .then(|| world.map_rect_then(s.geometry.to_sk().compute_tight_bounds(), after)),
         NodeKind::Group { children, .. } => children
             .iter()
             .filter_map(|c| geom_bounds(c, &world, after))

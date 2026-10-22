@@ -1,6 +1,8 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-use ramose_ir::{Axis, MaskSource, Matrix, Node, NodeKind, Rect, WarpStage};
+use ramose_geom::{NodeGeom, ShapeGeom, WarpGeom};
+use ramose_ir::{Axis, MaskSource, Node, NodeKind, WarpStage};
+use skia_safe::{Matrix, Rect};
 use ramose_syntax::ast::{
     BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
     Span, SwatchKind,
@@ -964,11 +966,12 @@ pub fn warp_cut(scene: &ramose_ir::Scene, manifest: &Manifest, file: &str) -> Ve
     scene.children.iter().for_each(|c| nodes(c, &mut all));
     let mut out = Vec::new();
     for n in all {
-        for stage in n.warp.stages() {
+        let cuts = n.warp.cuts();
+        for (i, stage) in n.warp.stages().iter().enumerate() {
             let WarpStage::Cylinder(c) = &stage.kind else {
                 continue;
             };
-            let strips = stage.cut();
+            let strips: Vec<Rect> = cuts.iter().filter(|(j, _)| *j == i).map(|(_, r)| *r).collect();
             if strips.is_empty() {
                 continue;
             }

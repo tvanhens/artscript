@@ -3,7 +3,9 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use ramose_ir::{Effect, EffectOp, MaskSource, Node, NodeKind, Paint, Rect, Scene};
+use ramose_geom::{NodeGeom, ShapeGeom, union_bounds};
+use ramose_ir::{Effect, EffectOp, MaskSource, Node, NodeKind, Paint, Scene};
+use skia_safe::Rect;
 
 use crate::place::Place;
 use crate::value::num;
@@ -151,7 +153,7 @@ fn fold(set: &[Node], world: &Place, depth: usize, seeded: &BTreeSet<String>, ou
     let pad = "  ".repeat(depth);
     let index = |n: &Node| n.path.rsplit_once('.').map_or("", |(_, i)| i).to_string();
     let _ = write!(out, "{pad}{}.{}..{}  stamp x{}", set_of(&first.path), index(first), index(last), set.len());
-    if let Some(b) = ramose_ir::union_bounds(set) {
+    if let Some(b) = union_bounds(set) {
         let _ = write!(out, "  {}", bounds_text(world.map_rect(b)));
     }
     let _ = writeln!(out, "  ({})", first.origin);
@@ -172,7 +174,7 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
 }
 
 /// Node ink bounds in canvas units, including its clip and mask, excluding effects.
-pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<ramose_ir::Rect> {
+pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<Rect> {
     fn find<'a>(nodes: impl Iterator<Item = &'a Node>, place: &Place, path: &str) -> Option<Rect> {
         for node in nodes {
             if node.path == path {
@@ -187,11 +189,11 @@ pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<ramose_ir::Re
     find(scene.children.iter(), &Place::identity(), path.trim_start_matches('@'))
 }
 
-fn subtree_bounds(node: &Node, parent: &Place, clips: &[ramose_ir::Path]) -> Result<Option<Rect>, ()> {
+fn subtree_bounds(node: &Node, parent: &Place, clips: &[skia_safe::Path]) -> Result<Option<Rect>, ()> {
     let place = parent.inner_node(node);
     let mut clips = clips.to_vec();
     clips.extend(node.kept_bounds().map(|rect| {
-        place.map_path(&ramose_ir::Path::rect(rect, None), crate::scope::FLATTEN_TOL)
+        place.map_path(&skia_safe::Path::rect(rect, None), crate::scope::FLATTEN_TOL)
     }));
     let (own, children) = match &node.kind {
         NodeKind::Group { children, .. } => (None, children.as_slice()),
@@ -199,7 +201,7 @@ fn subtree_bounds(node: &Node, parent: &Place, clips: &[ramose_ir::Path]) -> Res
     };
     let mut bounds = None;
     if let Some(own) = own {
-        let mut path = place.map_path(&ramose_ir::Path::rect(own, None), crate::scope::FLATTEN_TOL);
+        let mut path = place.map_path(&skia_safe::Path::rect(own, None), crate::scope::FLATTEN_TOL);
         for clip in &clips {
             path = skia_safe::op(&path, clip, skia_safe::PathOp::Intersect).ok_or(())?;
         }

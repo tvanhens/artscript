@@ -524,6 +524,7 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
+ "skia-safe",
  "toml 0.8.23",
 ]
 
@@ -539,6 +540,7 @@ name = "ramose-eval"
 version = "0.4.0"
 dependencies = [
  "ramose-brush",
+ "ramose-geom",
  "ramose-ir",
  "ramose-render",
  "ramose-syntax",
@@ -549,11 +551,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ramose-geom"
+version = "0.4.0"
+dependencies = [
+ "ramose-ir",
+ "skia-safe",
+]
+
+[[package]]
 name = "ramose-ir"
 version = "0.4.0"
 dependencies = [
  "ramose-brush",
- "skia-safe",
 ]
 
 [[package]]
@@ -565,6 +574,7 @@ dependencies = [
  "objc2",
  "objc2-metal",
  "ramose-brush",
+ "ramose-geom",
  "ramose-ir",
  "roxmltree 0.20.0",
  "skia-safe",

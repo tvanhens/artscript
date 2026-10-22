@@ -8,18 +8,15 @@
 //! non-affine matrix around recursive drawing: `warp::draw_warped` draws the node's content flat
 //! and draws only that finished image through the warp.
 
-use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
-use ramose_ir::{
-    Blend, Clip, Fill, Mask, MaskSource, Matrix, Node, NodeKind, Path, Ribbon, Scene, Shape, Stroke,
-    transform_scale,
-};
+use ramose_geom::{NodeGeom, ShapeGeom, ToIr, ToSk, transform_scale};
+use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Node, NodeKind, Ribbon, Scene, Shape, Stroke};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
-    Image, ImageFilter, Paint, Rect, RoundOut, RuntimeEffect, TileMode, image_filters,
+    Image, ImageFilter, Matrix, Paint, Path, Rect, RoundOut, RuntimeEffect, TileMode, image_filters,
 };
 
 use crate::gpu::{self, Backend};
@@ -54,7 +51,7 @@ impl<'a> SceneIndex<'a> {
     fn visit(&mut self, node: &'a Node, parent_world: Matrix) {
         self.nodes.insert(node.path.as_str(), node);
         self.parents.insert(node.path.as_str(), parent_world);
-        let world = parent_world * node.transform;
+        let world = parent_world * node.transform.to_sk();
         for mask in node.masks() {
             if let MaskSource::Nodes(inner) = &mask.source {
                 self.walk(inner, world);
@@ -201,7 +198,7 @@ pub fn bake_paint(scene: &Scene, node: &Node, bake_scale: f32, backend: Backend)
     }
     let ctx = DrawCtx::new(scene, backend);
     let mut drawn = node.clone();
-    drawn.transform = Matrix::new_identity();
+    drawn.transform = Matrix::new_identity().to_ir();
     drawn.opacity = 1.0;
     drawn.blend = Blend::Normal;
     drawn.clip = None;
@@ -211,9 +208,10 @@ pub fn bake_paint(scene: &Scene, node: &Node, bake_scale: f32, backend: Backend)
         shape.stamps.clear();
         shape.children.clear();
     }
-    let parent = ctx.index.parent_world(&node.path) * node.transform;
+    let node_transform = node.transform.to_sk();
+    let parent = ctx.index.parent_world(&node.path) * node_transform;
     // The same pixel density as a tile of the whole node, which is drawn in the parent's units.
-    bake(&ctx, &drawn, parent, bake_scale * transform_scale(&node.transform))
+    bake(&ctx, &drawn, parent, bake_scale * transform_scale(&node_transform))
 }
 
 /// `node` drawn on transparent in its parent's coordinates, where `parent` is the canvas from them.
@@ -263,8 +261,8 @@ pub fn draw_node(
 
     let parent_to_px = canvas.local_to_device_as_3x3();
     canvas.save();
-    canvas.concat(&node.transform);
-    let world = parent_world * node.transform;
+    canvas.concat(&node.transform.to_sk());
+    let world = parent_world * node.transform.to_sk();
 
     if let NodeKind::Shape(shape) = &node.kind
         && shape.reads_below()
@@ -332,7 +330,7 @@ fn draw_below(
     let soft = node.clip.as_ref().filter(|c| c.feather > 0.0);
     if let Some(clip) = hard {
         canvas.save();
-        canvas.clip_path(&clip.path, clip_op(clip), true);
+        canvas.clip_path(&clip.path.to_sk(), clip_op(clip), true);
     }
     let bounds = reach_px(node, ctx, parent_world, parent_to_px, &[]).and_then(|reach| {
         let px_to_local = canvas.local_to_device_as_3x3().invert()?;
@@ -482,9 +480,9 @@ pub(crate) fn path_extent(node: &Node) -> Option<Rect> {
         NodeKind::Shape(shape) => {
             let stroke = shape.stroke.as_ref().map_or(0.0, |s| s.width * 2.0);
             let pad = stroke + shape.blur * 3.0 + shape.mark_reach();
-            let mut r = shape.geometry.bounds().with_outset((pad, pad));
+            let mut r = shape.geometry.to_sk().bounds().with_outset((pad, pad));
             if let Some(ink) = shape.stroke.as_ref().and_then(|s| s.ink.as_ref()) {
-                r.join(ink.bounds().with_outset((pad, pad)));
+                r.join(ink.to_sk().bounds().with_outset((pad, pad)));
             }
             Some(r)
         }
@@ -546,7 +544,7 @@ pub(crate) fn draw_clipped(
     let soft = node.clip.as_ref().filter(|c| c.feather > 0.0);
     if let Some(clip) = hard {
         canvas.save();
-        canvas.clip_path(&clip.path, clip_op(clip), true);
+        canvas.clip_path(&clip.path.to_sk(), clip_op(clip), true);
     }
     let wrapped = soft.is_some() || node.mask.is_some();
     if soft.is_some() {
@@ -655,29 +653,29 @@ fn draw_shape(
 
 fn draw_fill(canvas: &Canvas, shape: &Shape, fill: &Fill, ctx: &DrawCtx<'_>, origin: &str, mode: &mut Mode<'_>) -> Result<(), RenderError> {
     if !fill.marks.is_empty() {
-        return mark::draw_area(canvas, &shape.geometry, fill, ctx, origin, Ink::Paint, mode);
+        return mark::draw_area(canvas, &shape.geometry.to_sk(), fill, ctx, origin, Ink::Paint, mode);
     }
     let mut paint = dithered(content_paint(&fill.paint, shape.blur, None)?, &canvas.local_to_device_as_3x3())?;
     if let Mode::Under = mode {
         paint.set_blend_mode(BlendMode::DstOver);
     }
-    canvas.draw_path(&shape.geometry, &paint);
+    canvas.draw_path(&shape.geometry.to_sk(), &paint);
     Ok(())
 }
 
 fn draw_stroke(canvas: &Canvas, shape: &Shape, stroke: &Stroke, ctx: &DrawCtx<'_>, origin: &str, mode: &mut Mode<'_>) -> Result<(), RenderError> {
     if let Some(ribbon) = &stroke.ribbon {
-        return mark::draw_ribbon(canvas, &shape.geometry, &stroke.paint, ribbon, ctx, origin, mode);
+        return mark::draw_ribbon(canvas, &shape.geometry.to_sk(), &stroke.paint, ribbon, ctx, origin, mode);
     }
     let (path, stroked) = match &stroke.ink {
-        Some(ink) => (ink, None),
-        None => (&shape.geometry, Some(stroke)),
+        Some(ink) => (ink.to_sk(), None),
+        None => (shape.geometry.to_sk(), Some(stroke)),
     };
     let mut paint = dithered(content_paint(&stroke.paint, shape.blur, stroked)?, &canvas.local_to_device_as_3x3())?;
     if let Mode::Under = mode {
         paint.set_blend_mode(BlendMode::DstOver);
     }
-    canvas.draw_path(path, &paint);
+    canvas.draw_path(&path, &paint);
     Ok(())
 }
 
@@ -699,12 +697,12 @@ fn draw_parts(canvas: &Canvas, shape: &Shape, ctx: &DrawCtx<'_>, world: Matrix, 
             canvas.clip_path(&path, ClipOp::Intersect, true);
             draw_children()
         }
-        ChildClip::Coverage(fill) => mark::with_coverage(canvas, &shape.geometry, fill, ctx, origin, draw_children),
+        ChildClip::Coverage(fill) => mark::with_coverage(canvas, &shape.geometry.to_sk(), fill, ctx, origin, draw_children),
     }
 }
 
 enum ChildClip<'a> {
-    Path(Cow<'a, Path>),
+    Path(Path),
     /// The coverage a brushed fill leaves: the stage coverages without the paint's alpha, so a
     /// translucent shape keeps its children opaque.
     Coverage(&'a Fill),
@@ -722,15 +720,16 @@ fn apply_clip_mask(canvas: &Canvas, clip: &Clip) -> Result<(), RenderError> {
     let rec = SaveLayerRec::default().paint(&paint);
     canvas.save_layer(&rec);
     let white = white_paint();
+    let path = clip.path.to_sk();
     if clip.invert {
         let mut bounds = canvas.local_clip_bounds().unwrap_or_else(huge_rect);
         bounds.outset((clip.feather * 3.0, clip.feather * 3.0));
         canvas.draw_rect(bounds, &white);
         let mut punch = white_paint();
         punch.set_blend_mode(BlendMode::DstOut);
-        canvas.draw_path(&clip.path, &punch);
+        canvas.draw_path(&path, &punch);
     } else {
-        canvas.draw_path(&clip.path, &white);
+        canvas.draw_path(&path, &white);
     }
     canvas.restore();
     Ok(())

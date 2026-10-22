@@ -8,7 +8,9 @@
 use std::cell::OnceCell;
 use std::rc::Rc;
 
-use ramose_ir::{Matrix, Node, Path, Point, Rect, Warp};
+use ramose_geom::{ToSk, WarpGeom};
+use ramose_ir::{Node, Warp};
+use skia_safe::{Matrix, Path, Point, Rect};
 
 #[derive(Clone)]
 pub(crate) struct Place(Vec<Link>);
@@ -46,7 +48,7 @@ impl Place {
     /// `node`'s content frame, with this as its parent frame: its resolved warp, then its
     /// transform.
     pub fn inner_node(&self, node: &Node) -> Place {
-        let mut place = self.inner(node.transform);
+        let mut place = self.inner(node.transform.to_sk());
         if !node.warp.is_none() {
             place
                 .0

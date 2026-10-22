@@ -7,7 +7,9 @@ use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::rc::Rc;
 
-use ramose_ir::{Blend, Matrix, Node, NodeKind, Paint, Point};
+use ramose_geom::ToSk;
+use ramose_ir::{Blend, Node, NodeKind, Paint};
+use skia_safe::{Matrix, Point, Rect};
 use ramose_syntax::Severity;
 use ramose_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
@@ -671,7 +673,7 @@ impl StampFrame<'_> {
             names.clone(),
             Lookup::own(names),
             Pending::empty(),
-            ramose_ir::Rect::new_empty(),
+            Rect::new_empty(),
             self.host.world.inner(place),
             self.sc.depth + 1,
         );
@@ -753,17 +755,18 @@ pub(crate) fn sample(paint: &Paint, p: P) -> Option<Rgba> {
     match paint {
         Paint::Solid(c) => Some(Rgba::from_ir(*c)),
         Paint::Linear { from, to, stops } => {
-            let d = *to - *from;
+            let (from, to) = (from.to_sk(), to.to_sk());
+            let d = to - from;
             let len2 = d.x * d.x + d.y * d.y;
             let t = if len2 > 0.0 { ((p.x - from.x) * d.x + (p.y - from.y) * d.y) / len2 } else { 0.0 };
             at(stops, t)
         }
         Paint::Radial { center, radius, stops } => {
-            let d = p - *center;
+            let d = p - center.to_sk();
             at(stops, if *radius > 0.0 { (d.x * d.x + d.y * d.y).sqrt() / radius } else { 0.0 })
         }
         Paint::Conic { center, start_deg, stops } => {
-            let d = p - *center;
+            let d = p - center.to_sk();
             let deg = d.y.atan2(d.x).to_degrees() - start_deg;
             at(stops, deg.rem_euclid(360.0) / 360.0)
         }

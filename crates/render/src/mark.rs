@@ -10,9 +10,9 @@
 use std::collections::HashMap;
 
 use ramose_brush::Seeds;
-use ramose_ir::{AreaMark, Fill, Paint as IrPaint, Path, Ribbon, Stage};
+use ramose_ir::{AreaMark, Fill, Paint as IrPaint, Ribbon, Stage};
 use skia_safe::{
-    BlendMode, Blender, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, RoundOut,
+    BlendMode, Blender, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, Path, RoundOut,
     RuntimeEffect, SamplingOptions, Shader, TileMode, color_filters, runtime_effect::ChildPtr, shaders,
 };
 

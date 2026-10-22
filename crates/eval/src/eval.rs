@@ -6,9 +6,11 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 
 use ramose_ir::{
-    Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Matrix, Node, NodeKind, Paint, Path,
-    Point, Rect, Shape, Stroke, Warp, WarpError,
+    Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Node, NodeKind, Paint, Shape, Stroke,
+    Warp,
 };
+use ramose_geom::{NodeGeom, ToIr, ToSk, WarpError, WarpGeom, union_bounds};
+use skia_safe::{Matrix, Path, Point, Rect};
 use ramose_syntax::ast::{
     self, BinOp, Decl, DeclKind, DefItem, Draw, DrawBody, DrawItem, Expr, File, Item, Named, Scene,
     SceneKind, Span, Swatch, SwatchKind, UnOp,
@@ -695,7 +697,7 @@ pub(crate) fn new_node(path: String, origin: String, transform: Matrix, kind: No
     Node {
         path,
         origin,
-        transform,
+        transform: transform.to_ir(),
         warp: Warp::default(),
         opacity: 1.0,
         blend: Blend::Normal,
@@ -2388,7 +2390,7 @@ impl<'a> Evaluator<'a> {
                 let sil = world.unmap_path(&r.silhouette());
                 inner.frame = geom::bounds(&sil);
                 clip = Some(Clip {
-                    path: sil,
+                    path: sil.to_ir(),
                     feather: a.num("feather").unwrap_or(0.0) as f32,
                     invert: verb == "outside",
                 });
@@ -2550,7 +2552,7 @@ impl<'a> Evaluator<'a> {
                 record = Some(r);
             }
             let gb = match &node.kind {
-                NodeKind::Shape(s) => geom::bounds(&s.geometry),
+                NodeKind::Shape(s) => geom::bounds(&s.geometry.to_sk()),
                 _ => Rect::new_empty(),
             };
             body_frame = operand_frame.unwrap_or(gb);
@@ -2908,7 +2910,7 @@ impl<'a> Evaluator<'a> {
                     self.outside_copy(&r, sc)?;
                     let geometry = world.unmap_path(&r.silhouette());
                     let shape = Shape {
-                        geometry,
+                        geometry: geometry.to_ir(),
                         fill: Some(IrFill::plain(Paint::Solid(
                             Rgba {
                                 r: 1.0,
@@ -3035,7 +3037,7 @@ impl<'a> Evaluator<'a> {
         for n in originals {
             let mut m = n.clone();
             identity::reflect(&mut m);
-            m.transform = Matrix::scale(flip) * n.transform;
+            m.transform = (Matrix::scale(flip) * n.transform.to_sk()).to_ir();
             out.push(m);
         }
         out
@@ -3138,7 +3140,7 @@ impl<'a> Evaluator<'a> {
             inner.env.push(("i".into(), Value::Num(fi)));
             inner.world = sc.world.inner(copy_m);
             for mut node in self.eval_block_nodes(body.scenes(), &mut inner) {
-                node.transform = copy_m * node.transform;
+                node.transform = (copy_m * node.transform.to_sk()).to_ir();
                 out.push(node);
             }
         }
@@ -3189,7 +3191,7 @@ impl<'a> Evaluator<'a> {
                             }));
                         }
                         let nodes = self.eval_block_nodes(body.scenes(), &mut inner);
-                        let b = ramose_ir::union_bounds(&nodes).unwrap_or(Rect::new_empty());
+                        let b = union_bounds(&nodes).unwrap_or(Rect::new_empty());
                         let p = (b.width() as f64 + gap, b.height() as f64 + gap);
                         pitch = Some(p);
                         let t = cell_at(p, row, col);
@@ -3198,7 +3200,7 @@ impl<'a> Evaluator<'a> {
                     }
                 };
                 for mut n in nodes {
-                    n.transform = t * n.transform;
+                    n.transform = (t * n.transform.to_sk()).to_ir();
                     out.push(n);
                 }
             }
@@ -3596,7 +3598,7 @@ impl<'a> Evaluator<'a> {
         if width.is_none() {
             return Ok((
                 Shape {
-                    geometry,
+                    geometry: geometry.to_ir(),
                     fill,
                     stroke: None,
                     blur,
@@ -3616,7 +3618,7 @@ impl<'a> Evaluator<'a> {
             });
             return Ok((
                 Shape {
-                    geometry,
+                    geometry: geometry.to_ir(),
                     fill,
                     stroke: Some(Stroke {
                         paint,
@@ -3624,7 +3626,7 @@ impl<'a> Evaluator<'a> {
                         cap: Cap::Round,
                         join: Join::Round,
                         dash: Vec::new(),
-                        ink,
+                        ink: ink.as_ref().map(ToIr::to_ir),
                         ribbon: Some(ribbon),
                     }),
                     blur,
@@ -3647,7 +3649,7 @@ impl<'a> Evaluator<'a> {
                 .ok_or_else(|| fail("E0320", "stroke color must be a color or gradient"))?;
             return Ok((
                 Shape {
-                    geometry,
+                    geometry: geometry.to_ir(),
                     fill,
                     stroke: Some(Stroke {
                         paint,
@@ -3655,7 +3657,7 @@ impl<'a> Evaluator<'a> {
                         cap: Cap::Round,
                         join: Join::Round,
                         dash: Vec::new(),
-                        ink: Some(outline),
+                        ink: Some(outline.to_ir()),
                         ribbon: None,
                     }),
                     blur,
@@ -3687,7 +3689,7 @@ impl<'a> Evaluator<'a> {
         };
         Ok((
             Shape {
-                geometry,
+                geometry: geometry.to_ir(),
                 fill,
                 stroke: Some(Stroke {
                     paint,
@@ -5603,7 +5605,7 @@ impl<'a> Evaluator<'a> {
         self.outside_copy(r, sc)?;
         let NodeKind::Shape(shape) = &node.kind else { unreachable!("one_shape checked the kind") };
         let [from, to] = fractions;
-        let contour = geom::edge(&shape.geometry, r.record.seam, from, to);
+        let contour = geom::edge(&shape.geometry.to_sk(), r.record.seam, from, to);
         let placed = r.record.parent_world.inner_node(node).map_path(&contour, crate::scope::FLATTEN_TOL);
         Ok(sc.world.unmap_path(&placed))
     }

@@ -5,9 +5,9 @@
 use std::f64::consts::PI;
 
 use skia_safe::path::Verb;
-use skia_safe::{PathBuilder, PathEffect, PathOp, RRect, StrokeRec, Vector};
+use skia_safe::{Path, PathBuilder, PathEffect, PathOp, Point, RRect, Rect, StrokeRec, Vector};
 
-use ramose_ir::{Path, Point, Rect, Ribbon, taper_ramp};
+use ramose_ir::{Ribbon, taper_ramp};
 
 use crate::seed::Rng;
 

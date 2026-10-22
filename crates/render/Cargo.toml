@@ -7,7 +7,8 @@ license.workspace = true
 [dependencies]
 skia-safe.workspace = true
 ramose-ir.workspace = true
-ramose-brush.workspace = true
+ramose-geom.workspace = true
+ramose-brush = { workspace = true, features = ["skia"] }
 gif = "0.13"
 color_quant = "1.1"
 

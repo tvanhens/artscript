@@ -4,7 +4,8 @@
 
 use std::rc::Rc;
 
-use ramose_ir::{Effect, EffectInput, EffectOp, Point, Rect, Sides};
+use ramose_ir::{Effect, EffectInput, EffectOp, Point, Sides};
+use skia_safe::Rect;
 use ramose_syntax::ast::{Expr, FxLine, MaskLine, Named, Span};
 
 use crate::brush::Slot;

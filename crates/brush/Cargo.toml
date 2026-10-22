@@ -4,4 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-skia-safe.workspace = true
+skia-safe = { workspace = true, optional = true }
+
+[features]
+default = ["skia"]
+# Compiles brush programs with Skia. The IR reads programs as data and leaves it off.
+skia = ["dep:skia-safe"]

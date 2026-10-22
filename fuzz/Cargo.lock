@@ -406,16 +406,17 @@ checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
 
 [[package]]
 name = "ramose-brush"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "skia-safe",
 ]
 
 [[package]]
 name = "ramose-eval"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "ramose-brush",
+ "ramose-geom",
  "ramose-ir",
  "ramose-syntax",
  "serde",
@@ -436,29 +437,37 @@ dependencies = [
 ]
 
 [[package]]
-name = "ramose-ir"
-version = "0.1.0"
+name = "ramose-geom"
+version = "0.4.0"
 dependencies = [
- "ramose-brush",
+ "ramose-ir",
  "skia-safe",
 ]
 
 [[package]]
+name = "ramose-ir"
+version = "0.4.0"
+dependencies = [
+ "ramose-brush",
+]
+
+[[package]]
 name = "ramose-render"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "color_quant",
  "gif",
  "objc2",
  "objc2-metal",
  "ramose-brush",
+ "ramose-geom",
  "ramose-ir",
  "skia-safe",
 ]
 
 [[package]]
 name = "ramose-syntax"
-version = "0.1.0"
+version = "0.4.0"
 dependencies = [
  "serde",
 ]

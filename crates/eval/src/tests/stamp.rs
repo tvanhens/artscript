@@ -3,6 +3,7 @@
 
 use std::collections::BTreeSet;
 
+use ramose_geom::{NodeGeom, ToSk};
 use ramose_ir::{Node, NodeKind, Paint, Scene};
 use ramose_syntax::Diagnostic;
 
@@ -57,7 +58,7 @@ fn solid(n: &Node) -> ramose_ir::Color {
 }
 
 fn x_positions(nodes: &[Node]) -> Vec<f32> {
-    nodes.iter().map(|n| (n.transform.translate_x() * 1000.0).round() / 1000.0).collect()
+    nodes.iter().map(|n| (n.transform.to_sk().translate_x() * 1000.0).round() / 1000.0).collect()
 }
 
 #[test]
@@ -89,7 +90,7 @@ fn the_block_binds_the_site_and_the_frame_follows_the_tangent() {
     assert!((b.center_y() - 3.75).abs() < 1e-3, "`u` is s / len: {b:?}");
     let first = &stamps(&s, "down")[0];
     let b = first.bounds().unwrap();
-    assert!((first.transform.translate_y() - 12.5).abs() < 1e-3);
+    assert!((first.transform.to_sk().translate_y() - 12.5).abs() < 1e-3);
     assert!((b.width() - 100.0).abs() < 1e-3 && (b.height() - 12.5).abs() < 1e-3, "x runs along the travel, so `len` lies along y: {b:?}");
 }
 
@@ -113,7 +114,7 @@ fn seed_on_the_host_pins_its_stamps_apart_and_moves_nothing_else() {
         format!("@target t.png 200x100\nuse garden {{ leaves }}\ncurve 0,30 100,30 stroke:#000000,2 stamp:leaves {seed} name:a\ncurve 0,70 100,70 stroke:#000000,2 stamp:leaves name:b\n")
     };
     let rots = |s: &Scene, path: &str| -> Vec<(f32, f32)> {
-        stamps(s, path).iter().map(|n| n.descendants().next().unwrap()).map(|leaf| (leaf.transform.scale_x(), leaf.transform.skew_y())).collect()
+        stamps(s, path).iter().map(|n| n.descendants().next().unwrap()).map(|leaf| (leaf.transform.to_sk().scale_x(), leaf.transform.to_sk().skew_y())).collect()
     };
     let base = ok(&src(""));
     let pinned = ok(&src("seed:7"));
@@ -134,7 +135,7 @@ fn references_reach_a_stamp_its_parts_and_its_measures() {
     let mid = at(node(&s, "mid"));
     assert!((mid.0 - cx).abs() < 1e-3 && (mid.1 - cy).abs() < 1e-3, "{mid:?} vs {cx},{cy}");
     let tip = at(node(&s, "tip"));
-    let leaf_world = leaf.transform * node(&s, "vine.leaves.3.leaf").transform;
+    let leaf_world = leaf.transform.to_sk() * node(&s, "vine.leaves.3.leaf").transform.to_sk();
     let anchor = leaf_world.map_point((12.0, 0.0));
     assert!((tip.0 - anchor.x).abs() < 1e-3 && (tip.1 - anchor.y).abs() < 1e-3, "{tip:?} vs {anchor:?}");
     let d = first("@target t.png 200x100\nuse garden { leaves }\ncurve 0,50 100,50 stroke:#000000,2 stamp:leaves name:vine\ncircle 2 at:@vine.leaves.40.cx,0 name:far\n", "E0350");
@@ -156,7 +157,7 @@ fn a_closed_contour_spreads_a_constant_spacing_evenly_and_a_varying_one_stops_sh
     let len = 2.0 * std::f32::consts::PI * 10.0;
     let even = stamps(&s, "even");
     assert_eq!(even.len() as f32, (len / 7.0).round());
-    let pos: Vec<(f32, f32)> = even.iter().map(|n| (n.transform.translate_x(), n.transform.translate_y())).collect();
+    let pos: Vec<(f32, f32)> = even.iter().map(|n| (n.transform.to_sk().translate_x(), n.transform.to_sk().translate_y())).collect();
     let gaps: Vec<f32> = (0..pos.len()).map(|i| {
         let (a, b) = (pos[i], pos[(i + 1) % pos.len()]);
         ((a.0 - b.0).powi(2) + (a.1 - b.1).powi(2)).sqrt()
@@ -165,7 +166,7 @@ fn a_closed_contour_spreads_a_constant_spacing_evenly_and_a_varying_one_stops_sh
     let mean = gaps.iter().sum::<f32>() / gaps.len() as f32;
     assert!(gaps.iter().all(|g| (g - mean).abs() < mean * 0.03), "even all the way round the seam: {gaps:?}");
     let walked = stamps(&s, "walked");
-    let pos: Vec<(f32, f32)> = walked.iter().map(|n| (n.transform.translate_x(), n.transform.translate_y())).collect();
+    let pos: Vec<(f32, f32)> = walked.iter().map(|n| (n.transform.to_sk().translate_x(), n.transform.to_sk().translate_y())).collect();
     let (first, last) = (pos[0], pos[pos.len() - 1]);
     let seam = ((first.0 - last.0).powi(2) + (first.1 - last.1).powi(2)).sqrt();
     assert!(seam > 3.5, "no doubled stamp at the seam: {seam}");
