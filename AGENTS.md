@@ -18,6 +18,8 @@ Write a rule into the card or a topic when you want that behavior. Accidental be
 
 A PR description records why its design choice was made. Replace an earlier choice when a better design needs it, and name the choice it replaces in the PR description. A show-me-your-work decision log stays local and out of git.
 
+The only docs are the ones `ramose docs` prints. A design decision lands in the PR that implements it, updates what `ramose docs` prints in that same PR, and records its reasoning in the PR description. Do not add a document the CLI cannot print.
+
 ### Inputs are the author's own files
 
 - ramose is a local authoring CLI. Its inputs are the author's own `.ramo` files and manifest, not untrusted uploads. Do not flag memory or CPU exhaustion that needs a pathological input, such as an extreme `fps`, `dur`, canvas size, or frame count. Do not ask for new per-resource caps, budgets shared across workers, or streaming rewrites to survive such inputs.
@@ -42,10 +44,24 @@ A PR description records why its design choice was made. Replace an earlier choi
 
 ## When the `visual` test fails
 
-- `cargo test -p ramose --test visual` compares the catalog with its goldens. A failure writes a `golden | actual | diff` sheet for each changed golden to `target/visual-diff/`. CI uploads the sheets as the `visual-diff` artifact.
+- `cargo test -p ramose --test visual` builds `catalog/` on the CPU backend and compares a PNG view of every output with its golden in `catalog/golden/`. A PNG output is its own view. A GIF view is a strip of its frames, eight to a row, with a gray gap between frames. An SVG view is the SVG rasterized by resvg.
+- A view matches its golden when at most one pixel in 1000 changed. A pixel changed when one of its channels moved by more than 8. Skia rounds a little differently on each platform, so goldens blessed on macOS still match on Linux CI.
+- A failure writes a `golden | actual | diff` sheet for each changed golden to `target/visual-diff/`. The diff dims the pixels that match and paints changed pixels red. CI uploads the sheets as the `visual-diff` artifact.
 - Open every sheet. If a change is a regression, fix the code.
-- If every change is intended, run `RAMOSE_BLESS=1 cargo test -p ramose --test visual`, commit `catalog/golden/`, and name each changed golden and the reason in the PR description.
-- A new language feature gets a fixture. See `catalog/README.md`.
+- If every change is intended, run `RAMOSE_BLESS=1 cargo test -p ramose --test visual`, commit `catalog/golden/`, and name each changed golden and the reason in the PR description. Bless rewrites a golden when any of its pixels changed, even when the check would pass, and removes goldens that no output makes. Open each changed golden before you commit it.
+- To build part of the catalog, set `RAMOSE_VISUAL_ONLY` to an `--only` glob, such as `RAMOSE_VISUAL_ONLY='art/fx/**'`. A filtered run never removes goldens.
+
+## Write a catalog fixture
+
+A new language feature gets a fixture.
+
+- Put one feature in one file at `catalog/art/<area>/<feature>.ramo`, with targets at `<area>/<feature>.<ext>`.
+- Start the file with a comment that says what the image must show: the cases, their order, their colors, and what makes each one correct. The reviewer judges the golden against this comment, without the code.
+- Show the cases of one feature side by side in one canvas, not in separate files. Label nothing. The comment names the cells by position.
+- Keep goldens small. A still is at most 256 on its long side, and 128 to 192 is usual. A GIF is at most 96x96, with 8 fps or less and 12 frames or less.
+- Add an `.svg` target only where the SVG writer draws the feature in its own way, such as gradients, masks, blends, and baked raster effects.
+- Use the `p` palette in `catalog/lib/palette/swatch.ramo`. The default background is paper, so `bg:` is only needed for a transparent case.
+- A fixture builds with no warnings and is formatted. Run `ramose fmt` on it.
 
 ## When `claude-review` fails
 
