@@ -73,3 +73,7 @@ A new language feature gets a fixture.
 - The check says "did not run" when the review crashed or was skipped. Rerun it the same way.
 - The check fails when the reviewer did not review every golden this PR changes. Rerun it the same way.
 - Do not resolve threads by hand or edit `.github/claude-review/` to get a pass.
+
+## Finishing a task
+
+Open a PR, then babysit it until it merges. Watch the checks, fix every failure, and answer review threads as the `claude-review` section says. Rebase onto origin/main whenever it moves or a conflict appears. A PR that was green once and then fell behind main is not done.
