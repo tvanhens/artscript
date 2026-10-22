@@ -2940,6 +2940,17 @@ fn a_gif_scale_two_refines_a_tapered_stroke() {
 }
 
 #[test]
+fn an_svg_samples_a_tapered_stroke_at_its_largest_scale() {
+    let points = |target: &str| {
+        let s = scene(&format!("@artboard 40x40\n@target {target}\ncurve 0,0 20,0 40,0 stroke:#111,4 taper:1 name:ink\n"));
+        let ink = shape(&s, "ink").stroke.as_ref().and_then(|st| st.ink.as_ref());
+        ink.expect("tapered ink").to_sk().count_points()
+    };
+    assert_eq!(points("t.svg scale:1,2"), points("t.png scale:2"), "the SVG's tiles bake at 2");
+    assert!(points("t.svg scale:1,2") > points("t.svg"));
+}
+
+#[test]
 fn project_is_send_sync() {
     fn assert_send_sync<T: Send + Sync>() {}
     assert_send_sync::<Project>();

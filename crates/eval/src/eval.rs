@@ -3620,7 +3620,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), stroke_marks);
             let ink = tapered.then(|| {
                 // The same 0.75 output pixel step as the unbrushed tapered outline below.
-                let px = (axis_scale(&world.flat()) * self.job.sample_scale).max(1e-6);
+                let px = (axis_scale(&world.flat()) * self.job.ink_scale()).max(1e-6);
                 geom::ribbon_ink(&geometry, &ribbon, 0.75 / px)
             });
             return Ok((
@@ -3648,7 +3648,7 @@ impl<'a> Evaluator<'a> {
             let ribbon = brush::ribbon(&spine, taper.unwrap_or((0.0, 0.0)), Vec::new());
             // 0.75 output pixels. The local step divides by the accumulated transform
             // scale and the target scale, so a unit-space stroke matches one drawn in pixels.
-            let px = (axis_scale(&world.flat()) * self.job.sample_scale).max(1e-6);
+            let px = (axis_scale(&world.flat()) * self.job.ink_scale()).max(1e-6);
             let outline = geom::ribbon_ink(&geometry, &ribbon, 0.75 / px);
             // The gradient spans the ink, not the spine.
             let ob = geom::bounds(&outline);

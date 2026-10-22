@@ -100,6 +100,16 @@ impl TargetJob {
         }
     }
 
+    /// Pixels per artboard unit this evaluation's tapered strokes sample at: `sample_scale`, and
+    /// for an SVG that times the largest `scale:`, the density its tiles bake at.
+    pub fn ink_scale(&self) -> f64 {
+        if self.outputs.iter().any(|o| o.format == Format::Svg) {
+            self.sample_scale * f64::from(self.tile_scale)
+        } else {
+            self.sample_scale
+        }
+    }
+
     /// Identifies the declaration and matrix cell, stable across builds.
     pub fn key(&self) -> String {
         let m: Vec<String> = self
