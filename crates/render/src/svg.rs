@@ -4,8 +4,8 @@
 
 use ramose_geom::{NodeGeom, ShapeGeom, ToSk};
 use ramose_ir::{
-    Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Join, Mask, MaskSource, Node, NodeKind,
-    Paint, Profile, Scene, Shape, Stop, Stroke,
+    Blend, Cap, Clip, Color, Effect, EffectInput, EffectOp, Framing, Join, Mask, MaskSource, Node,
+    NodeKind, Paint, Profile, Scene, Shape, Stop, Stroke,
 };
 use skia_safe::path::{Iter as PathIter, Verb};
 use skia_safe::{Matrix, Path, PathFillType, PathOp, Point, Rect};
@@ -20,6 +20,7 @@ use crate::RenderError;
 
 pub fn render_svg(
     scene: &Scene,
+    framing: &Framing,
     profile: Profile,
     bake_scale: f32,
     backend: Backend,
@@ -32,12 +33,24 @@ pub fn render_svg(
     if !below.is_empty() {
         return Err(RenderError::NoBackdrop(below));
     }
+    let view = framing.view(scene.view);
+    let (out_w, out_h) = (framing.out.w() * framing.scale, framing.out.h() * framing.scale);
+    let shown = view.rect_from_px(ramose_ir::Rect::new(0.0, 0.0, out_w, out_h)).to_sk();
+    let clipped = view.clip().is_some();
     let mut w = Writer { defs: String::new(), body: String::new(), backend };
     if let Some(bg) = scene.background {
-        w.body.push_str("  <rect width=\"");
-        w.body.push_str(&fmt_num(scene.width));
+        w.body.push_str("  <rect");
+        if shown.left != 0.0 || shown.top != 0.0 {
+            w.body.push_str(" x=\"");
+            w.body.push_str(&fmt_num(shown.left));
+            w.body.push_str("\" y=\"");
+            w.body.push_str(&fmt_num(shown.top));
+            w.body.push('"');
+        }
+        w.body.push_str(" width=\"");
+        w.body.push_str(&fmt_num(shown.width()));
         w.body.push_str("\" height=\"");
-        w.body.push_str(&fmt_num(scene.height));
+        w.body.push_str(&fmt_num(shown.height()));
         w.body.push_str("\" fill=\"");
         w.body.push_str(&rgb_hex(bg));
         w.body.push('"');
@@ -48,19 +61,44 @@ pub fn render_svg(
         }
         w.body.push_str("/>\n");
     }
+    let depth = if clipped {
+        let v = scene.view.to_sk();
+        w.defs.push_str(&format!(
+            "    <clipPath id=\"{VIEW_CLIP}\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"/></clipPath>\n",
+            fmt_num(v.left),
+            fmt_num(v.top),
+            fmt_num(v.width()),
+            fmt_num(v.height())
+        ));
+        w.body.push_str(&format!("  <g clip-path=\"url(#{VIEW_CLIP})\">\n"));
+        2
+    } else {
+        1
+    };
     for child in &scene.children {
-        w.node(scene, child, bake_scale, 1, &Pushed::default())?;
+        w.node(scene, child, bake_scale, depth, &Pushed::default())?;
+    }
+    if clipped {
+        w.body.push_str("  </g>\n");
     }
     let mut out = String::new();
     out.push_str("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"");
-    out.push_str(&fmt_num(scene.width));
+    out.push_str(&fmt_num(out_w));
     out.push_str("\" height=\"");
-    out.push_str(&fmt_num(scene.height));
-    out.push_str("\" viewBox=\"0 0 ");
-    out.push_str(&fmt_num(scene.width));
+    out.push_str(&fmt_num(out_h));
+    out.push_str("\" viewBox=\"");
+    out.push_str(&fmt_num(shown.left));
     out.push(' ');
-    out.push_str(&fmt_num(scene.height));
-    out.push_str("\">\n");
+    out.push_str(&fmt_num(shown.top));
+    out.push(' ');
+    out.push_str(&fmt_num(shown.width()));
+    out.push(' ');
+    out.push_str(&fmt_num(shown.height()));
+    out.push('"');
+    if shown != scene.view.to_sk() {
+        out.push_str(" preserveAspectRatio=\"none\"");
+    }
+    out.push_str(">\n");
     if !w.defs.is_empty() {
         out.push_str("  <defs>\n");
         out.push_str(&w.defs);
@@ -70,6 +108,10 @@ pub fn render_svg(
     out.push_str("</svg>\n");
     Ok(out)
 }
+
+/// A node's id is its path, where `-` comes only from a `verb~N` segment and is followed by
+/// digits, so `scene-view` never collides with a node id.
+const VIEW_CLIP: &str = "scene-view";
 
 struct Writer {
     defs: String,

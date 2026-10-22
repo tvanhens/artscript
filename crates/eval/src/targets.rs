@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ramose_ir::Profile;
+use ramose_ir::{Align, Edge, Fit, Framing, Profile, Rect, Size};
 use ramose_syntax::Diagnostic;
 use ramose_syntax::ast::{Directive, Expr, File, Span, UnOp};
 
@@ -19,7 +19,22 @@ pub struct OutputSpec {
     /// Relative to the manifest `out` directory.
     pub path: String,
     pub format: Format,
-    pub scale: f32,
+    /// The output's size and density, and how the artboard lands in it.
+    pub framing: Framing,
+}
+
+/// The space a file draws in: its size in artboard units, the same for every output.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Artboard {
+    pub size: Size,
+    /// The artboard crops a larger scene, so `off-artboard` stays quiet.
+    pub viewport: bool,
+}
+
+impl Artboard {
+    pub fn rect(self) -> Rect {
+        self.size.rect()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -53,39 +68,46 @@ pub struct TargetJob {
     pub clip: Option<String>,
     pub frame_t: f64,
     pub matrix: Vec<(String, MatrixValue)>,
-    pub size: (f32, f32),
+    pub artboard: Artboard,
     pub bg: Option<Expr>,
-    /// The canvas crops a larger scene, so `off-canvas` stays quiet for this target.
-    pub viewport: bool,
-    /// The `pivot:` expression, a point in canvas units. PNG and SVG targets only.
+    /// The `pivot:` expression, a point in artboard units. PNG and SVG targets only.
     pub pivot: Option<Expr>,
     /// The `palette:` expression: a palette or a palette module that `p` names for the whole scene.
     pub palette: Option<Expr>,
     pub profile: Profile,
-    /// Scale baked tiles and tapered strokes sample at: the target's highest scale (never below 1 for
-    /// an SVG). A PNG or GIF output samples at its own `scale:` instead.
-    pub bake_scale: f32,
+    /// Pixels per artboard unit this evaluation draws at, what the file reads as `scale`.
+    pub sample_scale: f64,
+    /// The largest `scale:`, never below 1.
+    pub tile_scale: f32,
     pub outputs: Vec<OutputSpec>,
 }
 
 impl TargetJob {
-    /// The scale `out` is drawn from: a PNG or GIF output's own `scale:`, else the job's `bake_scale`.
-    pub fn sample_scale(&self, out: &OutputSpec) -> f32 {
+    /// What the file reads as `scale` when it draws `out`: that output's pixels per artboard unit,
+    /// its fit zoom times its `scale:`.
+    pub fn draw_scale(&self, out: &OutputSpec) -> f64 {
+        let zoom = out.framing.view(self.artboard.rect()).zoom;
+        zoom.to_string().parse().unwrap_or(f64::from(zoom))
+    }
+
+    /// The scale baked tiles and tapered strokes sample at for `out`: a PNG or GIF samples at its
+    /// `draw_scale`, and an SVG at its zoom times the largest `scale:`.
+    pub fn bake_scale(&self, out: &OutputSpec) -> f32 {
+        let zoom = out.framing.view(self.artboard.rect()).zoom;
         match out.format {
-            Format::Png | Format::Gif => out.scale,
-            Format::Svg => self.bake_scale,
+            Format::Png | Format::Gif => zoom,
+            Format::Svg => zoom * self.tile_scale,
         }
     }
 
-    /// What the file reads as `scale`: a PNG or GIF output's own scale, which `evaluate_outputs` and
-    /// `sample_outputs` set as the job's `bake_scale`, and 1 for an SVG.
-    pub fn draw_scale(&self) -> f64 {
-        let scale = if self.outputs.iter().any(|o| o.format != Format::Svg) {
-            self.bake_scale
+    /// Pixels per artboard unit this evaluation's tapered strokes sample at: `sample_scale`, and
+    /// for an SVG that times the largest `scale:`, the density its tiles bake at.
+    pub fn ink_scale(&self) -> f64 {
+        if self.outputs.iter().any(|o| o.format == Format::Svg) {
+            self.sample_scale * f64::from(self.tile_scale)
         } else {
-            1.0
-        };
-        scale.to_string().parse().unwrap_or(f64::from(scale))
+            self.sample_scale
+        }
     }
 
     /// Identifies the declaration and matrix cell, stable across builds.
@@ -135,14 +157,25 @@ pub fn plan(project: &Project) -> Plan {
                 continue;
             }
         };
-        for d in file.directives.iter().filter(|d| d.name != "target") {
+        for d in file
+            .directives
+            .iter()
+            .filter(|d| !matches!(d.name.as_str(), "target" | "artboard"))
+        {
             diagnostics.push(
                 Diagnostic::error("E0208", d.span, format!("unknown directive `@{}`", d.name))
                     .in_file(path)
-                    .with_fix("the only directive in v0.1 is `@target <path> <W>x<H>`"),
+                    .with_fix("the directives are `@artboard <W>x<H>` and `@target <path>`"),
             );
         }
         if !is_entry(&file) {
+            for d in file.directives.iter().filter(|d| d.name == "artboard") {
+                diagnostics.push(
+                    Diagnostic::error("E0206", d.span, "a library has no artboard")
+                        .in_file(path)
+                        .with_fix("remove it, or add a `@target`"),
+                );
+            }
             continue;
         }
         if project.is_lib_file(path) {
@@ -157,8 +190,15 @@ pub fn plan(project: &Project) -> Plan {
             continue;
         }
         entries.push(path.clone());
+        let art = match artboard(&file) {
+            Ok(art) => art,
+            Err(diag) => {
+                diagnostics.push(diag.in_file(path));
+                continue;
+            }
+        };
         for d in file.directives.iter().filter(|d| d.name == "target") {
-            match expand(project, path, d) {
+            match expand(project, path, art, d) {
                 Ok(mut js) => jobs.append(&mut js),
                 Err(diag) => diagnostics.push(diag.in_file(path)),
             }
@@ -226,9 +266,131 @@ fn time_literal(e: &Expr) -> Option<f64> {
 
 const OUTPUT_VARS: [&str; 3] = ["scale", "w", "h"];
 
-const TARGET_KEYS: [&str; 10] = [
-    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot", "palette",
+const TARGET_KEYS: [&str; 12] = [
+    "scale", "as", "fps", "dur", "t", "clip", "bg", "profile", "pivot", "palette", "fit", "align",
 ];
+
+fn artboard(file: &File) -> Result<Artboard, Diagnostic> {
+    let mut lines = file.directives.iter().filter(|d| d.name == "artboard");
+    let Some(d) = lines.next() else {
+        let size = file
+            .directives
+            .iter()
+            .find(|d| d.name == "target")
+            .and_then(|d| match d.args.first() {
+                Some(Expr::Size(w, h)) => Some(format!("{}x{}", num(number(w)?), num(number(h)?))),
+                _ => None,
+            })
+            .unwrap_or_else(|| "512x512".to_string());
+        let span = file.directives.first().map(|d| d.span).unwrap_or_default();
+        return Err(
+            Diagnostic::error("E0206", span, "an entry file needs one `@artboard`")
+                .with_fix(format!("add `@artboard {size}`")),
+        );
+    };
+    if let Some(again) = lines.next() {
+        return Err(Diagnostic::error(
+            "E0206",
+            again.span,
+            format!("`@artboard` is already set at line {}", d.span.line),
+        )
+        .with_fix("remove this line"));
+    }
+    let bad_size = || {
+        Diagnostic::error("E0206", d.span, "`@artboard` needs a positive WxH size")
+            .with_fix("write `@artboard 512x512`")
+    };
+    let size = match (d.path.as_deref(), d.args.first()) {
+        (None, Some(Expr::Size(w, h))) => match (number(w), number(h)) {
+            (Some(w), Some(h)) => Size::new(w as f32, h as f32).ok_or_else(bad_size)?,
+            _ => return Err(bad_size()),
+        },
+        _ => return Err(bad_size()),
+    };
+    let mut viewport = false;
+    for arg in &d.args[1..] {
+        match arg {
+            Expr::Ident(w) if w == "viewport" => viewport = true,
+            Expr::Ident(w) => {
+                return Err(
+                    Diagnostic::error("E0206", d.span, format!("unknown artboard word `{w}`"))
+                        .with_fix("only the word `viewport` follows the size"),
+                );
+            }
+            _ => {
+                return Err(
+                    Diagnostic::error("E0206", d.span, "`@artboard` takes only the word `viewport` after the size")
+                        .with_fix("only the word `viewport` follows the size"),
+                );
+            }
+        }
+    }
+    if let Some(n) = d.named.first() {
+        return Err(
+            Diagnostic::error("E0206", d.span, format!("unknown artboard key `{}`", n.key))
+                .with_fix("only the word `viewport` follows the size"),
+        );
+    }
+    Ok(Artboard { size, viewport })
+}
+
+fn framing_keys(d: &Directive, sized: bool) -> Result<(Fit, Align), Diagnostic> {
+    let named = |k: &str| d.named.iter().find(|n| n.key == k).map(|n| &n.value);
+    let fit = match named("fit") {
+        None => Fit::Contain,
+        Some(Expr::Ident(w)) if w == "contain" => Fit::Contain,
+        Some(Expr::Ident(w)) if w == "cover" => Fit::Cover,
+        Some(Expr::Ident(w)) if w == "none" => Fit::None,
+        Some(e) => {
+            let word = match e {
+                Expr::Ident(w) => format!("unknown fit `{w}`"),
+                _ => "`fit:` needs a word".to_string(),
+            };
+            return Err(Diagnostic::error("E0206", d.span, word)
+                .with_fix("use contain, cover, or none"));
+        }
+    };
+    let edge = |w: &str, start: &str, end: &str| match w {
+        _ if w == start => Some(Edge::Start),
+        "center" => Some(Edge::Center),
+        _ if w == end => Some(Edge::End),
+        _ => None,
+    };
+    let align = match named("align") {
+        None => Align::default(),
+        Some(Expr::Tuple(xs)) if xs.len() == 2 => {
+            let words = (ident_of(&xs[0]), ident_of(&xs[1]));
+            match words {
+                (Some(x), Some(y)) => match (edge(x, "left", "right"), edge(y, "top", "bottom")) {
+                    (Some(x), Some(y)) => Align { x, y },
+                    _ => return Err(align_error(d.span, &format!("unknown align `{x},{y}`"))),
+                },
+                _ => return Err(align_error(d.span, "`align:` needs two words")),
+            }
+        }
+        Some(Expr::Ident(w)) => return Err(align_error(d.span, &format!("unknown align `{w}`"))),
+        Some(_) => return Err(align_error(d.span, "`align:` needs two words")),
+    };
+    if !sized && (named("fit").is_some() || named("align").is_some()) {
+        let key = if named("fit").is_some() { "fit" } else { "align" };
+        return Err(
+            Diagnostic::error("E0206", d.span, format!("`{key}:` needs an output size"))
+                .with_fix("add the size, as in `@target x.png 240x240`"),
+        );
+    }
+    Ok((fit, align))
+}
+
+fn align_error(span: Span, message: &str) -> Diagnostic {
+    Diagnostic::error("E0206", span, message).with_fix("write `align:left,top`: x is left, center or right, then y is top, center or bottom")
+}
+
+fn ident_of(e: &Expr) -> Option<&str> {
+    match e {
+        Expr::Ident(s) => Some(s.as_str()),
+        _ => None,
+    }
+}
 
 /// The `as:` label of one `@target` line, which the file reads as `target`.
 pub(crate) fn label(d: &Directive) -> Option<String> {
@@ -238,33 +400,48 @@ pub(crate) fn label(d: &Directive) -> Option<String> {
     }
 }
 
-fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>, Diagnostic> {
+fn expand(
+    project: &Project,
+    file: &str,
+    artboard: Artboard,
+    d: &Directive,
+) -> Result<Vec<TargetJob>, Diagnostic> {
     let Some(raw_path) = d.path.clone() else {
         return Err(
             Diagnostic::error("E0206", d.span, "`@target` needs an output path")
-                .with_fix("write `@target chars/hero.png 256x256`"),
+                .with_fix("write `@target chars/hero.png`"),
         );
     };
-    let size = match d.args.first() {
+    let mut args = d.args.iter();
+    let out = match args.next() {
+        None => None,
         Some(Expr::Size(w, h)) => match (number(w), number(h)) {
-            (Some(w), Some(h)) => (w as f32, h as f32),
+            (Some(w), Some(h)) => Some(Size::new(w as f32, h as f32).ok_or_else(|| size_error(d.span))?),
             _ => return Err(size_error(d.span)),
         },
-        _ => return Err(size_error(d.span)),
-    };
-    let mut viewport = false;
-    for arg in &d.args[1..] {
-        match arg {
-            Expr::Ident(w) if w == "viewport" => viewport = true,
-            other => {
-                let msg = match other {
-                    Expr::Ident(w) => format!("unknown target word `{w}`"),
-                    _ => "`@target` takes only the word `viewport` after the size".to_string(),
-                };
-                return Err(Diagnostic::error("E0206", d.span, msg)
-                    .with_fix("remove it, or write `viewport`"));
-            }
+        Some(Expr::Ident(w)) if w == "viewport" => {
+            return Err(
+                Diagnostic::error("E0206", d.span, "`viewport` belongs to the artboard")
+                    .with_fix("move it to `@artboard WxH viewport`"),
+            );
         }
+        Some(Expr::Ident(w)) => {
+            return Err(
+                Diagnostic::error("E0206", d.span, format!("unknown target word `{w}`"))
+                    .with_fix("after the path, write only an output size such as `240x240`"),
+            );
+        }
+        Some(_) => return Err(size_error(d.span)),
+    };
+    if let Some(extra) = args.next() {
+        return Err(match extra {
+            Expr::Ident(w) if w == "viewport" => {
+                Diagnostic::error("E0206", d.span, "`viewport` belongs to the artboard")
+                    .with_fix("move it to `@artboard WxH viewport`")
+            }
+            _ => Diagnostic::error("E0206", d.span, "`@target` takes only an output size after the path")
+                .with_fix("remove it"),
+        });
     }
     if let Some(n) = d
         .named
@@ -273,12 +450,11 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
     {
         return Err(
             Diagnostic::error("E0206", d.span, format!("unknown target key `{}`", n.key))
-                .with_fix(format!(
-                    "use one of {}, or the bare word `viewport`",
-                    TARGET_KEYS.join(", ")
-                )),
+                .with_fix(format!("use one of {}", TARGET_KEYS.join(", "))),
         );
     }
+    let (fit, align) = framing_keys(d, out.is_some())?;
+    let out = out.unwrap_or(artboard.size);
     let named = |k: &str| d.named.iter().find(|n| n.key == k).map(|n| &n.value);
     let scales: Vec<f32> = match named("scale") {
         None => project.manifest.scale.clone(),
@@ -419,22 +595,20 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
             })
             .collect();
     }
-    let bake_scale = match format {
-        Format::Png | Format::Gif => scales.iter().copied().fold(0.0f32, f32::max),
-        Format::Svg => scales.iter().copied().fold(1.0f32, f32::max),
-    };
+    let tile_scale = scales.iter().copied().fold(1.0f32, f32::max);
+    let framing = |scale: f32| Framing { out, scale, fit, align };
     let sized_name = OUTPUT_VARS
         .iter()
         .any(|var| raw_path.contains(&format!("{{{var}}}")));
     cells
         .into_iter()
         .map(|matrix| {
-            let name = |scale: f32| {
-                let (w, h) = ramose_ir::pixel_size(size.0, size.1, scale);
+            let name = |framing: &Framing| {
+                let px = framing.pixels();
                 interpolate(&raw_path, |var| match var {
-                    "scale" => Some(num(f64::from(scale))),
-                    "w" => Some(w.to_string()),
-                    "h" => Some(h.to_string()),
+                    "scale" => Some(num(f64::from(framing.scale))),
+                    "w" => Some(px.w.to_string()),
+                    "h" => Some(px.h.to_string()),
                     _ => matrix.iter().find(|(k, _)| k == var).map(|(_, v)| v.text()),
                 })
                 .map_err(|var| {
@@ -450,15 +624,19 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 })
             };
             let outputs = match format {
-                Format::Svg => vec![OutputSpec {
-                    path: name(1.0)?,
-                    format,
-                    scale: 1.0,
-                }],
+                Format::Svg => {
+                    let framing = framing(1.0);
+                    vec![OutputSpec {
+                        path: name(&framing)?,
+                        format,
+                        framing,
+                    }]
+                }
                 Format::Png | Format::Gif => scales
                     .iter()
                     .map(|s| {
-                        let path = name(*s)?;
+                        let framing = framing(*s);
+                        let path = name(&framing)?;
                         Ok(OutputSpec {
                             path: if sized_name {
                                 path
@@ -466,13 +644,13 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                                 scaled_name(&path, *s)
                             },
                             format,
-                            scale: *s,
+                            framing,
                         })
                     })
                     .collect::<Result<_, Diagnostic>>()?,
             };
             let clip = clip_of(clip_expr.as_ref(), &matrix, d.span)?;
-            Ok(TargetJob {
+            let mut job = TargetJob {
                 parameters: BTreeMap::new(),
                 source: file.to_string(),
                 line: d.span.line,
@@ -483,26 +661,24 @@ fn expand(project: &Project, file: &str, d: &Directive) -> Result<Vec<TargetJob>
                 clip,
                 frame_t,
                 matrix,
-                size,
+                artboard,
                 bg: named("bg").cloned(),
-                viewport,
                 pivot: named("pivot").cloned(),
                 palette: named("palette").cloned(),
                 profile,
-                bake_scale,
+                sample_scale: 0.0,
+                tile_scale,
                 outputs,
-            })
+            };
+            job.sample_scale = job.outputs.iter().map(|o| job.draw_scale(o)).fold(0.0, f64::max);
+            Ok(job)
         })
         .collect()
 }
 
 fn size_error(span: Span) -> Diagnostic {
-    Diagnostic::error(
-        "E0206",
-        span,
-        "`@target` needs a canvas size after the path",
-    )
-    .with_fix("write the size as `<W>x<H>`, e.g. `@target chars/hero.png 256x256`")
+    Diagnostic::error("E0206", span, "an output size is a positive `<W>x<H>`")
+        .with_fix("write `@artboard 256x256\n@target chars/hero.png`, or leave the size out for the artboard's")
 }
 
 fn clip_of(
@@ -569,11 +745,11 @@ mod tests {
     fn matrix_expands_with_interpolated_paths_and_scales() {
         let p = project(&[(
             "art/k.ramo",
-            "@target chars/knight-{armor}-{team}.png 128x128 scale:1,2 as:knights each armor:[plate leather] team:[red blue]\nrect 10x10\n",
+            "@artboard 128x128\n@target chars/knight-{armor}-{team}.png scale:1,2 as:knights each armor:[plate leather] team:[red blue]\nrect 10x10\n",
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
-        assert!(plan.jobs.iter().all(|j| j.bake_scale == 2.0));
+        assert!(plan.jobs.iter().all(|j| j.sample_scale == 2.0));
         let paths: Vec<String> = plan
             .jobs
             .iter()
@@ -612,11 +788,11 @@ mod tests {
     #[test]
     fn size_placeholders_name_each_output_and_drop_the_scale_suffix() {
         assert_eq!(
-            output_paths("@target icon_{w}x{h}.png 33x20 scale:.5,1,2.5"),
+            output_paths("@artboard 33x20\n@target icon_{w}x{h}.png scale:.5,1,2.5"),
             ["icon_17x10.png", "icon_33x20.png", "icon_83x50.png"]
         );
         assert_eq!(
-            output_paths("@target icon_{scale}x.png 32x32 scale:.5,1,2"),
+            output_paths("@artboard 32x32\n@target icon_{scale}x.png scale:.5,1,2"),
             ["icon_0.5x.png", "icon_1x.png", "icon_2x.png"]
         );
     }
@@ -624,7 +800,7 @@ mod tests {
     #[test]
     fn size_placeholders_mix_with_matrix_axes() {
         assert_eq!(
-            output_paths("@target {team}_{w}.png 8x8 scale:1,2 each team:[red blue]"),
+            output_paths("@artboard 8x8\n@target {team}_{w}.png scale:1,2 each team:[red blue]"),
             ["red_8.png", "red_16.png", "blue_8.png", "blue_16.png"]
         );
     }
@@ -632,7 +808,7 @@ mod tests {
     #[test]
     fn a_path_without_a_placeholder_keeps_its_suffix_names() {
         assert_eq!(
-            output_paths("@target icon.png 32x32 scale:.5,1,2"),
+            output_paths("@artboard 32x32\n@target icon.png scale:.5,1,2"),
             ["icon@0.5x.png", "icon.png", "icon@2x.png"]
         );
     }
@@ -640,7 +816,7 @@ mod tests {
     #[test]
     fn an_svg_fills_placeholders_at_scale_one() {
         assert_eq!(
-            output_paths("@target s_{w}x{h}_{scale}.svg 24x12 scale:1,2"),
+            output_paths("@artboard 24x12\n@target s_{w}x{h}_{scale}.svg scale:1,2"),
             ["s_24x12_1.svg"]
         );
     }
@@ -648,18 +824,18 @@ mod tests {
     #[test]
     fn a_gif_names_each_scale_like_a_png() {
         assert_eq!(
-            output_paths("@target g_{w}x{h}_{scale}.gif 24x12 scale:.5,2 bg:#ffffff"),
+            output_paths("@artboard 24x12\n@target g_{w}x{h}_{scale}.gif scale:.5,2 bg:#ffffff"),
             ["g_12x6_0.5.gif", "g_48x24_2.gif"]
         );
         assert_eq!(
-            output_paths("@target t.gif 8x8 scale:1,2 bg:#ffffff"),
+            output_paths("@artboard 8x8\n@target t.gif scale:1,2 bg:#ffffff"),
             ["t.gif", "t@2x.gif"]
         );
     }
 
     #[test]
     fn colliding_sized_names_are_a_duplicate_output() {
-        let p = project(&[("art/k.ramo", "@target i_{h}.png 8x8 scale:.4,.5\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@artboard 8x8\n@target i_{h}.png scale:.4,.5\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics.iter().any(|d| d.code == "E0202"),
@@ -673,7 +849,7 @@ mod tests {
         for axis in ["w", "h"] {
             let p = project(&[(
                 "art/k.ramo",
-                &format!("@target t_{{{axis}}}.png 8x8 each {axis}:[1 2]\nrect 1\n"),
+                &format!("@artboard 8x8\n@target t_{{{axis}}}.png each {axis}:[1 2]\nrect 1\n"),
             )]);
             let plan = plan(&p);
             let hit = plan
@@ -687,7 +863,7 @@ mod tests {
 
     #[test]
     fn an_unknown_path_variable_is_still_e0207() {
-        let p = project(&[("art/k.ramo", "@target t_{x}.png 8x8\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@artboard 8x8\n@target t_{x}.png\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics.iter().any(|d| d.code == "E0207"),
@@ -697,36 +873,37 @@ mod tests {
     }
 
     #[test]
-    fn a_png_bakes_at_its_highest_scale_and_an_svg_never_below_one() {
+    fn a_png_bakes_at_its_own_scale_and_an_svg_never_below_one() {
         let bake = |target: &str| {
             let p = project(&[("art/k.ramo", &format!("{target}\nrect 1\n"))]);
-            plan(&p).jobs[0].bake_scale
+            let job = &plan(&p).jobs[0];
+            job.outputs.iter().map(|o| job.bake_scale(o)).collect::<Vec<_>>()
         };
-        assert_eq!(bake("@target t.png 8x8 scale:.5"), 0.5);
-        assert_eq!(bake("@target t.png 8x8 scale:.5,.25"), 0.5);
-        assert_eq!(bake("@target t.svg 8x8 scale:.5"), 1.0);
-        assert_eq!(bake("@target t.svg 8x8 scale:1,2"), 2.0);
+        assert_eq!(bake("@artboard 8x8\n@target t.png scale:.5"), [0.5]);
+        assert_eq!(bake("@artboard 8x8\n@target t.png scale:.5,.25"), [0.5, 0.25]);
+        assert_eq!(bake("@artboard 8x8\n@target t.svg scale:.5"), [1.0]);
+        assert_eq!(bake("@artboard 8x8\n@target t.svg scale:1,2"), [2.0]);
     }
 
     #[test]
     fn a_gif_writes_one_output_per_scale_and_bakes_at_the_highest() {
         let p = project(&[(
             "art/k.ramo",
-            "@target t.gif 8x8 scale:.5,2 bg:#ffffff\nrect 1\n",
+            "@artboard 8x8\n@target t.gif scale:.5,2 bg:#ffffff\nrect 1\n",
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
         assert_eq!(plan.jobs.len(), 1);
         let job = &plan.jobs[0];
-        let outputs: Vec<_> = job.outputs.iter().map(|o| (o.path.as_str(), o.scale)).collect();
+        let outputs: Vec<_> = job.outputs.iter().map(|o| (o.path.as_str(), o.framing.scale)).collect();
         assert_eq!(outputs, [("t@0.5x.gif", 0.5), ("t@2x.gif", 2.0)]);
-        assert_eq!(job.bake_scale, 2.0);
-        assert_eq!(job.sample_scale(&job.outputs[0]), 0.5);
+        assert_eq!(job.sample_scale, 2.0);
+        assert_eq!(job.draw_scale(&job.outputs[0]), 0.5);
     }
 
     #[test]
     fn a_non_list_after_an_axis_stays_an_axis() {
-        let p = project(&[("art/k.ramo", "@target t.png 8x8 each a:[x] b:oops\nrect 1\n")]);
+        let p = project(&[("art/k.ramo", "@artboard 8x8\n@target t.png each a:[x] b:oops\nrect 1\n")]);
         let plan = plan(&p);
         assert!(
             plan.diagnostics
@@ -742,7 +919,7 @@ mod tests {
     fn a_known_key_after_each_stays_a_target_key() {
         let p = project(&[(
             "art/k.ramo",
-            "@target t.png 8x8 each a:[x] clip:go fps:12\nrect 1\n",
+            "@artboard 8x8\n@target t.png each a:[x] clip:go fps:12\nrect 1\n",
         )]);
         let plan = plan(&p);
         assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
@@ -754,23 +931,95 @@ mod tests {
     #[test]
     fn duplicate_outputs_are_e0202_naming_both_lines() {
         let p = project(&[
-            ("art/a.ramo", "@target x.png 8x8\nrect 1x1\n"),
-            ("art/b.ramo", "\n@target x.png 8x8\nrect 1x1\n"),
+            ("art/a.ramo", "@artboard 8x8\n@target x.png\nrect 1x1\n"),
+            ("art/b.ramo", "\n@artboard 8x8\n@target x.png\nrect 1x1\n"),
         ]);
         let plan = plan(&p);
         assert_eq!(plan.diagnostics.len(), 1);
         let d = &plan.diagnostics[0];
         assert_eq!(
             (d.code.as_str(), d.file.as_str(), d.span.line),
-            ("E0202", "art/b.ramo", 2)
+            ("E0202", "art/b.ramo", 3)
         );
-        assert_eq!(d.notes, ["first declared at art/a.ramo:1"]);
+        assert_eq!(d.notes, ["first declared at art/a.ramo:2"]);
         assert_eq!(plan.jobs.len(), 1);
     }
 
     #[test]
+    fn a_target_frames_the_artboard_into_its_own_size() {
+        let p = project(&[(
+            "art/t.ramo",
+            "@artboard 64x32 viewport\n@target a.png\n@target b.png 48x48 fit:cover align:left,bottom\n@target c_{w}x{h}.png 48x48 scale:1,2\nrect 1x1\n",
+        )]);
+        let plan = plan(&p);
+        assert!(plan.diagnostics.is_empty(), "{:?}", plan.diagnostics);
+        let artboard = Size::new(64.0, 32.0).unwrap();
+        assert!(plan.jobs.iter().all(|j| (j.artboard.size, j.artboard.viewport) == (artboard, true)));
+        let out: Vec<(&str, Size, f32, Fit, Align)> = plan
+            .jobs
+            .iter()
+            .flat_map(|j| j.outputs.iter())
+            .map(|o| (o.path.as_str(), o.framing.out, o.framing.scale, o.framing.fit, o.framing.align))
+            .collect();
+        let square = Size::new(48.0, 48.0).unwrap();
+        assert_eq!(
+            out,
+            [
+                ("a.png", artboard, 1.0, Fit::Contain, Align::default()),
+                ("b.png", square, 1.0, Fit::Cover, Align { x: Edge::Start, y: Edge::End }),
+                ("c_48x48.png", square, 1.0, Fit::Contain, Align::default()),
+                ("c_96x96.png", square, 2.0, Fit::Contain, Align::default()),
+            ]
+        );
+    }
+
+    #[test]
+    fn every_artboard_and_framing_mistake_is_e0206_with_its_fix() {
+        let align_fix = "write `align:left,top`: x is left, center or right, then y is top, center or bottom";
+        let only_viewport = "only the word `viewport` follows the size";
+        let size_fix = "write `@artboard 512x512`";
+        let rows: &[(&str, u32, &str, &str)] = &[
+            ("@target t.png 64x64\nrect 1x1\n", 1, "an entry file needs one `@artboard`", "add `@artboard 64x64`"),
+            ("@target t.png\nrect 1x1\n", 1, "an entry file needs one `@artboard`", "add `@artboard 512x512`"),
+            ("@artboard 8x8\n@artboard 9x9\n@target t.png\n", 2, "`@artboard` is already set at line 1", "remove this line"),
+            ("@artboard 0x10\n@target t.png\n", 1, "`@artboard` needs a positive WxH size", size_fix),
+            ("@artboard 10\n@target t.png\n", 1, "`@artboard` needs a positive WxH size", size_fix),
+            ("@artboard\n@target t.png\n", 1, "`@artboard` needs a positive WxH size", size_fix),
+            ("@artboard 64x64 foo\n@target t.png\n", 1, "unknown artboard word `foo`", only_viewport),
+            ("@artboard 64x64 bg:none\n@target t.png\n", 1, "unknown artboard key `bg`", only_viewport),
+            ("@artboard 8x8\n@target t.png viewport\n", 2, "`viewport` belongs to the artboard", "move it to `@artboard WxH viewport`"),
+            ("@artboard 8x8\n@target t.png 8x8 viewport\n", 2, "`viewport` belongs to the artboard", "move it to `@artboard WxH viewport`"),
+            ("@artboard 8x8\n@target t.png 8x8 fit:stretch\n", 2, "unknown fit `stretch`", "use contain, cover, or none"),
+            ("@artboard 8x8\n@target t.png 8x8 align:middle\n", 2, "unknown align `middle`", align_fix),
+            ("@artboard 8x8\n@target t.png 8x8 align:top,left\n", 2, "unknown align `top,left`", align_fix),
+            ("@artboard 8x8\n@target t.png fit:cover\n", 2, "`fit:` needs an output size", "add the size, as in `@target x.png 240x240`"),
+            ("@artboard 8x8\n@target t.png align:left,top\n", 2, "`align:` needs an output size", "add the size, as in `@target x.png 240x240`"),
+            ("@artboard 8x8\n@target t.png 8x8 each fit:[cover]\n", 2, "`fit:` needs a word", "use contain, cover, or none"),
+        ];
+        for (src, line, message, fix) in rows {
+            let p = project(&[("art/t.ramo", src)]);
+            let plan = plan(&p);
+            let d = plan.diagnostics.first().unwrap_or_else(|| panic!("{src}: no diagnostic"));
+            assert_eq!(
+                (d.code.as_str(), d.span.line, d.message.as_str(), d.fix.as_deref()),
+                ("E0206", *line, *message, Some(*fix)),
+                "{src}"
+            );
+            assert_eq!(plan.diagnostics.len(), 1, "{src}: {:?}", plan.diagnostics);
+            assert!(plan.jobs.is_empty(), "{src}");
+        }
+        let p = project(&[("art/l.ramo", "@artboard 8x8\ndef x\n  rect 1x1\n")]);
+        let plan = plan(&p);
+        let d = &plan.diagnostics[0];
+        assert_eq!(
+            (d.code.as_str(), d.message.as_str(), d.fix.as_deref()),
+            ("E0206", "a library has no artboard", Some("remove it, or add a `@target`"))
+        );
+    }
+
+    #[test]
     fn targets_under_a_lib_root_are_e0203() {
-        let p = project(&[("lib/x.ramo", "@target x.png 8x8\nrect 1x1\n")]);
+        let p = project(&[("lib/x.ramo", "@artboard 8x8\n@target x.png\nrect 1x1\n")]);
         let plan = plan(&p);
         assert_eq!(plan.diagnostics[0].code, "E0203");
         assert!(plan.jobs.is_empty());

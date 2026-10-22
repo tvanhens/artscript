@@ -35,7 +35,7 @@ const BUILTIN: &[&str] = &[
     "repeat",
     "grid",
     "anchor",
-    "canvas",
+    "artboard",
 ];
 
 const REFLECTION: &str = "~m";
@@ -890,7 +890,7 @@ impl Declarer<'_> {
     }
 
     fn draw(&mut self, span: Span, d: &Draw) {
-        if d.verb == "canvas" {
+        if d.verb == "artboard" {
             return;
         }
         let kind = kind_of(&d.verb, self.components);
@@ -2214,7 +2214,7 @@ mod tests {
             .unwrap_or_else(|| panic!("no draw at line {l}"))
     }
 
-    const TARGET: &str = "@target t.png 100x100\n";
+    const TARGET: &str = "@artboard 100x100\n@target t.png\n";
 
     #[test]
     fn identity_e0333_is_at_the_second_name_with_the_first_line_in_a_note() {
@@ -2222,9 +2222,9 @@ mod tests {
             "{TARGET}layer nuki\n  group name:beam\n    curve 0,0 10,0 name:strut\n    curve 0,0 10,10 name:beam\n"
         );
         let (_, ds) = ids(&src);
-        assert_eq!(codes(&ds), [("E0333".into(), 5)]);
+        assert_eq!(codes(&ds), [("E0333".into(), 6)]);
         assert_eq!(ds[0].file, "art/t.ramo");
-        assert_eq!(ds[0].notes, ["first named at line 3"]);
+        assert_eq!(ds[0].notes, ["first named at line 4"]);
         assert_eq!(ds[0].fix.as_deref(), Some("rename one of them"));
     }
 
@@ -2233,7 +2233,7 @@ mod tests {
         let src =
             format!("{TARGET}circle 4 name:dot\nif 0\n  each i in 0..0\n    rect 2x2 name:dot\n");
         let (_, ds) = ids(&src);
-        assert_eq!(codes(&ds), [("E0333".into(), 5)]);
+        assert_eq!(codes(&ds), [("E0333".into(), 6)]);
     }
 
     #[test]
@@ -2243,12 +2243,12 @@ mod tests {
         let src = format!("{TARGET}if 1\n  circle 4 name:lips\nelse\n  rect 4x4 name:lips\n");
         assert!(ids(&src).1.is_empty());
         let src = format!("{TARGET}if 1\n  circle 4 name:lips\nif 0\n  rect 4x4 name:lips\n");
-        assert_eq!(codes(&ids(&src).1), [("E0333".into(), 5)]);
+        assert_eq!(codes(&ids(&src).1), [("E0333".into(), 6)]);
     }
 
     #[test]
     fn a_shape_word_in_the_component_set_opens_a_scope() {
-        let src = "@target t.png 40x40\ndef circle\n  slot hole\n    rect 4 name:gem\ncircle name:c\n  hole:\n    rect 4 name:gem\n";
+        let src = "@artboard 40x40\n@target t.png\ndef circle\n  slot hole\n    rect 4 name:gem\ncircle name:c\n  hole:\n    rect 4 name:gem\n";
         let parsed = ramose_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
         let mut bare_out = Vec::new();
         let bare = ModuleIds::build(
@@ -2275,7 +2275,7 @@ mod tests {
         assert!(out.is_empty(), "{out:?}");
         let id = ids.file().lookup("c")[0];
         assert!(ids.file().decl(id).kind.opens_region());
-        let fill = ids.region(Span { line: 6, col: 3 }).expect("fill region");
+        let fill = ids.region(Span { line: 7, col: 3 }).expect("fill region");
         assert_eq!(fill.kind, RegionKind::Slot);
         assert_eq!(fill.names(), [&name("gem")]);
     }
@@ -2286,7 +2286,7 @@ mod tests {
         let (ids, ds) = ids(&src);
         assert!(ds.is_empty(), "{ds:?}");
         let region = ids
-            .region(Span { line: 3, col: 3 })
+            .region(Span { line: 4, col: 3 })
             .expect("empty fallback region");
         assert!(region.is_empty());
         assert_eq!(region.kind, RegionKind::Slot);
@@ -2299,7 +2299,7 @@ mod tests {
         );
         let (ids, ds) = ids(&src);
         assert!(ds.is_empty(), "{ds:?}");
-        let fill = ids.region(Span { line: 3, col: 3 }).expect("fill region");
+        let fill = ids.region(Span { line: 4, col: 3 }).expect("fill region");
         assert_eq!(fill.kind, RegionKind::Slot);
         assert_eq!(fill.names(), [&name("form")]);
         assert_eq!(ids.file().names(), [&name("a"), &name("b")]);
@@ -2312,9 +2312,9 @@ mod tests {
         assert_eq!(
             codes(&ds),
             [
-                ("E0312".into(), 2),
                 ("E0312".into(), 3),
-                ("E0312".into(), 4)
+                ("E0312".into(), 4),
+                ("E0312".into(), 5)
             ]
         );
         assert!(ds.iter().all(|d| {
@@ -2329,8 +2329,8 @@ mod tests {
             ds[1].message
         );
         let file = ids.file();
-        assert_eq!(file.decl_at(line(2)), None);
-        assert_eq!(file.decl(file.decl_at(line(3)).unwrap()).name, name("hat"));
+        assert_eq!(file.decl_at(line(3)), None);
+        assert_eq!(file.decl(file.decl_at(line(4)).unwrap()).name, name("hat"));
     }
 
     #[test]
@@ -2339,7 +2339,7 @@ mod tests {
             "{TARGET}circle 1\nrect 1x1\ncircle 1 name:dot\nif 1\n  circle 1\nelse\n  circle 1\neach i in 0..3\n  circle 1\ngroup\n  circle 1\nm 4\n"
         );
         let (ids, _) = ids(&src);
-        let got: Vec<(u32, String)> = [2, 3, 4, 6, 8, 10, 11, 12, 13]
+        let got: Vec<(u32, String)> = [3, 4, 5, 7, 9, 11, 12, 13, 14]
             .iter()
             .map(|&l| {
                 let a = anon_at(&ids, l);
@@ -2349,15 +2349,15 @@ mod tests {
         assert_eq!(
             got,
             [
-                (2, "circle~1".into()),
-                (3, "rect~1".into()),
-                (4, "circle~2".into()),
-                (6, "circle~3".into()),
-                (8, "circle~4".into()),
-                (10, "circle~5".into()),
-                (11, "group~1".into()),
-                (12, "circle~1".into()),
-                (13, "m~1".into()),
+                (3, "circle~1".into()),
+                (4, "rect~1".into()),
+                (5, "circle~2".into()),
+                (7, "circle~3".into()),
+                (9, "circle~4".into()),
+                (11, "circle~5".into()),
+                (12, "group~1".into()),
+                (13, "circle~1".into()),
+                (14, "m~1".into()),
             ]
         );
     }
@@ -2371,7 +2371,7 @@ mod tests {
         assert!(ds.is_empty(), "{ds:?}");
         let file = ids.file();
         let head = file.decl(file.lookup("head")[0]);
-        assert_eq!(head.site.span.line, 6);
+        assert_eq!(head.site.span.line, 7);
         assert_eq!(file.decl(head.tree_parent.unwrap()).name, name("face"));
         let root = Key::root();
         assert_eq!(Key::named(&root, &head.name, &[]).to_string(), "head");
@@ -2382,7 +2382,7 @@ mod tests {
         assert_eq!(file.decl(eye.tree_parent.unwrap()).name, name("eyes"));
         assert_eq!(Key::named(&root, &eye.name, &[1]).to_string(), "eye.1");
         let face = Key::named(&root, &name("face"), &[]);
-        let dot = Key::anon(&face, anon_at(&ids, 7), &[]);
+        let dot = Key::anon(&face, anon_at(&ids, 8), &[]);
         assert_eq!(dot.to_string(), "face.circle~2");
         assert!(!dot.is_stable());
         assert_eq!(dot.address_from(&root), None);
@@ -2467,7 +2467,7 @@ mod tests {
         let src = format!("{TARGET}layer rock\n  _speckle 4\n");
         let (ids, _) = ids(&src);
         let rock = Key::named(&Key::root(), &name("rock"), &[]);
-        let call = Key::anon(&rock, anon_at(&ids, 3), &[]);
+        let call = Key::anon(&rock, anon_at(&ids, 4), &[]);
         let circle = Anon {
             verb: "circle".into(),
             ordinal: 1,
@@ -2485,7 +2485,7 @@ mod tests {
         assert_eq!(
             sites,
             [
-                (3, "_speckle", "rock._speckle~1"),
+                (4, "_speckle", "rock._speckle~1"),
                 (4, "circle", "rock._speckle~1.circle~1")
             ]
         );

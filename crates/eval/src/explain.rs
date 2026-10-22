@@ -1,9 +1,9 @@
-//! `ramose explain`: the evaluated node tree with paths, canvas bounds and resolved paint.
+//! `ramose explain`: the evaluated node tree with paths, artboard bounds and resolved paint.
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use ramose_geom::{NodeGeom, ShapeGeom, union_bounds};
+use ramose_geom::{NodeGeom, ShapeGeom, ToSk, union_bounds};
 use ramose_ir::{Effect, EffectOp, MaskSource, Node, NodeKind, Paint, Scene};
 use skia_safe::Rect;
 
@@ -162,7 +162,7 @@ fn fold(set: &[Node], world: &Place, depth: usize, seeded: &BTreeSet<String>, ou
 }
 
 pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
-    let mut out = format!("canvas {}x{}", num(scene.width as f64), num(scene.height as f64));
+    let mut out = format!("artboard {}x{}", num(f64::from(scene.view.to_sk().width())), num(f64::from(scene.view.to_sk().height())));
     if let Some(bg) = scene.background {
         let _ = write!(out, " bg:{}", bg.hex());
     }
@@ -173,7 +173,7 @@ pub fn explain(scene: &Scene, seeded: &BTreeSet<String>) -> String {
     out
 }
 
-/// Node ink bounds in canvas units, including its clip and mask, excluding effects.
+/// Node ink bounds in artboard units, including its clip and mask, excluding effects.
 pub fn node_bounds(scene: &ramose_ir::Scene, path: &str) -> Option<Rect> {
     fn find<'a>(nodes: impl Iterator<Item = &'a Node>, place: &Place, path: &str) -> Option<Rect> {
         for node in nodes {

@@ -1,4 +1,5 @@
-@target catacombs.png 1920x1080 bg:crypt.void scale:1,.5
+@artboard 1920x1080
+@target catacombs.png bg:crypt.void scale:1,.5
 
 palette crypt
   ramp stone #6f6a78 5

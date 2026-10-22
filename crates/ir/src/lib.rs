@@ -1,6 +1,6 @@
 //! Scene IR: a fully resolved tree that every backend reads.
 //!
-//! All numbers are absolute canvas units. Geometry is final (booleans, splines, tapered strokes
+//! All numbers are absolute artboard units. Geometry is final (booleans, splines, tapered strokes
 //! and jitter already applied). Gradients carry dense sRGB stops already interpolated in OKLCH,
 //! so backends interpolate linearly between neighbouring stops and still match each other.
 
@@ -8,10 +8,12 @@ use std::sync::Arc;
 
 pub use ramose_brush::UniformValue;
 
+mod framing;
 mod geometry;
 mod retained;
 pub mod warp;
 
+pub use framing::{Align, Edge, Fit, Framing, PixelSize, Size, View};
 pub use geometry::{FillType, Matrix, Path, Point, Primitive, Rect, Verb};
 pub use warp::{Axis, Corners, CornersError, Cylinder, Warp, WarpStage};
 
@@ -64,16 +66,11 @@ pub enum Profile {
     Raster,
 }
 
-/// The pixel size of a `width` x `height` canvas drawn at `scale`: a PNG's size.
-pub fn pixel_size(width: f32, height: f32, scale: f32) -> (i32, i32) {
-    let side = |canvas: f32| (canvas * scale).ceil().max(1.0) as i32;
-    (side(width), side(height))
-}
-
+/// The scene: drawing in scene units, with no pixel size of its own.
 #[derive(Clone, Debug)]
 pub struct Scene {
-    pub width: f32,
-    pub height: f32,
+    /// The rect an output shows.
+    pub view: Rect,
     pub background: Option<Color>,
     pub children: Vec<Node>,
 }
@@ -358,7 +355,7 @@ pub enum MaskSource {
 /// Scalar field over the owning node's local coordinates, nominally 0..1.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Field {
-    /// `scale` is the feature size in canvas units. `wrap` is a period per axis in the same
+    /// `scale` is the feature size in artboard units. `wrap` is a period per axis in the same
     /// units: the field repeats every `wrap[0]` along x and every `wrap[1]` along y, with the
     /// feature size snapped so a whole number of cells fits each period.
     Noise { kind: NoiseKind, scale: f32, seed: u32, wrap: Option<[f32; 2]> },
@@ -470,7 +467,7 @@ pub enum EffectOp {
     Outline { width: f32, color: Color, sides: Sides, mask: Option<Box<Mask>>, brush: Vec<RibbonMark> },
     /// 3-octave Perlin inside the input's alpha, overlay-blended. `strength` is the brightness
     /// swing (.05 = 5%): the overlay opacity is `min(1, 2 * strength)`. `scale` is the finest
-    /// feature in canvas units.
+    /// feature in artboard units.
     Grain { strength: f32, scale: f32, seed: u32 },
     /// Composites `inputs` bottom to top, each with its own opacity.
     Merge { inputs: Vec<EffectInput>, alphas: Vec<f32> },

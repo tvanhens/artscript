@@ -14,7 +14,7 @@ use crate::range::Range;
 use crate::scope::{AliasDef, Component, FnDef, Module, Palette, RefVal, RuleDef};
 use crate::warp::stage_text;
 
-/// One coordinate: canvas units or a percent of the current frame.
+/// One coordinate: artboard units or a percent of the current frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Coord {
     Num(f64),
@@ -223,12 +223,12 @@ impl Value {
         })
     }
 
-    /// Like [`Value::pair_for`], for a key whose coordinates are canvas units, never percents.
+    /// Like [`Value::pair_for`], for a key whose coordinates are artboard units, never percents.
     pub fn vec2_for(&self, key: &str) -> R<(f64, f64)> {
         match self.pair() {
             Some((Coord::Num(x), Coord::Num(y))) => Ok((x, y)),
             Some(_) => Err(fail("E0320", format!("`{key}:` takes numbers, not percents"))
-                .fix(format!("write `{key}:4,2` in canvas units"))),
+                .fix(format!("write `{key}:4,2` in artboard units"))),
             None => Err(self.not_a_vector(key)),
         }
     }

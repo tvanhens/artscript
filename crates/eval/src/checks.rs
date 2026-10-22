@@ -46,9 +46,9 @@ fn bounds(r: &RefVal) -> R<Rect> {
     r.bounds().ok_or_else(|| fail("E0351", format!("@{} has no geometry to measure", r.label)))
 }
 
-/// `set .node at:x,y` for moving `r` by a canvas-space delta.
+/// `set .node at:x,y` for moving `r` by an artboard-space delta.
 fn nudge(r: &RefVal, dx: f64, dy: f64, owner: &crate::identity::Key) -> Option<String> {
-    if r.canvas.is_some() || r.record.anchor.is_some() {
+    if r.artboard.is_some() || r.record.anchor.is_some() {
         return None;
     }
     if !r.record.key.is_stable() {

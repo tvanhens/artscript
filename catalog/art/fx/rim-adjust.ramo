@@ -9,7 +9,8 @@
 # 6. adjust sat:-.9: the circle is a nearly gray brown.
 # 7. adjust light:.3: the circle is very pale pink, much lighter than the red reference.
 # 8. adjust hue:-60 sat:-.3 light:-.15: the circle is a muted dark purple.
-@target fx/rim-adjust.png 256x128
+@artboard 256x128
+@target fx/rim-adjust.png
 
 circle 22 at:32,32 fill:p.red
   fx rim 5 dir:1,1

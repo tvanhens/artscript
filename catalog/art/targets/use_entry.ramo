@@ -3,7 +3,8 @@
 # Left, centered at (40,32): a blue 24x24 square with an ink outline and a gold circle (r 6) at its center.
 # Right, centered at (88,32): the same tile with a red square.
 # No third tile overlaps the left one at (32,32), where the imported file draws its own tile.
-@target targets/use_entry.png 128x64
+@artboard 128x64
+@target targets/use_entry.png
 
 use art/targets/use_entry_part
 

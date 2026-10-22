@@ -1,5 +1,6 @@
-@target produce/momo_peach.png 1024x1024
-@target produce/momo_peach.svg 1024x1024
+@artboard 1024x1024
+@target produce/momo_peach.png
+@target produce/momo_peach.svg
 
 use face/parts { happy_eye blush cat_mouth sparkle }
 
@@ -138,7 +139,7 @@ layer body
           let reach = rand(2.2 3.4)
           let hair = spot.{k}+(outx.{k},outy.{k})*3.6+(tx.{k},ty.{k})*wobble.{k}
           curve hair hair+(outx.{k},outy.{k})*reach stroke:peach.edge,.7 a:.7 taper:0,.9
-  assert inside(@skin canvas margin:24)
+  assert inside(@skin artboard margin:24)
 
 layer face
   blush 72x32 at:362,674 color:peach.coral.3

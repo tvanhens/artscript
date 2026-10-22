@@ -1,5 +1,6 @@
-@target monster/bogmaw.png 1024x1024
-@target monster/bogmaw_card.png 1024x1024 bg:#26232c
+@artboard 1024x1024
+@target monster/bogmaw.png
+@target monster/bogmaw_card.png bg:#26232c
 
 use paint { sculpt ink }
 use parts { leg fang }
@@ -196,4 +197,4 @@ layer legs_near
   leg 820,640 858,742 832,866 w:25 tone:p.leg.3 bend:-9 name:leg_n3
   fx outline 5 color:p.ink
 
-assert inside(@shell canvas margin:24)
+assert inside(@shell artboard margin:24)

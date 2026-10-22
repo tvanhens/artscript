@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use ramose_eval::{
     Evaluation, Format, Project, Sample, TargetJob, dependencies, evaluate, explain, frame_delays, plan, sample,
 };
-use ramose_ir::Profile;
+use ramose_ir::{Framing, Profile};
 use ramose_render::{Backend, raster_only_features, render_gif, render_png, render_svg};
 use ramose_syntax::{Diagnostic, Severity};
 
@@ -25,7 +25,7 @@ profile = "auto"
 [lint]
 raw-color = "warn"
 unused = "warn"
-off-canvas = "warn"
+off-artboard = "warn"
 "#;
 
 const LIBS: &[(&str, &str)] = &[
@@ -127,8 +127,8 @@ pub fn is_gif(job: &TargetJob) -> bool {
 }
 
 pub fn small_scale(job: &TargetJob, scale: f32) -> Option<f32> {
-    let (w, h) = job.size;
-    let side = w.max(h) * scale;
+    let art = job.artboard.size;
+    let side = art.w().max(art.h()) * scale;
     if !side.is_finite() || side <= 0.0 {
         return None;
     }
@@ -185,6 +185,7 @@ pub fn exercise_render(p: &Project) {
     }
     let Some(scene) = &ev.scene else { return };
     let Some(scale) = small_scale(&job, 1.0) else { return };
+    let framing = Framing::plain(job.artboard.size, scale);
     let _ = raster_only_features(scene);
     if is_gif(&job) {
         let Some(clip) = short_clip(&job, &ev) else { return };
@@ -195,14 +196,14 @@ pub fn exercise_render(p: &Project) {
         }
         let gif = |s: &Sample| {
             let scenes: Vec<_> = s.frames.iter().map(|f| &f.scene).collect();
-            render_gif(&scenes, scale, &delays, s.loops, Backend::Cpu).ok()
+            render_gif(&scenes, &framing, &delays, s.loops, Backend::Cpu).ok()
         };
         assert_eq!(gif(&s), gif(&sample(p, &clip)), "gif bytes differ between renders");
         return;
     }
     let render = |scene: &ramose_ir::Scene| {
-        let png = render_png(scene, scale, Backend::Cpu).ok();
-        (png, [Profile::Vector, Profile::Svg].map(|profile| render_svg(scene, profile, scale, Backend::Cpu).ok()))
+        let png = render_png(scene, &framing, Backend::Cpu).ok();
+        (png, [Profile::Vector, Profile::Svg].map(|profile| render_svg(scene, &framing, profile, scale, Backend::Cpu).ok()))
     };
     let (png, svgs) = render(scene);
     let again = evaluate(p, &job);

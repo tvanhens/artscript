@@ -22,7 +22,8 @@
 # once smudge reads it, so the left half is cell 1's olive darkened to 60% and the right half
 # is cell 1's pale blue darkened to 60%; dim darkens the mix, not the blue alone.
 # Every edge is antialiased; nothing is drawn outside its squares.
-@target brush/below.png 256x128
+@artboard 256x128
+@target brush/below.png
 
 brush smudge k:.5
   sksl """

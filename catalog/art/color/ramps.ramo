@@ -16,7 +16,8 @@
 # night.moon (pale lavender white, a color row that exists only in night).
 # Undocumented, current behavior: a two-endpoint ramp's base is stop (n-1)/2, so garden.sky.line derives
 # from the middle step.
-@target color/ramps.png 256x136
+@artboard 256x136
+@target color/ramps.png
 
 palette garden
   ramp peach #f3a2a6 5

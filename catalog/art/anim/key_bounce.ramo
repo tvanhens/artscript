@@ -1,6 +1,7 @@
 # A blue r10 ball at x=48 bounces in 6 frames with the default smooth curve: its center y is 72, 56, 35, 24, 35, 56 in frames 1-6, so it rests on the ink floor in frame 1, peaks in frame 4, and is falling again in frame 6.
 # The 80x2 ink floor sits at y=83 (spanning y 82 to 84) and never moves; the ball's bottom edge (y=82) touches it in frame 1.
-@target anim/key_bounce.gif 96x96 fps:6 dur:1s
+@artboard 96x96
+@target anim/key_bounce.gif fps:6 dur:1s
 
 rect 80x2 at:48,83 fill:p.ink
 circle 10 at:48,key(72 24 72 dur:1s) fill:p.blue

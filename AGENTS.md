@@ -22,7 +22,7 @@ The only docs are the ones `ramose docs` prints. A design decision lands in the 
 
 ### Inputs are the author's own files
 
-- ramose is a local authoring CLI. Its inputs are the author's own `.ramo` files and manifest, not untrusted uploads. Do not flag memory or CPU exhaustion that needs a pathological input, such as an extreme `fps`, `dur`, canvas size, or frame count. Do not ask for new per-resource caps, budgets shared across workers, or streaming rewrites to survive such inputs.
+- ramose is a local authoring CLI. Its inputs are the author's own `.ramo` files and manifest, not untrusted uploads. Do not flag memory or CPU exhaustion that needs a pathological input, such as an extreme `fps`, `dur`, artboard size, or frame count. Do not ask for new per-resource caps, budgets shared across workers, or streaming rewrites to survive such inputs.
   Flag instead: a crash, hang, or out-of-memory exit on an input the size of the files in `examples/`, and any limit that silently truncates or corrupts output instead of reporting an error.
 
 ### Builds are deterministic
@@ -57,7 +57,7 @@ A new language feature gets a fixture.
 
 - Put one feature in one file at `catalog/art/<area>/<feature>.ramo`, with targets at `<area>/<feature>.<ext>`.
 - Start the file with a comment that says what the image must show: the cases, their order, their colors, and what makes each one correct. The reviewer judges the golden against this comment, without the code.
-- Show the cases of one feature side by side in one canvas, not in separate files. Label nothing. The comment names the cells by position.
+- Show the cases of one feature side by side in one artboard, not in separate files. Label nothing. The comment names the cells by position. A target with its own size is judged at that size, bars included.
 - Keep goldens small. A still is at most 256 on its long side, and 128 to 192 is usual. A GIF is at most 96x96, with 8 fps or less and 12 frames or less.
 - Add an `.svg` target only where the SVG writer draws the feature in its own way, such as gradients, masks, blends, and baked raster effects.
 - Use the `p` palette in `catalog/lib/palette/swatch.ramo`. The default background is paper, so `bg:` is only needed for a transparent case.

@@ -9,7 +9,8 @@
 # visibly wobbly, not a straight-sided square: amplitude 1.5px, wavelength 60px, so the edges bend in a few gentle
 # curves. (8) the same rect with name:j2 jitter:3,12: amplitude 3px, wavelength 12px, so the outline is visibly rougher
 # than cell 7, with a ragged edge of many short bumps, up to 3px off a straight side.
-@target shapes/paint.png 256x128
+@artboard 256x128
+@target shapes/paint.png
 
 circle 18 at:32,32 fill:p.red
 circle 18 at:96,32 fill:none stroke:p.ink,4

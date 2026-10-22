@@ -10,8 +10,9 @@
 # 7. `grid 4x4 gap:2` of 8x8 squares whose color depends on position: each square is green when (row + col) is even and gold when odd, giving a checkerboard of 16 squares.
 # 8. `repeat 5` of a blue circle (radius 5) placed at `at:i*7-14,0`, whose fill alpha grows with i (a:.2 + i*.2): a row of five blue dots left to right that go from faint to solid.
 # The dots are 7px apart with radius 5, so neighbors overlap by 3px; the overlap is intended and the later, stronger dot paints over the earlier one.
-# KNOWN BUG #79: a grid child with no `at:` ignores the grid's `at:` and renders at the canvas center; the grid children here write `at:0,0` to pin the place. When fixed, they would sit at the cell origin without `at:0,0`.
-@target structure/mirror_repeat_grid.png 192x96
+# KNOWN BUG #79: a grid child with no `at:` ignores the grid's `at:` and renders at the artboard center; the grid children here write `at:0,0` to pin the place. When fixed, they would sit at the cell origin without `at:0,0`.
+@artboard 192x96
+@target structure/mirror_repeat_grid.png
 
 mirror x at:24,24
   circle 6 at:10,0 fill:p.red

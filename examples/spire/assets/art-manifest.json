@@ -3,8 +3,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "ac8af6d8ce0cb022",
-      "line": 1,
+      "hash": "6115d69ddf360f21",
+      "line": 2,
       "matrix": {},
       "path": "monster/bogmaw.png",
       "pivot": null,
@@ -16,8 +16,8 @@
     {
       "anchors": {},
       "checks": [],
-      "hash": "6e63b8d893076bb7",
-      "line": 2,
+      "hash": "80b96cd281815620",
+      "line": 3,
       "matrix": {},
       "path": "monster/bogmaw_card.png",
       "pivot": null,

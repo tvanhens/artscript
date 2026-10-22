@@ -12,7 +12,10 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 use ramose_geom::{NodeGeom, ShapeGeom, ToIr, ToSk, transform_scale};
-use ramose_ir::{Blend, Clip, Fill, Mask, MaskSource, Node, NodeKind, Ribbon, Scene, Shape, Stroke};
+use ramose_ir::{
+    Blend, Clip, Fill, Framing, Mask, MaskSource, Node, NodeKind, PixelSize, Ribbon, Scene, Shape,
+    Stroke,
+};
 use skia_safe::canvas::{SaveLayerFlags, SaveLayerRec};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorFilter, ColorMatrix, Data, EncodedImageFormat, IRect,
@@ -107,51 +110,50 @@ impl Drop for Visit<'_> {
     }
 }
 
-pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>, RenderError> {
-    if !(scale.is_finite() && scale > 0.0) {
+fn framed_surface(
+    scene: &Scene,
+    framing: &Framing,
+    backend: Backend,
+) -> Result<(skia_safe::Surface, PixelSize), RenderError> {
+    if !(framing.scale.is_finite() && framing.scale > 0.0) {
         return Err(RenderError::Skia("scale must be positive".into()));
     }
-    let (w, h) = ramose_ir::pixel_size(scene.width, scene.height, scale);
-    let mut surface =
-        gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
+    let view = framing.view(scene.view);
+    let px = view.pixels;
+    let mut surface = gpu::surface(backend, (px.w as i32, px.h as i32))
+        .ok_or_else(|| RenderError::Skia("surface".into()))?;
     let canvas = surface.canvas();
-    canvas.scale((scale, scale));
     if let Some(bg) = scene.background {
         canvas.clear(color4(bg));
     }
+    if let Some(clip) = view.clip() {
+        canvas.clip_rect(clip.to_sk(), None, false);
+    }
+    canvas.concat(&view.matrix().to_sk());
     let ctx = DrawCtx::new(scene, backend);
     for child in &scene.children {
         draw_node(canvas, child, &ctx, Matrix::new_identity())?;
     }
+    Ok((surface, px))
+}
+
+pub fn render_png(scene: &Scene, framing: &Framing, backend: Backend) -> Result<Vec<u8>, RenderError> {
+    let (mut surface, _) = framed_surface(scene, framing, backend)?;
     let image = gpu::finish(backend, &mut surface)?;
     png_bytes(&image)
 }
 
-pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, u32, Vec<u8>), RenderError> {
-    if !(scale.is_finite() && scale > 0.0) {
-        return Err(RenderError::Skia("scale must be positive".into()));
-    }
-    let (w, h) = ramose_ir::pixel_size(scene.width, scene.height, scale);
-    let mut surface =
-        gpu::surface(backend, (w, h)).ok_or_else(|| RenderError::Skia("surface".into()))?;
-    let canvas = surface.canvas();
-    canvas.scale((scale, scale));
-    if let Some(bg) = scene.background {
-        canvas.clear(color4(bg));
-    }
-    let ctx = DrawCtx::new(scene, backend);
-    for child in &scene.children {
-        draw_node(canvas, child, &ctx, Matrix::new_identity())?;
-    }
+pub fn render_rgba(scene: &Scene, framing: &Framing, backend: Backend) -> Result<(u32, u32, Vec<u8>), RenderError> {
+    let (mut surface, px) = framed_surface(scene, framing, backend)?;
     let image = gpu::finish(backend, &mut surface)?;
     let info = skia_safe::ImageInfo::new(
-        (w, h),
+        (px.w as i32, px.h as i32),
         skia_safe::ColorType::RGBA8888,
         skia_safe::AlphaType::Unpremul,
         None,
     );
-    let row = w as usize * 4;
-    let mut buf = vec![0u8; row * h as usize];
+    let row = px.w as usize * 4;
+    let mut buf = vec![0u8; row * px.h as usize];
     if !image.read_pixels(
         &info,
         &mut buf,
@@ -161,7 +163,7 @@ pub fn render_rgba(scene: &Scene, scale: f32, backend: Backend) -> Result<(u32, 
     ) {
         return Err(RenderError::Skia("read pixels".into()));
     }
-    Ok((w as u32, h as u32, buf))
+    Ok((px.w, px.h, buf))
 }
 
 pub struct Baked {

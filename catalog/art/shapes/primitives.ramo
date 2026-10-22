@@ -6,8 +6,9 @@
 # vertical flat sides left and right); a red 5-point star of outer radius 24 and inner radius half of that, with one
 # point straight up; a blue blob of base radius 22 (seed 4, wobble .2), an irregular rounded outline about the size of
 # the circle.
-@target shapes/primitives.png 192x128
-@target shapes/primitives.svg 192x128 profile:vector
+@artboard 192x128
+@target shapes/primitives.png
+@target shapes/primitives.svg profile:vector
 
 rect 48x36 r:8 at:32,32 fill:p.red stroke:p.ink,2
 circle 20 at:96,32 fill:p.blue stroke:p.ink,2

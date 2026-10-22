@@ -12,8 +12,9 @@
 # around solid gold, as before.
 # The .svg target uses profile:svg: an outline that traces a brushed fill bakes with its node into
 # a raster tile, so cells 1 and 2 look like the PNG's, and cell 3 stays a path and an outline path.
-@target brush/outline.png 192x72
-@target brush/outline.svg 192x72 profile:svg
+@artboard 192x72
+@target brush/outline.png
+@target brush/outline.svg profile:svg
 
 use std/brushes { dry chip }
 

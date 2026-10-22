@@ -1,8 +1,9 @@
-# One def, tile, whose kind parameter is one_of(disc square ring). Three cells of 64x64 on a 192x64 canvas, each tile centered in its cell.
+# One def, tile, whose kind parameter is one_of(disc square ring). Three cells of 64x64 on a 192x64 artboard, each tile centered in its cell.
 # Left to right: tile with no kind (the first word, disc: a solid blue disc of radius 20);
 # tile kind:square (a solid red square 40 wide, which shows a named word from the list is accepted);
 # tile ring (an ink ring of radius 20 with no fill, which shows a positional word is checked against the same list).
-@target components/one_of.png 192x64
+@artboard 192x64
+@target components/one_of.png
 
 def tile kind:one_of(disc square ring)
   if kind == disc

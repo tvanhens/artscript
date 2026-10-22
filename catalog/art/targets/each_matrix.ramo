@@ -3,6 +3,7 @@
 # regular polygon with an ink outline centered at (24,24): k is the side count and j is the radius.
 # each_matrix_3_12: a small triangle, circumradius 12. each_matrix_3_22: a large triangle, circumradius 22.
 # each_matrix_6_12: a small hexagon, circumradius 12. each_matrix_6_22: a large hexagon, circumradius 22.
-@target targets/each_matrix_{k}_{j}.png 48x48 each k:[3 6] j:[12 22]
+@artboard 48x48
+@target targets/each_matrix_{k}_{j}.png each k:[3 6] j:[12 22]
 
 poly k r:j at:24,24 fill:p.red stroke:p.ink,2

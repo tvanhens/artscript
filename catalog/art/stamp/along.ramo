@@ -21,8 +21,9 @@
 # The .svg target uses profile:svg: the dots, leaves, circle, and ticks stay vector paths. Only the
 # vine's own brushed stroke and each tuft's brushed blades are baked to raster tiles, and the
 # vine's leaves stay vector paths drawn over its tile, so the image matches the PNG.
-@target stamp/along.png 256x256
-@target stamp/along.svg 256x256 profile:svg
+@artboard 256x256
+@target stamp/along.png
+@target stamp/along.svg profile:svg
 
 use std/brushes { bristle dry }
 use std/stamps { dots ticks leaves }

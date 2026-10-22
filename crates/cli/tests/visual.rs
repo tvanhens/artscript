@@ -74,8 +74,8 @@ impl View {
         let (w, h) = (decoder.width() as usize, decoder.height() as usize);
         let mut frames = Vec::new();
         while let Some(frame) = decoder.read_next_frame().unwrap() {
-            assert_eq!((frame.left, frame.top), (0, 0), "gif frame is not full-canvas");
-            assert_eq!((frame.width as usize, frame.height as usize), (w, h), "gif frame is not full-canvas");
+            assert_eq!((frame.left, frame.top), (0, 0), "gif frame is not the whole image");
+            assert_eq!((frame.width as usize, frame.height as usize), (w, h), "gif frame is not the whole image");
             frames.push(View { width: w, height: h, rgba: frame.buffer.to_vec() });
         }
         assert!(!frames.is_empty(), "gif has no frames");

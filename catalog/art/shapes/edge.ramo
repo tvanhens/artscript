@@ -12,7 +12,8 @@
 # Bottom right: a red ellipse wider than tall with a tapered ink edge over its lower half, from 3 o'clock round the
 # bottom to 9 o'clock. The ink is a hairline at both ends and swells to a thick crescent at the bottom, with the
 # bulge on the outside of the ellipse.
-@target shapes/edge.png 192x192
+@artboard 192x192
+@target shapes/edge.png
 
 circle 34 at:48,48 fill:p.blue name:disc
 edge @disc from:0 to:.25 stroke:p.ink,5

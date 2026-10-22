@@ -18,7 +18,7 @@ class PreviewUsageTests(unittest.TestCase):
         self.receipt = {"source": "art.ramo", "target": "art.png", "target_line": 1,
                         "exit_code": 0, "diagnostics": [], "backend": "cpu", "times": [0],
                         "size": [8, 8], "paths": ["/tmp/author/preview.png"],
-                        "crop_canvas": [0, 0, 8, 8], "crop_pixels": [0, 0, 8, 8],
+                        "crop_artboard": [0, 0, 8, 8], "crop_pixels": [0, 0, 8, 8],
                         "parameters": [], "sampling": "even samples exclude loop end; explicit times include it"}
 
     def run_report(self, events, fallback=False):

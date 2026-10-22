@@ -14,7 +14,7 @@ mod svg;
 mod text;
 mod warp;
 
-use ramose_ir::{Profile, Scene};
+use ramose_ir::{Framing, Profile, Scene};
 
 pub use features::raster_only_features;
 pub use gpu::{Backend, gpu_available};
@@ -46,39 +46,42 @@ pub enum RenderError {
 /// `sample` uses this same cap, and parallel encodes reserve against it and wait.
 pub const RASTER_BUDGET: u64 = 256 * 1024 * 1024;
 
-/// Renders the scene at `scale` (1 = one pixel per canvas unit) and encodes it as PNG.
+/// Renders the scene's view through `framing` and encodes it as PNG of `framing.pixels()`.
 /// Deterministic per backend on one machine. `Backend::Gpu` may differ from `Cpu` and across machines.
-pub fn render_png(scene: &Scene, scale: f32, backend: Backend) -> Result<Vec<u8>, RenderError> {
-    draw::render_png(scene, scale, backend)
+pub fn render_png(scene: &Scene, framing: &Framing, backend: Backend) -> Result<Vec<u8>, RenderError> {
+    draw::render_png(scene, framing, backend)
 }
 
-/// Writes SVG. Under `Profile::Svg`, subtrees using raster-only features are baked to
-/// embedded PNG tiles rendered at `bake_scale`. Under `Profile::Vector` they are an error.
+/// Writes SVG of `framing.out` units. Under `Profile::Svg`, subtrees using raster-only features
+/// are baked to embedded PNG tiles rendered at `bake_scale`. Under `Profile::Vector` they are an
+/// error.
 pub fn render_svg(
     scene: &Scene,
+    framing: &Framing,
     profile: Profile,
     bake_scale: f32,
     backend: Backend,
 ) -> Result<String, RenderError> {
-    svg::render_svg(scene, profile, bake_scale, backend)
+    svg::render_svg(scene, framing, profile, bake_scale, backend)
 }
 
-/// Unpremultiplied RGBA8888 bytes, row-major, length `width * height * 4` at `scale`.
+/// Unpremultiplied RGBA8888 bytes, row-major, length `width * height * 4` of `framing.pixels()`.
 pub fn render_rgba(
     scene: &Scene,
-    scale: f32,
+    framing: &Framing,
     backend: Backend,
 ) -> Result<(u32, u32, Vec<u8>), RenderError> {
-    draw::render_rgba(scene, scale, backend)
+    draw::render_rgba(scene, framing, backend)
 }
 
-/// One global palette, deterministic NeuQuant, delays already in centiseconds.
+/// One global palette, deterministic NeuQuant, delays already in centiseconds. Every frame is
+/// `framing.pixels()`.
 pub fn render_gif(
     scenes: &[&Scene],
-    scale: f32,
+    framing: &Framing,
     delays: &[u16],
     loop_forever: bool,
     backend: Backend,
 ) -> Result<Vec<u8>, RenderError> {
-    gif::encode(scenes, scale, delays, loop_forever, backend)
+    gif::encode(scenes, framing, delays, loop_forever, backend)
 }

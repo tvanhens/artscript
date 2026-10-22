@@ -82,7 +82,7 @@ def receipts(output: str) -> list[dict]:
                     and isinstance(value.get("size"), list) and len(value["size"]) == 2
                     and isinstance(value.get("paths"), list) and value["paths"]
                     and all(isinstance(p, str) and p.endswith(".png") for p in value["paths"])
-                    and all(key in value for key in ("crop_canvas", "crop_pixels", "parameters", "sampling"))):
+                    and all(key in value for key in ("crop_artboard", "crop_pixels", "parameters", "sampling"))):
                 found.append(value)
         offset += len(line)
     return found

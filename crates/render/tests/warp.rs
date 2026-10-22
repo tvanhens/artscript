@@ -1,6 +1,6 @@
 mod common;
 
-use common::{brushed, circle_at, color, effect, mark, red, scene, solid, stage};
+use common::{brushed, circle_at, color, effect, frame, framed, mark, red, scene, solid, stage};
 use ramose_geom::{NodeGeom, ToIr, WarpGeom};
 use ramose_ir::{Axis, Blend, Corners, Cylinder, EffectOp, Node, NodeKind, Paint, Profile, Sides, Warp, WarpStage};
 use skia_safe::{Matrix, Path, Point, Rect};
@@ -140,7 +140,7 @@ fn side() -> Node {
 fn corners_land_the_content_box_on_the_four_points() {
     let node = warped(side(), &[corners(QUAD)]);
     let bounds = node.bounds().unwrap();
-    let png = render_png(&scene(200.0, 200.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(200.0, 200.0, vec![node]), &frame(200.0, 200.0, 1.0), Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
     let center = centroid(QUAD);
     for (i, &(x, y)) in QUAD.iter().enumerate() {
@@ -168,7 +168,7 @@ fn a_cylinder_compresses_stripes_toward_its_edges_and_hides_the_back() {
     let mut node = solid("label", stripes.snapshot(), red());
     node.transform = Matrix::translate((100.0, 50.0)).to_ir();
     let node = warped(node, &[cylinder(50.0)]);
-    let png = render_png(&scene(200.0, 100.0, vec![node]), 2.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(200.0, 100.0, vec![node]), &frame(200.0, 100.0, 2.0), Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
     let runs = img.runs(100);
     assert_eq!(runs.len(), 5, "{runs:?}");
@@ -209,7 +209,7 @@ fn stage_order_matters_and_each_stack_stays_inside_its_bounds() {
     let rendered = [bent_then_pinned, pinned_then_bent].map(|node| {
         let bounds = node.bounds().unwrap();
         (
-            render_png(&scene(200.0, 200.0, vec![node]), 1.0, Backend::Cpu).unwrap(),
+            render_png(&scene(200.0, 200.0, vec![node]), &frame(200.0, 200.0, 1.0), Backend::Cpu).unwrap(),
             bounds,
         )
     });
@@ -237,7 +237,7 @@ fn a_warped_node_keeps_a_crisp_edge_under_a_scaled_render() {
         ("cylinder", warped(disc(), &[cylinder(1000.0)])),
     ];
     let counts = cases.map(|(name, node)| {
-        let png = render_png(&scene(96.0, 96.0, vec![node]), 3.0, Backend::Cpu).unwrap();
+        let png = render_png(&scene(96.0, 96.0, vec![node]), &frame(96.0, 96.0, 3.0), Backend::Cpu).unwrap();
         (name, Raster::decode(&png).partial(144, 144 - 30 - 6, 144))
     });
     for (name, partial) in &counts[1..] {
@@ -269,13 +269,13 @@ fn warped_scene() -> ramose_ir::Scene {
 #[test]
 fn renders_are_byte_identical_per_backend_and_close_across_them() {
     let s = warped_scene();
-    let cpu = render_png(&s, 1.0, Backend::Cpu).unwrap();
-    assert_eq!(cpu, render_png(&s, 1.0, Backend::Cpu).unwrap());
+    let cpu = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
+    assert_eq!(cpu, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
     if !gpu_available() {
         return;
     }
-    let gpu = render_png(&s, 1.0, Backend::Gpu).unwrap();
-    assert_eq!(gpu, render_png(&s, 1.0, Backend::Gpu).unwrap());
+    let gpu = render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap();
+    assert_eq!(gpu, render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap());
     let (a, b) = (Raster::decode(&cpu), Raster::decode(&gpu));
     assert_eq!((a.w, a.h), (b.w, b.h));
     let total: u64 =
@@ -313,7 +313,7 @@ fn a_warped_group_isolates_its_children_s_blend_modes() {
     };
     let flat = render_png(
         &scene(200.0, 100.0, vec![floor(), band()]),
-        1.0,
+        &frame(200.0, 100.0, 1.0),
         Backend::Cpu,
     )
     .unwrap();
@@ -328,7 +328,7 @@ fn a_warped_group_isolates_its_children_s_blend_modes() {
             100.0,
             vec![floor(), warped(band(), &[cylinder(200.0)])],
         ),
-        1.0,
+        &frame(200.0, 100.0, 1.0),
         Backend::Cpu,
     )
     .unwrap();
@@ -356,7 +356,7 @@ fn a_brushed_fill_renders_through_a_warp() {
         ])],
     );
     let center = node.warp.map_point(Point::new(40.0, 40.0)).unwrap();
-    let png = render_png(&scene(200.0, 100.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(200.0, 100.0, vec![node]), &frame(200.0, 100.0, 1.0), Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
     assert_eq!(img.at_point(center), [255, 0, 0, 255]);
     assert_eq!(
@@ -376,7 +376,7 @@ fn fx_outline_rings_the_warped_quad_and_not_the_flat_rect() {
         mask: None,
         brush: vec![],
     }));
-    let png = render_png(&scene(200.0, 200.0, vec![node]), 1.0, Backend::Cpu).unwrap();
+    let png = render_png(&scene(200.0, 200.0, vec![node]), &frame(200.0, 200.0, 1.0), Backend::Cpu).unwrap();
     let img = Raster::decode(&png);
     let center = centroid(QUAD);
     for i in 0..4 {
@@ -412,10 +412,10 @@ fn both_kinds_are_raster_only_and_svg_bakes_each_node_to_its_warped_box() {
         .collect();
     assert_eq!(census, ["side warp corners", "label warp cylinder"]);
     assert!(matches!(
-        render_svg(&s, Profile::Vector, 1.0, Backend::Cpu),
+        render_svg(&s, &framed(&s, 1.0), Profile::Vector, 1.0, Backend::Cpu),
         Err(RenderError::NotVector(_))
     ));
-    let svg = render_svg(&s, Profile::Svg, 1.0, Backend::Cpu).unwrap();
+    let svg = render_svg(&s, &framed(&s, 1.0), Profile::Svg, 1.0, Backend::Cpu).unwrap();
     assert_eq!(svg.matches("<image").count(), 2, "{svg}");
     for (i, node) in s.children.iter().enumerate() {
         let (tile, bounds) = (image_box(&svg, i), node.bounds().unwrap());

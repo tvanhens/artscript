@@ -53,7 +53,7 @@ impl Item {
     }
 }
 
-/// `@target chars/hero.png 256x256 scale:1,2 each team:[red, blue]`.
+/// `@artboard 256x256` or `@target chars/hero.png scale:1,2 each team:[red, blue]`.
 /// `path` is the raw first token (it may contain `/`, `.`, `{name}`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Directive {

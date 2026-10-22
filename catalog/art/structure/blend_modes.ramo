@@ -7,7 +7,8 @@
 # 4. `soft_light`: like overlay but gentler; the circle's half over blue is a muted lavender-purple and its half over gold a muted orange, both close to their backdrop so the circle's edge is low contrast.
 # 5. `add`: the circle is very bright: a near-white pink over blue and near-white yellow over gold.
 # 6. `erase`, with the backdrop squares and the circle inside a `layer` so the circle erases only that layer: the circle punches a round hole through the backdrop, showing paper, so the cell is a blue left half and a gold right half with a paper-colored disc cut out of the middle and no red anywhere.
-@target structure/blend_modes.png 192x128
+@artboard 192x128
+@target structure/blend_modes.png
 
 rect 24x48 at:20,32 fill:p.blue
 rect 24x48 at:44,32 fill:p.gold

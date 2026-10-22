@@ -1,5 +1,6 @@
-@target produce/sweet_strawberry.png 1024x1024
-@target produce/sweet_strawberry.svg 1024x1024
+@artboard 1024x1024
+@target produce/sweet_strawberry.png
+@target produce/sweet_strawberry.svg
 use face/parts { eye blush open_mouth sparkle }
 palette berry
   ramp red #e2404e 5
@@ -80,7 +81,7 @@ layer body pivot:506,846
     fx rim 5 dir:1,1 color:berry.rim a:.5
     fx grain .03 scale:1.8
     fx outline 6.5 color:red.line
-  assert inside(@skin canvas margin:24)
+  assert inside(@skin artboard margin:24)
   layer cheeks
     each x in [378 646]
       blush 86x40 at:x,648 color:berry.blush lines:3

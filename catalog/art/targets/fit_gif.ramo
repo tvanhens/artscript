@@ -1,0 +1,14 @@
+# A GIF frames every frame through one framing. The 64x32 artboard (blue fill, ink border inset 1, gold 12x12 square at 48,16) is contained in a 48x48 GIF, so each frame is a 48x24 blue band centered with 12px paper bars above and below.
+# fit_gif.gif (4 frames at 4 fps over 1s): a red circle (r 10) slides right along y=16 from x=16 in frame 1 to x=40 in frame 4, 8 artboard units (6px) per frame. In frame 4 it overlaps the gold square. Every frame has the same band and bars, and the circle never reaches a bar.
+@artboard 64x32
+@target targets/fit_gif.gif 48x48 fps:4 dur:1s clip:slide
+
+rect 64x32 at:32,16 fill:p.blue
+rect 62x30 at:32,16 fill:none stroke:p.ink,2
+rect 12x12 at:48,16 fill:p.gold
+circle 10 at:16,16 fill:p.red name:dot
+
+anim slide dur:1s
+  .dot at:key(0,0 32,0 ease:linear)
+
+play slide

@@ -16,7 +16,8 @@
 # wherever it faces down, and the bevel follows the curve. The taper does not tilt the shading:
 # the bevel on the narrowing ends is as light above and as dark below as the bevel at the middle.
 # Nothing is drawn outside a form's edge.
-@target brush/normal.png 192x128
+@artboard 192x128
+@target brush/normal.png
 
 brush bevel toward:-1,-1 depth:7 strength:.7
   sksl """

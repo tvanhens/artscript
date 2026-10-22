@@ -4,7 +4,8 @@
 # 3. fx grain .15 scale:4: the same strength as cell 2 but the noise is coarse and blurry, blotches several pixels across.
 # 4. fx grain .3 scale:2: stronger noise than cell 2, with clearly lighter yellow and darker orange specks about two pixels across.
 # Every square keeps a crisp square outline, and no grain falls on the paper.
-@target fx/grain.png 256x96
+@artboard 256x96
+@target fx/grain.png
 
 rect 52x52 at:32,48 fill:p.gold
 rect 52x52 at:96,48 fill:p.gold name:g0

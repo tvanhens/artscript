@@ -11,8 +11,9 @@
 # stops at the flaked edge. Its flakes fall in other places than cell 1's.
 # The .svg target uses profile:svg: a brushed node bakes into a raster tile, children included,
 # so each cell looks like the PNG's.
-@target brush/clip.png 192x72
-@target brush/clip.svg 192x72 profile:svg
+@artboard 192x72
+@target brush/clip.png
+@target brush/clip.svg profile:svg
 
 use std/brushes { dry chip }
 

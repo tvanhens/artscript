@@ -19,8 +19,9 @@
 # Cell 3: conic(gold gold,.5 plum,.5 plum): a hard split along the horizontal line through the center,
 # solid gold on the bottom half and solid plum on the top half. Cell 4: the same colors as cell 2 on a
 # circle of radius 20, so the sectors are clipped round.
-@target color/grad_radial_conic.png 192x104
-@target color/grad_radial_conic.svg 192x104 profile:svg
+@artboard 192x104
+@target color/grad_radial_conic.png
+@target color/grad_radial_conic.svg profile:svg
 
 rect 40x40 at:24,24 fill:radial(#e8b33a #2b2440)
 rect 40x40 at:72,24 fill:radial(#e8b33a #2b2440 at:.3,.3)

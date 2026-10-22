@@ -5,7 +5,8 @@
 # Bottom row, left to right: a gold triangle (poly 3) pointing up with sharp corners; a red pentagon with sharp
 # corners and one vertex at the top; a blue 8-point star with a deep notch (inner radius 0.3 of the outer) so the
 # points are thin spikes.
-@target shapes/corners.png 192x128
+@artboard 192x128
+@target shapes/corners.png
 
 rect 48x36 at:32,32 fill:p.red stroke:p.ink,2
 rect 48x36 r:12 at:96,32 fill:p.blue stroke:p.ink,2

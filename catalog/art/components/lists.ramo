@@ -1,4 +1,4 @@
-# Loop indexes, `list.{expr}`, joined lists, and vector sums. 256x128 canvas, two rows of four 64x64 cells, flat fills with no outlines except cells 4 and 5.
+# Loop indexes, `list.{expr}`, joined lists, and vector sums. 256x128 artboard, two rows of four 64x64 cells, flat fills with no outlines except cells 4 and 5.
 # Top row, left to right: (1) four circles in a row at y=32, x=8, 24, 40, 56, radii 2, 3.5, 5, 6.5 growing with the loop index, colored red, blue, green, gold in list order from `each i, c in`;
 # (2) three blue bars on a common baseline near the bottom of the cell, 10 wide, 12, 24, and 36 tall left to right, centered at x=78, 96, 114, built by a comprehension that binds an index and a height;
 # (3) six circles of radius 6 in two rows of three, centered at x=142, 160, 178 and y=23, 41, picked from [red blue green] by `hues.{mod(i+floor(i/3) 3)}`, so the top row reads red, blue, green and the bottom row reads blue, green, red;
@@ -7,7 +7,8 @@
 # (6) three green circles of radius 6 in a row at y=96, x=80, 96, 112, each placed with `at:(i*16,0)+(80,96)`, a parenthesized vector sum;
 # (7) four blue circles of radius 6 in a square, x=144 and 176, y=84 and 108, with the position chosen by an `if` whose branches are vectors;
 # (8) a checkerboard of six circles of radius 7 in two rows of three, x=206, 224, 242, y=84 and 108, red where the row and column indexes sum to an even number and blue otherwise, so the top row reads red, blue, red.
-@target components/lists.png 256x128
+@artboard 256x128
+@target components/lists.png
 
 let tones = [p.red p.blue p.green p.gold]
 each i, c in tones

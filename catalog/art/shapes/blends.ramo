@@ -7,7 +7,8 @@
 # blue. Cell 3: screen, the overlap is pale pink, lighter than both. Cell 4: overlay, the overlap is a muted tan-gold,
 # distinct from plain blue. Cell 5: add, the overlap is plain white. Cell 6: erase, the circle cuts a round hole through
 # the square and shows paper through it; the spill past the square's right edge erases nothing, so no blue shows there.
-@target shapes/blends.png 256x64
+@artboard 256x64
+@target shapes/blends.png
 
 layer cells
   rect 36x36 at:21,32 fill:p.gold

@@ -12,7 +12,8 @@
 # Third row, left to right:
 # 9. A blue 40x40 square masked by `mask @m9`, an invisible circle (radius 16), with fx outline 4 in ink: the ring follows the masked silhouette, a dark ring around a blue disc of radius 16, with no square corners and no ring around the square.
 # 10. A blue circle with `a:.5` and fx outline 4 in ink: the node's own alpha fades the whole node, ring included, so the disc and the ring are both half strength: a pale blue disc (160,183,228) inside a gray ring (142,137,148).
-@target fx/outline.png 256x192
+@artboard 256x192
+@target fx/outline.png
 
 circle 18 at:32,32 fill:p.blue
   fx outline 4

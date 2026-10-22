@@ -2,7 +2,8 @@
 # Top: an anim-level `loop` (`anim sweep dur:.5s loop`) played over the 1s GIF. The ink-outlined red circle (r 8, rest at (18,20)) slides right along y=20 with `at:key(0,0 60,0 ease:linear)` and wraps: x=18, 33, 48, 63 in frames 1-4, then back to x=18, 33, 48, 63 in frames 5-8 (two full sweeps, no frame beyond x=63).
 # Bottom: a `play` under an instance inside a def body. def pod draws its `orb` instance with `play grow` under it, so every pod grows by itself with no play in the entry file.
 # Two pods at (24,72) and (72,72), each an ink-outlined circle named core (left red, right blue, r 6 in frame 1): `grow` scales core from 1 to 2 over 1s, so both reach r 11.25 in frame 8 and neither moves; the two grow in step.
-@target anim/loop_def.gif 96x96 fps:8 dur:1s
+@artboard 96x96
+@target anim/loop_def.gif fps:8 dur:1s
 
 def orb tone:p.red
   circle 6 fill:tone stroke:p.ink,1 name:core

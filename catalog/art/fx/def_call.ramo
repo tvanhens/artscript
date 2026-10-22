@@ -3,7 +3,8 @@
 # 2. Green bead with outline 4 at the call site: the same green circle and shadow, plus a crisp dark ink ring around it.
 # 3. Red bead with adjust hue:120 at the call site: the circle is green, and its shadow shifts hue with it, so the shadow is green-gray instead of red-gray.
 # 4. Gold bead with blur 3 at the call site: the circle is soft at its edge and its shadow is blurred along with it.
-@target fx/def_call.png 256x96
+@artboard 256x96
+@target fx/def_call.png
 
 def bead size:20 tone:p.blue
   circle size fill:tone

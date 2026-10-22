@@ -11,8 +11,9 @@
 # top-left corner, and the ring itself stays solid.
 # The .svg target uses profile:svg: a brushed outline bakes with its node into a raster tile, so
 # cells 2 to 4 look like the PNG's, and cell 1 stays a path and an outline path.
-@target brush/ring.png 272x80
-@target brush/ring.svg 272x80 profile:svg
+@artboard 272x80
+@target brush/ring.png
+@target brush/ring.svg profile:svg
 
 use std/brushes { dry chip }
 

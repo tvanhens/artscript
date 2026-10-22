@@ -8,7 +8,8 @@
 # height is unchanged. The 2px side strokes are squeezed to under a pixel by the turn, so they
 # show as soft gray bands rather than crisp ink lines. A green 3px dot sits at @wrapped.right,@wrapped.cy, on the wrapped label's
 # right edge, because measurements report the warped box.
-@target warp/cylinder_y.png 256x80
+@artboard 256x80
+@target warp/cylinder_y.png
 
 group at:56,40
   rect 96x40 fill:p.gold.4 stroke:p.ink,2

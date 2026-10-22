@@ -8,7 +8,8 @@
 # tension:0 round:8, the same triangle with its three corners visibly rounded, filled blue.
 # (7) the fourth bottom-row cell: an open curve built from the list variable pts of four points (-20,10) (-8,-14)
 # (8,14) (20,-10), a smooth S-shaped wave, stroked ink 3px with no fill.
-@target shapes/curves.png 256x128
+@artboard 256x128
+@target shapes/curves.png
 
 let pts = [-20,10 -8,-14 8,14 20,-10]
 

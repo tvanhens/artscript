@@ -185,7 +185,7 @@ pub struct FnDef {
     pub span: Span,
 }
 
-/// A node (or anchor) as created so far, with the place of its parent frame on the canvas.
+/// A node (or anchor) as created so far, with the place of its parent frame on the artboard.
 #[derive(Clone)]
 pub struct Record {
     pub path: String,
@@ -194,7 +194,7 @@ pub struct Record {
     pub copies: Vec<u32>,
     pub parent_world: Place,
     pub node: Option<Node>,
-    /// An anchor's position in the parent frame. Its canvas point is read through
+    /// An anchor's position in the parent frame. Its artboard point is read through
     /// `parent_world`, so a warp filled later or a grid shift moves it.
     pub anchor: Option<Point>,
     /// The node's `at:` in its parent's coordinates (for suggested fixes).
@@ -232,16 +232,16 @@ pub struct RowRecord {
     pub stamps: Vec<Rc<RefCell<Record>>>,
 }
 
-/// The resolved target of an `@ref`. Everything is measured in canvas coordinates.
+/// The resolved target of an `@ref`. Everything is measured in artboard coordinates.
 #[derive(Clone)]
 pub struct RefVal {
     /// The reference as written, without `@` (`eye_r`, `hero.head`).
     pub label: String,
     pub record: Record,
-    /// Address of the record this was read from. `None` for the canvas.
+    /// Address of the record this was read from. `None` for the artboard.
     pub source: Option<usize>,
-    /// `canvas`: the canvas rect itself.
-    pub canvas: Option<Rect>,
+    /// `artboard`: the artboard rect itself.
+    pub artboard: Option<Rect>,
     pub extent: Extent,
 }
 
@@ -250,7 +250,7 @@ pub struct RefVal {
 pub enum Extent {
     /// Geometry plus half the stroke width (`@x`).
     Visual,
-    /// Everything the node draws, effects included, in canvas coordinates (`@x.outer`). It is
+    /// Everything the node draws, effects included, in artboard coordinates (`@x.outer`). It is
     /// a box, so the ref's silhouette is that box too.
     Outer(Rect),
 }
@@ -266,7 +266,7 @@ impl RefVal {
         if let Extent::Outer(r) = self.extent {
             return Some(back.map_rect(r).0);
         }
-        if let Some(c) = self.canvas {
+        if let Some(c) = self.artboard {
             return Some(back.map_rect(c).0);
         }
         if self.record.anchor.is_some() {
@@ -278,19 +278,19 @@ impl RefVal {
     }
 
     pub fn geom_bounds_in(&self, view: &Place) -> Option<Rect> {
-        if self.canvas.is_some() || self.record.anchor.is_some() || self.extent != Extent::Visual {
+        if self.artboard.is_some() || self.record.anchor.is_some() || self.extent != Extent::Visual {
             return self.bounds_in(view);
         }
         let node = self.record.node.as_ref()?;
         geom_bounds(node, &self.record.parent_world, &inverse(&view.flat()))
     }
 
-    /// Union of the node's shape geometries in canvas coordinates.
+    /// Union of the node's shape geometries in artboard coordinates.
     pub fn silhouette(&self) -> Path {
         if let Extent::Outer(r) = self.extent {
             return Path::rect(r, None);
         }
-        if let Some(c) = self.canvas {
+        if let Some(c) = self.artboard {
             return Path::rect(c, None);
         }
         match &self.record.node {
@@ -383,12 +383,12 @@ pub fn ref_from(entry: &Entry, label: &str) -> RefVal {
         label: label.to_string(),
         record: entry.record.borrow().clone(),
         source: Some(Rc::as_ptr(&entry.record) as usize),
-        canvas: None,
+        artboard: None,
         extent: Extent::Visual,
     }
 }
 
-/// Every anchor the file placed, by the path an author writes after `@`, in canvas units. A `_`
+/// Every anchor the file placed, by the path an author writes after `@`, in artboard units. A `_`
 /// name inside a def or slot fill is private to it, so neither it nor anything under it appears.
 #[derive(Default)]
 pub struct Anchors {
@@ -432,7 +432,7 @@ fn anchors_in(
                 label: path.clone(),
                 record: rec.clone(),
                 source: Some(Rc::as_ptr(&e.record) as usize),
-                canvas: None,
+                artboard: None,
                 extent: Extent::Visual,
             };
             drop(rec);
@@ -469,7 +469,7 @@ fn collect_anchors(r: &RefVal, out: &mut Anchors) {
                 label: format!("{}.{}.{i}", r.label, row.name),
                 record: stamp.borrow().clone(),
                 source: Some(Rc::as_ptr(stamp) as usize),
-                canvas: None,
+                artboard: None,
                 extent: Extent::Visual,
             };
             collect_anchors(&stamp, out);
@@ -477,7 +477,7 @@ fn collect_anchors(r: &RefVal, out: &mut Anchors) {
     }
 }
 
-/// How close a flattened silhouette stays to a warped curve, in canvas units.
+/// How close a flattened silhouette stays to a warped curve, in artboard units.
 pub(crate) const FLATTEN_TOL: f32 = 0.1;
 
 pub fn silhouette(node: &Node, parent_world: &Place) -> Path {
@@ -495,7 +495,7 @@ pub fn silhouette(node: &Node, parent_world: &Place) -> Path {
     }
 }
 
-/// The box of the node's geometry under `after`, which maps the canvas into the reader's frame.
+/// The box of the node's geometry under `after`, which maps the artboard into the reader's frame.
 fn geom_bounds(node: &Node, parent_world: &Place, after: &Matrix) -> Option<Rect> {
     let world = parent_world.inner_node(node);
     match &node.kind {

@@ -6,7 +6,8 @@
 # left on both sides of the seam and is full width at the right.
 # Right: a triangle through 3 corners, tension:0, starting at the top, with stroke:p.ink,[2 8 14]. The top corner is
 # thinnest, the bottom right is medium, and the bottom left is thickest. The closing side runs from 14px back to 2px.
-@target shapes/closed_ink.png 192x96
+@artboard 192x96
+@target shapes/closed_ink.png
 
 curve -20,-20 20,-20 20,20 -20,20 closed tension:0 fill:none stroke:p.ink,[2 14 2 14] at:32,48
 curve -22,0 0,-22 22,0 0,22 closed fill:none stroke:p.ink,6 taper:.3 at:96,48

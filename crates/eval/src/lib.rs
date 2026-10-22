@@ -30,6 +30,7 @@ mod warp;
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use ramose_geom::ToSk;
 use ramose_ir::Scene;
 use ramose_syntax::Diagnostic;
 use ramose_syntax::ast::DeclKind;
@@ -39,7 +40,7 @@ pub use parameters::{Parameters, parse_parameter};
 pub use key::{frame_count, frame_delays};
 pub use project::{BackendChoice, LintLevel, Manifest, Project, STD, find_root, load};
 pub use seed::fnv1a;
-pub use targets::{Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
+pub use targets::{Artboard, Format, MatrixValue, OutputSpec, Plan, TargetJob, plan};
 
 use crate::color::Rgba;
 use crate::eval::{Evaluator, PlayMark};
@@ -61,7 +62,7 @@ pub struct Evaluation {
     pub parameters: BTreeMap<String, String>,
 }
 
-/// What a scene exposes to the program that places its image, in canvas units.
+/// What a scene exposes to the program that places its image, in artboard units.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Rig {
     /// The `pivot:` point, `None` when the target has no `pivot:`.
@@ -92,8 +93,8 @@ pub fn evaluate(project: &Project, job: &TargetJob) -> Evaluation {
 
 /// One target's scene drawn at one scale, with the rig that scene placed.
 pub struct ScaleScene {
-    /// The scale the scene was evaluated at, as `TargetJob::sample_scale` names it.
-    pub scale: f32,
+    /// The scale the scene was evaluated at, as `TargetJob::draw_scale` names it.
+    pub scale: f64,
     pub scene: Scene,
     pub rig: Rig,
 }
@@ -106,7 +107,7 @@ pub struct OutputScenes {
 }
 
 impl OutputScenes {
-    pub fn at(&self, scale: f32) -> Option<&ScaleScene> {
+    pub fn at(&self, scale: f64) -> Option<&ScaleScene> {
         self.scenes.iter().find(|s| s.scale == scale)
     }
 }
@@ -117,7 +118,7 @@ pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let mut scenes = Vec::new();
     for at in draw_jobs(job) {
-        let scale = at.bake_scale;
+        let scale = at.sample_scale;
         let ev = evaluate(project, &at);
         merge_diagnostics(&mut diagnostics, ev.diagnostics);
         scenes.extend(ev.scene.map(|scene| ScaleScene {
@@ -134,8 +135,8 @@ pub fn evaluate_outputs(project: &Project, job: &TargetJob) -> OutputScenes {
 
 /// One target's frames sampled at one scale.
 pub struct ScaleSample {
-    /// The scale the frames were sampled at, as `TargetJob::sample_scale` names it.
-    pub scale: f32,
+    /// The scale the frames were sampled at, as `TargetJob::draw_scale` names it.
+    pub scale: f64,
     /// Its diagnostics are in `OutputSamples::diagnostics`, so this sample's own list is empty.
     pub sample: Sample,
 }
@@ -148,7 +149,7 @@ pub struct OutputSamples {
 }
 
 impl OutputSamples {
-    pub fn at(&self, scale: f32) -> Option<&Sample> {
+    pub fn at(&self, scale: f64) -> Option<&Sample> {
         self.samples
             .iter()
             .find(|s| s.scale == scale)
@@ -164,7 +165,7 @@ pub fn sample_outputs(project: &Project, job: &TargetJob) -> OutputSamples {
         let mut sample = sample(project, &at);
         merge_diagnostics(&mut diagnostics, std::mem::take(&mut sample.diagnostics));
         samples.push(ScaleSample {
-            scale: at.bake_scale,
+            scale: at.sample_scale,
             sample,
         });
     }
@@ -174,19 +175,18 @@ pub fn sample_outputs(project: &Project, job: &TargetJob) -> OutputSamples {
     }
 }
 
-/// The job once per distinct `sample_scale` of its outputs, in output order, each baking at that scale.
 fn draw_jobs(job: &TargetJob) -> Vec<TargetJob> {
-    let mut scales: Vec<f32> = Vec::new();
+    let mut scales: Vec<f64> = Vec::new();
     for out in &job.outputs {
-        let scale = job.sample_scale(out);
+        let scale = job.draw_scale(out);
         if !scales.contains(&scale) {
             scales.push(scale);
         }
     }
     scales
         .into_iter()
-        .map(|scale| TargetJob {
-            bake_scale: scale,
+        .map(|sample_scale| TargetJob {
+            sample_scale,
             ..job.clone()
         })
         .collect()
@@ -263,8 +263,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         anchors: anchors.placed,
     };
     let scene = Scene {
-        width: job.size.0,
-        height: job.size.1,
+        view: job.artboard.rect(),
         background: background.map(Rgba::to_ir),
         children,
     };
@@ -288,7 +287,7 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         diagnostics.extend(lints::unknown_word(parsed, f, &project.manifest, |name| {
             ev.modules.get(f).is_some_and(|module| module.global(name).is_some())
                 || job.matrix.iter().any(|(key, _)| key == name)
-                || ["target", "clip", "t", "scale", "canvas", "p"].contains(&name)
+                || ["target", "clip", "t", "scale", "artboard", "p"].contains(&name)
         }));
     }
     diagnostics.extend(lints::unknown_target(
@@ -298,8 +297,8 @@ fn evaluate_frame(project: &Project, job: &TargetJob) -> Evaluation {
         |n| module.global(n).is_some() || module.lost(n),
     ));
     let mut placement = Vec::new();
-    if !job.viewport {
-        placement = lints::off_canvas(&scene, &project.manifest, &job.source);
+    if !job.artboard.viewport {
+        placement = lints::off_artboard(&scene, job.artboard.rect().to_sk(), &project.manifest, &job.source);
     }
     placement.extend(lints::hidden_child(&scene, &project.manifest, &job.source));
     placement.extend(lints::warp_cut(&scene, &project.manifest, &job.source));
@@ -508,19 +507,17 @@ fn gif_background_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic>
     )
 }
 
-/// The GIF outputs drawn from frames sampled at `job.bake_scale`, so each scale checks only its own.
 fn gif_outputs_at(job: &TargetJob) -> impl Iterator<Item = &OutputSpec> {
     job.outputs
         .iter()
-        .filter(|o| o.format == Format::Gif && o.scale == job.bake_scale)
+        .filter(|o| o.format == Format::Gif && job.draw_scale(o) == job.sample_scale)
 }
 
 fn gif_dimension_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
-    let scene = &frames.first()?.scene;
+    frames.first()?;
     let over = gif_outputs_at(job).any(|o| {
-        let w = (scene.width * o.scale).ceil();
-        let h = (scene.height * o.scale).ceil();
-        w > u16::MAX as f32 || h > u16::MAX as f32
+        let px = o.framing.pixels();
+        px.w > u16::MAX as u32 || px.h > u16::MAX as u32
     });
     if !over {
         return None;
@@ -528,18 +525,13 @@ fn gif_dimension_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> 
     Some(
         Diagnostic::error("E0206", job.span, "a gif is larger than 65535px")
             .in_file(&job.source)
-            .with_fix("shrink the canvas"),
+            .with_fix("shrink the output"),
     )
 }
 
-fn gif_raster_bytes(width: f32, height: f32, scale: f32, frames: usize) -> u64 {
-    let w = (width * scale).ceil().max(1.0);
-    let h = (height * scale).ceil().max(1.0);
-    if !w.is_finite() || !h.is_finite() {
-        return u64::MAX;
-    }
-    (w as u64)
-        .saturating_mul(h as u64)
+fn gif_raster_bytes(px: ramose_ir::PixelSize, frames: usize) -> u64 {
+    u64::from(px.w)
+        .saturating_mul(u64::from(px.h))
         .saturating_mul(4)
         .saturating_mul(frames as u64)
 }
@@ -578,10 +570,9 @@ fn projected_retention(kept: u64, peak: u64, frames_left: usize) -> u64 {
 
 /// The raster cap `build` enforces before it encodes. `check` reads it from `sample`.
 fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
-    let scene = &frames.first()?.scene;
-    let over = gif_outputs_at(job).any(|o| {
-        gif_raster_bytes(scene.width, scene.height, o.scale, frames.len()) > GIF_CLIP_BUDGET
-    });
+    frames.first()?;
+    let over = gif_outputs_at(job)
+        .any(|o| gif_raster_bytes(o.framing.pixels(), frames.len()) > GIF_CLIP_BUDGET);
     if !over {
         return None;
     }
@@ -593,7 +584,7 @@ fn gif_raster_error(job: &TargetJob, frames: &[Frame]) -> Option<Diagnostic> {
             format!("a gif raster is larger than {mib}MiB"),
         )
         .in_file(&job.source)
-        .with_fix("lower `fps`, shorten `dur`, or shrink the canvas"),
+        .with_fix("lower `fps`, shorten `dur`, or shrink the output"),
     )
 }
 

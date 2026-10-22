@@ -22,7 +22,8 @@
 # (7) third row, right, math functions: a blue circle at (130,160) with radius lerp(4 20 .5), which is 12; a gold circle
 # of radius 8 at x clamp(300 160 180), which is 180, on y 160; a green circle of radius 8 at (214, 160+sin(30)*24),
 # which is (214,172).
-@target shapes/values_geometry.png 256x192
+@artboard 256x192
+@target shapes/values_geometry.png
 
 let c1 = 32,32
 circle 2 at:c1 fill:p.ink
