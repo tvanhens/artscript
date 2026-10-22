@@ -74,10 +74,9 @@ def _ear s:1
     curve -194,400 -230,396 -242,430 -228,466 -196,470 closed fill:grad(90-39*s skin.3 skin,.45 skin.1) name:ear
       cel @ear tone:skin shift:-10*s,-8
 def mouth open:0
-  if open >= 1
-    o_mouth 36 at:512,508 color:monk.mouth name:round
-  else
-    smile 54 at:512,504 color:monk.mouth
+  let wide = if open >= 1 then 1 else 0
+  o_mouth 36 at:512,508 color:monk.mouth a:wide name:round
+  smile 54 at:512,504 color:monk.mouth a:1-wide
 layer ground_shadow
   ellipse 250,28 at:512,896 fill:monk.shadow a:.36 blur:14
   ellipse 160,14 at:512,894 fill:monk.shadow a:.25 blur:7

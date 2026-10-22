@@ -4,7 +4,7 @@
 //! key, so `rand` in the block differs per stamp and `seed:` on the host pins them all.
 
 use std::cell::RefCell;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use ramose_geom::ToSk;
@@ -15,7 +15,7 @@ use ramose_syntax::ast::{DefItem, Expr, Named, Scene, Span};
 
 use crate::brush::{CHANNEL_KEYS, Spine};
 use crate::color::Rgba;
-use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, first_fill, fx_ordinals, in_source_order, new_node, osa_distance};
+use crate::eval::{Args, Evaluator, Fail, R, Scope, Timed, fail, first_fill, fx_ordinals, in_source_order, new_node, osa_distance};
 use crate::fx::FxSite;
 use crate::geom::P;
 use crate::identity::{self, Key, Lookup, Name, Names, Pending};
@@ -81,26 +81,26 @@ pub struct StampVal {
     pub decl: Rc<StampDecl>,
     /// Same order as `decl.params`.
     pub params: Vec<Value>,
+    pub timed: BTreeMap<String, Rc<Timed>>,
     pub spacing: Spacing,
     /// `name:` on the call, else the declared name.
     pub name: Name,
 }
 
 impl StampVal {
-    /// `leaves(spacing:6 tint:p.gold)`: a new value with those keys replaced. `named` holds the
-    /// parameter arguments; the placement and `name:` arrive resolved.
-    pub fn with(&self, pos: &[Value], named: &[(String, Value)], spacing: Option<Spacing>, name: Option<Name>) -> R<StampVal> {
+    pub fn with(&self, a: &Args, spacing: Option<Spacing>, name: Option<Name>) -> R<StampVal> {
         let decl_name = &self.decl.name;
-        if !pos.is_empty() {
+        if !a.pos.is_empty() {
             return Err(self.argument_error(format!("`{decl_name}` takes named arguments only")));
         }
         let mut out = StampVal {
             decl: self.decl.clone(),
             params: self.params.clone(),
+            timed: self.timed.clone(),
             spacing: spacing.unwrap_or_else(|| self.spacing.clone()),
             name: name.unwrap_or_else(|| self.name.clone()),
         };
-        for (k, v) in named {
+        for (k, v) in &a.named {
             let Some(i) = self.decl.params.iter().position(|(p, _)| p == k) else {
                 let nearest = self
                     .decl
@@ -124,6 +124,10 @@ impl StampVal {
                     .fix(format!("pass {}", default.kind())));
             }
             out.params[i] = v.clone();
+            match a.timed_key(k) {
+                Some(by) => out.timed.insert(k.clone(), by.clone()),
+                None => out.timed.remove(k),
+            };
         }
         Ok(out)
     }
@@ -280,6 +284,7 @@ impl Evaluator<'_> {
                 span,
             }),
             params: Vec::new(),
+            timed: BTreeMap::new(),
             spacing,
             name: Name::parse(name).expect("a declaration name is an identifier"),
         })
@@ -292,16 +297,16 @@ impl Evaluator<'_> {
     /// `leaves(k:v ...)` in an expression.
     pub(crate) fn call_stamp(&mut self, s: &StampVal, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
         let (a, spacing, name) = self.stamp_args(s, args, named, sc)?;
-        Ok(Value::Stamp(Rc::new(s.with(&a.pos, &a.named, spacing, name)?)))
+        Ok(Value::Stamp(Rc::new(s.with(&a, spacing, name)?)))
     }
 
     /// `stamp(k:v)` on a def parameter whose default is a stamp: checked against the default
     /// whatever the instance bound, then applied to the bound stamp. A bound `none` stays `none`.
     pub(crate) fn call_stamp_param(&mut self, default: &StampVal, bound: Option<Value>, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
         let (a, spacing, name) = self.stamp_args(default, args, named, sc)?;
-        default.with(&a.pos, &a.named, spacing.clone(), name.clone())?;
+        default.with(&a, spacing.clone(), name.clone())?;
         Ok(match bound {
-            Some(Value::Stamp(s)) => Value::Stamp(Rc::new(s.with(&a.pos, &a.named, spacing, name)?)),
+            Some(Value::Stamp(s)) => Value::Stamp(Rc::new(s.with(&a, spacing, name)?)),
             _ => Value::None,
         })
     }
@@ -309,7 +314,7 @@ impl Evaluator<'_> {
     /// The call's arguments: parameters as values, `spacing:` as an expression bound to this
     /// site, `count:` as a number, `name:` as a name.
     fn stamp_args(&mut self, s: &StampVal, args: &[Expr], named: &[Named], sc: &Scope) -> R<(Args, Option<Spacing>, Option<Name>)> {
-        let mut a = Args { pos: Vec::with_capacity(args.len()), named: Vec::new() };
+        let mut a = Args::default();
         for e in args {
             a.pos.push(self.expr(e, sc)?);
         }
@@ -330,7 +335,7 @@ impl Evaluator<'_> {
                     })));
                 }
                 "count" => {
-                    let v = self.expr(&n.value, sc)?;
+                    let v = self.untimed("the stamp `count:`", &n.value, sc)?;
                     spacing = Some(Spacing::Count(count_of(decl, &v).map_err(|f| s.with_notes(f))?));
                 }
                 "name" => {
@@ -339,7 +344,13 @@ impl Evaluator<'_> {
                         s.argument_error(format!("`name` of `{decl}` takes one identifier, got {}", v.show())).fix("write `name:small`")
                     })?);
                 }
-                _ => a.named.push((n.key.clone(), self.expr(&n.value, sc)?)),
+                _ => {
+                    let (v, by) = self.timed_by(|ev| ev.expr(&n.value, sc));
+                    if let Some(by) = by {
+                        a.timed.push((n.key.clone(), by));
+                    }
+                    a.named.push((n.key.clone(), v?));
+                }
             }
         }
         Ok((a, spacing, name))
@@ -554,7 +565,9 @@ impl Evaluator<'_> {
         };
         self.begin_seed(scope.file(), key.at_stmt(&[], "spacing"));
         let file = scope.file().to_string();
-        let v = self.expr(&e.expr, &scope).map_err(|f| self.report_at(f.note(format!("in the spacing of `{path}`")), &file, e.span, &path))?;
+        let v = self
+            .untimed("the stamp `spacing:`", &e.expr, &scope)
+            .map_err(|f| self.report_at(f.note(format!("in the spacing of `{path}`")), &file, e.span, &path))?;
         let step = match &v {
             Value::Num(n) => *n,
             Value::Percent(p) => p * f64::from(site.knot.half_width) * 2.0,
@@ -680,6 +693,7 @@ impl StampFrame<'_> {
         let mut env: Vec<(String, Value)> = self.decl.params.iter().map(|(k, _)| k.clone()).zip(self.set.params.iter().cloned()).collect();
         bind_site(&mut env, site, self.paint_at(site));
         body.env = env;
+        body.timed = self.set.timed.clone();
         body.typed_params = self.typed.clone();
         body.module = self.module.clone();
         body.ids = self.def_ids.clone();

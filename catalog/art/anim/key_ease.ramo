@@ -6,8 +6,15 @@
 @artboard 96x96
 @target anim/key_ease.gif fps:8 dur:1s
 
-circle 6 at:key(12 84 ease:linear dur:1s),12 fill:p.red stroke:p.ink,1
-circle 6 at:key(12 84 ease:in dur:1s),30 fill:p.blue stroke:p.ink,1
-circle 6 at:key(12 84 ease:out dur:1s),48 fill:p.green stroke:p.ink,1
-circle 6 at:key(12 84 ease:in_out dur:1s),66 fill:p.gold stroke:p.ink,1
-circle 6 at:key(12 84 ease:hold dur:1s),84 fill:p.ink stroke:p.ink,1
+circle 6 at:12,12 fill:p.red stroke:p.ink,1 name:lin
+circle 6 at:12,30 fill:p.blue stroke:p.ink,1 name:ein
+circle 6 at:12,48 fill:p.green stroke:p.ink,1 name:eout
+circle 6 at:12,66 fill:p.gold stroke:p.ink,1 name:einout
+circle 6 at:12,84 fill:p.ink stroke:p.ink,1 name:held
+anim eases dur:1s
+  .lin at:abs(key(12 84 ease:linear),12)
+  .ein at:abs(key(12 84 ease:in),30)
+  .eout at:abs(key(12 84 ease:out),48)
+  .einout at:abs(key(12 84 ease:in_out),66)
+  .held at:abs(key(12 84 ease:hold),84)
+play eases

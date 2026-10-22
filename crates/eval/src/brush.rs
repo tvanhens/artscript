@@ -403,7 +403,7 @@ impl Evaluator<'_> {
     }
 
     fn brush_args(&mut self, args: &[Expr], named: &[Named], sc: &Scope) -> R<Args> {
-        let mut a = Args { pos: Vec::with_capacity(args.len()), named: Vec::with_capacity(named.len()) };
+        let mut a = Args::default();
         for e in args {
             a.pos.push(self.expr(e, sc)?);
         }

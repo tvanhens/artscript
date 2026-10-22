@@ -6,12 +6,13 @@
 # lowered lid covers them instead of restarting them under the lash.
 def eye size:68x80 iris:p.iris side:1 look:0,0 lid:0
   let lash = mix(line(iris) p.ink .7)
+  let shut = if lid >= 1 then 1 else 0
   group scale:side*size.w/68,size.h/80
-    if lid >= 1
+    group a:shut
       curve -33.32,.8 -17.68,16 2.04,20.8 20.4,13.6 33.32,-.8 39.44,-8 stroke:lash,[2.04 6.8 8.84 8.16 5.44 1.7] taper:.15,.3
       curve 17,15.2 19.38,20.8 20.4,26.4 stroke:lash,3.06 taper:0,.8
       curve 25.16,10 28.56,14.6 30.6,19.2 stroke:lash,3.06 taper:0,.8
-    else
+    group a:1-shut
       curve -32,-1+lid*19 -22,-24+lid*42 -6,-36+lid*54 12,-36+lid*54 27,-25+lid*43 34,-10+lid*28 32,11 22,30 3,39 -16,34 -29,18 closed fill:p.sclera name:white
         copy @white fill:grad(down fade(p.sclera_shade clamp(1-lid*54/27.75 0 1)) fade(p.sclera_shade 0),clamp((27.75-lid*54)/(75-lid*54) 0 1)) a:.8
         ellipse 22.4,34.4 at:look.x*8.8,4+look.y*5.6 fill:grad(down shade(iris -2) shade(iris -1),.38 iris,.72 shade(iris 1)) stroke:fade(line(iris) .9),2 name:disc

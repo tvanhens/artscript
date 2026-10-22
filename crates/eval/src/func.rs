@@ -116,6 +116,7 @@ impl Evaluator<'_> {
         let mut fsc = sc.clone();
         fsc.module = module;
         fsc.env = env;
+        fsc.timed.clear();
         fsc.typed_params = Rc::default();
         self.active_fns.push(f.clone());
         let v = self.expr(&f.body, &fsc);

@@ -1,6 +1,6 @@
 # Interpolated value types, 8 frames over 1s, linear ease (frame 8 is at t=7/8). Each cell is a quadrant of the 96x96 artboard.
 # Top left: a 24x24 rect with an ink outline whose fill goes from red to blue through OKLab: red in frame 1, purple in the middle frames (not gray), mostly blue in frame 8.
-# Top right: a green circle centered at x=72, y=24 that grows from r 4 in frame 1 to r 12.75 in frame 8 (a number key).
+# Top right: a green 64-sided poly, round like a circle, centered at x=72, y=24 that grows from r 4 in frame 1 to r 12.75 in frame 8 (a number key).
 # Bottom left: a gold 28x12 rect centered at x=24, y=72 that rotates from 0 to 78.75 degrees: horizontal in frame 1, tilted 11.25 degrees further each frame (an angle key).
 # Bottom right: a blue circle (r 6) that moves along the diagonal from (66,66) in frame 1 to (83.5,83.5) in frame 8 (a vector key), clear of the blend lens in the center.
 # Center: a pale blue circle r 10 at x=56, y=48 is drawn first; a pale red circle r 10 at x=48, y=48 over it uses blend:key(normal multiply multiply),
@@ -8,9 +8,16 @@
 @artboard 96x96
 @target anim/key_types.gif fps:8 dur:1s
 
-rect 24x24 at:24,24 fill:key(p.red.3 p.blue.3 ease:linear dur:1s) stroke:p.ink,1
-circle key(4 14 ease:linear dur:1s) at:72,24 fill:p.green stroke:p.ink,1
-rect 28x12 at:24,72 rot:key(0 90 ease:linear dur:1s) fill:p.gold stroke:p.ink,1
-circle 6 at:key(66,66 86,86 ease:linear dur:1s) fill:p.blue stroke:p.ink,1
+rect 24x24 at:24,24 fill:p.red.3 stroke:p.ink,1 name:tint
+poly 64 r:4 at:72,24 fill:p.green stroke:p.ink,1 name:grow
+rect 28x12 at:24,72 fill:p.gold stroke:p.ink,1 name:spin
+circle 6 at:66,66 fill:p.blue stroke:p.ink,1 name:slide
 circle 10 at:56,48 fill:p.blue.3
-circle 10 at:48,48 fill:p.red.3 blend:key(normal multiply multiply dur:1s)
+circle 10 at:48,48 fill:p.red.3 name:lens
+anim types dur:1s
+  .tint fill:key(p.red.3 p.blue.3 ease:linear)
+  .grow r:key(4 14 ease:linear)
+  .spin rot:abs(key(0 90 ease:linear))
+  .slide at:abs(key(66,66 86,86 ease:linear))
+  .lens blend:key(normal multiply multiply)
+play types

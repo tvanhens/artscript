@@ -8,6 +8,7 @@ use ramose_syntax::ast::{
 };
 use ramose_syntax::{Diagnostic, format_expr};
 
+use crate::eval::Timed;
 use crate::scope::Record;
 use crate::seed::{explicit_seed, node_seed};
 use crate::value::Value;
@@ -1664,6 +1665,7 @@ pub struct PendingPatch {
     pub origin_depth: u32,
     pub order: Order,
     pub named: Vec<(String, Value)>,
+    pub timed: Vec<(String, Rc<Timed>)>,
     pub off: bool,
     pub channel: Option<ChannelPatch>,
     /// Where E0340 is reported. A `play` reports at the play.

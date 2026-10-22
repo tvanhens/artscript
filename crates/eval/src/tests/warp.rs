@@ -268,18 +268,23 @@ fn explain_prints_the_stack_as_written() {
 fn key_interpolates_warps_of_one_shape_and_rejects_a_mix() {
     let s = scene(
         "@artboard 100x100\n@target t.png t:.5s\n\
-         rect 40x24 at:0,0 warp:key(corners(0,0 40,0 40,24 0,24) corners(0,0 80,0 80,24 0,24) ease:linear dur:1s) name:k\n\
-         rect 40x24 at:0,0 warp:key(cylinder(20) cylinder(60) ease:linear dur:1s) name:r\n\
-         rect 40x24 at:0,0 warp:key([cylinder(20) corners(-20,-12 20,-12 20,12 -20,12)] [cylinder(60) corners(-40,-12 40,-12 40,12 -40,12)] dur:1s) name:st\n\
+         anim w dur:1s\n  \
+         .k warp:key(corners(0,0 40,0 40,24 0,24) corners(0,0 80,0 80,24 0,24) ease:linear)\n  \
+         .r warp:key(cylinder(20) cylinder(60) ease:linear)\n  \
+         .st warp:key([cylinder(20) corners(-20,-12 20,-12 20,12 -20,12)] [cylinder(60) corners(-40,-12 40,-12 40,12 -40,12)])\n\
+         rect 40x24 at:0,0 name:k\n\
+         rect 40x24 at:0,0 name:r\n\
+         rect 40x24 at:0,0 name:st\n\
          circle 1 at:@k.w,@r.w name:p\n\
-         circle 1 at:@st.w,@st.h name:sp\n",
+         circle 1 at:@st.w,@st.h name:sp\n\
+         play w\n",
     );
     close(probe(&s, "p"), (60.0, 80.0 * sin(20.0 / 40.0)), 1e-3);
     close(probe(&s, "sp"), (60.0, 24.0), 1e-3);
     for t in ["0s", ".5s", "1s"] {
         let ev = run_with(
             &format!(
-                "@artboard 100x100\n@target t.png t:{t}\nrect 40x24 at:0,0 warp:key(cylinder(4) corners(0,0 10,0 10,10 0,10) dur:1s) name:k\n"
+                "@artboard 100x100\n@target t.png t:{t}\nanim w dur:1s\n  .k warp:key(cylinder(4) corners(0,0 10,0 10,10 0,10))\nrect 40x24 at:0,0 name:k\nplay w\n"
             ),
             &[],
         );
@@ -287,7 +292,7 @@ fn key_interpolates_warps_of_one_shape_and_rejects_a_mix() {
         assert!(d.message.contains("mixes"), "{t}: {d}");
         let ev = run_with(
             &format!(
-                "@artboard 100x100\n@target t.png t:{t}\nrect 40x24 at:0,0 warp:key(cylinder(4) none dur:1s) name:k\n"
+                "@artboard 100x100\n@target t.png t:{t}\nanim w dur:1s\n  .k warp:key(cylinder(4) none)\nrect 40x24 at:0,0 name:k\nplay w\n"
             ),
             &[],
         );
