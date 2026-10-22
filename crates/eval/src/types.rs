@@ -814,6 +814,9 @@ impl Outlines {
         checks.extend(named.iter().filter_map(|n| sig.get(&n.key).filter(|_| !fixed.contains(&n.key)).map(|p| (p, &n.value))));
         for (p, e) in checks {
             if matches!(e, Expr::Ident(w) if w == "none") {
+                if let Ty::Word(Some(words)) = &p.ty {
+                    self.report(one_of_mismatch(&sig.name, &p.key, words, "none"), &r.file, span);
+                }
                 continue;
             }
             if let Ty::Word(Some(words)) = &p.ty

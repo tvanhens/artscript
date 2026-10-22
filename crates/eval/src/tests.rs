@@ -7681,6 +7681,14 @@ fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
 }
 
 #[test]
+fn an_alias_fixing_a_one_of_to_none_is_e0320_once_at_the_alias() {
+    let ev = check_with("@artboard 16x16\n@target t.png\ndef tile kind:one_of(floor_top fill)\n  circle 2\ndef floor = tile kind:none\nfloor\nfloor\n", &[]);
+    let es: Vec<_> = ev.diagnostics.iter().filter(|d| d.code == "E0320").collect();
+    assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!((es[0].span.line, es[0].message.as_str()), (5, "`kind` of `tile` is one of floor_top, fill, got none"), "{}", es[0]);
+}
+
+#[test]
 fn a_one_of_parameter_rejects_none_at_the_call() {
     let ev = run_with("@artboard 16x16\n@target t.png\ndef tile kind:one_of(floor_top fill)\n  circle 2\ntile kind:none\n", &[]);
     let d = diag(&ev, "E0320");
