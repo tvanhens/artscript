@@ -4,6 +4,7 @@
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use ramose_ir::{
     Blend, Cap, Clip, Fill as IrFill, Join, Mask, MaskSource, Node, NodeKind, Paint, Shape, Stroke,
@@ -39,6 +40,7 @@ use crate::scope::{
 };
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
+use crate::types::{DeclRef, Signature, Ty, check_param, marker_value};
 use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
 use crate::warp;
 
@@ -185,10 +187,9 @@ pub(crate) struct Scope {
     pub env: Vec<(String, Value)>,
     /// The names in `env` whose value follows an anim patch, with that patch.
     pub timed: BTreeMap<String, Rc<Timed>>,
-    /// Def and stamp parameters whose default is a brush or a stamp, by their index in `env`,
-    /// with that default. A call on one is checked against the default's declaration whatever
-    /// the instance bound.
-    pub typed_params: Rc<Vec<(usize, Value)>>,
+    /// Def and stamp parameters typed as a brush or a stamp, by their index in `env`. A call on
+    /// one is checked against that declaration whatever the instance bound.
+    pub typed_params: Rc<Vec<(usize, Ty)>>,
     pub module: Rc<Module>,
     owner: Key,
     parent: Key,
@@ -490,6 +491,8 @@ pub(crate) struct Evaluator<'a> {
     /// Names of the statements that failed while blocked. A read of one stays quiet, because
     /// the cycle was reported at that statement.
     broken: BTreeSet<Site>,
+    /// Libraries whose parameter types failed and whose importer this job already told.
+    told_failed: BTreeSet<String>,
 }
 
 struct StyleHit {
@@ -552,7 +555,7 @@ pub(crate) struct SeedSnap {
     count: u64,
 }
 
-fn canvas_renamed() -> Fail {
+pub(crate) fn canvas_renamed() -> Fail {
     fail("E0320", "`canvas` is now `artboard`").fix("write `artboard`")
 }
 
@@ -866,51 +869,7 @@ fn size_box(w: f64, h: f64) -> Rect {
     Rect::from_xywh((-w / 2.0) as f32, (-h / 2.0) as f32, w as f32, h as f32)
 }
 
-fn check_param(
-    owner: &str,
-    p: &Named,
-    default: &R<Value>,
-    words: Option<&[String]>,
-    given: &Value,
-) -> R<()> {
-    if let Some(words) = words {
-        if matches!(given, Value::Ident(w) if words.contains(w)) {
-            return Ok(());
-        }
-        let list = words.join(", ");
-        return Err(fail(
-            "E0320",
-            format!("`{}` of `{owner}` is one of {list}, got {}", p.key, given.show()),
-        )
-        .fix(format!("write `{}:{}` or another of {list}", p.key, words[0])));
-    }
-    match default {
-        Ok(d) if !d.accepts(given) => Err(fail(
-            "E0320",
-            format!(
-                "`{}` of `{owner}` expects {}, got {}",
-                p.key,
-                d.kind(),
-                given.kind()
-            ),
-        )
-        .fix(param_fix(&p.key, d, given))),
-        _ => Ok(()),
-    }
-}
-
-fn param_fix(key: &str, default: &Value, given: &Value) -> String {
-    match (default, given) {
-        (Value::Module(_), Value::Palette(p)) => format!(
-            "write `palette:{}` on the instance to swap `p`, or pass a module from `use`, like `{key}:hollow`",
-            p.name
-        ),
-        (Value::Module(_), _) => format!("pass a module from `use`, like `{key}:hollow`"),
-        _ => format!("pass {} like `{key}:{}`", default.kind(), default.show()),
-    }
-}
-
-/// The body sees `size` in its default's kind, so `size:72x32` always reads `size.w`.
+/// The body sees `size` in its default's type, so `size:72x32` always reads `size.w`.
 fn resolve_size(
     v: &Value,
     pair_default: bool,
@@ -1101,6 +1060,7 @@ impl<'a> Evaluator<'a> {
             stamping: Vec::new(),
             blocked: Vec::new(),
             broken: BTreeSet::new(),
+            told_failed: BTreeSet::new(),
         }
     }
 
@@ -1223,6 +1183,15 @@ impl<'a> Evaluator<'a> {
                 .note(format!("cycle: {} -> {file}", self.loading.join(" -> ")))
                 .fix("move the shared declarations into a third library both can import"));
         }
+        // `plan` reports the file's own errors; an importer hears once per job that it is gone.
+        if let Some(first) = self.project.outlines().first_error(file) {
+            if file == self.job.source || !self.told_failed.insert(file.to_string()) {
+                return Err(Fail::reported());
+            }
+            return Err(fail("E0214", format!("`{file}` has a parameter type error, so nothing it declares can be used"))
+                .note(format!("first error: {}:{}:{} {} {}", first.file, first.span.line, first.span.col, first.code, first.message))
+                .fix(format!("fix the error at {}:{}", first.file, first.span.line)));
+        }
         let parsed = self.parse(file)?;
         let mut parameter_names = BTreeSet::new();
         for decl in parsed.decls() {
@@ -1341,11 +1310,6 @@ impl<'a> Evaluator<'a> {
         match &decl.kind {
             DeclKind::Param { params } => {
                 for p in params {
-                    if let Some(Err(message)) = p.value.one_of_words() {
-                        self.report(fail("E0320", message), &module.path, p.span, "");
-                        module.lost.borrow_mut().insert(p.key.clone());
-                        continue;
-                    }
                     if (module.global(&p.key).is_some() && !module.parameters.borrow().contains(&p.key))
                         || module.styles.borrow().contains_key(&p.key)
                         || module.finishes.borrow().contains_key(&p.key)
@@ -1421,17 +1385,13 @@ impl<'a> Evaluator<'a> {
                             }
                         }
                     } else {
-                        if let Some(Err(m)) = p.value.one_of_words() {
-                            module.lost.borrow_mut().insert(name.clone());
-                            return Err(fail("E0320", m)
-                                .fix(format!("write `{}:one_of(a b c)`", p.key)));
-                        }
                         ps.push(p.clone());
                     }
                 }
                 let comp = Component {
                     name: name.clone(),
                     params: ps,
+                    sig: self.signature_of(&module.path, name),
                     needs,
                     body: body.clone(),
                     module: module.path.clone(),
@@ -1454,6 +1414,7 @@ impl<'a> Evaluator<'a> {
                 let rule = RuleDef {
                     name: name.clone(),
                     params: params.clone(),
+                    sig: self.signature_of(&module.path, name),
                     body: body.clone(),
                     module: module.path.clone(),
                     span: decl.span,
@@ -1596,6 +1557,15 @@ impl<'a> Evaluator<'a> {
             }
         }
         Ok(())
+    }
+
+    /// The typed parameters of a def, brush, stamp, or rule this project declares.
+    pub(crate) fn signature_of(&self, file: &str, name: &str) -> Arc<Signature> {
+        self.project
+            .outlines()
+            .signature(&DeclRef::new(file, name))
+            .cloned()
+            .expect("the outline holds every declaration of a parsed file")
     }
 
     fn scope_shell(&self, module: &Rc<Module>, ids: Rc<ModuleIds>) -> Scope {
@@ -3845,12 +3815,12 @@ impl<'a> Evaluator<'a> {
         ))
     }
 
-    /// A parameter's default and, for `one_of(...)`, the words it may take. A default that
-    /// fails to evaluate stays an `Err` the binding reports only when no argument replaces it.
-    fn param_default(&mut self, p: &Named, dsc: &Scope) -> (R<Value>, Option<Vec<String>>) {
-        match p.value.one_of_words() {
-            Some(Ok(words)) => (Ok(Value::Ident(words[0].clone())), Some(words)),
-            _ => (self.expr(&p.value, dsc), None),
+    /// The value of a parameter default: `one_of(..)` is its first word, `none(T)` is `none`,
+    /// and anything else is evaluated.
+    pub(crate) fn default_value(&mut self, e: &Expr, sc: &Scope) -> R<Value> {
+        match marker_value(e) {
+            Some(v) => Ok(v),
+            None => self.expr(e, sc),
         }
     }
 
@@ -3871,36 +3841,42 @@ impl<'a> Evaluator<'a> {
         {
             given.push((p.key.clone(), self.parameter_literal(value, scope)?));
         }
-        self.bind_params("entry file", std::slice::from_ref(p), module, &given, p.span, scope)
+        let sig = self.project.outlines().entry_params(&module.path).cloned().expect("an entry file with `param` lines has entry parameters");
+        self.bind_params(std::slice::from_ref(p), &sig, module, &given, p.span, scope)
     }
 
+    /// Binds `params` to the `given` arguments, each checked against `sig`, or to their defaults,
+    /// evaluated in `module` with the caller's palette.
     pub(crate) fn bind_params(
         &mut self,
-        owner: &str,
         params: &[Named],
+        sig: &Signature,
         module: &Rc<Module>,
         given: &[(String, Value)],
         span: Span,
         caller: &Scope,
     ) -> R<Vec<(String, Value)>> {
+        for (k, v) in given {
+            if let Some(p) = sig.get(k) {
+                check_param(&sig.name, p, v)?;
+            }
+        }
         let mut def_scope = self.module_scope(module);
         def_scope.palette = caller.palette.clone();
         let mut env: Vec<(String, Value)> = Vec::new();
         for p in params {
-            let mut dsc = def_scope.clone();
-            dsc.env = env.clone();
-            let (default, words) = self.param_default(p, &dsc);
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
-                Some((_, v)) => {
-                    check_param(owner, p, &default, words.as_deref(), v)?;
-                    v.clone()
+                Some((_, v)) => v.clone(),
+                None => {
+                    let mut dsc = def_scope.clone();
+                    dsc.env = env.clone();
+                    self.default_value(&p.value, &dsc).map_err(|f| {
+                        f.note(format!(
+                            "in the default of `{}` ({}:{})",
+                            p.key, module.path, span.line
+                        ))
+                    })?
                 }
-                None => default.map_err(|f| {
-                    f.note(format!(
-                        "in the default of `{}` ({}:{})",
-                        p.key, module.path, span.line
-                    ))
-                })?,
             };
             env.push((p.key.clone(), value));
         }
@@ -3972,6 +3948,11 @@ impl<'a> Evaluator<'a> {
                 return Err(no_parameter(&comp.name, &comp.name, k, &param_names));
             }
         }
+        for (k, v) in &given {
+            if let Some(p) = comp.sig.get(k) {
+                check_param(&comp.name, p, v)?;
+            }
+        }
         let (m, at) = self.transform(&node_args, (0.0, 0.0), sc.frame, sc, true)?;
         let caller_local = inverse(&m).map_rect(sc.frame).0;
         let mut box_frame = Rect::new_empty();
@@ -3990,19 +3971,16 @@ impl<'a> Evaluator<'a> {
         let mut env: Vec<(String, Value)> = Vec::new();
         let mut typed_params = Vec::new();
         for p in &comp.params {
-            let mut dsc = def_scope.clone();
-            dsc.env = env.clone();
-            let ((default, words), by) = self.timed_by(|ev| ev.param_default(p, &dsc));
-            let pair_default = matches!(&default, Ok(d) if d.kind() == Kind::Vector);
-            if let Ok(d @ (Value::Brush(_) | Value::Stamp(_))) = &default {
-                typed_params.push((env.len(), d.clone()));
+            let ty = comp.sig.get(&p.key).map(|p| &p.ty);
+            if let Some(ty @ (Ty::Brush(_) | Ty::Stamp(_))) = ty {
+                typed_params.push((env.len(), ty.clone()));
             }
             let value = match given.iter().rev().find(|(k, _)| k == &p.key) {
-                Some((_, v)) => {
-                    check_param(&comp.name, p, &default, words.as_deref(), v)?;
-                    v.clone()
-                }
+                Some((_, v)) => v.clone(),
                 None => {
+                    let mut dsc = def_scope.clone();
+                    dsc.env = env.clone();
+                    let (default, by) = self.timed_by(|ev| ev.default_value(&p.value, &dsc));
                     if let Some(by) = by {
                         def_scope.timed.insert(p.key.clone(), by);
                     }
@@ -4016,7 +3994,7 @@ impl<'a> Evaluator<'a> {
             };
             let value = if p.key == "size" {
                 let (value, rect) =
-                    resolve_size(&value, pair_default, caller_local, sc, &comp.name)?;
+                    resolve_size(&value, ty == Some(&Ty::Vector), caller_local, sc, &comp.name)?;
                 box_frame = rect;
                 value
             } else {

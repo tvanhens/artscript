@@ -9,6 +9,7 @@ use ramose_syntax::ast::{CheckKind, Expr, File, Item, Named, Scene, SceneKind, S
 
 use crate::eval::{Evaluator, Fail, R, Scope, fail, measure_rect, unseen};
 use crate::scope::{RefVal, RuleDef};
+use crate::types::check_param;
 use crate::value::{Value, num};
 
 pub(crate) struct Pending {
@@ -136,6 +137,11 @@ impl Evaluator<'_> {
         for n in named {
             given.push((n.key.clone(), self.expr(&n.value, sc)?));
         }
+        for (k, v) in &given {
+            if let Some(p) = rule.sig.get(k) {
+                check_param(&rule.name, p, v)?;
+            }
+        }
         let mut rsc = sc.clone();
         rsc.module = module;
         rsc.env = Vec::new();
@@ -143,7 +149,7 @@ impl Evaluator<'_> {
         for p in &rule.params {
             let v = match given.iter().rev().find(|(k, _)| k == &p.key) {
                 Some((_, v)) => v.clone(),
-                None => self.expr(&p.value, &rsc)?,
+                None => self.default_value(&p.value, &rsc)?,
             };
             rsc.env.push((p.key.clone(), v));
         }

@@ -175,17 +175,6 @@ impl Value {
         }
     }
 
-    /// Whether a parameter whose default has kind `self.kind()` accepts `other`.
-    pub fn accepts(&self, other: &Value) -> bool {
-        let (a, b) = (self.kind(), other.kind());
-        a == b
-            || matches!(other, Value::None)
-            || matches!(self, Value::None)
-            || matches!((a, b), (Kind::Component, Kind::Word) | (Kind::List, Kind::Range) | (Kind::Range, Kind::List) | (Kind::Warp, Kind::List))
-            || (a == Kind::Color && b == Kind::Field)
-            || (a == Kind::Vector && b == Kind::Number)
-    }
-
     pub fn num(&self) -> Option<f64> {
         match self {
             Value::Num(v) => Some(*v),

@@ -9,7 +9,7 @@ use ramose_syntax::Diagnostic;
 
 use crate::explain::explain;
 
-use super::{at, diag, node, paths, run_with, shape, show};
+use super::{at, check_with, diag, node, paths, run_with, shape, show};
 
 const GARDEN: &str = "\
 def leaf size:10 tint:#4a7a3a
@@ -20,7 +20,7 @@ stamp leaves spacing:8+8*pressure tint:#4a7a3a
   let side = if mod(i 2) == 0 then 1 else -1
   leaf 5+7*pressure tint:tint at:0,side*2 rot:side*rand(15 40) name:leaf
 
-stamp dots r:1.5 spacing:5 tint:none
+stamp dots r:1.5 spacing:5 tint:none(color)
   circle r fill:if tint == none then paint else tint
 
 stamp probe spacing:25
@@ -36,11 +36,11 @@ fn ok(src: &str) -> Scene {
 }
 
 fn errors(src: &str) -> Vec<Diagnostic> {
-    run_with(src, &[LIB]).diagnostics
+    check_with(src, &[LIB]).diagnostics
 }
 
 fn first(src: &str, code: &str) -> Diagnostic {
-    diag(&run_with(src, &[LIB]), code).clone()
+    diag(&check_with(src, &[LIB]), code).clone()
 }
 
 fn stamps<'a>(s: &'a Scene, path: &str) -> &'a [Node] {

@@ -4,19 +4,19 @@
 # the right. It reads i s u len width tangent pressure angle tilt velocity paint.
 # See `ramose docs stamps`.
 
-# A dotted line. `tint:none` takes the host's paint at each dot.
-stamp dots r:2 spacing:6 tint:none
+# A dotted line. `tint:none(color)` takes the host's paint at each dot.
+stamp dots r:2 spacing:6 tint:none(color)
   circle r fill:if tint == none then paint else tint
 
 # Ticks across the spine, `reach` units to each side.
-stamp ticks reach:4 spacing:8 tint:none
+stamp ticks reach:4 spacing:8 tint:none(color)
   curve 0,-reach 0,reach stroke:(if tint == none then paint else tint),1
 
 # Leaves that alternate sides, lean away from the stem, and grow with pressure. The spacing is
 # read at each leaf, so big leaves sit further apart.
-def _leaf size:10 tint:none
+def _leaf size:10 tint:none(color)
   curve 0,0 size*.5,-size*.35 size,0 size*.5,size*.35 closed tension:.6 fill:tint name:blade
 
-stamp leaves spacing:8+8*pressure tint:none
+stamp leaves spacing:8+8*pressure tint:none(color)
   let side = if mod(i 2) == 0 then 1 else -1
   _leaf 5+7*pressure tint:if tint == none then paint else tint at:0,side*2 rot:side*rand(15 40) name:leaf

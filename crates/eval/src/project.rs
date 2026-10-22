@@ -1,12 +1,15 @@
 //! The project: `ramose.toml` and every `.ramo` source under the root. This is the only module
 //! in the evaluator that touches the filesystem; everything downstream works on [`Project`].
 
+use std::sync::OnceLock;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use ramose_syntax::Diagnostic;
 use ramose_syntax::ast::Span;
+
+use crate::types::Outlines;
 
 pub const MANIFEST: &str = "ramose.toml";
 
@@ -242,15 +245,27 @@ pub struct Project {
     pub manifest: Manifest,
     pub manifest_src: String,
     pub files: BTreeMap<String, String>,
+    outlines: OnceLock<Outlines>,
 }
 
 impl Project {
+    /// The same manifest over other sources, with nothing cached from the old ones.
+    pub fn with_files(&self, files: BTreeMap<String, String>) -> Project {
+        Project { root: self.root.clone(), manifest: self.manifest.clone(), manifest_src: self.manifest_src.clone(), files, outlines: OnceLock::new() }
+    }
+
+    /// Every parameter's type, read once from the parse trees and shared by every job.
+    pub(crate) fn outlines(&self) -> &Outlines {
+        self.outlines.get_or_init(|| Outlines::build(self))
+    }
+
     pub fn from_sources(manifest_src: &str, files: BTreeMap<String, String>) -> Result<Project, Diagnostic> {
         Project {
             root: PathBuf::new(),
             manifest: Manifest::parse(manifest_src)?,
             manifest_src: manifest_src.to_string(),
             files,
+            outlines: OnceLock::new(),
         }
         .without_std_shadow()?
         .with_palette()
@@ -357,7 +372,7 @@ pub fn load(root: &Path) -> Result<Project, Diagnostic> {
             }
         }
     }
-    Project { root: root.to_path_buf(), manifest, manifest_src, files }.without_std_shadow()?.with_palette()
+    Project { root: root.to_path_buf(), manifest, manifest_src, files, outlines: OnceLock::new() }.without_std_shadow()?.with_palette()
 }
 
 pub fn rel_path(root: &Path, path: &Path) -> String {

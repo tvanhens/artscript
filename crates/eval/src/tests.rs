@@ -26,6 +26,18 @@ fn run_with(src: &str, libs: &[(&str, &str)]) -> Evaluation {
     evaluate(&p, &plan.jobs[0])
 }
 
+/// What `ramose check` shows for the first target of `art/t.ramo`: the plan's diagnostics, then
+/// the evaluation's.
+fn check_with(src: &str, libs: &[(&str, &str)]) -> Evaluation {
+    let mut files = vec![("art/t.ramo", src)];
+    files.extend_from_slice(libs);
+    let p = project(&files);
+    let plan = plan(&p);
+    let mut ev = evaluate(&p, &plan.jobs[0]);
+    ev.diagnostics.splice(0..0, plan.diagnostics);
+    ev
+}
+
 fn scene(src: &str) -> Scene {
     let ev = run_with(src, &[]);
     assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
@@ -3969,17 +3981,18 @@ fn a_target_palette_that_is_not_a_palette_is_reported_at_the_target() {
 }
 
 #[test]
-fn a_palette_passed_as_a_module_parameter_hints_at_the_palette_key() {
+fn a_palette_parameter_takes_a_palette_or_the_module_p_is_bound_to() {
     let lib = "def blob_t pal:p\n  rect 10x10 fill:pal.sky name:a\n";
     let src = format!(
-        "@artboard 40x40\n@target t.png\nuse d {{ blob_t }}\nblob_t pal:elite name:b\n\n{ELITE}"
+        "@artboard 40x40\n@target t.png\nuse d {{ blob_t }}\nblob_t name:b\nblob_t pal:elite name:c\nblob_t pal:4 name:d\n\n{ELITE}"
     );
     let ev = palette_run(&src, &[("lib/d.ramo", lib)]);
     let d = diag(&ev, "E0320");
-    assert_eq!(d.span.line, 4);
-    let fix = d.fix.as_deref().unwrap();
-    assert!(fix.contains("palette:elite"), "{fix}");
-    assert!(!fix.contains(".ramo"), "{fix}");
+    assert_eq!(d.span.line, 6);
+    assert!(d.message.contains("`pal` of `blob_t` expects a palette, got a number"), "{d}");
+    let s = ev.scene.unwrap();
+    assert_eq!(fill_hex(node(&s, "b.a")), "#111111");
+    assert_eq!(fill_hex(node(&s, "c.a")), "#222222");
 }
 
 #[test]
@@ -4155,10 +4168,7 @@ fn stable_chibi_nodes_keep_geometry_and_seeds_when_a_draw_is_inserted() {
         let mut files = project.files.clone();
         let src = files.get(&job.source).unwrap();
         files.insert(job.source.clone(), insert_probe(src));
-        let shifted = Project {
-            files,
-            ..project.clone()
-        };
+        let shifted = project.with_files(files);
         let planned = plan(&shifted);
         assert!(planned.diagnostics.is_empty(), "{:?}", planned.diagnostics);
         let job2 = planned
@@ -4223,10 +4233,7 @@ fn stable_chibi_keys_round_trip_through_a_patch() {
             job.source.clone(),
             format!("{src}\nanim __probe dur:1s\n{lines}play __probe\n"),
         );
-        let shifted = Project {
-            files,
-            ..project.clone()
-        };
+        let shifted = project.with_files(files);
         let planned = plan(&shifted);
         let job2 = planned
             .jobs
@@ -7623,9 +7630,12 @@ fn a_number_for_a_one_of_parameter_is_an_error() {
 }
 
 #[test]
-fn an_alias_fixed_word_outside_one_of_is_an_error() {
-    let ev = run_with(&format!("{TILE}def wall = tile kind:flor_top\nwall\n"), &[]);
-    assert_eq!(errors(&ev).len(), 1, "{}", show(&ev.diagnostics));
+fn an_alias_fixed_word_outside_one_of_is_an_error_at_the_alias() {
+    let ev = check_with(&format!("{TILE}def wall = tile kind:flor_top\nwall\n"), &[]);
+    let es = errors(&ev);
+    assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
+    assert_eq!(es[0].span.line, 8, "{}", es[0]);
+    assert!(es[0].message.contains("floor_top, fill, fill_b"), "{}", es[0]);
 }
 
 #[test]
@@ -7649,7 +7659,7 @@ fn a_plain_word_default_still_accepts_any_word() {
 #[test]
 fn a_malformed_one_of_is_one_error_at_the_def() {
     for decl in ["one_of()", "one_of(1 2)", "one_of(a b c:1)"] {
-        let ev = run_with(
+        let ev = check_with(
             &format!("@artboard 16x16\n@target t.png\ndef tile kind:{decl}\n  circle 2\ntile kind:a\ntile kind:b\n"),
             &[],
         );
@@ -7663,7 +7673,7 @@ fn a_malformed_one_of_is_one_error_at_the_def() {
 #[test]
 fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
     let lib = ("lib/tiles.ramo", "def tile kind:one_of(1 2)\n  circle 2\n");
-    let ev = run_with("@artboard 16x16\n@target t.png\nuse tiles\ncircle 2\n", &[lib]);
+    let ev = check_with("@artboard 16x16\n@target t.png\nuse tiles\ncircle 2\n", &[lib]);
     let es = errors(&ev);
     assert_eq!(es.len(), 1, "{}", show(&ev.diagnostics));
     assert!(es[0].file.ends_with("tiles.ramo"), "{}", show(&ev.diagnostics));
@@ -7671,13 +7681,31 @@ fn a_malformed_one_of_in_an_uncalled_library_def_is_reported_in_the_library() {
 }
 
 #[test]
-fn one_of_outside_a_parameter_default_is_an_unknown_function() {
-    let ev = run_with("@artboard 16x16\n@target t.png\nlet k = one_of(a b)\ncircle 2\n", &[]);
-    assert!(
-        ev.diagnostics.iter().any(|d| d.message.contains("one_of")),
-        "{}",
-        show(&ev.diagnostics)
-    );
+fn one_of_and_none_outside_a_parameter_default_are_e0320() {
+    for marker in ["one_of(a b)", "none(color)"] {
+        let ev = run_with(&format!("@artboard 16x16\n@target t.png\nlet k = {marker}\ncircle 2\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert!(d.message.contains("is only a parameter default"), "{marker}: {d}");
+        assert_eq!(d.span.line, 3, "{marker}: {d}");
+    }
+}
+
+#[test]
+fn a_rule_head_argument_of_the_wrong_kind_is_e0320_at_the_call() {
+    let head = "@artboard 40x40\n@target t.png\nrule wide min:10\n  expect @marker.w > min\ncircle 8 name:marker\n";
+    let ev = run_with(&format!("{head}assert wide(min:#fff)\n"), &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.span.line, 6, "{d}");
+    assert!(d.message.contains("`min` of `wide` expects a number, got a color"), "{d}");
+    let ev = run_with(&format!("{head}assert wide(min:4)\nassert wide(12)\n"), &[]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_none_typed_default_binds_none_and_the_body_tests_it() {
+    let s = scene("@artboard 16x16\n@target t.png\ndef dot tint:none(color)\n  circle 2 fill:if tint == none then #ff0000 else tint name:c\ndot name:a\ndot tint:#0000ff name:b\n");
+    assert_eq!(fill_hex(node(&s, "a.c")), "#ff0000");
+    assert_eq!(fill_hex(node(&s, "b.c")), "#0000ff");
 }
 
 fn unknown_words(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
@@ -8020,16 +8048,90 @@ fn forward_alias_cannot_overwrite_an_entry_parameter() {
 
 #[test]
 fn parameter_errors_preserve_unrelated_scene_diagnostics_without_cascades() {
-    for source in [
-        "@artboard 8x8\n@target t.png\nparam width:4\nlet width = 6\nrect missing\n",
-        "@artboard 8x8\n@target t.png\nparam width:one_of()\nrect width\nrect missing\n",
+    let ev = run_with("@artboard 8x8\n@target t.png\nparam width:4\nlet width = 6\nrect missing\n", &[]);
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
+    assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
+    assert_eq!(errors[0].span.line, 3);
+    assert_eq!(errors[1].span.line, 5);
+}
+
+#[test]
+fn a_file_with_an_untypeable_default_is_reported_once_by_the_plan_and_not_evaluated() {
+    let p = project(&[("art/t.ramo", "@artboard 8x8\n@target t.png\nparam width:one_of()\nrect width\nrect missing\n")]);
+    let plan = plan(&p);
+    assert_eq!(plan.diagnostics.len(), 1, "{}", show(&plan.diagnostics));
+    assert_eq!((plan.diagnostics[0].code.as_str(), plan.diagnostics[0].span.line), ("E0320", 3));
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(ev.scene.is_none());
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn an_untypeable_default_in_a_library_nothing_imports_is_e0326_in_the_plan() {
+    let p = project(&[
+        ("art/t.ramo", "@artboard 8x8\n@target t.png\ncircle 2\n"),
+        ("lib/unused.ramo", "fn somefn(n) = n\ndef bad x:somefn(2)\n  circle 1\n"),
+    ]);
+    let plan = plan(&p);
+    assert_eq!(plan.diagnostics.len(), 1, "{}", show(&plan.diagnostics));
+    let d = &plan.diagnostics[0];
+    assert_eq!((d.code.as_str(), d.file.as_str(), d.span.line, d.span.col), ("E0326", "lib/unused.ramo", 2, 9), "{d}");
+    assert!(d.message.contains("the fn `somefn`"), "{d}");
+    let ev = evaluate(&p, &plan.jobs[0]);
+    assert!(ev.diagnostics.is_empty(), "{}", show(&ev.diagnostics));
+    assert!(ev.scene.is_some());
+}
+
+#[test]
+fn importing_a_library_with_a_parameter_type_error_fails_the_job_once_at_the_use() {
+    let ev = check_with(
+        "@artboard 8x8\n@target t.png\nuse tiles\nuse more\nbead\n",
+        &[
+            ("lib/tiles.ramo", "def tile kind:one_of(1 2)\n  circle 2\ndef bead size:3\n  circle size\n"),
+            ("lib/more.ramo", "use tiles\ndef other\n  circle 1\n"),
+        ],
+    );
+    let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).map(|d| (d.code.as_str(), d.file.as_str(), d.span.line)).collect();
+    assert_eq!(errors, [("E0320", "lib/tiles.ramo", 1), ("E0214", "art/t.ramo", 3)], "{}", show(&ev.diagnostics));
+    let d = diag(&ev, "E0214");
+    assert!(d.notes[0].starts_with("first error: lib/tiles.ramo:1:10 E0320"), "{d}");
+}
+
+#[test]
+fn an_alias_fixing_a_one_of_with_an_axis_is_checked_at_each_instance() {
+    let p = project(&[("art/t.ramo", "@artboard 8x8\n@target t_{team}.png each team:[red green]\ndef tile kind:one_of(red blue)\n  circle 2\ndef wall = tile kind:team\nwall\n")]);
+    let plan = plan(&p);
+    assert!(plan.diagnostics.is_empty(), "{}", show(&plan.diagnostics));
+    let red = evaluate(&p, &plan.jobs[0]);
+    assert!(red.diagnostics.is_empty(), "{}", show(&red.diagnostics));
+    let green = evaluate(&p, &plan.jobs[1]);
+    let d = diag(&green, "E0320");
+    assert_eq!((d.span.line, d.message.as_str()), (6, "`kind` of `tile` is one of red, blue, got green"), "{d}");
+}
+
+#[test]
+fn a_builtin_call_default_takes_its_own_value_from_a_call() {
+    for call in [
+        "min(1 2)", "max([1 2])", "min(simplex(4) .2)", "max([simplex(4) 1])", "abs(-2)", "abs(-2,-3)", "abs(4x2)",
+        "abs(simplex(4))", "clamp(2 0 1)", "clamp(simplex(4))", "sqrt(4)", "floor(1.5)", "round(1.5)", "sin(30)",
+        "cos(30)", "atan2(1 1)", "mod(5 2)", "rand(0 1)", "polar(4 30)", "shade(#888 1)", "lit(#888 1)",
+        "mix(#000 #fff)", "fade(#000 .5)", "line(#888)", "oklch(50% .1 30)", "ramp(#888 3)", "grad(down #000 #fff)",
+        "radial(#000 #fff)", "conic(#000 #fff)", "simplex(4)", "perlin(4)", "worley(4)", "value(4)", "fbm(simplex(4))",
+        "ridged(simplex(4))", "cylinder(60)", "concat([1] [2])",
     ] {
-        let ev = run_with(source, &[]);
+        let src = format!("@artboard 8x8\n@target t.png\ndef it x:{call}\n  circle 1\nit x:{call} name:a\n");
+        let ev = check_with(&src, &[]);
         let errors: Vec<_> = ev.diagnostics.iter().filter(|d| d.severity == ramose_syntax::Severity::Error).collect();
-        assert_eq!(errors.len(), 2, "{}", show(&ev.diagnostics));
-        assert_eq!(errors[0].span.line, 3);
-        assert_eq!(errors[1].span.line, 5);
+        assert!(errors.is_empty(), "{call}: {}", show(&ev.diagnostics));
     }
+}
+
+#[test]
+fn passing_p_with_no_palette_bound_names_the_missing_palette() {
+    let ev = run_with("@artboard 8x8\n@target t.png\nuse kit\nholder pal:p name:a\n", &[("lib/kit.ramo", "def holder pal:p\n  circle 4 name:c\n")]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`pal` of `holder` expects a palette, but no palette is bound to `p`", "{d}");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("[defaults]") && f.contains("palette:")), "{d}");
 }
 
 #[test]

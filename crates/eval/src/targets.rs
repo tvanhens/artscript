@@ -204,6 +204,7 @@ pub fn plan(project: &Project) -> Plan {
             }
         }
     }
+    diagnostics.extend(project.outlines().diagnostics().iter().cloned());
     let mut seen: BTreeMap<String, (String, u32)> = BTreeMap::new();
     let mut dup_jobs = Vec::new();
     for (ji, job) in jobs.iter().enumerate() {

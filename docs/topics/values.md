@@ -2,7 +2,7 @@
 
 ## Entry parameters
 
-`param view:one_of(normal geometry) guides:false` declares named controls in an entry file. Each default determines its type using the component parameter binder. The first `one_of` word is the default. A plain word default accepts any word. Defaults can use earlier parameters and names available at their declaration. With no overrides, all parameters use their defaults.
+`param view:one_of(normal geometry) guides:false` declares named controls in an entry file. Each default's form gives the parameter its type, as for a `def` (see `components`, Parameter types). The first `one_of` word is the default. A plain word default accepts any word. Defaults can use earlier parameters and names available at their declaration. With no overrides, all parameters use their defaults.
 
 `check`, `build`, and `preview` accept repeated `--set name=value`. Values are literals, including numbers, percentages, angles, times, booleans, words, hex colors, strings, sizes, tuples, and lists. Shell-quote values containing spaces or shell punctuation, for example `--set 'offset=12,4'` or `--set 'caption="hello"'`. Calls, arithmetic, and references are not CLI values. An undeclared parameter, a wrong type, or a word outside `one_of` is an error, reported once for the entry. An undeclared name has no source line, so it is reported at the entry file with line 0. A rejected binding stops that entry's evaluation, so no error follows from the value it rejected. Repeating a name uses its last value. The bindings apply to each selected entry, so narrow `build` and `check` with `--only` when entries have different parameters.
 

@@ -18,6 +18,7 @@ use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
 use crate::geom::P;
 use crate::identity::{self, Key};
 use crate::scope::Module;
+use crate::types::Ty;
 use crate::value::{Kind, Value};
 
 /// A `brush` declaration after `check` accepted its programs. Shared by every value made from it.
@@ -383,19 +384,22 @@ impl Evaluator<'_> {
         Ok(Value::Brush(Rc::new(b.with(&a.pos, &a.named)?)))
     }
 
-    /// `brush(k:v ...)` on a def parameter whose default is a brush. The arguments are checked
-    /// against the default whatever the instance bound, so every instance reports the same
-    /// errors, and then applied to the bound brush. A bound `none` stays `none`.
+    /// `brush(k:v ...)` on a brush-typed def parameter. The arguments are checked against the
+    /// declaration the parameter is typed by, whatever the instance bound, so every instance
+    /// reports the same errors, and then applied to the bound brush. A bound `none` stays `none`.
     pub(crate) fn call_brush_param(
         &mut self,
-        default: &BrushVal,
+        ty: &Ty,
         bound: Option<Value>,
         args: &[Expr],
         named: &[Named],
         sc: &Scope,
     ) -> R<Value> {
         let a = self.brush_args(args, named, sc)?;
-        default.with(&a.pos, &a.named)?;
+        if let Ty::Brush(Some(decl)) = ty {
+            let sig = self.project.outlines().signature(decl).expect("a brush-typed parameter names a declared brush");
+            sig.check_call(&a.pos, &a.named, PLACEMENT_KEYS, "E0361")?;
+        }
         Ok(match bound {
             Some(Value::Brush(b)) => Value::Brush(Rc::new(b.with(&a.pos, &a.named)?)),
             _ => Value::None,

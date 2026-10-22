@@ -6,6 +6,7 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use ramose_geom::ToSk;
 use ramose_ir::{Blend, Node, NodeKind, Paint};
@@ -22,6 +23,7 @@ use crate::identity::{self, Key, Lookup, Name, Names, Pending};
 use crate::lints::{body_idents, walk_scene};
 use crate::place::Place;
 use crate::scope::{Module, Record, RowRecord};
+use crate::types::{Signature, Ty};
 use crate::value::{Col, Value};
 
 /// The names a stamp block sees besides the stamp's parameters, in the order they are bound.
@@ -34,9 +36,10 @@ const CALL_KEYS: &[&str] = &["spacing", "count", "name"];
 /// A `stamp` declaration after `declare_stamp` accepted it. Shared by every value made from it.
 pub struct StampDecl {
     pub name: String,
-    /// Parameters in head order with their defaults, evaluated at the declaration. A call's
-    /// argument must match the default's kind, as a def parameter's does.
+    /// Parameters in head order with their defaults, evaluated at the declaration.
     pub params: Vec<(String, Value)>,
+    /// Their types. A call's argument must fit, as a def parameter's does.
+    pub sig: Arc<Signature>,
     pub body: Vec<DefItem>,
     /// Every identifier and function name the body mentions. The channel-reader check asks
     /// whether `pressure` is among them.
@@ -88,11 +91,10 @@ pub struct StampVal {
 }
 
 impl StampVal {
+    /// `leaves(spacing:6 tint:p.gold)`: a new value with those keys replaced. `a.named` holds the
+    /// parameter arguments; the placement and `name:` arrive resolved.
     pub fn with(&self, a: &Args, spacing: Option<Spacing>, name: Option<Name>) -> R<StampVal> {
-        let decl_name = &self.decl.name;
-        if !a.pos.is_empty() {
-            return Err(self.argument_error(format!("`{decl_name}` takes named arguments only")));
-        }
+        self.decl.sig.check_call(&a.pos, &a.named, CALL_KEYS, "E0366")?;
         let mut out = StampVal {
             decl: self.decl.clone(),
             params: self.params.clone(),
@@ -101,45 +103,15 @@ impl StampVal {
             name: name.unwrap_or_else(|| self.name.clone()),
         };
         for (k, v) in &a.named {
-            let Some(i) = self.decl.params.iter().position(|(p, _)| p == k) else {
-                let nearest = self
-                    .decl
-                    .params
-                    .iter()
-                    .map(|(p, _)| p.as_str())
-                    .chain(CALL_KEYS.iter().copied())
-                    .map(|p| (osa_distance(k, p), p))
-                    .min_by_key(|(d, _)| *d)
-                    .filter(|(d, _)| *d <= (k.len() + 1) / 3);
-                let f = self.argument_error(format!("`{decl_name}` has no parameter `{k}`"));
-                return Err(match nearest {
-                    Some((_, p)) => f.fix(format!("did you mean `{p}:`?")),
-                    None => f.fix("use one of the listed parameters"),
-                });
-            };
-            let default = &self.decl.params[i].1;
-            if !default.accepts(v) {
-                return Err(self
-                    .argument_error(format!("`{k}` of `{decl_name}` expects {}, got {}", default.kind(), v.kind()))
-                    .fix(format!("pass {}", default.kind())));
+            if let Some(i) = self.decl.params.iter().position(|(p, _)| p == k) {
+                out.params[i] = v.clone();
+                match a.timed_key(k) {
+                    Some(by) => out.timed.insert(k.clone(), by.clone()),
+                    None => out.timed.remove(k),
+                };
             }
-            out.params[i] = v.clone();
-            match a.timed_key(k) {
-                Some(by) => out.timed.insert(k.clone(), by.clone()),
-                None => out.timed.remove(k),
-            };
         }
         Ok(out)
-    }
-
-    fn argument_error(&self, msg: String) -> Fail {
-        self.with_notes(fail("E0366", msg))
-    }
-
-    fn with_notes(&self, f: Fail) -> Fail {
-        let params: Vec<&str> = self.decl.params.iter().map(|(p, _)| p.as_str()).collect();
-        f.note(format!("parameters: {}", params.join(", ")))
-            .note(format!("placement: {}", CALL_KEYS.join(", ")))
     }
 
     /// Whether the block or the spacing reads the channel `key`.
@@ -215,7 +187,7 @@ impl Evaluator<'_> {
                 })));
                 continue;
             }
-            let v = match self.expr(&p.value, &sc) {
+            let v = match self.default_value(&p.value, &sc) {
                 Ok(v) => v,
                 Err(f) => {
                     errors.push((f, p.span));
@@ -274,10 +246,12 @@ impl Evaluator<'_> {
         if let Spacing::Every(e) = &spacing {
             mentions.extend(e.mentions.iter().cloned());
         }
+        let sig = self.signature_of(&module.path, name);
         Ok(StampVal {
             decl: Rc::new(StampDecl {
                 name: name.to_string(),
                 params: decl_params,
+                sig,
                 body: body.to_vec(),
                 mentions,
                 module: module.path.clone(),
@@ -296,15 +270,22 @@ impl Evaluator<'_> {
 
     /// `leaves(k:v ...)` in an expression.
     pub(crate) fn call_stamp(&mut self, s: &StampVal, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
-        let (a, spacing, name) = self.stamp_args(s, args, named, sc)?;
+        let (a, spacing, name) = self.stamp_args(&s.decl.sig, args, named, sc)?;
         Ok(Value::Stamp(Rc::new(s.with(&a, spacing, name)?)))
     }
 
-    /// `stamp(k:v)` on a def parameter whose default is a stamp: checked against the default
-    /// whatever the instance bound, then applied to the bound stamp. A bound `none` stays `none`.
-    pub(crate) fn call_stamp_param(&mut self, default: &StampVal, bound: Option<Value>, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
-        let (a, spacing, name) = self.stamp_args(default, args, named, sc)?;
-        default.with(&a, spacing.clone(), name.clone())?;
+    /// `stamp(k:v)` on a stamp-typed def parameter: checked against the declaration the parameter
+    /// is typed by, whatever the instance bound, then applied to the bound stamp. A parameter
+    /// typed `none(stamp)` names no declaration, so the bound stamp's own is checked, and a bound
+    /// `none` stays `none`.
+    pub(crate) fn call_stamp_param(&mut self, ty: &Ty, bound: Option<Value>, args: &[Expr], named: &[Named], sc: &Scope) -> R<Value> {
+        let sig = match (ty, &bound) {
+            (Ty::Stamp(Some(decl)), _) => self.project.outlines().signature(decl).cloned().expect("a stamp-typed parameter names a declared stamp"),
+            (_, Some(Value::Stamp(s))) => s.decl.sig.clone(),
+            _ => return Ok(Value::None),
+        };
+        let (a, spacing, name) = self.stamp_args(&sig, args, named, sc)?;
+        sig.check_call(&a.pos, &a.named, CALL_KEYS, "E0366")?;
         Ok(match bound {
             Some(Value::Stamp(s)) => Value::Stamp(Rc::new(s.with(&a, spacing, name)?)),
             _ => Value::None,
@@ -313,18 +294,19 @@ impl Evaluator<'_> {
 
     /// The call's arguments: parameters as values, `spacing:` as an expression bound to this
     /// site, `count:` as a number, `name:` as a name.
-    fn stamp_args(&mut self, s: &StampVal, args: &[Expr], named: &[Named], sc: &Scope) -> R<(Args, Option<Spacing>, Option<Name>)> {
+    fn stamp_args(&mut self, sig: &Signature, args: &[Expr], named: &[Named], sc: &Scope) -> R<(Args, Option<Spacing>, Option<Name>)> {
         let mut a = Args::default();
         for e in args {
             a.pos.push(self.expr(e, sc)?);
         }
         let mut spacing = None;
         let mut name = None;
-        let decl = &s.decl.name;
+        let decl = &sig.name;
+        let argument_error = |msg: String| sig.call_notes(fail("E0366", msg), CALL_KEYS);
         for n in named {
             match n.key.as_str() {
                 "spacing" | "count" if spacing.is_some() => {
-                    return Err(s.argument_error(format!("`{decl}(...)` sets both `spacing:` and `count:`")).fix("keep one of them"));
+                    return Err(argument_error(format!("`{decl}(...)` sets both `spacing:` and `count:`")).fix("keep one of them"));
                 }
                 "spacing" => {
                     spacing = Some(Spacing::Every(Rc::new(SpacingExpr {
@@ -336,12 +318,12 @@ impl Evaluator<'_> {
                 }
                 "count" => {
                     let v = self.untimed("the stamp `count:`", &n.value, sc)?;
-                    spacing = Some(Spacing::Count(count_of(decl, &v).map_err(|f| s.with_notes(f))?));
+                    spacing = Some(Spacing::Count(count_of(decl, &v).map_err(|f| sig.call_notes(f, CALL_KEYS))?));
                 }
                 "name" => {
                     let v = self.expr(&n.value, sc)?;
                     name = Some(v.word().and_then(Name::parse).ok_or_else(|| {
-                        s.argument_error(format!("`name` of `{decl}` takes one identifier, got {}", v.show())).fix("write `name:small`")
+                        argument_error(format!("`name` of `{decl}` takes one identifier, got {}", v.show())).fix("write `name:small`")
                     })?);
                 }
                 _ => {
@@ -474,12 +456,14 @@ impl Evaluator<'_> {
             self.unstable_scope(&set_key, &region, sc.file(), host.span);
             return Err(Fail::reported());
         }
-        let typed: Vec<(usize, Value)> = decl
+        let typed: Vec<(usize, Ty)> = decl
             .params
             .iter()
             .enumerate()
-            .filter(|(_, (_, d))| matches!(d, Value::Brush(_) | Value::Stamp(_)))
-            .map(|(i, (_, d))| (i, d.clone()))
+            .filter_map(|(i, (k, _))| match decl.sig.get(k).map(|p| &p.ty) {
+                Some(ty @ (Ty::Brush(_) | Ty::Stamp(_))) => Some((i, ty.clone())),
+                _ => None,
+            })
             .collect();
         let style: Vec<(String, Value)> = sc
             .style
@@ -660,7 +644,7 @@ struct StampFrame<'a> {
     def_ids: &'a Rc<identity::ModuleIds>,
     region: &'a Rc<identity::Region>,
     root: &'a Key,
-    typed: Rc<Vec<(usize, Value)>>,
+    typed: Rc<Vec<(usize, Ty)>>,
     style: Rc<Vec<(String, Value)>>,
     host: &'a Host<'a>,
     sc: &'a Scope,

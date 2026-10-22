@@ -1,4 +1,4 @@
-# Components passed as values. def tunic is a red 20x20 rect, def cape is a gold 30x14 rect, and def doll draws a circle head of radius 14 in its tone (default blue) with a parameter `outfit` that defaults to none (draws nothing)
+# Components passed as values. def tunic is a red 20x20 rect, def cape is a gold 30x14 rect, and def doll draws a circle head of radius 14 in its tone (default blue) with a parameter `outfit` that defaults to none(component) (draws nothing)
 # and, when set to a component, is placed with `outfit` below the head. doll also has `fx outline 3` in its body, so every instance gets a ring 3 wide around everything it draws.
 # Undocumented, current behavior: on a def instance with no fill of its own, the default outline color is line() of the first fill in the instance's subtree. That is navy for the blue-headed dolls 1-3 and dark green for doll 4, including around its red tunic.
 # 256x192 artboard, two rows of four 64-wide cells; the top row is 96 tall, dolls centered in it.
@@ -14,7 +14,7 @@ def tunic size:20
 def cape size:30x14
   rect 100%,100% fill:p.gold
 
-def doll size:56 tone:p.blue outfit:none
+def doll size:56 tone:p.blue outfit:none(component)
   circle 14 at:0,-14 fill:tone
   outfit at:0,12
   fx outline 3
