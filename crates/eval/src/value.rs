@@ -58,6 +58,8 @@ pub enum Value {
     Percent(f64),
     Vec2(Coord, Coord),
     Size(Coord, Coord),
+    Vec3(Coord, Coord, f64),
+    Size3(Coord, Coord, f64),
     /// A tight comma tuple that is not a pair of numbers, e.g. `p.ink,1.5` or `p.peach.3,.4`.
     Tuple(Vec<Value>),
     Color(Col),
@@ -97,6 +99,7 @@ pub enum Kind {
     Bool,
     Number,
     Vector,
+    Vector3,
     Color,
     Palette,
     Field,
@@ -122,6 +125,7 @@ impl fmt::Display for Kind {
             Kind::Bool => "a boolean",
             Kind::Number => "a number",
             Kind::Vector => "a vector like 4,2",
+            Kind::Vector3 => "a three-component vector like 4,2,1",
             Kind::Color => "a color or paint",
             Kind::Palette => "a palette",
             Kind::Field => "a field",
@@ -150,7 +154,7 @@ impl Value {
             Value::Bool(_) => Kind::Bool,
             Value::Num(_) | Value::Percent(_) => Kind::Number,
             Value::Vec2(..) | Value::Size(..) => Kind::Vector,
-            Value::Tuple(xs) if xs.iter().all(|x| x.kind() == Kind::Number) => Kind::Vector,
+            Value::Vec3(..) | Value::Size3(..) => Kind::Vector3,
             Value::Tuple(_) => Kind::List,
             Value::Color(_) | Value::Ramp(_) | Value::Gradient(_) | Value::FieldPaint(..) => Kind::Color,
             Value::Palette(_) => Kind::Palette,
@@ -211,6 +215,20 @@ impl Value {
         }
     }
 
+    pub fn triple(&self) -> Option<(Coord, Coord, f64)> {
+        match self {
+            Value::Vec3(a, b, z) | Value::Size3(a, b, z) => Some((*a, *b, *z)),
+            _ => None,
+        }
+    }
+
+    pub fn vec3(&self) -> Option<(f64, f64, f64)> {
+        match self.triple()? {
+            (Coord::Num(a), Coord::Num(b), z) => Some((a, b, z)),
+            _ => None,
+        }
+    }
+
     /// The value of a vector key such as `at:`, `pivot:` or `step:`, or E0320 naming the key.
     pub fn pair_for(&self, key: &str) -> R<(Coord, Coord)> {
         self.pair().ok_or_else(|| self.not_a_vector(key))
@@ -233,9 +251,17 @@ impl Value {
         }
     }
 
+    pub fn three_in_2d(what: &str, example: &str) -> Fail {
+        fail("E0320", format!("{what} takes two components, got a three-component vector"))
+            .fix(format!("no key draws in 3D yet; drop the third component, as in `{example}`"))
+    }
+
     /// `a,b + v` is the tuple `a,(b + v)`: a comma binds looser than `+`. A pair holding a
     /// vector is the trace of that mistake.
     fn not_a_vector(&self, key: &str) -> Fail {
+        if self.triple().is_some() {
+            return Value::three_in_2d(&format!("`{key}:`"), &format!("{key}:4,2"));
+        }
         let swallowed = matches!(
             self,
             Value::Tuple(xs) if xs.len() == 2 && xs.iter().any(|x| matches!(x, Value::Vec2(..) | Value::Size(..)))
@@ -289,14 +315,22 @@ impl Value {
         }
     }
 
-    /// Builds the canonical value for a tight tuple: number pairs become vectors.
-    pub fn tuple(xs: Vec<Value>) -> Value {
+    pub fn tuple(xs: Vec<Value>) -> R<Value> {
         if xs.len() == 2
             && let (Some(a), Some(b)) = (xs[0].coord(), xs[1].coord())
         {
-            return Value::Vec2(a, b);
+            return Ok(Value::Vec2(a, b));
         }
-        Value::Tuple(xs)
+        if xs.len() == 3
+            && let (Some(a), Some(b), Some(z)) = (xs[0].coord(), xs[1].coord(), xs[2].coord())
+        {
+            return Ok(Value::Vec3(a, b, depth(z)?));
+        }
+        Ok(Value::Tuple(xs))
+    }
+
+    pub fn size3(w: Coord, h: Coord, d: Coord) -> R<Value> {
+        Ok(Value::Size3(w, h, depth(d)?))
     }
 
     pub fn parameter_text(&self) -> String {
@@ -309,6 +343,8 @@ impl Value {
             Value::Percent(p) => format!("percent({p})"),
             Value::Vec2(x, y) => format!("{},{}", coordinate(x), coordinate(y)),
             Value::Size(x, y) => format!("{}x{}", coordinate(x), coordinate(y)),
+            Value::Vec3(x, y, z) => format!("{},{},{}", coordinate(x), coordinate(y), z),
+            Value::Size3(x, y, z) => format!("{}x{}x{}", coordinate(x), coordinate(y), z),
             Value::Tuple(values) => values.iter().map(Value::parameter_text).collect::<Vec<_>>().join(","),
             Value::List(values) => format!("[{}]", values.iter().map(Value::parameter_text).collect::<Vec<_>>().join(" ")),
             Value::Color(color) => {
@@ -328,6 +364,8 @@ impl Value {
             Value::Percent(p) => format!("{}%", num(p * 100.0)),
             Value::Vec2(a, b) => format!("{},{}", coord(*a), coord(*b)),
             Value::Size(a, b) => format!("{}x{}", coord(*a), coord(*b)),
+            Value::Vec3(a, b, z) => format!("{},{},{}", coord(*a), coord(*b), num(*z)),
+            Value::Size3(a, b, z) => format!("{}x{}x{}", coord(*a), coord(*b), num(*z)),
             Value::Tuple(xs) => xs.iter().map(Value::show).collect::<Vec<_>>().join(","),
             Value::List(xs) => format!("[{}]", xs.iter().map(Value::show).collect::<Vec<_>>().join(", ")),
             Value::Color(c) => c.rgba.to_hex(),
@@ -355,6 +393,14 @@ impl Value {
 impl std::fmt::Debug for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.show())
+    }
+}
+
+fn depth(c: Coord) -> R<f64> {
+    match c {
+        Coord::Num(z) => Ok(z),
+        Coord::Pct(_) => Err(fail("E0320", "a depth is a number, not a percent")
+            .fix("write the depth in artboard units, as in `1,2,50`; no frame has a depth to take a percent of")),
     }
 }
 
@@ -440,6 +486,24 @@ pub fn arith(op: Arith, a: &Value, b: &Value) -> Result<Value, String> {
         (Tuple(xs), Num(_)) => List(Rc::new(xs.iter().map(|x| arith(op, x, b)).collect::<Result<Vec<_>, _>>()?)),
         (Num(_), List(ys)) if op == Arith::Mul => List(Rc::new(ys.iter().map(|y| arith(op, a, y)).collect::<Result<Vec<_>, _>>()?)),
         (Num(_), Tuple(ys)) if op == Arith::Mul => List(Rc::new(ys.iter().map(|y| arith(op, a, y)).collect::<Result<Vec<_>, _>>()?)),
+        (Vec3(..) | Size3(..), _) | (_, Vec3(..) | Size3(..)) => {
+            let lift = |v: &Value| match v {
+                Num(n) => Some((Coord::Num(*n), Coord::Num(*n), *n)),
+                _ => v.triple(),
+            };
+            let (Some(pa), Some(pb)) = (lift(a), lift(b)) else {
+                let two = |v: &Value| matches!(v, Vec2(..) | Size(..));
+                return Err(if two(a) || two(b) {
+                    format!("cannot apply `{}` to a two-component and a three-component vector", sym(op))
+                } else {
+                    fail()
+                });
+            };
+            let x = coord_op(op, pa.0, pb.0).ok_or_else(fail)?;
+            let y = coord_op(op, pa.1, pb.1).ok_or_else(fail)?;
+            let z = op.apply(pa.2, pb.2);
+            if matches!(a, Size3(..)) { Size3(x, y, z) } else { Vec3(x, y, z) }
+        }
         _ => {
             let (pa, pb) = (a.pair().ok_or_else(fail)?, b.pair().ok_or_else(fail)?);
             let x = coord_op(op, pa.0, pb.0).ok_or_else(fail)?;
@@ -479,7 +543,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
                 (Some(xs), Some(ys)) => xs.len() == ys.len() && xs.iter().zip(&ys).all(|(x, y)| equal(x, y)),
                 _ => match (a.vec2(), b.vec2()) {
                     (Some(x), Some(y)) => x == y,
-                    _ => false,
+                    _ => matches!((a.triple(), b.triple()), (Some(x), Some(y)) if x == y),
                 },
             },
         },
@@ -505,6 +569,18 @@ mod tests {
         assert_eq!(arith(Arith::Add, &v, &w).unwrap().show(), "520,596");
         assert_eq!(arith(Arith::Mul, &w, &Value::Num(3.0)).unwrap().show(), "12,-6");
         assert_eq!(arith(Arith::Mul, &w, &w).unwrap().show(), "16,4");
+    }
+
+    #[test]
+    fn three_component_vectors_add_scale_and_refuse_a_pair() {
+        let v = Value::Vec3(Coord::Num(1.0), Coord::Num(2.0), 3.0);
+        let w = Value::Vec3(Coord::Num(1.0), Coord::Num(1.0), 1.0);
+        assert_eq!(arith(Arith::Add, &v, &w).unwrap().show(), "2,3,4");
+        assert_eq!(arith(Arith::Mul, &Value::Num(3.0), &v).unwrap().show(), "3,6,9");
+        assert_eq!(arith(Arith::Div, &v, &Value::Num(2.0)).unwrap().show(), "0.5,1,1.5");
+        let flat = Value::Vec2(Coord::Num(1.0), Coord::Num(1.0));
+        let err = arith(Arith::Add, &v, &flat).unwrap_err();
+        assert!(err.contains("two-component and a three-component"), "{err}");
     }
 
     #[test]

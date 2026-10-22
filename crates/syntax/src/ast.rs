@@ -439,8 +439,11 @@ pub enum Expr {
     Angle(f64),
     /// Seconds. `200ms` is 0.2. A bare number in a time position is also seconds.
     Time(f64),
-    /// `256x256`, `100%x60%`.
-    Size(Box<Expr>, Box<Expr>),
+    Size {
+        w: Box<Expr>,
+        h: Box<Expr>,
+        depth: Option<Box<Expr>>,
+    },
     /// Hex without `#`, lowercased: `ff5e5b`, `fff`.
     Hex(String),
     Str(String),

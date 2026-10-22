@@ -278,7 +278,7 @@ fn artboard(file: &File) -> Result<Artboard, Diagnostic> {
             .iter()
             .find(|d| d.name == "target")
             .and_then(|d| match d.args.first() {
-                Some(Expr::Size(w, h)) => Some(format!("{}x{}", num(number(w)?), num(number(h)?))),
+                Some(Expr::Size { w, h, depth: None }) => Some(format!("{}x{}", num(number(w)?), num(number(h)?))),
                 _ => None,
             })
             .unwrap_or_else(|| "512x512".to_string());
@@ -301,10 +301,16 @@ fn artboard(file: &File) -> Result<Artboard, Diagnostic> {
             .with_fix("write `@artboard 512x512`")
     };
     let size = match (d.path.as_deref(), d.args.first()) {
-        (None, Some(Expr::Size(w, h))) => match (number(w), number(h)) {
+        (None, Some(Expr::Size { w, h, depth: None })) => match (number(w), number(h)) {
             (Some(w), Some(h)) => Size::new(w as f32, h as f32).ok_or_else(bad_size)?,
             _ => return Err(bad_size()),
         },
+        (None, Some(Expr::Size { depth: Some(_), .. })) => {
+            return Err(
+                Diagnostic::error("E0206", d.span, "`@artboard` takes a two-component size, got three")
+                    .with_fix("an artboard has no depth yet; drop the third component, as in `512x512`"),
+            );
+        }
         _ => return Err(bad_size()),
     };
     let mut viewport = false;
@@ -415,10 +421,16 @@ fn expand(
     let mut args = d.args.iter();
     let out = match args.next() {
         None => None,
-        Some(Expr::Size(w, h)) => match (number(w), number(h)) {
+        Some(Expr::Size { w, h, depth: None }) => match (number(w), number(h)) {
             (Some(w), Some(h)) => Some(Size::new(w as f32, h as f32).ok_or_else(|| size_error(d.span))?),
             _ => return Err(size_error(d.span)),
         },
+        Some(Expr::Size { depth: Some(_), .. }) => {
+            return Err(
+                Diagnostic::error("E0206", d.span, "`@target` takes a two-component output size, got three")
+                    .with_fix("an image has no depth; drop the third component, as in `240x240`"),
+            );
+        }
         Some(Expr::Ident(w)) if w == "viewport" => {
             return Err(
                 Diagnostic::error("E0206", d.span, "`viewport` belongs to the artboard")

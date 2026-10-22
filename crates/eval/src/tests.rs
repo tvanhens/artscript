@@ -8175,3 +8175,117 @@ fn named_shape_bounds_keep_own_clip_and_ignore_children_outside_host_geometry() 
     let bounds = crate::node_bounds(&s, "host").unwrap();
     assert_eq!((bounds.left, bounds.top, bounds.width(), bounds.height()), (38.0, 37.0, 4.0, 6.0));
 }
+
+#[test]
+fn three_component_vectors_and_sizes_do_arithmetic_and_expose_members() {
+    let ok = scene(concat!(
+        "@artboard 20x20\n@target t.png\n",
+        "let v = 14,0,8\n",
+        "let s = 40x20x10\n",
+        "assert (v + (1,1,1)) == (15,1,9)\n",
+        "assert (2*v).z == 16\n",
+        "assert (v/2).x == 7\n",
+        "assert (-v).z == -8\n",
+        "assert v.x == 14 and v.1 == 0 and v.2 == 8\n",
+        "assert s.w == 40 and s.h == 20 and s.z == 10\n",
+        "assert v ~= (14,0,8.2)\n",
+        "rect 4x4 name:r\n",
+    ));
+    assert_eq!(paths(&ok), ["r"]);
+}
+
+#[test]
+fn a_two_component_value_does_not_mix_with_a_three_component_one() {
+    let ev = run_with("@artboard 20x20\n@target t.png\nlet v = (1,2) + (1,2,3)\nrect 4x4 at:v.x,v.y\n", &[]);
+    assert!(diag(&ev, "E0320").message.contains("two-component and a three-component"), "{}", show(&ev.diagnostics));
+    let ev = run_with("@artboard 20x20\n@target t.png\nlet v = (1,2)\nrect 4x4 at:v.z,0\n", &[]);
+    assert!(diag(&ev, "E0350").message.contains("has no member `z`"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_key_that_draws_in_two_dimensions_reports_a_three_component_vector() {
+    let ev = run_with("@artboard 20x20\n@target t.png\nrect 10x10 at:1,2,3\n", &[]);
+    let d = diag(&ev, "E0320");
+    assert_eq!(d.message, "`at:` takes two components, got a three-component vector");
+    assert!(d.fix.as_deref().is_some_and(|f| f.contains("no key draws in 3D yet")), "{d}");
+    let ev = run_with("@artboard 20x20\n@target t.png\nrect 10x10x4\n", &[]);
+    assert!(diag(&ev, "E0320").message.contains("`rect` takes two components"), "{}", show(&ev.diagnostics));
+    let ev = run_with("@artboard 20x20\n@target t.png\nrect 10x10 at:1,2,3,4\n", &[]);
+    assert!(!diag(&ev, "E0320").message.contains("got a vector like 4,2"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn a_depth_is_artboard_units_never_a_percent() {
+    for src in ["let v = 1,2,50%\n", "let v = 40x20x10%\n"] {
+        let ev = run_with(&format!("@artboard 20x20\n@target t.png\n{src}rect 4x4\n"), &[]);
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, "a depth is a number, not a percent");
+        assert!(d.fix.as_deref().is_some_and(|f| f.contains("artboard units")), "{d}");
+    }
+    let ev = run_with("@artboard 20x20\n@target t.png\nlet v = 50%,50%,3\nrect 4x4 name:r\n", &[]);
+    assert!(ev.diagnostics.iter().all(|d| d.code != "E0320"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn an_artboard_and_a_target_have_no_depth() {
+    for (src, directive) in [
+        ("@artboard 20x20x5\n@target t.png\nrect 4x4\n", "`@artboard`"),
+        ("@artboard 20x20\n@target t.png 10x10x5\nrect 4x4\n", "`@target`"),
+    ] {
+        let p = project(&[("art/t.ramo", src)]);
+        let d = plan(&p).diagnostics.remove(0);
+        assert_eq!(d.code, "E0206");
+        assert!(d.message.starts_with(directive) && d.message.contains("got three"), "{d}");
+    }
+}
+
+#[test]
+fn three_component_parameters_keep_their_arity() {
+    let src = "@artboard 40x40\n@target t.png\nparam v:1,2,3\nparam w:4,5\nrect 4x4 name:r\n";
+    let p = project(&[("art/t.ramo", src)]);
+    let mut job = plan(&p).jobs.remove(0);
+    let default = evaluate(&p, &job);
+    assert!(default.diagnostics.is_empty(), "{}", show(&default.diagnostics));
+    assert_eq!(default.parameters["v"], "1,2,3");
+    for (setting, rejected) in [("v=7,8,9", false), ("v=7,8", true), ("w=7,8,9", true)] {
+        job.parameters.clear();
+        let (key, value) = crate::parse_parameter(setting).unwrap();
+        job.parameters.insert(key, value);
+        let ev = evaluate(&p, &job);
+        assert_eq!(ev.diagnostics.iter().any(|d| d.code == "E0320"), rejected, "{setting}: {}", show(&ev.diagnostics));
+    }
+}
+
+#[test]
+fn animating_a_three_component_value_reports_an_error() {
+    let bad = run_with("@artboard 20x20\n@target t.png\nlet w = key(1,2,3 4,5,6 dur:1s)\nrect 4x4\n", &[]);
+    assert!(
+        diag(&bad, "E0320").message.contains("cannot animate a three-component vector"),
+        "{}",
+        show(&bad.diagnostics)
+    );
+}
+
+#[test]
+fn a_three_number_tuple_still_reads_as_a_list_of_numbers() {
+    let s = scene("@artboard 40x40\n@target t.svg\ncurve 4,20 36,20 stroke:#000,2 dash:4,2,1\n");
+    let svg = ramose_render::render_svg(&s, &framed(&s, 1.0), ramose_ir::Profile::Vector, 1.0, ramose_render::Backend::Cpu).unwrap();
+    assert!(svg.contains("stroke-dasharray=\"4,2,1"), "{svg}");
+    for (alphas, want) in [(".4,1", "[0.4, 1.0]"), (".4,1,.5", "[0.4, 1.0, 0.5]")] {
+        let s = scene(&format!(
+            "@artboard 64x64\n@target t.png\nrect 30 at:32,32 fill:#7fd4a8 name:r\n  fx blur 2 as:b\n  fx blur 4 as:c\n  fx merge self b c a:{alphas}\n"
+        ));
+        assert!(fx_debug(&s, "r").contains(&format!("alphas: {want}")), "{alphas}: {}", fx_debug(&s, "r"));
+    }
+    let ev = run_with("@artboard 64x64\n@target t.png\nrect 30 at:32,32 fill:#7fd4a8\n  fx blur 2 as:b\n  fx merge self b a:red\n", &[]);
+    assert!(diag(&ev, "E0320").message.contains("`a:`"), "{}", show(&ev.diagnostics));
+}
+
+#[test]
+fn rot_takes_one_angle_and_reports_anything_else() {
+    for src in ["rect 4x4 rot:0,1,0\n", "rect 4x4 rot:0,1\n", "repeat 3 rot:0,1,0\n  rect 2x2\n"] {
+        let ev = run_with(&format!("@artboard 20x20\n@target t.png\n{src}"), &[]);
+        assert!(diag(&ev, "E0320").message.starts_with("`rot:` takes one angle"), "{src}: {}", show(&ev.diagnostics));
+    }
+    assert_eq!(paths(&scene("@artboard 20x20\n@target t.png\nrect 4x4 rot:.25turn name:r\n")), ["r"]);
+}

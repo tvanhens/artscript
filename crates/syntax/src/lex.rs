@@ -32,7 +32,7 @@ pub(crate) enum Tok {
     Percent(f64),
     Angle(f64),
     Time(f64),
-    Size(SizePart, SizePart),
+    Size(SizePart, SizePart, Option<SizePart>),
     Hex(String),
     Str(String),
     /// A `"""..."""` string: the dedented text and where its line 1, column 1 sits in the file.
@@ -73,7 +73,7 @@ impl Tok {
             Tok::Percent(_) => "percent".into(),
             Tok::Angle(_) => "angle".into(),
             Tok::Time(_) => "time".into(),
-            Tok::Size(_, _) => "size".into(),
+            Tok::Size(..) => "size".into(),
             Tok::Hex(h) => format!("color `#{h}`"),
             Tok::Str(_) | Tok::Raw(..) => "string".into(),
             Tok::Ref(s) => format!("reference `@{}", s.join(".")),
@@ -549,14 +549,16 @@ impl<'a> Scanner<'a> {
             if self.peek() == Some('x') && self.after_x_is_number() {
                 self.bump();
                 let second = self.scan_size_part();
-                return Tok::Size(SizePart::Percent(pct), second);
+                let depth = self.scan_depth();
+                return Tok::Size(SizePart::Percent(pct), second, depth);
             }
             return Tok::Percent(pct);
         }
         if self.peek() == Some('x') && self.after_x_is_number() {
             self.bump();
             let second = self.scan_size_part();
-            return Tok::Size(SizePart::Num(value), second);
+            let depth = self.scan_depth();
+            return Tok::Size(SizePart::Num(value), second, depth);
         }
         Tok::Num(value)
     }
@@ -569,6 +571,14 @@ impl<'a> Scanner<'a> {
             Some('.') => cs.next().is_some_and(|c| c.is_ascii_digit()),
             _ => false,
         }
+    }
+
+    fn scan_depth(&mut self) -> Option<SizePart> {
+        if self.peek() == Some('x') && self.after_x_is_number() {
+            self.bump();
+            return Some(self.scan_size_part());
+        }
+        None
     }
 
     fn scan_size_part(&mut self) -> SizePart {
