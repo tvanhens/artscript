@@ -9,8 +9,44 @@ use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
 use crate::paint::{GradKind, direction_deg, gradient};
 use crate::seed::Rng;
+use crate::types::Ty;
 use crate::value::{Arith, Col, Coord, Value, arith};
 use crate::warp;
+
+/// What each built-in function returns, for typing a parameter default that calls one. `min`,
+/// `max`, `abs`, `clamp` and `lerp` return the type they are given, so the typer reads their
+/// arguments instead. A function left out, such as `pick`, has no type a reader can tell from the
+/// call, so a default that calls it is E0326.
+pub const BUILTIN_RETURNS: &[(&str, Ty)] = &[
+    ("sqrt", Ty::Number),
+    ("floor", Ty::Number),
+    ("round", Ty::Number),
+    ("sin", Ty::Number),
+    ("cos", Ty::Number),
+    ("atan2", Ty::Number),
+    ("mod", Ty::Number),
+    ("rand", Ty::Number),
+    ("polar", Ty::Vector),
+    ("shade", Ty::Color),
+    ("lit", Ty::Color),
+    ("mix", Ty::Color),
+    ("fade", Ty::Color),
+    ("line", Ty::Color),
+    ("oklch", Ty::Color),
+    ("ramp", Ty::Color),
+    ("grad", Ty::Color),
+    ("radial", Ty::Color),
+    ("conic", Ty::Color),
+    ("simplex", Ty::Field),
+    ("perlin", Ty::Field),
+    ("worley", Ty::Field),
+    ("value", Ty::Field),
+    ("fbm", Ty::Field),
+    ("ridged", Ty::Field),
+    ("corners", Ty::Warp),
+    ("cylinder", Ty::Warp),
+    ("concat", Ty::List),
+];
 
 fn wrap_period(v: &Value) -> Option<[f32; 2]> {
     match v.pair()? {
@@ -38,14 +74,18 @@ impl Evaluator<'_> {
         if func == "key" {
             return self.key_call(args, named, sc);
         }
+        if matches!(func, "one_of" | "none") && sc.module.global(func).is_none() {
+            return Err(fail("E0320", format!("`{func}(...)` is only a parameter default"))
+                .fix(format!("write `{func}(...)` after a parameter's `key:` in a def, stamp, finish, rule, or param line")));
+        }
         let at = sc.env.iter().rposition(|(k, _)| k == func);
         let bound = at
             .map(|i| sc.env[i].1.clone())
             .or_else(|| sc.module.global(func));
-        if let Some((_, default)) = at.and_then(|i| sc.typed_params.iter().find(|(j, _)| *j == i)) {
-            return match default {
-                Value::Brush(b) => self.call_brush_param(b, bound, args, named, sc),
-                Value::Stamp(s) => self.call_stamp_param(s, bound, args, named, sc),
+        if let Some((_, ty)) = at.and_then(|i| sc.typed_params.iter().find(|(j, _)| *j == i)) {
+            return match ty {
+                Ty::Brush(_) => self.call_brush_param(ty, bound, args, named, sc),
+                Ty::Stamp(_) => self.call_stamp_param(ty, bound, args, named, sc),
                 other => unreachable!("typed parameters are brushes and stamps, not {}", other.kind()),
             };
         }

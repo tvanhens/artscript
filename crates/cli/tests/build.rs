@@ -1383,3 +1383,25 @@ fn build_only_keeps_outputs_of_unselected_targets_in_a_rebuilt_file() {
         .collect();
     assert_eq!(paths, ["a.png", "b.png"]);
 }
+
+#[test]
+fn a_parameter_type_error_fails_every_command_that_reaches_the_file() {
+    let dir = fixture("outline-error", &[]);
+    fs::write(dir.join("lib/tiles.ramo"), "def tile kind:one_of(1 2)\n  circle 2\ndef bead size:3\n  circle size at:8,8\n").unwrap();
+    fs::write(dir.join("art/a.ramo"), "@artboard 16x16\n@target a.png\nuse tiles\nbead\n").unwrap();
+    fs::write(dir.join("art/b.ramo"), "@artboard 16x16\n@target b.png\ndef bead tint:none\n  circle 4\nbead at:8,8\n").unwrap();
+    for args in [&["check"][..], &["build"], &["explain", "art/a.ramo"]] {
+        let out = ramose(&dir, args);
+        let err = text(&out);
+        assert_eq!(out.status.code(), Some(1), "{args:?}: {err}");
+        assert_eq!(err.matches("error[E0320] lib/tiles.ramo:1:10").count(), 1, "{args:?}: {err}");
+        assert_eq!(err.matches("error[E0214] art/a.ramo:3:1").count(), 1, "{args:?}: {err}");
+    }
+    assert!(!dir.join("assets/a.png").exists());
+    assert!(manifest(&dir)["outputs"].as_array().unwrap().is_empty());
+    let out = ramose(&dir, &["explain", "art/b.ramo"]);
+    let err = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert_eq!(err.matches("error[E0326] art/b.ramo:3:10").count(), 1, "{err}");
+    let _ = fs::remove_dir_all(&dir);
+}

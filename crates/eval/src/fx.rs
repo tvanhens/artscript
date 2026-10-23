@@ -14,6 +14,7 @@ use crate::eval::{Evaluator, Fail, R, Scope, fail, ident_of, numbers, unknown_ke
 use crate::identity::{self, Key};
 use crate::place::Place;
 use crate::scope::{FinishDef, Module};
+use crate::types::DeclRef;
 use crate::value::{Value, num};
 
 /// Each built-in effect and the keys it reads, beside `of:` and `as:`.
@@ -220,7 +221,7 @@ impl Evaluator<'_> {
             given.push((n.key.clone(), self.expr(&n.value, site.scope)?));
         }
         let module = self.modules.get(&def.module).cloned().ok_or_else(|| fail("E0210", format!("module `{}` is not loaded", def.module)))?;
-        let env = self.bind_params(&def.name, &def.params, &module, &given, def.span, site.scope)?;
+        let env = self.bind_params(&def.params, &def.sig, &module, &given, def.span, site.scope)?;
         let mut fsc = self.module_scope(&module);
         fsc.env = env;
         fsc.palette = site.scope.palette.clone();
@@ -246,7 +247,13 @@ impl Evaluator<'_> {
                 Err(f) => self.report(f, &module.path, line.span, ""),
             }
         }
-        let def = FinishDef { name: name.to_string(), params: params.to_vec(), lines, module: module.path.clone(), span };
+        let sig = self
+            .project
+            .outlines()
+            .finish(&DeclRef::new(&module.path, name))
+            .cloned()
+            .expect("the outline holds every finish of a parsed file");
+        let def = FinishDef { name: name.to_string(), params: params.to_vec(), sig, lines, module: module.path.clone(), span };
         module.finishes.borrow_mut().insert(name.to_string(), Rc::new(def));
         module.own.borrow_mut().push(format!("finish:{name}"));
         Ok(())

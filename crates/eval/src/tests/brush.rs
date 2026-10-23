@@ -9,7 +9,7 @@ use ramose_syntax::Diagnostic;
 
 use crate::{Project, evaluate, plan};
 
-use super::{diag, node, project, run_with, shape, show};
+use super::{check_with, diag, node, project, run_with, shape, show};
 
 const DRY: &str = "\
 brush dry strength:.5 scale:1 dir:0
@@ -46,11 +46,11 @@ fn ok(src: &str, libs: &[(&str, &str)]) -> Scene {
 }
 
 fn errors(src: &str, libs: &[(&str, &str)]) -> Vec<Diagnostic> {
-    run_with(src, libs).diagnostics
+    check_with(src, libs).diagnostics
 }
 
 fn first(src: &str, libs: &[(&str, &str)], code: &str) -> Diagnostic {
-    diag(&run_with(src, libs), code).clone()
+    diag(&check_with(src, libs), code).clone()
 }
 
 #[test]
@@ -343,9 +343,28 @@ fn a_call_on_a_brush_parameter_is_checked_against_its_default_for_every_instance
     let lib = ("lib/stone.ramo", "use brushes { dry }\ndef stone size:20 brush:dry\n  rect size fill:#ff0000 brush:brush(strength:nope) name:base\n");
     let ds = errors("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 brush:none name:a\n", &[LIB, lib]);
     assert!(ds.iter().any(|d| d.code == "E0361" && d.message.contains("expects a number, got a word")), "the argument is evaluated and checked: {}", show(&ds));
-    let lib = ("lib/stone.ramo", "def stone size:20 tone:none\n  rect size fill:tone(a:1) name:base\n");
+    let lib = ("lib/stone.ramo", "def stone size:20 tone:none(color)\n  rect size fill:tone(a:1) name:base\n");
     let ds = errors("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 name:a\n", &[lib]);
     assert!(ds.iter().any(|d| d.message.contains("unknown function `tone`")), "{}", show(&ds));
+}
+
+#[test]
+fn an_optional_brush_parameter_typed_by_a_declaration_checks_calls_and_binds_none() {
+    let stone = (
+        "lib/stone.ramo",
+        "use brushes { dry }\ndef stone size:20 brush:none(dry)\n  rect size fill:#ff0000 brush:brush(strength:.9) name:base\n",
+    );
+    let s = ok("@artboard 100x100\n@target t.png\nuse brushes { dry }\nuse stone\nstone at:30,50 name:a\nstone at:70,50 brush:dry name:b\n", &[LIB, stone]);
+    assert!(marks(&s, "a.base").is_empty(), "the default is none");
+    assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
+    let d = first("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 brush:4 name:a\n", &[LIB, stone], "E0320");
+    assert!(d.message.contains("`brush` of `stone` expects a brush, got a number"), "{d}");
+    let bad = ("lib/stone.ramo", "use brushes { dry }\ndef stone size:20 brush:none(dry)\n  rect size fill:#ff0000 brush:brush(scal:.5) name:base\n");
+    let d = first("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 name:a\n", &[LIB, bad], "E0361");
+    assert!(d.message.contains("no parameter `scal`"), "{d}");
+    let untyped = ("lib/stone.ramo", "def stone size:20 brush:none(brush)\n  rect size fill:#ff0000 brush:brush(anything:1) name:base\n");
+    let s = ok("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 name:a\n", &[LIB, untyped]);
+    assert!(marks(&s, "a.base").is_empty(), "a call on a brush parameter with no declaration checks nothing and stays none");
 }
 
 #[test]
@@ -417,7 +436,7 @@ fn malformed_declarations_are_e0363_at_their_key() {
         let d = ds.iter().find(|d| d.code == "E0363").unwrap_or_else(|| panic!("{lib}: {}", show(&ds)));
         assert!(d.message.contains(msg), "{lib}: {d}");
         assert_eq!((d.file.as_str(), d.span.line), ("lib/b.ramo", line), "{lib}: {d}");
-        assert!(ds.iter().all(|d| d.code == "E0363"), "{lib}: {}", show(&ds));
+        assert!(ds.iter().all(|d| d.code == "E0363" || d.code == "E0214"), "{lib}: {}", show(&ds));
     }
 }
 

@@ -1,0 +1,16 @@
+# An optional stamp color, 128x96 on paper, three rows, each a straight dotted line from x 16 to
+# x 112 made of dots 4 px wide and 8 px apart.
+# Row 1 (y 24): `stamp beads r:2 spacing:8 tint:none(color)` placed as `stamp:beads` on a host
+# with no stroke, so `tint` is `none` and every dot takes the default ink paint. No line under them.
+# Row 2 (y 48): the same stamp as `beads(tint:p.red.2)` on a host with no stroke: red dots, no line.
+# Row 3 (y 72): `beads(tint:none)` passed at the call on a 1 px blue stroke: `none` is accepted, and
+# the dots take the host's blue paint, so they read as blue beads on a thin blue line.
+@artboard 128x96
+@target stamp/none_tint.png
+
+stamp beads r:2 spacing:8 tint:none(color)
+  circle r fill:if tint == none then paint else tint
+
+curve 16,24 112,24 stamp:beads name:inked
+curve 16,48 112,48 stamp:beads(tint:p.red.2) name:red
+curve 16,72 112,72 stroke:p.blue.2,1 stamp:beads(tint:none) name:blue

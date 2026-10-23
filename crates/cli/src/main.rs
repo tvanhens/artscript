@@ -520,11 +520,14 @@ fn explain(project: &Project, file: &Path) -> u8 {
         );
         return 1;
     };
+    let deps = ramose_eval::dependencies(project, &rel);
+    let mut diags: Vec<Diagnostic> = plan.diagnostics.iter().filter(|d| deps.contains(&d.file)).cloned().collect();
     let ev = ramose_eval::evaluate(project, job);
     if let Some(scene) = &ev.scene {
         out!("{}", ramose_eval::explain(scene, &ev.seeded));
     }
-    report(ev.diagnostics, true, false)
+    diags.extend(ev.diagnostics);
+    report(diags, true, false)
 }
 
 const INIT_MANIFEST: &str = r#"out  = "assets"

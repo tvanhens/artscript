@@ -4,6 +4,7 @@
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::{Rc, Weak};
+use std::sync::Arc;
 
 use ramose_geom::{NodeGeom, ShapeGeom, ToSk};
 use ramose_ir::{Node, NodeKind};
@@ -13,6 +14,7 @@ use ramose_syntax::ast::{DefItem, Expr, FxLine, Named, Patch, Scene, Span};
 use crate::geom;
 use crate::identity::{DeclId, Entry, Key, Name, NameKind, Names, Region, RegionKind, Site};
 use crate::place::{Place, inverse};
+use crate::types::Signature;
 use crate::value::Value;
 
 pub struct Module {
@@ -133,8 +135,9 @@ pub struct AnimDef {
 /// `Scope.style`.
 pub struct FinishDef {
     pub name: String,
-    /// Named only, typed by their defaults, like `def` params.
+    /// Named only, with their defaults. `sig` has their types.
     pub params: Vec<Named>,
+    pub sig: Arc<Signature>,
     pub lines: Vec<FxLine>,
     /// The module whose names the lines and the param defaults resolve in.
     pub module: String,
@@ -144,6 +147,7 @@ pub struct FinishDef {
 pub struct Component {
     pub name: String,
     pub params: Vec<Named>,
+    pub sig: Arc<Signature>,
     /// Part names a host must have when this def is slot content (`needs:@torso`).
     pub needs: Vec<String>,
     pub body: Vec<DefItem>,
@@ -172,6 +176,7 @@ pub struct Fixed {
 pub struct RuleDef {
     pub name: String,
     pub params: Vec<Named>,
+    pub sig: Arc<Signature>,
     pub body: Vec<Scene>,
     pub module: String,
     pub span: Span,

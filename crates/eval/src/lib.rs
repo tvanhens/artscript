@@ -25,6 +25,7 @@ mod scope;
 mod seed;
 mod stamp;
 pub mod targets;
+mod types;
 mod value;
 mod warp;
 
