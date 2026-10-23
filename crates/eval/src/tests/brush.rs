@@ -823,3 +823,9 @@ fn an_import_a_body_calls_is_used() {
     let unused: Vec<&str> = ev.diagnostics.iter().filter(|d| d.code == "L0103").map(|d| d.message.as_str()).collect();
     assert_eq!(unused, ["imported `un` is never used"], "{}", show(&ev.diagnostics));
 }
+
+#[test]
+fn a_whole_literal_past_the_int_range_compiles() {
+    let lib = ("lib/b.ramo", "brush b\n  out m.paint.rgb * 10000000000 / 10000000000\n");
+    ok("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
+}

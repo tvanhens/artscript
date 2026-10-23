@@ -341,9 +341,11 @@ fn loop_var(v: LoopVar) -> String {
     format!("i{}", v.0)
 }
 
-/// A literal as the author wrote it, so the target parses the same decimal.
+/// A literal as the author wrote it, so the target parses the same decimal, and always as a
+/// float: a whole number past `int` range is an error in SkSL.
 fn num(x: f64) -> String {
-    format!("{x}")
+    let s = format!("{x}");
+    if s.contains(['.', 'e']) { s } else { s + ".0" }
 }
 
 struct Printer<'a> {
@@ -542,7 +544,8 @@ mod tests {
     #[test]
     fn literals_print_as_the_author_wrote_them() {
         assert_eq!(num(0.46), "0.46");
-        assert_eq!(num(1.0), "1");
+        assert_eq!(num(1.0), "1.0");
+        assert_eq!(num(10000000000.0), "10000000000.0");
         assert_eq!(num(-1.3), "-1.3");
         assert_eq!(num(0.0000001), "0.0000001");
     }
