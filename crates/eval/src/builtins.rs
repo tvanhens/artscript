@@ -159,7 +159,20 @@ impl Evaluator<'_> {
                 )
             })
         };
-        let one = |f: fn(f64) -> f64| -> R<Value> { Ok(Value::Num(f(n(0)?))) };
+        // A unary math function applies to a number, or to each component of a vector. A number
+        // is matched first: `pair()` reads one as a square size.
+        let one = |f: fn(f64) -> f64| -> R<Value> {
+            Ok(match a.first() {
+                Some(Value::Num(x)) => Value::Num(f(*x)),
+                Some(Value::Vec2(Coord::Num(x), Coord::Num(y)) | Value::Size(Coord::Num(x), Coord::Num(y))) => {
+                    Value::Vec2(Coord::Num(f(*x)), Coord::Num(f(*y)))
+                }
+                Some(Value::Vec3(Coord::Num(x), Coord::Num(y), z) | Value::Size3(Coord::Num(x), Coord::Num(y), z)) => {
+                    Value::Vec3(Coord::Num(f(*x)), Coord::Num(f(*y)), f(*z))
+                }
+                _ => Value::Num(f(n(0)?)),
+            })
+        };
         let path_arg = |i: usize| -> R<Rc<PathVal>> {
             match a.get(i) {
                 Some(Value::Path(p)) => Ok(p.clone()),
@@ -211,13 +224,9 @@ impl Evaluator<'_> {
                 Some(Value::Field(f)) => {
                     Value::Field(Rc::new(Field::Unary(FieldFn::Abs, Box::new((**f).clone()))))
                 }
-                Some(Value::Num(x)) => Value::Num(x.abs()),
-                Some(v) if v.vec2().is_some() => {
-                    let (x, y) = v.vec2().unwrap();
-                    Value::Vec2(Coord::Num(x.abs()), Coord::Num(y.abs()))
-                }
                 _ => one(f64::abs)?,
             },
+            "rad" => Value::Num(n(0)?.to_radians()),
             "clamp" => match a.as_slice() {
                 [Value::Field(f)] => Value::Field(Rc::new(Field::Unary(
                     FieldFn::Clamp,
