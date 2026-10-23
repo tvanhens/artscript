@@ -36,6 +36,16 @@ impl Place {
         Place(links)
     }
 
+    /// `m` applied after everything here: this frame read from a frame that `m` leads into.
+    pub fn outer(&self, m: Matrix) -> Place {
+        let mut links = self.0.clone();
+        match links.last_mut() {
+            Some(Link::Affine(a)) => *a = m * *a,
+            _ => links.push(Link::Affine(m)),
+        }
+        Place(links)
+    }
+
     /// A warp applied before everything here, and the cell that fills it.
     pub fn inner_warp(&self) -> (Place, Rc<OnceCell<Warp>>) {
         let cell = Rc::new(OnceCell::new());
@@ -113,6 +123,22 @@ impl Place {
         Some(tail.map_point(p))
     }
 
+    /// `p`'s image and the unit direction that `d` at `p` takes after this chain: the linear
+    /// part of an affine chain, else a short step through the warps. `None` for a point a warp
+    /// hides.
+    pub fn map_direction(&self, p: Point, d: Point) -> Option<(Point, Point)> {
+        let (runs, tail) = self.runs();
+        let (at, mut dir) = if runs.is_empty() {
+            (tail.map_point(p), tail.map_vector(d))
+        } else {
+            let step = d * DIRECTION_STEP;
+            let (before, after) = (self.map_point(p - step)?, self.map_point(p + step)?);
+            (self.map_point(p)?, after - before)
+        };
+        dir.normalize();
+        Some((at, dir))
+    }
+
     pub fn map_rect(&self, r: Rect) -> Rect {
         self.map_rect_then(r, &Matrix::new_identity())
     }
@@ -153,6 +179,10 @@ impl Place {
         path.with_transform(&inverse(&self.flat()))
     }
 }
+
+/// Half the chord, in the frame's own units, that [`Place::map_direction`] measures a warped
+/// direction over.
+const DIRECTION_STEP: f32 = 0.1;
 
 pub(crate) fn inverse(m: &Matrix) -> Matrix {
     m.invert().unwrap_or_default()
