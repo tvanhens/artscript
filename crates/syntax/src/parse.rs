@@ -2,9 +2,9 @@ use std::collections::HashSet;
 
 use crate::Diagnostic;
 use crate::ast::{
-    BinOp, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody, DrawItem, Expr, File, Fx,
-    Item, Mask, MaskLine, Named, Patch, RampPos, Scene, SceneKind, SecondMask, SkslBlock, SlotFill,
-    Span, Swatch, SwatchKind, UnOp,
+    BinOp, BodyLine, BodyLineKind, CheckKind, Decl, DeclKind, DefItem, Directive, Draw, DrawBody,
+    DrawItem, Expr, File, Fx, Item, Mask, MaskLine, Named, Patch, RampPos, Scene, SceneKind,
+    SecondMask, SlotFill, Span, Swatch, SwatchKind, UnOp,
 };
 use crate::lex::{self, Line, SizePart, Tok};
 use crate::words::{self, Word};
@@ -735,28 +735,39 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_fn(&mut self) -> Option<DeclKind> {
-        let span = self.cur_span();
         let indent = self.cur_indent();
+        let Some((name, params, body)) = self.fn_parts() else {
+            self.no_block(indent);
+            return None;
+        };
+        self.reject_block(
+            indent,
+            "a fn has no body block",
+            &format!("dedent the block, or fold it into the expression after `=` in `fn {name}`"),
+        );
+        Some(DeclKind::Fn { name, params, body })
+    }
+
+    /// `fn NAME(a b) = EXPR`, at the top level or inside a brush body.
+    fn fn_parts(&mut self) -> Option<(String, Vec<String>, Expr)> {
+        let span = self.cur_span();
         self.bump();
         let name = self.expect_name();
         let shown = if name.is_empty() { "name" } else { &name };
         let shape = format!("write `fn {shown}(a b) = <expr>`");
         if !self.eat(&Tok::LParen) {
             self.fail(span, "expected `(` after the name", shape);
-            self.no_block(indent);
             return None;
         }
         let mut params: Vec<String> = Vec::new();
         while !self.eat(&Tok::RParen) {
             if self.eol() {
                 self.fail(span, "expected `)` after the parameters", shape);
-                self.no_block(indent);
                 return None;
             }
             let pspan = self.cur_span();
             let p = self.expect_name();
             if p.is_empty() {
-                self.no_block(indent);
                 return None;
             }
             if params.contains(&p) {
@@ -770,17 +781,11 @@ impl<'a> Parser<'a> {
         }
         if !self.eat(&Tok::Eq) {
             self.fail(span, "expected `=` after the parameters", shape);
-            self.no_block(indent);
             return None;
         }
         let body = self.parse_tuple();
         self.expect_eol("a `fn` body is one expression");
-        self.reject_block(
-            indent,
-            "a fn has no body block",
-            &format!("dedent the block, or fold it into the expression after `=` in `fn {name}`"),
-        );
-        Some(DeclKind::Fn { name, params, body })
+        Some((name, params, body))
     }
 
     fn parse_light(&mut self) -> Option<DeclKind> {
@@ -800,8 +805,8 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Light { name, named })
     }
 
-    /// `brush NAME k:v...` then one child line `sksl """..."""`. A missing block is left to
-    /// eval, which reports it beside the kind checks on the params.
+    /// `brush NAME k:v...` with a body of `let`, `fn`, and `out` lines. The body's rules are
+    /// checked by eval, which reports a missing `out` beside the kind checks on the params.
     fn parse_brush(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();
@@ -816,55 +821,65 @@ impl<'a> Parser<'a> {
             );
         }
         self.reject_param_names(&params);
-        let mut sksl: Option<SkslBlock> = None;
-        let mut child_indent: Option<usize> = None;
-        loop {
-            let next = self.li + 1;
-            if next >= self.lines.len() {
-                break;
-            }
-            let ind = self.lines[next].indent;
-            if ind <= indent {
-                break;
-            }
-            match child_indent {
-                None => child_indent = Some(ind),
-                Some(ci) if ind != ci => {
-                    self.report_dedent(next, indent, span.line);
-                    self.lines[next].indent = indent;
-                    break;
+        let body = self.block(indent, span.line, Self::body_line);
+        Some(DeclKind::Brush { name, params, body })
+    }
+
+    fn body_line(&mut self) -> Option<BodyLine> {
+        let span = self.cur_span();
+        let kind = match self.cur().map(|t| t.kind.clone()) {
+            Some(Tok::Kw(Word::Let)) => {
+                self.bump();
+                let name = self.expect_name();
+                if !self.eat(&Tok::Eq) {
+                    self.fail(span, "expected `=` after the name", "write `let name = <expr>`");
+                    return None;
                 }
-                _ => {}
+                let value = self.parse_tuple();
+                self.expect_eol("a `let` binding is one expression");
+                BodyLineKind::Let { name, value }
             }
-            self.enter(next);
-            let kw = self.cur_span();
-            if self.eat_ident("sksl") {
-                if let Some(Tok::Raw(text, body, rest)) = self.cur().map(|t| t.kind.clone()) {
-                    self.bump();
-                    if sksl.is_some() {
-                        self.fail(
-                            kw,
-                            "a brush has one `sksl` block",
-                            "keep a single `sksl \"\"\"...\"\"\"` line",
-                        );
+            Some(Tok::Ident(s)) if s == "fn" => {
+                let (name, params, body) = self.fn_parts()?;
+                BodyLineKind::Fn { name, params, body }
+            }
+            Some(Tok::Ident(s)) if s == "out" => {
+                self.bump();
+                let (mut args, named) = self.parse_items();
+                if args.len() != 1 {
+                    self.fail(span, "`out` takes one rgb value", "write `out m.paint.rgb cover:cover(m.edge)`");
+                    return None;
+                }
+                let mut cover = None;
+                for n in named {
+                    if n.key == "cover" && cover.is_none() {
+                        cover = Some(n);
                     } else {
-                        sksl = Some(SkslBlock { text, span: kw, body, rest });
+                        self.fail(n.span, format!("`out` takes no `{}:`", n.key), "`cover:` is the only named argument of `out`");
+                        return None;
                     }
-                } else {
-                    self.fail_here(
-                        "expected a raw string after `sksl`",
-                        "write `sksl \"\"\"...\"\"\"`",
-                    );
                 }
-            } else {
-                self.fail_here(
-                    "expected `sksl` under the brush",
-                    "indent `sksl \"\"\"...\"\"\"` under the brush",
-                );
+                BodyLineKind::Out { rgb: args.pop().expect("one arg"), cover }
             }
-            self.expect_eol("remove the extra tokens after `sksl`");
-        }
-        Some(DeclKind::Brush { name, params, sksl })
+            Some(Tok::Ident(s)) if s == "sksl" => {
+                self.bump();
+                let Some(Tok::Raw(text)) = self.cur().map(|t| t.kind.clone()) else {
+                    self.fail_here("expected a raw string after `sksl`", "write the body as `let`, `fn`, and `out` lines");
+                    return None;
+                };
+                self.bump();
+                self.expect_eol("remove the extra tokens after the raw string");
+                BodyLineKind::Sksl { text }
+            }
+            _ => {
+                self.reject_line_and_block(
+                    "a brush body holds `let`, `fn`, and `out` lines",
+                    "write `out m.paint.rgb cover:cover(m.edge)` as the body's last line",
+                );
+                return None;
+            }
+        };
+        Some(BodyLine { kind, span })
     }
 
     fn parse_anim(&mut self) -> Option<DeclKind> {
@@ -1028,7 +1043,7 @@ impl<'a> Parser<'a> {
             .is_some_and(|t| matches!(t.kind, Tok::Str(_) | Tok::Raw(..)) && t.ws_before)
         {
             match self.bump().kind {
-                Tok::Str(s) | Tok::Raw(s, ..) => Some(s),
+                Tok::Str(s) | Tok::Raw(s) => Some(s),
                 _ => None,
             }
         } else {
@@ -1846,7 +1861,7 @@ impl<'a> Parser<'a> {
                 self.bump();
                 Expr::Hex(h)
             }
-            Tok::Str(s) | Tok::Raw(s, ..) => {
+            Tok::Str(s) | Tok::Raw(s) => {
                 self.bump();
                 Expr::Str(s)
             }

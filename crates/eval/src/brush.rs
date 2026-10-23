@@ -1,17 +1,14 @@
 //! Brush declarations, brush values with overrides, the marks a node's `brush:` key becomes on
-//! its fill and its stroke, and the ribbon a brushed stroke's channels become. The SkSL contract
-//! itself lives in `ramose_brush`; this module binds `.ramo` values to it and reports every
-//! failure at the author's line.
+//! its fill and its stroke, and the ribbon a brushed stroke's channels become. The shading
+//! language itself lives in `ramose_brush`; this module binds `.ramo` values to it and reports
+//! every failure at the author's line.
 
 use std::rc::Rc;
 use std::sync::Arc;
 
-use ramose_brush::{
-    HELPERS, MARK_FIELDS, MainKind, Origin, PLACEMENT_KEYS, Program, RESERVED_PREFIX,
-    UniformKind, UniformValue,
-};
+use ramose_brush::{BrushSource, Diag, Global, Library, PLACEMENT_KEYS, Param, Shader, UniformValue, lang::Ty as BodyTy};
 use ramose_ir::{AreaMark, Knot, Ribbon, RibbonContour, RibbonMark, Stage};
-use ramose_syntax::ast::{Expr, Named, SkslBlock, Span};
+use ramose_syntax::ast::{BodyLine, Expr, Named, Span};
 use skia_safe::{ContourMeasure, ContourMeasureIter, Path};
 
 use crate::eval::{Args, Evaluator, Fail, R, Scope, fail, osa_distance};
@@ -21,26 +18,21 @@ use crate::scope::Module;
 use crate::types::Ty;
 use crate::value::{Kind, Value};
 
-/// A `brush` declaration after `check` accepted its programs. Shared by every value made from it.
+/// A `brush` declaration after the checker accepted its body. Shared by every value made from it.
 pub struct BrushDecl {
     pub name: String,
-    /// Declared uniforms in head order.
-    pub params: Vec<(String, UniformKind)>,
-    /// The body under each main, indexed by [`MainKind`]: area first, ribbon second.
-    programs: [Arc<Program>; 2],
+    pub shader: Arc<Shader>,
 }
 
 impl BrushDecl {
-    pub fn program(&self, kind: MainKind) -> &Arc<Program> {
-        &self.programs[match kind {
-            MainKind::Area => 0,
-            MainKind::Ribbon => 1,
-        }]
+    /// Declared uniforms in head order.
+    pub fn params(&self) -> &[(String, BodyTy)] {
+        &self.shader.body().params
     }
 
-    /// Whether the body reads `m.below`. The same body is under both mains.
+    /// Whether the body reads `m.below`.
     pub fn reads_below(&self) -> bool {
-        self.programs[0].reads_below()
+        self.shader.reads_below()
     }
 }
 
@@ -114,7 +106,7 @@ fn number(brush: &str, key: &str, v: &Value) -> R<f64> {
 /// A brush value: a declaration plus the current uniform values and placement.
 pub struct BrushVal {
     pub decl: Rc<BrushDecl>,
-    /// Same order as `decl.params`.
+    /// Same order as `decl.params()`.
     pub uniforms: Vec<UniformValue>,
     pub place: Placement,
 }
@@ -137,10 +129,9 @@ impl BrushVal {
                 out.place.set(name, k, v).map_err(|f| self.with_notes(f))?;
                 continue;
             }
-            let Some(i) = self.decl.params.iter().position(|(p, _)| p == k) else {
-                let nearest = self
-                    .decl
-                    .params
+            let params = self.decl.params();
+            let Some(i) = params.iter().position(|(p, _)| p == k) else {
+                let nearest = params
                     .iter()
                     .map(|(p, _)| p.as_str())
                     .chain(PLACEMENT_KEYS.iter().copied())
@@ -153,15 +144,11 @@ impl BrushVal {
                     None => f.fix("use one of the listed parameters"),
                 });
             };
-            let kind = self.decl.params[i].1;
-            let Some(u) = uniform_of(v).filter(|u| u.kind() == kind) else {
+            let ty = params[i].1;
+            let Some(u) = uniform_of(v).filter(|u| u.ty() == ty) else {
                 return Err(self
-                    .argument_error(format!(
-                        "`{k}` of `{name}` expects {}, got {}",
-                        kind_word(kind),
-                        v.kind()
-                    ))
-                    .fix(format!("pass {}", kind_word(kind))));
+                    .argument_error(format!("`{k}` of `{name}` expects {}, got {}", kind_word(ty), v.kind()))
+                    .fix(format!("pass {}", kind_word(ty))));
             };
             out.uniforms[i] = u;
         }
@@ -173,14 +160,14 @@ impl BrushVal {
     }
 
     fn with_notes(&self, f: Fail) -> Fail {
-        let params: Vec<&str> = self.decl.params.iter().map(|(p, _)| p.as_str()).collect();
+        let params: Vec<&str> = self.decl.params().iter().map(|(p, _)| p.as_str()).collect();
         f.note(format!("parameters: {}", params.join(", ")))
             .note(format!("placement: {}", PLACEMENT_KEYS.join(", ")))
     }
 }
 
-/// The uniform a value binds as: a number is `float`, a color `float4` (straight rgba), a
-/// vector `float2`.
+/// The uniform a value binds as: a number is a `float`, a color a `float4` (straight rgba), a
+/// vector a `float2` or `float3` by its length.
 fn uniform_of(v: &Value) -> Option<UniformValue> {
     match v {
         Value::Num(n) => Some(UniformValue::Float(*n as f32)),
@@ -193,16 +180,40 @@ fn uniform_of(v: &Value) -> Option<UniformValue> {
                 let (x, y) = v.vec2()?;
                 Some(UniformValue::Float2([x as f32, y as f32]))
             }
+            Kind::Vector3 => {
+                let (x, y, z) = v.vec3()?;
+                Some(UniformValue::Float3([x as f32, y as f32, z as f32]))
+            }
             _ => None,
         },
     }
 }
 
-fn kind_word(kind: UniformKind) -> &'static str {
-    match kind {
-        UniformKind::Float => "a number",
-        UniformKind::Float2 => "a vector like 4,2",
-        UniformKind::Float4 => "a color",
+fn kind_word(ty: BodyTy) -> &'static str {
+    match ty {
+        BodyTy::Num => "a number",
+        BodyTy::Vec2 => "a vector like 4,2",
+        BodyTy::Vec3 => "a three-component vector like 4,2,1",
+        BodyTy::Color => "a color",
+        BodyTy::Bool => "a bool",
+    }
+}
+
+/// The module scope as the shading checker sees it: a name is a fn a body may call, or
+/// something a body cannot read.
+struct ModuleLib<'a>(&'a std::collections::HashMap<String, Rc<Module>>);
+
+impl Library for ModuleLib<'_> {
+    fn lookup(&self, file: &str, name: &str) -> Option<Global> {
+        Some(match self.0.get(file)?.global(name)? {
+            Value::Fn(f) => Global::Fn(f),
+            Value::Palette(_) | Value::Color(_) | Value::Ramp(_) => Global::Other("a palette value"),
+            Value::Component(_) | Value::Alias(_) => Global::Other("a def"),
+            Value::Brush(_) => Global::Other("a brush"),
+            Value::Stamp(_) => Global::Other("a stamp"),
+            Value::Module(_) => Global::Other("a module"),
+            _ => Global::Other("a top-level `let`"),
+        })
     }
 }
 
@@ -213,18 +224,16 @@ impl Evaluator<'_> {
         module: &Rc<Module>,
         name: &str,
         params: &[Named],
-        sksl: Option<&SkslBlock>,
+        body: &[BodyLine],
         span: Span,
     ) -> R<()> {
-        let file = module.path.clone();
-        let result = self.build_brush(module, name, params, sksl, span);
-        match result {
+        match self.build_brush(module, name, params, body, span) {
             Ok(v) => {
                 module.define(name, Value::Brush(Rc::new(v)));
                 Ok(())
             }
             Err(errors) => {
-                for (f, at) in errors {
+                for (f, file, at) in errors {
                     self.report(f, &file, at, "");
                 }
                 module.lost.borrow_mut().insert(name.to_string());
@@ -233,141 +242,67 @@ impl Evaluator<'_> {
         }
     }
 
+    /// The head is evaluated here: each default types its parameter. The body goes to the
+    /// checker, and a checked body that the SkSL backend rejects is a bug in ramose, reported
+    /// once at the `brush` line.
     fn build_brush(
         &mut self,
         module: &Rc<Module>,
         name: &str,
         params: &[Named],
-        sksl: Option<&SkslBlock>,
+        body: &[BodyLine],
         span: Span,
-    ) -> Result<BrushVal, Vec<(Fail, Span)>> {
-        let Some(block) = sksl else {
-            return Err(vec![(
-                fail("E0363", format!("brush `{name}` has no `sksl` block"))
-                    .fix("indent `sksl \"\"\"...\"\"\"` under the brush"),
-                span,
-            )]);
-        };
+    ) -> Result<BrushVal, Vec<(Fail, String, Span)>> {
+        let file = module.path.clone();
         let sc = self.module_scope(module);
         self.begin_seed(&module.path, Key::binding(name));
         let mut place = Placement::default();
-        let mut decl_params: Vec<(String, UniformKind)> = Vec::new();
+        let mut decl_params: Vec<Param> = Vec::new();
         let mut uniforms = Vec::new();
         let mut errors = Vec::new();
         for p in params {
             let v = match self.expr(&p.value, &sc) {
                 Ok(v) => v,
                 Err(f) => {
-                    errors.push((f, p.span));
+                    errors.push((f, file.clone(), p.span));
                     continue;
                 }
             };
             if PLACEMENT_KEYS.contains(&p.key.as_str()) {
                 if let Err(f) = place.set(name, &p.key, &v) {
-                    errors.push((f, p.span));
+                    errors.push((f, file.clone(), p.span));
                 }
-                continue;
-            }
-            if let Some(f) = param_name_clash(&p.key) {
-                errors.push((f, p.span));
                 continue;
             }
             match uniform_of(&v) {
                 Some(u) => {
-                    decl_params.push((p.key.clone(), u.kind()));
+                    decl_params.push(Param { name: p.key.clone(), ty: u.ty(), span: p.span });
                     uniforms.push(u);
                 }
                 None => errors.push((
                     fail(
                         "E0363",
-                        format!(
-                            "`{}` of `{name}` must default to a number, color or vector, got {}",
-                            p.key,
-                            v.kind()
-                        ),
+                        format!("`{}` of `{name}` must default to a number, color or vector, got {}", p.key, v.kind()),
                     )
                     .fix(format!("write `{}:.5`", p.key)),
+                    file.clone(),
                     p.span,
                 )),
             }
         }
-        let at = |origin: Origin| match origin {
-            Origin::Body { line, col } => {
-                let start = if line == 1 { block.body } else { block.rest };
-                Span {
-                    line: block.body.line + line - 1,
-                    col: start.col + col.unwrap_or(0),
-                }
-            }
-            Origin::Param(i) => params
-                .iter()
-                .filter(|p| !PLACEMENT_KEYS.contains(&p.key.as_str()))
-                .nth(i)
-                .map_or(block.span, |p| p.span),
-            Origin::Frame => block.span,
-        };
-        let head_failed = !errors.is_empty();
-        for (ident, origin) in ramose_brush::reserved_identifiers(&block.text) {
-            errors.push((
-                fail("E0363", format!("`{ident}` is reserved: names starting with `{RESERVED_PREFIX}` belong to the runtime"))
-                    .fix("rename it"),
-                at(origin),
-            ));
-        }
-        if head_failed {
-            return Err(errors);
-        }
-        let area = Program::assemble(MainKind::Area, &decl_params, &block.text);
-        // The body is the same text under both mains, so the area check reports its errors once.
-        // The ribbon main and both blender frames are checked too, so render never meets a program
-        // eval did not.
-        let ribbon = Program::assemble(MainKind::Ribbon, &decl_params, &block.text);
-        if let Err(errs) = ramose_brush::check(&area) {
-            // SkSL stops at the first bad uniform line, so each param is compiled alone to report
-            // them all. The body's errors may follow from the bad name, so they wait for a rename.
-            let names: Vec<(Fail, Span)> = if errs.iter().any(|e| matches!(e.origin, Origin::Param(_))) {
-                decl_params
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, (key, kind))| {
-                        let why = ramose_brush::rejects_param_name(key, *kind)?;
-                        let f = fail("E0363", format!("a brush parameter cannot be named `{key}`: SkSL reserves it"))
-                            .note(format!("SkSL: {why}"))
-                            .fix("rename the parameter");
-                        Some((f, at(Origin::Param(i))))
-                    })
-                    .collect()
-            } else {
-                Vec::new()
-            };
-            if !names.is_empty() {
-                errors.extend(names);
-                return Err(errors);
-            }
-            errors.extend(errs.into_iter().map(|e| {
-                let f = fail("E0360", format!("SkSL: {}", e.message))
-                    .note(format!("in brush `{name}`"))
-                    .fix("fix the SkSL; the body defines `float4 shade(Mark m)`");
-                (f, at(e.origin))
-            }));
-        } else if let Err(errs) = ramose_brush::check(&ribbon) {
-            errors.extend(errs.into_iter().map(|e| {
-                (fail("E0360", format!("SkSL on a stroke: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
-            }));
-        } else if let Err(errs) = ramose_brush::check_blender(&area).and_then(|()| ramose_brush::check_blender(&ribbon)) {
-            errors.extend(errs.into_iter().map(|e| {
-                (fail("E0360", format!("SkSL over a backdrop: {}", e.message)).note(format!("in brush `{name}`")), at(e.origin))
-            }));
-        }
         if !errors.is_empty() {
             return Err(errors);
         }
+        let src = BrushSource { file: &file, name, span, params: &decl_params, lines: body };
+        let shader = match self.shading.check(&src, &ModuleLib(&self.modules)) {
+            Ok(s) => s,
+            Err(diags) => return Err(diags.into_iter().map(fail_of).collect()),
+        };
+        if let Err(why) = ramose_brush::verify(&shader) {
+            return Err(vec![(fail("E0360", format!("internal: {why}")).note(format!("in brush `{name}`")), file, span)]);
+        }
         Ok(BrushVal {
-            decl: Rc::new(BrushDecl {
-                name: name.to_string(),
-                params: decl_params,
-                programs: [Arc::new(area), Arc::new(ribbon)],
-            }),
+            decl: Rc::new(BrushDecl { name: name.to_string(), shader: Arc::new(shader) }),
             uniforms,
             place,
         })
@@ -469,7 +404,6 @@ impl Evaluator<'_> {
         &mut self,
         stack: &'b [Rc<BrushVal>],
         slot: Slot,
-        kind: MainKind,
         key: &Key,
         explicit: Option<u64>,
         file: &str,
@@ -479,17 +413,7 @@ impl Evaluator<'_> {
             .enumerate()
             .map(|(i, b)| {
                 let seed = identity::seed(file, &key.brush(slot.word(), i as u32), explicit, &mut self.uses);
-                let stage = Stage {
-                    program: b.decl.program(kind).clone(),
-                    uniforms: b
-                        .decl
-                        .params
-                        .iter()
-                        .zip(&b.uniforms)
-                        .map(|((n, _), u)| (n.clone(), *u))
-                        .collect(),
-                    seed: (seed ^ (seed >> 32)) as u32,
-                };
+                let stage = Stage { shader: b.decl.shader.clone(), uniforms: b.uniforms.clone(), seed: (seed ^ (seed >> 32)) as u32 };
                 (stage, &b.place)
             })
             .collect()
@@ -502,7 +426,7 @@ impl Evaluator<'_> {
         explicit: Option<u64>,
         file: &str,
     ) -> Vec<AreaMark> {
-        self.stages(stack, Slot::Fill, MainKind::Area, key, explicit, file)
+        self.stages(stack, Slot::Fill, key, explicit, file)
             .into_iter()
             .map(|(stage, place)| {
                 let rad = place.dir_deg.to_radians();
@@ -523,11 +447,23 @@ impl Evaluator<'_> {
         explicit: Option<u64>,
         file: &str,
     ) -> Vec<RibbonMark> {
-        self.stages(stack, Slot::Stroke, MainKind::Ribbon, key, explicit, file)
+        self.stages(stack, Slot::Stroke, key, explicit, file)
             .into_iter()
             .map(|(stage, place)| RibbonMark { stage, reach: place.reach as f32 })
             .collect()
     }
+}
+
+/// A checker diagnostic as eval reports it, at the file it names.
+fn fail_of(d: Diag) -> (Fail, String, Span) {
+    let mut f = fail(d.code, d.message);
+    for n in d.notes {
+        f = f.note(n);
+    }
+    if let Some(fix) = d.fix {
+        f = f.fix(fix);
+    }
+    (f, d.at.file, d.at.span)
 }
 
 /// The per-point channels of a brushed stroke, as authored. `None` is the channel's default.
@@ -802,20 +738,3 @@ pub fn ribbon(spine: &Spine<'_>, taper: (f64, f64), marks: Vec<RibbonMark>) -> R
     Ribbon { marks, contours, taper: [taper.0 as f32, taper.1 as f32] }
 }
 
-/// A param cannot take the name of a `Mark` field, a helper, a placement key, or a runtime
-/// uniform: the body would then read the param where it meant the field.
-fn param_name_clash(key: &str) -> Option<Fail> {
-    let what = if MARK_FIELDS.contains(&key) {
-        "a `Mark` field"
-    } else if HELPERS.contains(&key) {
-        "a prelude helper"
-    } else if key.starts_with(RESERVED_PREFIX) {
-        "reserved for the runtime"
-    } else {
-        return None;
-    };
-    Some(
-        fail("E0363", format!("a brush parameter cannot be named `{key}`: it is {what}"))
-            .fix("rename the parameter"),
-    )
-}

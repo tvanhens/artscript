@@ -1,126 +1,82 @@
 # std/brushes: the house brushes. Every built-in is `.ramo` code. `ramose std brushes`
 # prints this file so you can copy it into lib/ and fork it.
-# A brush body defines `float4 shade(Mark m)` and returns straight rgb plus coverage.
-# Mark: p dev u s v d len width pressure angle tilt velocity edge uv seed paint px.
-# Helpers: hash12 hash22 vnoise simplex worley fbm rot seeded cover. See `ramose docs brushes`.
+# A brush body is `let`, `fn`, and `out` lines over the sample `m`. `out` gives straight rgb
+# and a coverage. See `ramose docs brushes` for the fields of `m` and the builtins.
 
 # Stroke: bristle streaks along the ribbon, gaps where pressure is low or the hand moves fast,
 # ragged ends. `gaps` is how much pressure thins the paint, `speed` how much velocity does.
 brush bristle strength:.7 scale:1 gaps:.7 speed:.4
-  sksl """
-  float4 shade(Mark m) {
-    float2 o = seeded(m);
-    // bundles are measured across the brush (v), so a thin stroke keeps its bristle count
-    float across = m.v * 5 / scale;
-    float hair = fbm(float2(m.s / (70 * scale), across) + o, 3);
-    float fine = vnoise(float2(m.s / (26 * scale), m.v * 22 / scale) + o * 2);
-    // low pressure carries less paint: more bristles skip
-    float load = mix(1, m.pressure, gaps) - speed * max(0, m.velocity - 1);
-    float dry = strength * (.12 + .9 * (1 - load));
-    float keep = smoothstep(dry - .05, dry + .05, hair * .75 + fine * .25);
-    // each bristle lifts off at its own distance from the ends
-    float lift = vnoise(float2(m.v * 9 / scale, m.seed + 4));
-    float ends = min(m.s, m.len - m.s);
-    float rag = smoothstep(-1, 1, ends + m.width * .3 - lift * m.width * 2.5 * strength);
-    float side = cover(m.edge - (1 - hair) * m.width * .2 * strength, m);
-    float3 c = m.paint.rgb * (.84 + .28 * hair);
-    return float4(c, side * keep * rag);
-  }
-  """
+  # bundles are measured across the brush, so a thin stroke keeps its bristle count
+  let v = m.d/(m.size.y/2)
+  let across = v*5/scale
+  let hair = fbm(m.s/(70*scale),across oct:3)
+  let fine = value(m.s/(26*scale),v*22/scale salt:1)
+  # low pressure carries less paint: more bristles skip
+  let load = lerp(1 m.pressure gaps)-speed*max(0 m.velocity-1)
+  let dry = strength*(.12+.9*(1-load))
+  let keep = smoothstep(dry-.05 dry+.05 hair*.75+fine*.25)
+  # each bristle lifts off at its own distance from the ends
+  let lift = value(v*9/scale,m.seed+4 seed:0)
+  let ends = min(m.s m.size.x-m.s)
+  let rag = smoothstep(-1 1 ends+m.size.y*.3-lift*m.size.y*2.5*strength)
+  let side = cover(m.edge-(1-hair)*m.size.y*.2*strength)
+  out m.paint.rgb*(.84+.28*hair) cover:side*keep*rag
 
 # Area or stroke: dry brush. Coverage breaks into streaks along `dir` on a fill and along the
 # ribbon on a stroke; `fade` wears it out toward the far end.
 brush dry strength:.5 scale:1 fade:0 dir:0
-  sksl """
-  // One pass of the brush: it starts loaded and runs dry along its length; the seam
-  // where a fresh pass starts is ragged because it moves with the bristle noise.
-  float pass_load(float row, Mark m, float2 o, float hair) {
-    float r1 = hash12(float2(row, 3.7) + o);
-    float r2 = hash12(float2(row, 9.1) + o);
-    float run = fract(m.s / (m.len * (.5 + .9 * r1)) + r2 + .08 * (hair - .5));
-    return 1 - strength * (.85 * smoothstep(.05, 1, run) + .3 * r2);
-  }
-  float4 shade(Mark m) {
-    float2 o = seeded(m);
-    // The area is painted in parallel passes `band` wide, each with its own paint load.
-    float band = 16 * scale;
-    float hair = fbm(float2(m.uv.x / (45 * scale), m.uv.y / (1.5 * scale)) + o, 3);
-    float wave = vnoise(float2(m.uv.x / (90 * scale), 0) + o) - .5;
-    float yb = m.uv.y / band + wave;
-    float row = floor(yb);
-    // neighbouring passes overlap a little, so their loads cross-fade
-    float t = smoothstep(.7, 1, fract(yb));
-    float load = mix(pass_load(row, m, o, hair), pass_load(row + 1, m, o, hair), t);
-    load -= fade * smoothstep(.3, 1, m.u);
-    float keep = smoothstep(1 - load - .07, 1 - load + .07, hair);
-    float tint = hash12(float2(row, 3.7) + o);
-    float3 c = m.paint.rgb * (.92 + .12 * tint) * (.88 + .24 * hair);
-    return float4(c, cover(m.edge, m) * keep);
-  }
-  """
+  # One pass of the brush: it starts loaded and runs dry along its length; the seam
+  # where a fresh pass starts is ragged because it moves with the bristle noise.
+  fn run(row hair) = fract(m.s/(m.size.x*(.5+.9*hash(row,3.7)))+hash(row,9.1)+.08*(hair-.5))
+  fn pass_load(row hair) = 1-strength*(.85*smoothstep(.05 1 run(row hair))+.3*hash(row,9.1))
+  # The area is painted in parallel passes `band` wide, each with its own paint load.
+  let band = 16*scale
+  let hair = fbm(m.uv.x/(45*scale),m.uv.y/(1.5*scale) oct:3)
+  let wave = value(m.uv.x/(90*scale),0)-.5
+  let yb = m.uv.y/band+wave
+  let row = floor(yb)
+  # neighbouring passes overlap a little, so their loads cross-fade
+  let k = smoothstep(.7 1 fract(yb))
+  let load = lerp(pass_load(row hair) pass_load(row+1 hair) k)-fade*smoothstep(.3 1 m.s/m.size.x)
+  let keep = smoothstep(1-load-.07 1-load+.07 hair)
+  let tint = hash(row,3.7)
+  out m.paint.rgb*(.92+.12*tint)*(.88+.24*hair) cover:cover(m.edge)*keep
 
 # Area or stroke: chipped, gritty edge. `scale` is the chip size; inside stays solid.
 brush chip strength:.6 scale:1 grit:.5
-  sksl """
-  // Flakes: rotated, flattened squares scattered on a grid. A flake removes paint only
-  // within its own depth of the edge, so each chip has a flat floor like lifted paint.
-  float flakes(Mark m, float2 o, float depth) {
-    float C = 9 * scale;
-    float2 g = m.p / C + o;
-    float2 i = floor(g);
-    float hit = 0;
-    for (int y = -1; y <= 1; y++) {
-      for (int x = -1; x <= 1; x++) {
-        float2 c = i + float2(float(x), float(y));
-        float2 h = hash22(c);
-        if (hash12(c + 7.3) < strength) {
-          float2 r = rot(g - c - h, h.x * 360);
-          float size = .35 + .55 * h.y;
-          float dd = (max(abs(r.x), abs(r.y) * 1.7) - size) * C;
-          float deep = (.35 + .65 * hash12(c + 2.1)) * depth;
-          hit = max(hit, cover(-dd, m) * cover(deep - m.edge, m));
-        }
-      }
-    }
-    return hit;
-  }
-  float4 shade(Mark m) {
-    float2 o = seeded(m);
-    float depth = strength * 9 * scale;
-    float e = m.edge - depth * .25 * vnoise(m.p / (1.4 * scale) + o);
-    float near = 1 - smoothstep(0, depth * 1.5 + 2, m.edge);
-    float pit = smoothstep(.78, .82, vnoise(m.p / (1.1 * scale) + o * 3)) * near * grit;
-    float3 c = m.paint.rgb * (1 - .15 * near * strength);
-    return float4(c, cover(e, m) * (1 - flakes(m, o, depth)) * (1 - pit));
-  }
-  """
+  # Flakes: rotated, flattened squares scattered on a grid. A flake removes paint only
+  # within its own depth of the edge, so each chip has a flat floor like lifted paint.
+  fn local(c g) = rot(g-c-hash2(c) hash2(c).x*360)
+  fn square(r c) = (max(abs(r.x) abs(r.y)*1.7)-(.35+.55*hash2(c).y))*(9*scale)
+  fn flake(c g depth) = if hash(c+7.3) < strength then cover(-square(local(c g) c))*cover((.35+.65*hash(c+2.1))*depth-m.edge) else 0
+  let depth = strength*9*scale
+  let g = m.position.xy/(9*scale)
+  let hit = max([each y in -1..2 -> max([each x in -1..2 -> flake(floor(g)+(x,y) g depth)])])
+  let e = m.edge-depth*.25*value(m.position.xy/(1.4*scale))
+  let near = 1-smoothstep(0 depth*1.5+2 m.edge)
+  let pit = smoothstep(.78 .82 value(m.position.xy/(1.1*scale) salt:1))*near*grit
+  out m.paint.rgb*(1-.15*near*strength) cover:cover(e)*(1-hit)*(1-pit)
 
 # Area: lit volume. Shades any fill as a rounded form lit from `sun`, with no colors to pass:
 # the shadow side is a darker, cooler shade of the fill's own paint and the lit side a paler,
 # warmer one, with reflected light on the shadow edge (`rim`). The light falls across the
 # shape's bounds and rounds off near its edge, so a tall, wide, or ragged shape reads as one form.
 brush form sun:-.6,-.8 shadow:.8 lift:.4 rim:.5 strength:.5
-  sksl """
-  float4 shade(Mark m) {
-    float2 o = seeded(m);
-    float R = min(m.len, m.width) * .35 + .001;
-    float depth = clamp(m.edge / R, 0, 1);
-    float dome = sqrt(depth * (2 - depth));
-    float2 nuv = m.uv / (float2(m.len, m.width) * .5 + .001);
-    float2 S = normalize(sun);
-    float toward_sun = clamp(dot(nuv, S), -1.2, 1.2);
-    float wob = (fbm(m.uv / (R * 3) + o, 2) - .5) * strength * .1;
-    float edge_turn = (1 - dome) * toward_sun * .3;
-    float diff = .46 + .55 * toward_sun + edge_turn + (dome - .7) * .15 + wob;
-    float3 base = m.paint.rgb;
-    float3 dark = base * mix(float3(1), float3(.42, .45, .62), shadow);
-    float3 pale = mix(base, float3(1, .96, .85), lift);
-    float3 c = mix(dark, base, smoothstep(.12, .52, diff));
-    c = mix(c, pale, smoothstep(.6, 1.05, diff));
-    float2 from_highlight = (nuv - S * .4) * 1.3;
-    c = mix(c, pale, .5 * lift * exp(-dot(from_highlight, from_highlight) * 3) * dome);
-    float bounce = (1 - smoothstep(R * .04, R * .3, m.edge)) * smoothstep(.2, .8, -toward_sun);
-    c = mix(c, mix(dark, base, .75), rim * bounce);
-    return float4(c, cover(m.edge, m));
-  }
-  """
+  let R = min(m.size.x m.size.y)*.35+.001
+  let depth = clamp(m.edge/R 0 1)
+  let dome = sqrt(depth*(2-depth))
+  let nuv = m.uv/(m.size*.5+.001)
+  let S = normalize(sun)
+  let toward_sun = clamp(dot(nuv S) -1.2 1.2)
+  let wob = (fbm(m.uv/(R*3) oct:2)-.5)*strength*.1
+  let edge_turn = (1-dome)*toward_sun*.3
+  let diff = .46+.55*toward_sun+edge_turn+(dome-.7)*.15+wob
+  let base = m.paint.rgb
+  let dark = base*lerp(1,1,1 .42,.45,.62 shadow)
+  let pale = lerp(base 1,.96,.85 lift)
+  let shaded = lerp(dark base smoothstep(.12 .52 diff))
+  let paled = lerp(shaded pale smoothstep(.6 1.05 diff))
+  let from_highlight = (nuv-S*.4)*1.3
+  let glossed = lerp(paled pale .5*lift*exp(-dot(from_highlight from_highlight)*3)*dome)
+  let bounce = (1-smoothstep(R*.04 R*.3 m.edge))*smoothstep(.2 .8 -toward_sun)
+  out lerp(glossed lerp(dark base .75) rim*bounce) cover:cover(m.edge)

@@ -130,12 +130,12 @@ pub enum DeclKind {
     },
     /// `light sun dir:-1,-1.5`. Parsed, not implemented in v0.1.
     Light { name: String, named: Vec<Named> },
-    /// `brush dry strength:.5 dir:0` + one `sksl """..."""` child. A head key in the placement
-    /// set sets placement; every other key declares a uniform with its default.
+    /// `brush dry strength:.5 dir:0` + a body of `let`, `fn`, and `out` lines. A head key in the
+    /// placement set sets placement; every other key declares a uniform with its default.
     Brush {
         name: String,
         params: Vec<Named>,
-        sksl: Option<SkslBlock>,
+        body: Vec<BodyLine>,
     },
     /// `stamp leaves spacing:8 tint:p.moss.2` + a body of the lines a def body takes. The body
     /// is drawn once per placement along a stamped node's geometry.
@@ -153,19 +153,29 @@ pub enum DeclKind {
     },
 }
 
-/// A `sksl """..."""` block. `body` is where body line 1, column 1 sits in the file and `rest`
-/// where body line 2 does. A same-line body starts after the delimiter, so the two columns
-/// differ. An SkSL error at body line `l` and column `c` is at `body.col + c` on line 1 and
-/// `rest.col + c` at `rest.line + l - 2` after it. Both are `Span`s so the `fmt` round-trip
-/// test strips them.
+/// One line of a brush body. The shading checker in `ramose_brush` reads the lines; a fault
+/// inside a line is reported at `span`.
 #[derive(Clone, Debug, PartialEq)]
-pub struct SkslBlock {
-    /// The dedented body text.
-    pub text: String,
-    /// The `sksl` keyword.
+pub struct BodyLine {
+    pub kind: BodyLineKind,
     pub span: Span,
-    pub body: Span,
-    pub rest: Span,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum BodyLineKind {
+    /// `let NAME = EXPR`.
+    Let { name: String, value: Expr },
+    /// `fn NAME(a b) = EXPR`, a helper with the shape of a top-level `fn`.
+    Fn {
+        name: String,
+        params: Vec<String>,
+        body: Expr,
+    },
+    /// `out RGB cover:EXPR`. `cover` keeps its `Named` so a fault in it has a column.
+    Out { rgb: Expr, cover: Option<Named> },
+    /// A leftover `sksl """..."""` block from before bodies were ramose lines. The checker
+    /// rejects it; `fmt` prints it back unchanged.
+    Sksl { text: String },
 }
 
 #[derive(Clone, Debug, PartialEq)]

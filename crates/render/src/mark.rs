@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use ramose_brush::Seeds;
+use ramose_brush::MainKind;
 use ramose_ir::{AreaMark, Fill, Paint as IrPaint, Ribbon, Stage};
 use skia_safe::{
     BlendMode, Blender, Canvas, ClipOp, ColorMatrix, Data, FilterMode, IRect, Matrix, MipmapMode, Paint, Path, RoundOut,
@@ -132,6 +132,7 @@ fn area_chain(
     let stages: Vec<(&Stage, &AreaMark)> = fill.marks.iter().map(|m| (&m.stage, m)).collect();
     let origin = frame.origin;
     let chain = frame.chain(
+        MainKind::Area,
         &stages,
         &fill.paint,
         ink,
@@ -182,6 +183,7 @@ pub(crate) fn draw_ribbon(
             };
             let (field_shader, chan_shader, norm_shader) = (texels(&field.field)?, texels(&field.chan)?, texels(&field.norm)?);
             let chain = frame.chain(
+                MainKind::Ribbon,
                 &stages,
                 paint,
                 Ink::Paint,
@@ -326,10 +328,11 @@ impl<'a> Frame<'a> {
         Some(Frame { ltd, dtl, px: 1.0 / device_scale(&ltd), clip, origin })
     }
 
-    /// The chain of `stages` over the base `paint`. `extra` sets the uniforms a kind owns, and
+    /// The chain of `stages` over the base `paint`. `extra` sets the uniforms a main owns, and
     /// `child` names the field shaders it binds; every other field child is transparent.
     fn chain<M>(
         &self,
+        main: MainKind,
         stages: &[(&Stage, &M)],
         paint: &IrPaint,
         ink: Ink,
@@ -341,7 +344,7 @@ impl<'a> Frame<'a> {
         let blend = match mode {
             Mode::Collect(_) => true,
             Mode::Over | Mode::Under => {
-                if matches!(ink, Ink::Paint) && stages.iter().any(|(s, _)| s.program.reads_below()) {
+                if matches!(ink, Ink::Paint) && stages.iter().any(|(s, _)| s.shader.reads_below()) {
                     return Err(internal(origin, "a brush stage reads `m.below` where the node has no backdrop"));
                 }
                 false
@@ -380,20 +383,17 @@ impl<'a> Frame<'a> {
         };
         let last = stages.len() - 1;
         for (i, (stage, mark)) in stages.iter().enumerate() {
-            let effect = if blend { ramose_brush::blender(&stage.program) } else { ramose_brush::effect(&stage.program) };
-            let effect = effect.map_err(|e| internal(origin, e))?;
+            let frame = if blend { ramose_brush::Frame::Blender } else { ramose_brush::Frame::Shader };
+            let effect = ramose_brush::effect(&stage.shader, main, frame).map_err(|e| internal(origin, e))?;
             let mut u = Uniforms::new(&effect);
             u.set(origin, "u_dtl", &mat9(&self.dtl))?;
             u.set(origin, "u_paint", &u_paint)?;
             u.set(origin, "u_base", &[from_prev])?;
             u.set(origin, "u_last", &[if i == last { 1.0 } else { 0.0 }])?;
-            let seeds = Seeds::from(stage.seed);
-            u.set(origin, "u_seed", &[seeds.seed])?;
-            u.set(origin, "u_seedo", &seeds.offset)?;
             u.set(origin, "u_px", &[self.px])?;
             u.set(origin, "u_dito", &dither_origin(&self.ltd))?;
             extra(&mut u, mark)?;
-            for (name, value) in &stage.uniforms {
+            for (name, value) in stage.shader.bind(stage.seed, &stage.uniforms) {
                 u.set(origin, name, value.floats())?;
             }
             let children: Vec<ChildPtr> = effect

@@ -45,14 +45,14 @@ fn fill_bytes(fill: &Fill) -> u64 {
     paint_bytes(&fill.paint) + vec_bytes(&fill.marks, mark_bytes)
 }
 
-/// The program text is shared with eval's declaration through its `Arc`, so no scene owns it.
+/// The shader is shared with eval's declaration through its `Arc`, so no scene owns it.
 fn mark_bytes(mark: &AreaMark) -> u64 {
-    vec_bytes(&mark.stage.uniforms, |(name, _)| str_bytes(name))
+    vec_bytes(&mark.stage.uniforms, |_| 0)
 }
 
 fn stroke_bytes(stroke: &Stroke) -> u64 {
     let ribbon = stroke.ribbon.as_ref().map_or(0, |r| {
-        vec_bytes(&r.marks, |m| vec_bytes(&m.stage.uniforms, |(name, _)| str_bytes(name)))
+        vec_bytes(&r.marks, |m| vec_bytes(&m.stage.uniforms, |_| 0))
             + vec_bytes(&r.contours, |c| vec_bytes(&c.knots, |_| 0))
     });
     paint_bytes(&stroke.paint) + vec_bytes(&stroke.dash, |_| 0) + stroke.ink.as_ref().map_or(0, path_bytes) + ribbon

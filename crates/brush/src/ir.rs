@@ -144,8 +144,8 @@ impl Swizzle {
 pub enum NoiseSeed {
     /// The stage's offset: uniform `u_seedo`.
     Stage,
-    /// `salt:k`: index into `Body::salts`, uniform `u_salt{i}`.
-    Salt(u16),
+    /// `salt:k`: the salt itself. Its position in `Body::salts` is the uniform `u_salt{i}`.
+    Salt(u32),
     /// `seed:n`: a constant offset, `Seeds::from(n).offset`, printed as a literal.
     /// `seed:0` is `(0,0)` and the backend adds nothing.
     Fixed([u8; 2]),

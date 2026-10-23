@@ -182,13 +182,8 @@ pub struct RuleDef {
     pub span: Span,
 }
 
-pub struct FnDef {
-    pub name: String,
-    pub params: Vec<String>,
-    pub body: Expr,
-    pub module: String,
-    pub span: Span,
-}
+/// A top-level `fn`. The shading checker reads the same definition when a brush body calls it.
+pub type FnDef = ramose_brush::TopFn;
 
 /// A node (or anchor) as created so far, with the place of its parent frame on the artboard.
 #[derive(Clone)]
