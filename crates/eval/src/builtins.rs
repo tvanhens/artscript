@@ -253,7 +253,7 @@ impl Evaluator<'_> {
                     return Err(fail("E0320", "`mod` divisor must not be 0")
                         .fix("write `mod(a b)` with b not 0"));
                 }
-                Value::Num(a.rem_euclid(b))
+                Value::Num(a - b * (a / b).floor())
             }
             "polar" => {
                 let (r, d) = (n(0)?, n(1)?.to_radians());

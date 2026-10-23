@@ -720,11 +720,13 @@ fn atan2_is_degrees_and_mod_is_floored() {
         "@artboard 400x40\n@target t.png\n\
          circle 1 at:atan2(1 1),mod(-1 3) name:q\n\
          circle 1 at:atan2(0 -1),mod(-7 4) name:h\n\
-         circle 1 at:mod(7 4),mod(5.5 2) name:p\n",
+         circle 1 at:mod(7 4),mod(5.5 2) name:p\n\
+         circle 1 at:mod(5 -3)+10,mod(-5 -3)+10 name:n\n",
     );
     near(at(node(&s, "q")), (45.0, 2.0));
     near(at(node(&s, "h")), (180.0, 1.0));
     near(at(node(&s, "p")), (3.0, 1.5));
+    near(at(node(&s, "n")), (9.0, 8.0));
 }
 
 #[test]
