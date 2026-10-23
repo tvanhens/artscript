@@ -512,7 +512,7 @@ dependencies = [
 
 [[package]]
 name = "ramose"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "color_quant",
  "gif 0.13.3",
@@ -531,14 +531,14 @@ dependencies = [
 
 [[package]]
 name = "ramose-brush"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "skia-safe",
 ]
 
 [[package]]
 name = "ramose-eval"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ramose-brush",
  "ramose-geom",
@@ -553,7 +553,7 @@ dependencies = [
 
 [[package]]
 name = "ramose-geom"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ramose-ir",
  "skia-safe",
@@ -561,14 +561,14 @@ dependencies = [
 
 [[package]]
 name = "ramose-ir"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "ramose-brush",
 ]
 
 [[package]]
 name = "ramose-render"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "color_quant",
  "gif 0.13.3",
@@ -583,7 +583,7 @@ dependencies = [
 
 [[package]]
 name = "ramose-syntax"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde",
 ]
