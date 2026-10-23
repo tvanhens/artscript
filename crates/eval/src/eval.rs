@@ -5770,14 +5770,7 @@ impl<'a> Evaluator<'a> {
         self.outside_copy(r, sc)?;
         let own = shape.geometry.to_sk();
         let place = r.record.parent_world.inner_node(node).outer(crate::place::inverse(&self.view(sc).flat()));
-        let points = geom::vertices(&own)
-            .iter()
-            .flatten()
-            .filter_map(|&(x, y)| {
-                let p = place.map_point(Point::new(x as f32, y as f32))?;
-                Some((f64::from(p.x), f64::from(p.y)))
-            })
-            .collect();
+        let points = geom::vertices(&own).into_iter().flatten().collect();
         Ok(Value::Path(Rc::new(PathVal { own, seam: r.record.seam, place, points })))
     }
 

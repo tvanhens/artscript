@@ -7468,6 +7468,15 @@ fn path_value_errors_name_what_they_need() {
     near(at(node(&s, "v.1")), (5.0, 5.0));
 }
 
+#[test]
+fn points_reports_a_point_a_warp_hides() {
+    let ev = run_with(
+        "@artboard 300x100\n@target t.png\nrect 200x20 at:150,50 warp:cylinder(40) name:b\neach q in points(path(@b))\n  circle 1 at:q\n",
+        &[],
+    );
+    assert_eq!(diag(&ev, "E0320").message, "`points` point 1 is hidden by a warp");
+}
+
 const ARM_LIB: &str = "\
 def hero_arm len:20 tone:#3366cc
   rect len,6 fill:tone name:bone

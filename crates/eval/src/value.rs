@@ -62,7 +62,7 @@ pub struct PathVal {
     pub(crate) seam: f64,
     /// The own frame into the frame the value was made in.
     pub(crate) place: Place,
-    /// The on-curve points of every contour, in path order, in the frame the value was made in.
+    /// The on-curve points of every contour, in path order, in the own frame.
     pub(crate) points: Vec<P>,
 }
 

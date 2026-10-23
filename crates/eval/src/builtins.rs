@@ -448,9 +448,22 @@ impl Evaluator<'_> {
                 Value::Vec2(Coord::Num(f64::from(v.x)), Coord::Num(f64::from(v.y)))
             }
             "length" => Value::Num(path_arg(0)?.length()),
-            "points" => Value::List(Rc::new(
-                path_arg(0)?.points.iter().map(|&(x, y)| Value::Vec2(Coord::Num(x), Coord::Num(y))).collect(),
-            )),
+            "points" => {
+                let p = path_arg(0)?;
+                let pts = p
+                    .points
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &(x, y))| {
+                        let q = p.place.map_point(Point::new(x as f32, y as f32)).ok_or_else(|| {
+                            fail("E0320", format!("`points` point {} is hidden by a warp", i + 1))
+                                .fix("read the points before the warp, or sample with `point`")
+                        })?;
+                        Ok(Value::Vec2(Coord::Num(f64::from(q.x)), Coord::Num(f64::from(q.y))))
+                    })
+                    .collect::<R<Vec<_>>>()?;
+                Value::List(Rc::new(pts))
+            }
             "corners" => warp::corners(&a, &nm)?,
             "cylinder" => warp::cylinder(&a, named)?,
             "concat" => {
