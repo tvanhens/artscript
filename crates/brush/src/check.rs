@@ -10,8 +10,6 @@ use crate::ir::{self, Arith, Block, Cover, Local, Logic, LoopVar, NoiseSeed, Op,
 use crate::lang::{self, Builtin, Field, MAX_TRIPS, Noise, Reduce, Ty};
 use crate::{BrushSource, Checker, Diag, Global, Library, PLACEMENT_KEYS, Param, Reads, Seeds, Shader, Site, TopFn};
 
-/// A fn as the memo keys it: its file, the brush whose body declares it (none for a top-level
-/// fn), and its name.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct FnKey {
     file: String,
@@ -19,8 +17,6 @@ pub(crate) struct FnKey {
     name: String,
 }
 
-/// A value under construction. `konst` is Some only for a literal or arithmetic on literals: a
-/// `let`, a parameter, a loop variable, and a field of `m` drop it.
 #[derive(Clone, Copy)]
 struct Val {
     id: Local,
@@ -28,14 +24,11 @@ struct Val {
     konst: Option<f64>,
 }
 
-/// The fault was recorded already; callers stop without a second message.
 #[derive(Clone, Copy)]
 struct Poisoned;
 
 type Lowered = Result<Val, Poisoned>;
 
-/// What a bare name may resolve to besides the bindings in scope. A body line and a helper see
-/// the brush parameters and `m`; a top-level fn sees neither, and looks names up in `module`.
 #[derive(Clone)]
 enum Kind {
     Body,
@@ -46,11 +39,9 @@ enum Kind {
 #[derive(Clone)]
 struct Env {
     kind: Kind,
-    /// Bindings in scope, innermost last: the lets so far, a fn's parameters, loop variables.
     names: Vec<(String, Lowered)>,
 }
 
-/// A `fn` line of the body.
 #[derive(Clone, Copy)]
 struct Helper<'a> {
     name: &'a str,
@@ -64,13 +55,10 @@ enum Callee<'a> {
     Top(Rc<TopFn>),
 }
 
-/// An active fn instantiation.
 struct Frame {
     key: FnKey,
     name: String,
-    /// The fn line, where a fault that does not depend on the argument types lands.
     site: Site,
-    /// The call, where a type fault lands with a note at the fn.
     call: Site,
 }
 
@@ -79,19 +67,15 @@ pub(crate) struct Lower<'c> {
     lib: &'c dyn Library,
     src: &'c BrushSource<'c>,
     helpers: Vec<Helper<'c>>,
-    /// The `let` names, so a helper that reads one gets a fix.
     lets: Vec<String>,
-    /// Innermost block last; `emit` pushes into it.
     blocks: Vec<Vec<Stmt>>,
     next: u32,
     loops: u32,
-    /// The product of the enclosing reductions' trip counts.
     trips: u32,
     salts: BTreeSet<u32>,
     reads: Reads,
     diags: Vec<Diag>,
     stack: Vec<Frame>,
-    /// Where a fault is reported: the current line, a named argument, or the fn being lowered.
     site: Site,
 }
 
@@ -216,8 +200,6 @@ impl<'c> Lower<'c> {
                 Some("end the body with `out RGB cover:NUMBER`, such as `out m.paint.rgb cover:cover(m.edge)`".into()),
             );
         }
-        // A fault in a fn that an earlier brush already reported leaves no new diag, and this
-        // body still fails.
         let (Some((Ok(rgb), Ok(cover))), Some(stmts)) = (out, self.blocks.pop()) else {
             let own = self.src.file.to_string();
             self.diags.sort_by_key(|d| (d.at.file != own, d.at.file.clone(), d.at.span));
@@ -242,14 +224,11 @@ impl<'c> Lower<'c> {
         Poisoned
     }
 
-    /// A fault that does not depend on argument types: at the current line, or at the fn.
     fn report(&mut self, message: String, fix: Option<String>) -> Poisoned {
         let at = self.site.clone();
         self.report_at("E0360", at, message, fix)
     }
 
-    /// A type fault. Inside a fn it lands at the call, with a note at the fn, since another call
-    /// with other types may be sound.
     fn mismatch(&mut self, message: String, fix: Option<String>) -> Poisoned {
         match self.stack.last() {
             Some(fr) => {
@@ -459,8 +438,6 @@ impl<'c> Lower<'c> {
         Ok(self.emit(ty, Op::Pack(vals.iter().map(|v| v.id).collect())))
     }
 
-    /// The type of `a op b` for arithmetic and the broadcasting builtins: both numeric, and a
-    /// number applies to every component of the other side.
     fn broadcast(&mut self, a: Ty, b: Ty, what: &str) -> Result<Ty, Poisoned> {
         if a == Ty::Color || b == Ty::Color {
             return Err(self.mismatch(format!("a color takes no {what}"), Some("read `.rgb`".into())));
@@ -589,9 +566,6 @@ impl<'c> Lower<'c> {
         }
     }
 
-    /// Lowers the callee's expression inline, with its parameters bound to the arguments. Each
-    /// call lowers its own statements, and the memo keeps every failing instantiation to one
-    /// report.
     fn instantiate(&mut self, callee: Callee<'c>, args: &[Expr], env: &Env) -> Lowered {
         let mut vals = Vec::with_capacity(args.len());
         for a in args {
@@ -780,7 +754,6 @@ impl<'c> Lower<'c> {
         Ok(self.emit(f.ty(), Op::Noise { f, at: p.id, seed: seed.unwrap_or(NoiseSeed::Stage), oct }))
     }
 
-    /// A whole-number constant in `lo..=hi`, reported at `at`.
     fn whole(&mut self, e: &Expr, at: &Site, lo: f64, hi: f64, what: &str) -> Result<f64, Poisoned> {
         let Some(v) = const_num(e) else {
             return Err(self.report_at(
@@ -862,7 +835,6 @@ impl<'c> Lower<'c> {
     }
 }
 
-/// A constant: a number literal, or arithmetic on number literals.
 fn const_num(e: &Expr) -> Option<f64> {
     match e {
         Expr::Num(n) | Expr::Angle(n) => Some(*n),
@@ -881,7 +853,6 @@ fn const_num(e: &Expr) -> Option<f64> {
     }
 }
 
-/// The type of a head default written as a literal, for [`Shader::from_text`].
 fn literal_ty(e: &Expr) -> Option<Ty> {
     match e {
         Expr::Num(_) | Expr::Angle(_) | Expr::Unary(UnOp::Neg, _) => const_num(e).map(|_| Ty::Num),

@@ -30,7 +30,6 @@ impl BrushDecl {
         &self.shader.body().params
     }
 
-    /// Whether the body reads `m.below`.
     pub fn reads_below(&self) -> bool {
         self.shader.reads_below()
     }
@@ -166,8 +165,6 @@ impl BrushVal {
     }
 }
 
-/// The uniform a value binds as: a number is a `float`, a color a `float4` (straight rgba), a
-/// vector a `float2` or `float3` by its length.
 fn uniform_of(v: &Value) -> Option<UniformValue> {
     match v {
         Value::Num(n) => Some(UniformValue::Float(*n as f32)),
@@ -199,9 +196,6 @@ fn kind_word(ty: BodyTy) -> &'static str {
     }
 }
 
-/// The module scope as the shading checker sees it: a name is a fn a body may call, or
-/// something a body cannot read. The brush's own module is still loading, so it is passed
-/// beside the loaded ones.
 struct ModuleLib<'a> {
     loaded: &'a std::collections::HashMap<String, Rc<Module>>,
     own: &'a Rc<Module>,
@@ -247,9 +241,6 @@ impl Evaluator<'_> {
         }
     }
 
-    /// The head is evaluated here: each default types its parameter. The body goes to the
-    /// checker, and a checked body that the SkSL backend rejects is a bug in ramose, reported
-    /// once at the `brush` line.
     fn build_brush(
         &mut self,
         module: &Rc<Module>,
@@ -459,7 +450,6 @@ impl Evaluator<'_> {
     }
 }
 
-/// A checker diagnostic as eval reports it, at the file it names.
 fn fail_of(d: Diag) -> (Fail, String, Span) {
     let mut f = fail(d.code, d.message);
     for n in d.notes {

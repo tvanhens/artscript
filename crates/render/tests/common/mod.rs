@@ -109,14 +109,11 @@ pub fn with_stamps(host: &mut Node, stamps: Vec<Node>, children: Vec<Node>) {
     }
 }
 
-/// A stage from one `brush` declaration in the shading language. `uniforms` are the values of
-/// its parameters in head order.
 pub fn stage(src: &str, uniforms: &[UniformValue], seed: u32) -> Stage {
     let shader = Shader::from_text(src).unwrap_or_else(|e| panic!("{e:?}"));
     Stage { shader: Arc::new(shader), uniforms: uniforms.to_vec(), seed }
 }
 
-/// A brush with no parameters that draws its paint over the whole form.
 pub const IDENTITY: &str = "brush b\n  out m.paint.rgb\n";
 
 pub fn mark(stage: Stage, reach: f32) -> AreaMark {

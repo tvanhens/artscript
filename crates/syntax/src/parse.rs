@@ -748,7 +748,6 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Fn { name, params, body })
     }
 
-    /// `fn NAME(a b) = EXPR`, at the top level or inside a brush body.
     fn fn_parts(&mut self) -> Option<(String, Vec<String>, Expr)> {
         let span = self.cur_span();
         self.bump();
@@ -805,8 +804,6 @@ impl<'a> Parser<'a> {
         Some(DeclKind::Light { name, named })
     }
 
-    /// `brush NAME k:v...` with a body of `let`, `fn`, and `out` lines. The body's rules are
-    /// checked by eval, which reports a missing `out` beside the kind checks on the params.
     fn parse_brush(&mut self) -> Option<DeclKind> {
         let span = self.cur_span();
         let indent = self.cur_indent();

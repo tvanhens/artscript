@@ -308,7 +308,6 @@ fn encoder() -> Shader {
     ENCODER.with(Shader::clone)
 }
 
-/// The stages of one slot and the main they run under, each stage with the mark that owns it.
 struct Stack<'a, M> {
     main: MainKind,
     stages: &'a [(&'a Stage, &'a M)],
@@ -332,7 +331,7 @@ impl<'a> Frame<'a> {
         Some(Frame { ltd, dtl, px: 1.0 / device_scale(&ltd), clip, origin })
     }
 
-    /// The chain of a `stack` over the base `paint`. See [`Stack`]. `extra` sets the uniforms a main owns, and
+    /// The chain of a `stack` over the base `paint`. `extra` sets the uniforms a main owns, and
     /// `child` names the field shaders it binds; every other field child is transparent.
     fn chain<M>(
         &self,

@@ -11,7 +11,6 @@ pub struct Local(pub u32);
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoopVar(pub u32);
 
-/// A checked body: everything a backend needs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Body {
     /// Brush parameters in head order. The uniform order and the `Stage::uniforms` order.

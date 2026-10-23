@@ -466,7 +466,6 @@ pub(crate) struct Evaluator<'a> {
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
     pub(crate) active_fns: Vec<Rc<FnDef>>,
-    /// The brush body checker: build-wide so a fault in a fn is reported once.
     pub(crate) shading: ramose_brush::Checker,
     patch_order: u32,
     unstable_calls: BTreeSet<(String, u32, u32)>,

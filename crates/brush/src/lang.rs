@@ -256,7 +256,6 @@ impl Builtin {
         Builtin::ALL.iter().copied().find(|b| b.name() == name)
     }
 
-    /// How many arguments the builtin takes.
     pub fn arity(self) -> usize {
         match self {
             Builtin::Abs

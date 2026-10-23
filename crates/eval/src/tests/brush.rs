@@ -540,14 +540,11 @@ fn a_body_calls_a_top_level_fn_above_it_and_a_type_fault_inside_names_the_fn() {
     let scene = "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n";
     let lib = "fn soft(x k) = smoothstep(0 k x)\nbrush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\n";
     ok(scene, &[("lib/b.ramo", lib)]);
-    // `dot` on two numbers is a type fault in the fn body: it lands at the call in the brush,
-    // with a note naming the fn, so a fn that other code uses with other types stays clean.
     let lib = "fn soft(x k) = dot(x k)\nbrush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\n";
     let ds = errors(scene, &[("lib/b.ramo", lib)]);
     assert_eq!(ds.len(), 1, "{}", show(&ds));
     assert_eq!((ds[0].code.as_str(), col(&ds[0])), ("E0360", (3, 19)), "the `cover:` argument: {}", ds[0]);
     assert!(ds[0].notes.iter().any(|n| n.contains("in fn `soft` (lib/b.ramo:1)")), "{}", ds[0]);
-    // A fn declared below the brush is not in scope yet, as for a `let`.
     let lib = "brush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\nfn soft(x k) = smoothstep(0 k x)\n";
     let d = first(scene, &[("lib/b.ramo", lib)], "E0360");
     assert!(d.message.contains("unknown function `soft`"), "{d}");

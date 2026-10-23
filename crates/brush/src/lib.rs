@@ -167,9 +167,7 @@ pub trait Library {
 /// One per build, owned by the evaluator. Lookups only, so its maps never decide output order.
 #[derive(Default)]
 pub struct Checker {
-    /// The result type of each fn instantiation, `None` when it failed and was reported.
     types: BTreeMap<(check::FnKey, Vec<Ty>), Option<Ty>>,
-    /// Faults at a fn that do not depend on the argument types, already reported.
     reported: BTreeSet<(check::FnKey, String)>,
 }
 
@@ -187,10 +185,7 @@ impl Checker {
 pub struct Shader {
     body: ir::Body,
     reads: Reads,
-    /// `uniform float p_x; ... float4 shade(Mark m) { ... }`. The frames wrap it, and it is the
-    /// compile memo key.
     sksl: Arc<str>,
-    /// The uniform names [`Shader::bind`] yields, in its order.
     names: Vec<String>,
 }
 
