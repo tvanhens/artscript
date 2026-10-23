@@ -67,10 +67,8 @@ pub(crate) struct Lower<'c> {
     lib: &'c dyn Library,
     src: &'c BrushSource<'c>,
     helpers: Vec<Helper<'c>>,
-    called: BTreeSet<&'c str>,
-    /// Set while lowering a helper nothing calls, over made-up number arguments: a type fault
-    /// there is an artifact of the guess and is dropped.
-    probing: bool,
+    /// The helpers whose body some call lowered.
+    lowered: BTreeSet<&'c str>,
     lets: Vec<String>,
     blocks: Vec<Vec<Stmt>>,
     next: u32,
@@ -90,8 +88,7 @@ impl<'c> Lower<'c> {
             lib,
             src,
             helpers: Vec::new(),
-            called: BTreeSet::new(),
-            probing: false,
+            lowered: BTreeSet::new(),
             lets: Vec::new(),
             blocks: vec![Vec::new()],
             next: 0,
@@ -205,7 +202,7 @@ impl<'c> Lower<'c> {
             }
         }
         if !saw_sksl {
-            self.probe_uncalled();
+            self.scan_unlowered();
         }
         if out.is_none() && !saw_sksl {
             self.site = self.at(self.src.span);
@@ -233,23 +230,75 @@ impl<'c> Lower<'c> {
         Ok(Shader::new(body, self.reads))
     }
 
-    /// Lowers each helper no line called, so its faults that need no types are reported too.
-    /// Its IR, reads, and salts are dropped.
-    fn probe_uncalled(&mut self) {
-        let (reads, salts) = (self.reads.clone(), self.salts.clone());
-        self.probing = true;
+    /// Walks each helper whose body no call lowered for the faults that need no types: a name it
+    /// cannot read, a field `m` lacks, a function a body cannot call, and a literal or `@` reference a
+    /// body cannot write. Each fault is reported once, at the helper's line.
+    fn scan_unlowered(&mut self) {
         for h in self.helpers.clone() {
-            if self.called.contains(h.name) {
+            if self.lowered.contains(h.name) {
                 continue;
             }
-            self.site = self.at(self.src.span);
-            let _ = self.block(|s| {
-                let vals = h.params.iter().map(|_| s.emit(Ty::Num, Op::Num(0.0))).collect();
-                s.enter(Callee::Helper(h), vals)
-            });
+            self.site = self.at(h.span);
+            let before = self.diags.len();
+            let mut env = Env { kind: Kind::Helper, names: h.params.iter().map(|p| (p.clone(), Err(Poisoned))).collect() };
+            self.block(|s| s.scan(h.body, &mut env));
+            for d in self.diags.split_off(before) {
+                if !self.diags[before..].iter().any(|e| e.message == d.message) {
+                    self.diags.push(d);
+                }
+            }
         }
-        self.probing = false;
-        (self.reads, self.salts) = (reads, salts);
+    }
+
+    fn scan(&mut self, e: &Expr, env: &mut Env) {
+        match e {
+            Expr::Num(_) | Expr::Angle(_) => {}
+            Expr::Ident(_) | Expr::Percent(_) | Expr::Time(_) | Expr::Size { .. } | Expr::Hex(_) | Expr::Str(_) | Expr::Ref(_) => {
+                let _ = self.expr(e, env);
+            }
+            Expr::Member(base, seg) => match &**base {
+                Expr::Ident(b) if b == "m" && !env.names.iter().any(|(n, _)| n == "m") => {
+                    let _ = self.field_of(seg);
+                }
+                _ => self.scan(base, env),
+            },
+            Expr::Call { func, args, named } => {
+                let ours = Reduce::parse(func).is_some()
+                    || Noise::parse(func).is_some()
+                    || Builtin::parse(func).is_some()
+                    || self.helpers.iter().any(|h| h.name == func);
+                if !ours {
+                    let _ = self.top_fn(self.src.file, func);
+                }
+                for a in args {
+                    self.scan(a, env);
+                }
+                for n in named {
+                    self.scan(&n.value, env);
+                }
+            }
+            Expr::Each { var, iter, body, .. } => {
+                self.scan(iter, env);
+                env.names.push((var.clone(), Err(Poisoned)));
+                self.scan(body, env);
+                env.names.pop();
+            }
+            Expr::Unary(_, a) => self.scan(a, env),
+            Expr::Binary(_, a, b) | Expr::Range(a, b) | Expr::Index(a, b) => {
+                self.scan(a, env);
+                self.scan(b, env);
+            }
+            Expr::Tuple(xs) | Expr::List(xs) => {
+                for x in xs {
+                    self.scan(x, env);
+                }
+            }
+            Expr::If { cond, then, otherwise } => {
+                self.scan(cond, env);
+                self.scan(then, env);
+                self.scan(otherwise, env);
+            }
+        }
     }
 
     fn report_at(&mut self, code: &'static str, at: Site, message: String, fix: Option<String>) -> Poisoned {
@@ -263,9 +312,6 @@ impl<'c> Lower<'c> {
     }
 
     fn mismatch(&mut self, message: String, fix: Option<String>) -> Poisoned {
-        if self.probing {
-            return Poisoned;
-        }
         match self.stack.last() {
             Some(fr) => {
                 let note = format!("in fn `{}` ({}:{})", fr.name, fr.site.file, fr.site.span.line);
@@ -432,13 +478,16 @@ impl<'c> Lower<'c> {
     }
 
     fn field(&mut self, seg: &str) -> Lowered {
+        let f = self.field_of(seg)?;
+        let site = self.site.clone();
+        self.reads.record(f, &site);
+        Ok(self.emit(f.ty().expect("every field but light has a type"), Op::Field(f)))
+    }
+
+    fn field_of(&mut self, seg: &str) -> Result<Field, Poisoned> {
         match Field::parse(seg) {
             Some(Field::Light) => Err(self.report("`m.light` lands with #256".into(), None)),
-            Some(f) => {
-                let site = self.site.clone();
-                self.reads.record(f, &site);
-                Ok(self.emit(f.ty().expect("every field but light has a type"), Op::Field(f)))
-            }
+            Some(f) => Ok(f),
             None => {
                 let fix = match seg {
                     "dev" => Some("shade in local units; `m.px` is local units per device pixel".to_string()),
@@ -590,11 +639,15 @@ impl<'c> Lower<'c> {
             Kind::TopFn { module } => module.clone(),
             _ => self.src.file.to_string(),
         };
-        match self.lib.lookup(&module, func) {
-            Some(Global::Fn(f)) => {
-                self.no_named(func, named)?;
-                self.instantiate(Callee::Top(f), args, env)
-            }
+        let f = self.top_fn(&module, func)?;
+        self.no_named(func, named)?;
+        self.instantiate(Callee::Top(f), args, env)
+    }
+
+    /// The top-level fn `func` names in `module`.
+    fn top_fn(&mut self, module: &str, func: &str) -> Result<Rc<TopFn>, Poisoned> {
+        match self.lib.lookup(module, func) {
+            Some(Global::Fn(f)) => Ok(f),
             Some(Global::Other(what)) => Err(self.report(format!("`{func}` is {what}, not a function"), None)),
             Some(Global::Lost) => Err(Poisoned),
             None => match lang::values_only(func) {
@@ -613,9 +666,6 @@ impl<'c> Lower<'c> {
     }
 
     fn enter(&mut self, callee: Callee<'c>, vals: Vec<Val>) -> Lowered {
-        if let Callee::Helper(h) = &callee {
-            self.called.insert(h.name);
-        }
         let (key, name, site, params, body, kind) = match &callee {
             Callee::Helper(h) => (
                 FnKey { file: self.src.file.to_string(), scope: Some(self.src.name.to_string()), name: h.name.to_string() },
@@ -652,6 +702,9 @@ impl<'c> Lower<'c> {
             });
             return Err(Poisoned);
         }
+        if let Callee::Helper(h) = &callee {
+            self.lowered.insert(h.name);
+        }
         let tys: Vec<Ty> = vals.iter().map(|v| v.ty).collect();
         let memo = (key.clone(), tys, self.trips);
         if let Some(None) = self.ck.types.get(&memo) {
@@ -677,9 +730,7 @@ impl<'c> Lower<'c> {
                 i += 1;
             }
         }
-        if !self.probing {
-            self.ck.types.insert(memo, r.ok().map(|v| v.ty));
-        }
+        self.ck.types.insert(memo, r.ok().map(|v| v.ty));
         r
     }
 

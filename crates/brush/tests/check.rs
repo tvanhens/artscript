@@ -259,3 +259,30 @@ fn a_helper_is_callable_from_any_line_and_a_let_only_below_it() {
     let ds = errors("brush b\n  let k = j*2\n  let j = 1\n  out m.paint.rgb*k\n");
     assert_eq!((ds[0].at.span.line, ds[0].message.as_str()), (2, "unknown name `j`"), "{ds:#?}");
 }
+
+#[test]
+fn a_helper_nothing_lowers_reports_every_name_past_a_type_fault() {
+    let ds = errors(
+        "brush b\n  fn f(p) = p.x + nope\n  fn g(q) = q.y + m.nope + max([each i in 0..2 -> i + ww])\n  fn h(x) = x + zz + zz\n  fn j(x) = x.y * @a.w\n  out m.paint.rgb * h(1 2)\n",
+    );
+    let got: Vec<(u32, &str)> = ds.iter().map(|d| (d.at.span.line, d.message.as_str())).collect();
+    assert_eq!(
+        got,
+        [
+            (2, "unknown name `nope`"),
+            (3, "`m` has no field `nope`"),
+            (3, "unknown name `ww`"),
+            (4, "unknown name `zz`"),
+            (5, "a body cannot read `@a.w`"),
+            (6, "`h` takes 1 argument, got 2"),
+        ],
+        "{ds:#?}"
+    );
+}
+
+#[test]
+fn a_helper_a_line_lowers_reports_its_name_fault_once() {
+    let ds = errors("brush b\n  fn h(x) = x + zz\n  out m.paint.rgb * h(1)\n");
+    let got: Vec<(u32, &str)> = ds.iter().map(|d| (d.at.span.line, d.message.as_str())).collect();
+    assert_eq!(got, [(2, "unknown name `zz`")], "{ds:#?}");
+}
