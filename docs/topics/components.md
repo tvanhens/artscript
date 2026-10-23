@@ -28,8 +28,9 @@ A parameter's type is read from the form of its default before anything runs, so
 
 | default | type |
 |---|---|
-| `10`, `50%`, `90deg`, `200ms`, `sqrt(..)`, `rand(..)` and the other math functions | number |
-| `min(..)`, `max(..)`, `abs(..)`, `clamp(..)` | a field when given a field, a vector for `abs` of a vector, otherwise a number |
+| `10`, `50%`, `90deg`, `200ms`, `rad(..)`, `rand(..)` and the other math functions | number |
+| `min(..)`, `max(..)`, `clamp(..)` | a field when given a field, otherwise a number |
+| `abs(..)`, `sqrt(..)`, `floor(..)`, `round(..)`, `sin(..)`, `cos(..)` | the type of the argument: a vector or three-component vector for one, a field for `abs` of a field, otherwise a number |
 | `lerp(a b t)` | a color when `a` and `b` are colors, otherwise the type of `a + b` |
 | `72x32`, `0,0` (two numbers), `polar(..)` | vector |
 | `40x20x10`, `4,2,1` (three numbers) | three-component vector |

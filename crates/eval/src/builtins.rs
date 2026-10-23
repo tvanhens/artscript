@@ -17,16 +17,12 @@ use crate::value::{Arith, Col, Coord, PathVal, Value, arith};
 use crate::warp;
 
 /// What each built-in function returns, for typing a parameter default that calls one. `min`,
-/// `max`, `abs`, `clamp` and `lerp` return the type they are given, so the typer reads their
-/// arguments instead. A function left out, such as `pick`, has no type a reader can tell from the
+/// `max`, `clamp`, `lerp` and the elementwise `abs sqrt floor round sin cos` return the type they
+/// are given, so the typer reads their arguments instead. A function left out, such as `pick`, has no type a reader can tell from the
 /// call, so a default that calls it is E0326.
 pub const BUILTIN_RETURNS: &[(&str, Ty)] = &[
-    ("sqrt", Ty::Number),
-    ("floor", Ty::Number),
-    ("round", Ty::Number),
-    ("sin", Ty::Number),
-    ("cos", Ty::Number),
     ("atan2", Ty::Number),
+    ("rad", Ty::Number),
     ("mod", Ty::Number),
     ("rand", Ty::Number),
     ("polar", Ty::Vector),

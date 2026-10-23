@@ -8575,3 +8575,8 @@ fn a_def_takes_a_path_parameter() {
     let bad = run_with(&format!("{src}ticks track:4\n"), &[]);
     assert!(bad.diagnostics.iter().any(|d| d.message.contains("a path")), "{}", show(&bad.diagnostics));
 }
+
+#[test]
+fn a_default_that_maps_a_vector_through_unary_math_takes_a_vector() {
+    scene("@artboard 40x40\n@target t.png\ndef dot off:floor(10.5,20.5) r:rad(90)\n  circle r*4 at:off\ndot off:(30,30) r:1\ndot\n");
+}

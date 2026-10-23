@@ -683,7 +683,7 @@ pub fn ty_of(e: &Expr, r: &Resolver<'_>, earlier: &[Param]) -> Result<Ty, Untype
                         (a, b) => arith_ty(a, b)?,
                     }
                 }
-                Ty::Word(None) if matches!(func.as_str(), "min" | "max" | "abs" | "clamp") => {
+                Ty::Word(None) if matches!(func.as_str(), "min" | "max" | "clamp" | "abs" | "sqrt" | "floor" | "round" | "sin" | "cos") => {
                     let given = match (func.as_str(), args.as_slice()) {
                         ("min" | "max", [Expr::List(xs)]) => xs.as_slice(),
                         _ => args.as_slice(),
@@ -692,7 +692,9 @@ pub fn ty_of(e: &Expr, r: &Resolver<'_>, earlier: &[Param]) -> Result<Ty, Untype
                     match (func.as_str(), kinds.as_slice()) {
                         ("min" | "max", ks) if ks.contains(&Kind::Field) => Ty::Field,
                         ("abs", [Kind::Field, ..]) | ("clamp", [Kind::Field]) => Ty::Field,
-                        ("abs", [Kind::Vector, ..]) => Ty::Vector,
+                        ("min" | "max" | "clamp", _) => Ty::Number,
+                        (_, [Kind::Vector, ..]) => Ty::Vector,
+                        (_, [Kind::Vector3, ..]) => Ty::Vector3,
                         _ => Ty::Number,
                     }
                 }
@@ -982,6 +984,11 @@ mod tests {
             ("x:abs(width)", Ty::Number),
             ("x:abs(look)", Ty::Vector),
             ("x:abs(simplex(4))", Ty::Field),
+            ("x:abs(4,2,1)", Ty::Vector3),
+            ("x:floor(10.5,20.5)", Ty::Vector),
+            ("x:cos(4,2,1)", Ty::Vector3),
+            ("x:sqrt(width)", Ty::Number),
+            ("x:rad(90)", Ty::Number),
             ("x:max(simplex(4) .2)", Ty::Field),
             ("x:min([1 simplex(4)])", Ty::Field),
             ("x:max(width 2)", Ty::Number),
