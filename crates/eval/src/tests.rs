@@ -8258,7 +8258,7 @@ fn three_component_parameters_keep_their_arity() {
 
 #[test]
 fn animating_a_three_component_value_reports_an_error() {
-    let bad = run_with("@artboard 20x20\n@target t.png\nlet w = key(1,2,3 4,5,6 dur:1s)\nrect 4x4\n", &[]);
+    let bad = run_with("@artboard 20x20\n@target t.png\nanim k dur:1s\n  .box a:key(1,2,3 4,5,6)\nrect 4x4 name:box\nplay k\n", &[]);
     assert!(
         diag(&bad, "E0320").message.contains("cannot animate a three-component vector"),
         "{}",

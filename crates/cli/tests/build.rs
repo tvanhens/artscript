@@ -94,14 +94,26 @@ fn build_writes_outputs_manifest_cache_and_deletes_stale_outputs() {
         ]
     );
     let manifest_bytes = fs::read(dir.join("assets/art-manifest.json")).unwrap();
+    let mut written: Vec<PathBuf> = fs::read_dir(dir.join(".ramose/cache"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .collect();
+    assert_eq!(written.len(), 2, "one cache entry per target: {written:?}");
+    written.extend([png.clone(), svg.clone()]);
+    let modified = |paths: &[PathBuf]| -> Vec<_> {
+        paths
+            .iter()
+            .map(|p| fs::metadata(p).unwrap().modified().unwrap())
+            .collect()
+    };
+    let before = modified(&written);
 
-    let started = std::time::Instant::now();
     let second = ramose(&dir, &only);
     assert_eq!(second.status.code(), Some(0), "{}", text(&second));
-    assert!(
-        started.elapsed().as_secs_f32() < 2.0,
-        "cache miss: second build took {:?}",
-        started.elapsed()
+    assert_eq!(
+        modified(&written),
+        before,
+        "cache miss: second build rewrote an output or a cache entry"
     );
     assert_eq!(fs::read(&png).unwrap(), png_bytes);
     assert_eq!(fs::read(&svg).unwrap(), svg_bytes);
