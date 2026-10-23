@@ -216,14 +216,18 @@ impl<'c> Lower<'c> {
                 Some("end the body with `out RGB cover:NUMBER`, such as `out m.paint.rgb cover:cover(m.edge)`".into()),
             );
         }
+        // A fault in a fn that an earlier brush already reported leaves no new diag, and this
+        // body still fails.
+        let (Some((Ok(rgb), Ok(cover))), Some(stmts)) = (out, self.blocks.pop()) else {
+            let own = self.src.file.to_string();
+            self.diags.sort_by_key(|d| (d.at.file != own, d.at.file.clone(), d.at.span));
+            return Err(self.diags);
+        };
         if !self.diags.is_empty() {
             let own = self.src.file.to_string();
             self.diags.sort_by_key(|d| (d.at.file != own, d.at.file.clone(), d.at.span));
             return Err(self.diags);
         }
-        let (Some((Ok(rgb), Ok(cover))), Some(stmts)) = (out, self.blocks.pop()) else {
-            unreachable!("a body with no diags has a checked `out`");
-        };
         let body = ir::Body {
             params: self.src.params.iter().map(|p| (p.name.clone(), p.ty)).collect(),
             salts: self.salts.into_iter().collect(),
@@ -562,10 +566,10 @@ impl<'c> Lower<'c> {
             self.no_named(func, named)?;
             return self.builtin(b, args, env);
         }
-        self.no_named(func, named)?;
         if !matches!(env.kind, Kind::TopFn { .. })
             && let Some(h) = self.helpers.iter().find(|h| h.name == func).copied()
         {
+            self.no_named(func, named)?;
             return self.instantiate(Callee::Helper(h), args, env);
         }
         let module = match &env.kind {
@@ -573,7 +577,10 @@ impl<'c> Lower<'c> {
             _ => self.src.file.to_string(),
         };
         match self.lib.lookup(&module, func) {
-            Some(Global::Fn(f)) => self.instantiate(Callee::Top(f), args, env),
+            Some(Global::Fn(f)) => {
+                self.no_named(func, named)?;
+                self.instantiate(Callee::Top(f), args, env)
+            }
             Some(Global::Other(what)) => Err(self.report(format!("`{func}` is {what}, not a function"), None)),
             None => match lang::values_only(func) {
                 Some(hint) => Err(self.report(format!("`{func}` is not available in a body"), Some(hint.into()))),

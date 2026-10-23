@@ -200,12 +200,17 @@ fn kind_word(ty: BodyTy) -> &'static str {
 }
 
 /// The module scope as the shading checker sees it: a name is a fn a body may call, or
-/// something a body cannot read.
-struct ModuleLib<'a>(&'a std::collections::HashMap<String, Rc<Module>>);
+/// something a body cannot read. The brush's own module is still loading, so it is passed
+/// beside the loaded ones.
+struct ModuleLib<'a> {
+    loaded: &'a std::collections::HashMap<String, Rc<Module>>,
+    own: &'a Rc<Module>,
+}
 
 impl Library for ModuleLib<'_> {
     fn lookup(&self, file: &str, name: &str) -> Option<Global> {
-        Some(match self.0.get(file)?.global(name)? {
+        let module = if file == self.own.path { self.own } else { self.loaded.get(file)? };
+        Some(match module.global(name)? {
             Value::Fn(f) => Global::Fn(f),
             Value::Palette(_) | Value::Color(_) | Value::Ramp(_) => Global::Other("a palette value"),
             Value::Component(_) | Value::Alias(_) => Global::Other("a def"),
@@ -294,7 +299,7 @@ impl Evaluator<'_> {
             return Err(errors);
         }
         let src = BrushSource { file: &file, name, span, params: &decl_params, lines: body };
-        let shader = match self.shading.check(&src, &ModuleLib(&self.modules)) {
+        let shader = match self.shading.check(&src, &ModuleLib { loaded: &self.modules, own: module }) {
             Ok(s) => s,
             Err(diags) => return Err(diags.into_iter().map(fail_of).collect()),
         };

@@ -477,20 +477,24 @@ impl Printer<'_> {
     /// half away from zero, `lerp` as the target's `mix`.
     fn call(&self, f: Builtin, args: &[Local]) -> String {
         let lanes = args.iter().map(|l| self.types[l].lanes()).max().unwrap_or(1);
-        // GLSL has a scalar overload only at these positions; a number elsewhere is splatted.
+        // GLSL has one overload with scalars at these positions, all of them at once; a number
+        // anywhere else, or beside a vector at one of them, is splatted.
         let scalar_ok: &[usize] = match f {
-            Builtin::Min | Builtin::Max | Builtin::Mod => &[1],
-            Builtin::Clamp | Builtin::Smoothstep => &[0, 1],
+            Builtin::Min | Builtin::Max | Builtin::Mod | Builtin::Rot => &[1],
+            Builtin::Clamp => &[1, 2],
+            Builtin::Smoothstep => &[0, 1],
             Builtin::Lerp => &[2],
             Builtin::Step => &[0],
-            _ => &[0, 1, 2],
+            _ => &[],
         };
+        let keep = scalar_ok.iter().all(|i| args.get(*i).is_none_or(|l| self.types[l].lanes() == 1));
         let a: Vec<String> = args
             .iter()
             .enumerate()
             .map(|(i, l)| {
                 let v = local(*l);
-                if lanes > 1 && self.types[l].lanes() == 1 && !scalar_ok.contains(&i) { format!("float{lanes}({v})") } else { v }
+                let splat = lanes > 1 && self.types[l].lanes() == 1 && !(keep && scalar_ok.contains(&i));
+                if splat { format!("float{lanes}({v})") } else { v }
             })
             .collect();
         match f {

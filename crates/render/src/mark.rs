@@ -132,8 +132,7 @@ fn area_chain(
     let stages: Vec<(&Stage, &AreaMark)> = fill.marks.iter().map(|m| (&m.stage, m)).collect();
     let origin = frame.origin;
     let chain = frame.chain(
-        MainKind::Area,
-        &stages,
+        Stack { main: MainKind::Area, stages: &stages },
         &fill.paint,
         ink,
         mode,
@@ -183,8 +182,7 @@ pub(crate) fn draw_ribbon(
             };
             let (field_shader, chan_shader, norm_shader) = (texels(&field.field)?, texels(&field.chan)?, texels(&field.norm)?);
             let chain = frame.chain(
-                MainKind::Ribbon,
-                &stages,
+                Stack { main: MainKind::Ribbon, stages: &stages },
                 paint,
                 Ink::Paint,
                 mode,
@@ -310,6 +308,12 @@ fn encoder() -> Shader {
     ENCODER.with(Shader::clone)
 }
 
+/// The stages of one slot and the main they run under, each stage with the mark that owns it.
+struct Stack<'a, M> {
+    main: MainKind,
+    stages: &'a [(&'a Stage, &'a M)],
+}
+
 /// The canvas state a mark is drawn in: its device matrix, its clip, and local units per pixel,
 /// and the node an internal error names.
 struct Frame<'a> {
@@ -328,18 +332,18 @@ impl<'a> Frame<'a> {
         Some(Frame { ltd, dtl, px: 1.0 / device_scale(&ltd), clip, origin })
     }
 
-    /// The chain of `stages` over the base `paint`. `extra` sets the uniforms a main owns, and
+    /// The chain of a `stack` over the base `paint`. See [`Stack`]. `extra` sets the uniforms a main owns, and
     /// `child` names the field shaders it binds; every other field child is transparent.
     fn chain<M>(
         &self,
-        main: MainKind,
-        stages: &[(&Stage, &M)],
+        stack: Stack<'_, M>,
         paint: &IrPaint,
         ink: Ink,
         mode: &Mode<'_>,
         extra: &dyn Fn(&mut Uniforms, &M) -> Result<(), RenderError>,
         child: &dyn Fn(&str) -> Option<Shader>,
     ) -> Result<Chain, RenderError> {
+        let Stack { main, stages } = stack;
         let origin = self.origin;
         let blend = match mode {
             Mode::Collect(_) => true,
