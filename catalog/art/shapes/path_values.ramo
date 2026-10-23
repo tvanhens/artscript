@@ -1,0 +1,38 @@
+# Path values on paper, 256x128: a shape's contour sampled by contour position. Four cells side by side, each 64 wide,
+# centered on y 64. Shapes have no outline. Every dot is a plain filled circle.
+# (1) a blue disc of radius 22 at 32,64 with twelve dots of radius 2.5 on its rim, one every 30 degrees, from
+# point(path(@disc) i/12). The dot at position 0 is gold and sits at 3 o'clock, exactly right of the center; the
+# other eleven are red, and the next one clockwise from the gold dot is lower right (y is down).
+# (2) a green 44x28 rect at 96,64 with nine samples at i/9 of its perimeter, from the top-left corner clockwise. Each
+# sample is a gold dot of radius 2 with a 2px ink dash of length 8 that starts at the dot and runs along the outline
+# in the direction of travel, from tangent(). The first dash starts at the top-left corner and runs right along the
+# top. Three dashes lie on the top, two on the right side running down, three on the bottom running left, and one
+# on the left side running up. No dash starts on a corner except the first. A dash is straight, so the last bottom
+# dash runs 4px past the bottom-left corner into the paper.
+# (3) a gold pentagon of radius 22 at 160,64 with an ink dot of radius 3 on each of its five corners, from
+# points(path(@pent)). One corner, and its dot, points straight up.
+# (4) a blue 2px zigzag built in code, path([204,40 218,88 232,40 246,88]), drawn from its own points(): three
+# straight segments of length 50 between four vertices, starting top left and ending bottom right. Seven dots of
+# radius 2.5 sit at i/6 of its length: the first, at the start 204,40, is gold; the other six are red, one at each
+# of the other three vertices and one at the middle of each segment, so dots alternate vertex, middle, vertex. The
+# last red dot is at the end, 246,88.
+@artboard 256x128
+@target shapes/path_values.png
+
+circle 22 at:32,64 fill:p.blue name:disc
+each i in 0..12
+  circle 2.5 at:point(path(@disc) i/12) fill:if i == 0 then p.gold else p.red
+
+rect 44x28 at:96,64 fill:p.green name:plate
+each i in 0..9
+  curve point(path(@plate) i/9) point(path(@plate) i/9)+tangent(path(@plate) i/9)*8 stroke:p.ink,2
+  circle 2 at:point(path(@plate) i/9) fill:p.gold
+
+poly 5 r:22 at:160,64 fill:p.gold name:pent
+each q in points(path(@pent))
+  circle 3 at:q fill:p.ink
+
+let zig = path([204,40 218,88 232,40 246,88])
+curve points(zig) tension:0 stroke:p.blue,2
+each i in 0..7
+  circle 2.5 at:point(zig i/6) fill:if i == 0 then p.gold else p.red

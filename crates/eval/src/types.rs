@@ -45,6 +45,7 @@ pub enum Ty {
     Rule,
     Fn,
     Warp,
+    Path,
     /// `one_of(a b)` carries its words, the default first. A plain word carries none.
     Word(Option<Arc<[String]>>),
     /// The def or alias target the default names. `None` for `none(component)`.
@@ -73,6 +74,7 @@ pub const TYPE_WORDS: &[(&str, Ty)] = &[
     ("brush", Ty::Brush(None)),
     ("stamp", Ty::Stamp(None)),
     ("warp", Ty::Warp),
+    ("path", Ty::Path),
 ];
 
 impl Ty {
@@ -97,6 +99,7 @@ impl Ty {
             Ty::Rule => Kind::Rule,
             Ty::Fn => Kind::Fn,
             Ty::Warp => Kind::Warp,
+            Ty::Path => Kind::Path,
             Ty::Word(_) => Kind::Word,
             Ty::Component(_) => Kind::Component,
             Ty::Brush(_) => Kind::Brush,
@@ -148,6 +151,7 @@ impl Ty {
             Ty::Ref => "@self".into(),
             Ty::Rule | Ty::Fn => "a name declared with `rule` or `fn`".into(),
             Ty::Warp => "cylinder(60)".into(),
+            Ty::Path => "path([0,0 10,0])".into(),
             Ty::Word(Some(words)) => words[0].clone(),
             Ty::Word(None) => "a_word".into(),
             Ty::Component(Some(d)) | Ty::Brush(Some(d)) | Ty::Stamp(Some(d)) => d.name.to_string(),

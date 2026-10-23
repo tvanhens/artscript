@@ -215,10 +215,39 @@ fn capped_ring(pos: &[P], tan: &[P], r: &[f64]) -> Vec<P> {
 }
 
 pub fn polygon(pts: &[P]) -> Path {
+    polyline(pts, true)
+}
+
+pub fn polyline(pts: &[P], closed: bool) -> Path {
     let pts: Vec<Point> = pts.iter().map(|p| pt(*p)).collect();
     let mut b = PathBuilder::new();
-    b.add_polygon(&pts, true);
+    b.add_polygon(&pts, closed);
     b.detach()
+}
+
+pub fn length(path: &Path) -> f64 {
+    skia_safe::ContourMeasureIter::new(path, false, None).map(|m| f64::from(m.length())).sum()
+}
+
+/// The point and unit tangent at contour position `u`, with position 0 at `seam`. Position 1 is
+/// the end rather than a wrap to 0, so an open path's two ends are 0 and 1.
+pub fn at(path: &Path, seam: f64, u: f64) -> Option<(P, P)> {
+    let measures: Vec<_> = skia_safe::ContourMeasureIter::new(path, false, None)
+        .filter(|m| m.length() > 0.0)
+        .collect();
+    let total: f64 = measures.iter().map(|m| f64::from(m.length())).sum();
+    let s = seam + u;
+    let s = (if s > 1.0 { s - 1.0 } else { s }) * total;
+    let mut offset = 0.0;
+    for (i, m) in measures.iter().enumerate() {
+        let len = f64::from(m.length());
+        if s < offset + len || i + 1 == measures.len() {
+            let (p, t) = m.pos_tan((s - offset).clamp(0.0, len) as f32)?;
+            return Some(((f64::from(p.x), f64::from(p.y)), (f64::from(t.x), f64::from(t.y))));
+        }
+        offset += len;
+    }
+    None
 }
 
 /// Displaces the outline along its normal by smooth noise of about `amount` units.
@@ -463,6 +492,23 @@ mod tests {
         assert!(probe(3.9) && probe(-3.9));
         assert!(!probe(4.2) && !probe(-4.2));
         assert!(!outline.contains(Point::new(2.0, 3.0)), "ends taper");
+    }
+
+    #[test]
+    fn at_counts_from_the_seam_wraps_and_ends_an_open_path_at_one() {
+        let square = rect(20.0, 20.0, [0.0; 4]);
+        let close = |got: (P, P), p: P, t: P| {
+            assert!((got.0.0 - p.0).abs() < 1e-4 && (got.0.1 - p.1).abs() < 1e-4, "{got:?} != {p:?}");
+            assert!((got.1.0 - t.0).abs() < 1e-4 && (got.1.1 - t.1).abs() < 1e-4, "{got:?} != {t:?}");
+        };
+        close(at(&square, 0.0, 0.125).unwrap(), (0.0, -10.0), (1.0, 0.0));
+        close(at(&square, 0.25, 0.05).unwrap(), (10.0, -6.0), (0.0, 1.0));
+        close(at(&square, 0.25, 0.9).unwrap(), (2.0, -10.0), (1.0, 0.0));
+        let open = polyline(&[(0.0, 0.0), (30.0, 0.0), (30.0, 40.0)], false);
+        close(at(&open, 0.0, 1.0).unwrap(), (30.0, 40.0), (0.0, 1.0));
+        close(at(&open, 0.0, 0.0).unwrap(), (0.0, 0.0), (1.0, 0.0));
+        assert!(at(&polyline(&[(5.0, 5.0), (5.0, 5.0)], false), 0.0, 0.5).is_none());
+        assert_eq!(length(&open), 70.0);
     }
 
     #[test]

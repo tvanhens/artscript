@@ -4,13 +4,16 @@ use std::rc::Rc;
 
 use ramose_ir::{Field, FieldFn, FieldOp, NoiseKind};
 use ramose_syntax::ast::{Expr, Named};
+use skia_safe::Point;
 
 use crate::color::{self, DEFAULT_HUE_STEP, Lch, Rgba};
 use crate::eval::{Evaluator, Fail, R, Scope, fail, unseen};
+use crate::geom;
 use crate::paint::{GradKind, direction_deg, gradient};
+use crate::place::Place;
 use crate::seed::Rng;
 use crate::types::Ty;
-use crate::value::{Arith, Col, Coord, Value, arith};
+use crate::value::{Arith, Col, Coord, PathVal, Value, arith};
 use crate::warp;
 
 /// What each built-in function returns, for typing a parameter default that calls one. `min`,
@@ -46,6 +49,11 @@ pub const BUILTIN_RETURNS: &[(&str, Ty)] = &[
     ("corners", Ty::Warp),
     ("cylinder", Ty::Warp),
     ("concat", Ty::List),
+    ("path", Ty::Path),
+    ("point", Ty::Vector),
+    ("tangent", Ty::Vector),
+    ("length", Ty::Number),
+    ("points", Ty::List),
 ];
 
 fn wrap_period(v: &Value) -> Option<[f32; 2]> {
@@ -152,6 +160,20 @@ impl Evaluator<'_> {
             })
         };
         let one = |f: fn(f64) -> f64| -> R<Value> { Ok(Value::Num(f(n(0)?))) };
+        let path_arg = |i: usize| -> R<Rc<PathVal>> {
+            match a.get(i) {
+                Some(Value::Path(p)) => Ok(p.clone()),
+                other => Err(fail(
+                    "E0320",
+                    format!(
+                        "`{func}` argument {} must be a path, got {}",
+                        i + 1,
+                        other.map_or("nothing".to_string(), |v| v.kind().to_string())
+                    ),
+                )
+                .fix(format!("write `{func}(path(@body){})`", if matches!(func, "point" | "tangent") { " .5" } else { "" }))),
+            }
+        };
         Ok(match func {
             "min" | "max" => {
                 let items = match a.as_slice() {
@@ -371,6 +393,77 @@ impl Evaluator<'_> {
                     ridged: func == "ridged",
                 }))
             }
+            "path" => {
+                if let Some(Value::Ref(_)) = a.first() {
+                    return self.path_of(&a, sc);
+                }
+                let Some(items) = a.first().and_then(Value::items) else {
+                    let got = a.first().map_or("nothing".to_string(), |v| v.kind().to_string());
+                    return Err(fail("E0320", format!("`path` takes a node reference or a list of points, got {got}"))
+                        .fix("write `path(@body)` or `path([0,0 10,4 20,0])`"));
+                };
+                let pts = items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, item)| {
+                        item.vec2().ok_or_else(|| {
+                            fail("E0320", format!("`path` point {} must be a vector like 4,2, got {}", i + 1, item.kind()))
+                                .fix("write `path([0,0 10,4 20,0])`")
+                        })
+                    })
+                    .collect::<R<Vec<_>>>()?;
+                if pts.len() < 2 {
+                    return Err(fail("E0320", "`path` needs two or more points").fix("write `path([0,0 10,4 20,0])`"));
+                }
+                let closed = get("closed").is_some_and(|v| v.truthy());
+                Value::Path(Rc::new(PathVal {
+                    own: geom::polyline(&pts, closed),
+                    seam: 0.0,
+                    place: Place::identity(),
+                    points: pts,
+                }))
+            }
+            "point" | "tangent" => {
+                let p = path_arg(0)?;
+                let u = match a.get(1).and_then(Value::num).filter(|u| u.is_finite() && (0.0..=1.0).contains(u)) {
+                    Some(u) => u,
+                    None => {
+                        let got = a.get(1).map_or("nothing".to_string(), |v| v.num().map_or_else(|| v.kind().to_string(), crate::value::num));
+                        return Err(fail("E0320", format!("`{func}` argument 2 is a fraction from 0 to 1, got {got}"))
+                            .fix(format!("write `{func}(p .5)`")));
+                    }
+                };
+                let (pos, tan) = geom::at(&p.own, p.seam, u).ok_or_else(|| {
+                    fail("E0320", format!("`{func}` has nothing to sample: the path has no length"))
+                        .fix("give the path two different points")
+                })?;
+                let (pos, tan) = p
+                    .place
+                    .map_direction(Point::new(pos.0 as f32, pos.1 as f32), Point::new(tan.0 as f32, tan.1 as f32))
+                    .ok_or_else(|| {
+                        fail("E0320", format!("`{func}` at position {} is hidden by a warp", crate::value::num(u)))
+                            .fix("sample a position on the part of the contour the warp shows")
+                    })?;
+                let v = if func == "point" { pos } else { tan };
+                Value::Vec2(Coord::Num(f64::from(v.x)), Coord::Num(f64::from(v.y)))
+            }
+            "length" => Value::Num(path_arg(0)?.length()),
+            "points" => {
+                let p = path_arg(0)?;
+                let pts = p
+                    .points
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &(x, y))| {
+                        let q = p.place.map_point(Point::new(x as f32, y as f32)).ok_or_else(|| {
+                            fail("E0320", format!("`points` point {} is hidden by a warp", i + 1))
+                                .fix("read the points before the warp, or sample with `point`")
+                        })?;
+                        Ok(Value::Vec2(Coord::Num(f64::from(q.x)), Coord::Num(f64::from(q.y))))
+                    })
+                    .collect::<R<Vec<_>>>()?;
+                Value::List(Rc::new(pts))
+            }
             "corners" => warp::corners(&a, &nm)?,
             "cylinder" => warp::cylinder(&a, named)?,
             "concat" => {
@@ -408,6 +501,7 @@ impl Evaluator<'_> {
                     .note("fields: simplex perlin worley value fbm ridged")
                     .note("warps: corners cylinder")
                     .note("lists: concat")
+                    .note("paths: path point tangent length points")
                     .fix("check the spelling"));
             }
         })

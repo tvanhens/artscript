@@ -4,14 +4,17 @@ use std::fmt;
 use std::rc::Rc;
 
 use ramose_ir::{Field, WarpStage};
+use skia_safe::Path;
 
 use crate::brush::BrushVal;
+use crate::geom::P;
 use crate::stamp::StampVal;
 use crate::color::{Ramp, Rgba};
 use crate::eval::{Fail, R, fail};
 use crate::paint::GradSpec;
+use crate::place::Place;
 use crate::range::Range;
-use crate::scope::{AliasDef, Component, FnDef, Module, Palette, RefVal, RuleDef};
+use crate::scope::{AliasDef, Component, FLATTEN_TOL, FnDef, Module, Palette, RefVal, RuleDef};
 use crate::warp::stage_text;
 
 /// One coordinate: artboard units or a percent of the current frame.
@@ -47,6 +50,26 @@ pub struct Col {
 impl Col {
     pub fn plain(rgba: Rgba) -> Col {
         Col { rgba, ramp: None }
+    }
+}
+
+/// A contour whose positions are measured in its own frame, as `edge` measures them, and
+/// whose samples land in the frame of the expression that made it.
+pub struct PathVal {
+    /// The contour in its own frame.
+    pub(crate) own: Path,
+    /// Where contour position 0 lies, as [`crate::scope::Record::seam`].
+    pub(crate) seam: f64,
+    /// The own frame into the frame the value was made in.
+    pub(crate) place: Place,
+    /// The on-curve points of every contour, in path order, in the own frame.
+    pub(crate) points: Vec<P>,
+}
+
+impl PathVal {
+    /// The arc length over every contour, in the frame the value was made in.
+    pub(crate) fn length(&self) -> f64 {
+        crate::geom::length(&self.place.map_path(&self.own, FLATTEN_TOL))
     }
 }
 
@@ -87,6 +110,7 @@ pub enum Value {
     /// A `stamp` declaration with its parameter values, placement and set name bound.
     Stamp(Rc<StampVal>),
     Warp(Rc<WarpStage>),
+    Path(Rc<PathVal>),
     /// A prepass `let` that read the drawn scene. Reading the binding fails, so a top-level
     /// play never runs on a value the drawing pass would compute differently.
     Unseen,
@@ -115,6 +139,7 @@ pub enum Kind {
     Brush,
     Stamp,
     Warp,
+    Path,
     Unseen,
 }
 
@@ -141,6 +166,7 @@ impl fmt::Display for Kind {
             Kind::Brush => "a brush",
             Kind::Stamp => "a stamp",
             Kind::Warp => "a warp",
+            Kind::Path => "a path",
             Kind::Unseen => "a value from the drawn scene",
         };
         f.write_str(s)
@@ -171,6 +197,7 @@ impl Value {
             Value::Brush(_) => Kind::Brush,
             Value::Stamp(_) => Kind::Stamp,
             Value::Warp(_) => Kind::Warp,
+            Value::Path(_) => Kind::Path,
             Value::Unseen => Kind::Unseen,
         }
     }
@@ -374,6 +401,7 @@ impl Value {
             Value::Brush(b) => format!("brush {}", b.decl.name),
             Value::Stamp(s) => format!("stamp {}", s.decl.name),
             Value::Warp(w) => stage_text(w),
+            Value::Path(p) => format!("path {}", num(p.length())),
             Value::Unseen => "unseen".into(),
         }
     }
@@ -524,6 +552,7 @@ pub fn equal(a: &Value, b: &Value) -> bool {
         (Value::Brush(x), Value::Brush(y)) => Rc::ptr_eq(x, y),
         (Value::Stamp(x), Value::Stamp(y)) => Rc::ptr_eq(x, y),
         (Value::Warp(x), Value::Warp(y)) => x == y,
+        (Value::Path(x), Value::Path(y)) => Rc::ptr_eq(x, y),
         (Value::Range(x), Value::Range(y)) => x == y,
         (Value::Range(_), _) | (_, Value::Range(_)) => false,
         _ => match (a.word(), b.word()) {

@@ -7317,6 +7317,166 @@ fn edge_errors_name_what_it_needs() {
     assert_eq!(ev.diagnostics.len(), 1, "{}", show(&ev.diagnostics));
 }
 
+#[test]
+fn point_of_a_circle_at_zero_is_three_oclock_and_of_a_rect_the_top_left() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\ncircle 20 at:50,50 name:c\nrect 40x20 at:50,50 name:r\n\
+         circle 1 at:point(path(@c) 0) name:c0\ncircle 1 at:point(path(@c) .25) name:c1\n\
+         circle 1 at:point(path(@r) 0) name:r0\ncircle 1 at:point(path(@r) 1) name:r1\n",
+    );
+    near(at(node(&s, "c0")), (70.0, 50.0));
+    near(at(node(&s, "c1")), (50.0, 70.0));
+    near(at(node(&s, "r0")), (30.0, 40.0));
+    near(at(node(&s, "r1")), (30.0, 40.0));
+}
+
+#[test]
+fn point_follows_the_referenced_nodes_transform() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\ngroup g at:10,10\n  circle 20 at:40,40 rot:90 name:c\n  \
+         circle 1 at:point(path(@c) 0) name:d0\n  circle 1 at:point(path(@c) .25) name:d1\n",
+    );
+    near(at(node(&s, "d0")), (40.0, 60.0));
+    near(at(node(&s, "d1")), (20.0, 40.0));
+}
+
+#[test]
+fn point_measures_contour_position_in_the_shapes_own_frame_as_edge_does() {
+    let s = scene(
+        "@artboard 300x300\n@target t.png\nrect 40x20 at:50,50 scale:3,1 name:r\nedge @r to:.25 name:e\n\
+         circle 1 at:point(path(@r) .25) name:d\ncircle 1 at:length(path(@r)),0 name:l\n\
+         group at:50,50 scale:3,1\n  rect 40x20 name:q\nedge @q to:.25 name:eq\ncircle 1 at:point(path(@q) .25) name:dq\n",
+    );
+    near(at(node(&s, "d")), (80.0, 40.0));
+    let end = ends(&s, "e").1;
+    near(at(node(&s, "d")), (f64::from(end.0), f64::from(end.1)));
+    near(at(node(&s, "l")), (280.0, 0.0));
+    near(at(node(&s, "dq")), (80.0, 40.0));
+    let end = ends(&s, "eq").1;
+    near(at(node(&s, "dq")), (f64::from(end.0), f64::from(end.1)));
+}
+
+#[test]
+fn tangent_is_the_placed_direction_of_travel_and_a_flip_reverses_it() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\nrect 40x20 at:50,50 scale:-1,1 name:f\n\
+         circle 1 at:(50,50)+tangent(path(@f) 1/6)*10 name:t\n\
+         poly 4 r:10 at:50,50 scale:3,1 name:k\ncircle 1 at:(50,50)+tangent(path(@k) 1/8)*10 name:u\n",
+    );
+    near(at(node(&s, "t")), (40.0, 50.0));
+    near(at(node(&s, "u")), (50.0 + 30.0 / 10f64.sqrt(), 50.0 + 10.0 / 10f64.sqrt()));
+}
+
+#[test]
+fn point_and_tangent_follow_a_warp_on_the_shape() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\npoly 4 r:10 at:50,50 warp:cylinder(10) name:k\n\
+         circle 1 at:point(path(@k) 1/8) name:p\ncircle 1 at:(50,50)+tangent(path(@k) 1/8)*10 name:t\n",
+    );
+    near(at(node(&s, "p")), (50.0 + 10.0 * 0.5f64.sin(), 45.0));
+    let (dx, dy) = (0.5f64.cos(), 1.0);
+    let len = dx.hypot(dy);
+    let got = at(node(&s, "t"));
+    let want = (50.0 + 10.0 * dx / len, 50.0 + 10.0 * dy / len);
+    assert!((f64::from(got.0) - want.0).abs() < 1e-3 && (f64::from(got.1) - want.1).abs() < 1e-3, "{got:?} != {want:?}");
+}
+
+#[test]
+fn tangent_of_a_circle_at_zero_points_down() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\ncircle 20 at:50,50 name:c\n\
+         circle 1 at:(50,50)+tangent(path(@c) 0)*10 name:d\ncircle 1 at:(50,50)+tangent(path(@c) .5)*10 name:e\n",
+    );
+    near(at(node(&s, "d")), (50.0, 60.0));
+    near(at(node(&s, "e")), (50.0, 40.0));
+}
+
+#[test]
+fn length_of_a_rect_is_its_perimeter() {
+    let s = scene("@artboard 200x200\n@target t.png\nrect 40x20 at:50,50 name:r\ncircle 1 at:length(path(@r)),0 name:d\n");
+    near(at(node(&s, "d")), (120.0, 0.0));
+}
+
+#[test]
+fn points_of_a_curve_are_its_points_and_of_a_poly_its_corners() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\ncurve 0,0 20,-15 40,0 at:10,10 name:k\npoly 4 r:10 at:50,50 name:q\n\
+         each p in points(path(@k))\n  circle 1 at:p name:kp\neach p in points(path(@q))\n  circle 1 at:p name:qp\n",
+    );
+    near(at(node(&s, "kp.0")), (10.0, 10.0));
+    near(at(node(&s, "kp.1")), (30.0, -5.0));
+    near(at(node(&s, "kp.2")), (50.0, 10.0));
+    assert!(!paths(&s).iter().any(|p| p == "kp.3"));
+    near(at(node(&s, "qp.0")), (50.0, 40.0));
+    near(at(node(&s, "qp.1")), (60.0, 50.0));
+    near(at(node(&s, "qp.3")), (40.0, 50.0));
+    assert!(!paths(&s).iter().any(|p| p == "qp.4"));
+}
+
+#[test]
+fn a_code_built_path_samples_by_arc_length_and_ends_at_one() {
+    let s = scene(
+        "@artboard 100x100\n@target t.png\nlet open = path([0,0 30,0 30,40])\nlet ring = path([0,0 30,0 30,40] closed:true)\n\
+         circle 1 at:point(open .5) name:mid\ncircle 1 at:point(open 1) name:end\n\
+         circle 1 at:tangent(open .9)*10 name:tan\ncircle 1 at:length(open),length(ring) name:len\n\
+         circle 1 at:point(ring 1) name:back\neach p in points(ring)\n  circle 1 at:p name:v\n",
+    );
+    near(at(node(&s, "mid")), (30.0, 5.0));
+    near(at(node(&s, "end")), (30.0, 40.0));
+    near(at(node(&s, "tan")), (0.0, 10.0));
+    near(at(node(&s, "len")), (70.0, 120.0));
+    near(at(node(&s, "back")), (0.0, 0.0));
+    near(at(node(&s, "v.2")), (30.0, 40.0));
+    assert!(!paths(&s).iter().any(|p| p == "v.3"));
+}
+
+#[test]
+fn a_top_level_let_holds_a_path_read_from_the_scene() {
+    let s = scene("@artboard 100x100\n@target t.png\ncircle 20 at:50,50 name:c\nlet b = path(@c)\ncircle 1 at:point(b .25) name:d\n");
+    near(at(node(&s, "d")), (50.0, 70.0));
+}
+
+#[test]
+fn path_value_errors_name_what_they_need() {
+    let cases = [
+        ("point(4 .5)", "`point` argument 1 must be a path, got a number"),
+        ("point(path(@c))", "`point` argument 2 is a fraction from 0 to 1, got nothing"),
+        ("point(path(@c) 1.5)", "`point` argument 2 is a fraction from 0 to 1, got 1.5"),
+        ("tangent(path(@c) \"a\")", "`tangent` argument 2 is a fraction from 0 to 1, got a string"),
+        ("length(1,2)", "`length` argument 1 must be a path, got a vector like 4,2"),
+        ("points()", "`points` argument 1 must be a path, got nothing"),
+        ("point(path(@g) 0)", "`path` reads one shape's contour"),
+        ("point(path(@artboard) 0)", "`path` reads one shape's contour"),
+        ("point(path(4) 0)", "`path` takes a node reference or a list of points, got a number"),
+        ("point(path() 0)", "`path` takes a node reference or a list of points, got nothing"),
+        ("point(path([1,2]) 0)", "`path` needs two or more points"),
+        ("point(path([1,2 \"a\"]) 0)", "`path` point 2 must be a vector like 4,2, got a string"),
+        ("point(path([5,5 5,5]) 0)", "`point` has nothing to sample: the path has no length"),
+        ("tangent(path([5,5 5,5]) 0)", "`tangent` has nothing to sample: the path has no length"),
+    ];
+    for (expr, message) in cases {
+        let ev = run_with(
+            &format!("@artboard 40x40\n@target t.png\ncircle 4 name:c\ngroup g\n  circle 4\ncircle 1 at:{expr}\n"),
+            &[],
+        );
+        assert_eq!(ev.diagnostics.len(), 1, "{expr}: {}", show(&ev.diagnostics));
+        let d = diag(&ev, "E0320");
+        assert_eq!(d.message, message, "{expr}");
+    }
+    let s = scene("@artboard 40x40\n@target t.png\ncircle 1 at:length(path([5,5 5,5])),0 name:d\neach p in points(path([5,5 5,5]))\n  circle 1 at:p name:v\n");
+    near(at(node(&s, "d")), (0.0, 0.0));
+    near(at(node(&s, "v.1")), (5.0, 5.0));
+}
+
+#[test]
+fn points_reports_a_point_a_warp_hides() {
+    let ev = run_with(
+        "@artboard 300x100\n@target t.png\nrect 200x20 at:150,50 warp:cylinder(40) name:b\neach q in points(path(@b))\n  circle 1 at:q\n",
+        &[],
+    );
+    assert_eq!(diag(&ev, "E0320").message, "`points` point 1 is hidden by a warp");
+}
+
 const ARM_LIB: &str = "\
 def hero_arm len:20 tone:#3366cc
   rect len,6 fill:tone name:bone
@@ -8405,4 +8565,13 @@ fn rot_takes_one_angle_and_reports_anything_else() {
         assert!(diag(&ev, "E0320").message.starts_with("`rot:` takes one angle"), "{src}: {}", show(&ev.diagnostics));
     }
     assert_eq!(paths(&scene("@artboard 20x20\n@target t.png\nrect 4x4 rot:.25turn name:r\n")), ["r"]);
+}
+
+#[test]
+fn a_def_takes_a_path_parameter() {
+    let src = "@artboard 40x40\n@target t.png\ndef ticks track:none(path) span:length(path([0,0 3,4]))\n  circle 1 at:length(track),span\n";
+    let ok = run_with(&format!("{src}ticks track:path([0,0 6,8])\n"), &[]);
+    assert!(ok.diagnostics.is_empty(), "{}", show(&ok.diagnostics));
+    let bad = run_with(&format!("{src}ticks track:4\n"), &[]);
+    assert!(bad.diagnostics.iter().any(|d| d.message.contains("a path")), "{}", show(&bad.diagnostics));
 }

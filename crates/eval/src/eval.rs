@@ -41,7 +41,7 @@ use crate::scope::{
 use crate::seed::Rng;
 use crate::targets::{MatrixValue, TargetJob, is_entry};
 use crate::types::{DeclRef, Signature, Ty, check_param, marker_value};
-use crate::value::{Arith, Col, Coord, Kind, Value, arith, equal, num};
+use crate::value::{Arith, Col, Coord, Kind, PathVal, Value, arith, equal, num};
 use crate::warp;
 
 /// An evaluation failure, turned into a [`Diagnostic`] at the statement that caused it.
@@ -5754,24 +5754,24 @@ impl<'a> Evaluator<'a> {
                 }
             }
         }
-        let one_shape = || {
-            let Some(Value::Ref(r)) = a.pos.first() else { return None };
-            let node = r.record.node.as_ref().filter(|_| r.artboard.is_none() && r.extent == Extent::Visual)?;
-            matches!(node.kind, NodeKind::Shape(_)).then_some((r, node))
-        };
-        let Some((r, node)) = one_shape() else {
-            let (msg, fix) = match a.pos.first() {
-                Some(Value::Ref(_)) => ("`edge` reads one shape's contour", "write `edge @belly from:.2 to:.6`, naming one shape"),
-                _ => ("`edge` needs a node reference", "write `edge @body from:.2 to:.6`"),
-            };
-            return Err(fail("E0320", msg).fix(fix));
-        };
+        let (r, node, shape) = one_shape(a.pos.first(), "edge", "edge @body from:.2 to:.6")?;
         self.outside_copy(r, sc)?;
-        let NodeKind::Shape(shape) = &node.kind else { unreachable!("one_shape checked the kind") };
         let [from, to] = fractions;
         let contour = geom::edge(&shape.geometry.to_sk(), r.record.seam, from, to);
         let placed = r.record.parent_world.inner_node(node).map_path(&contour, crate::scope::FLATTEN_TOL);
-        Ok(sc.world.unmap_path(&placed))
+        Ok(self.view(sc).unmap_path(&placed))
+    }
+
+    /// `path(@body)`: the shape's whole contour as a path value, with its positions measured in
+    /// the shape's own frame as `edge` measures them and its samples placed in the current local
+    /// frame as `edge` places its stretch.
+    pub(crate) fn path_of(&mut self, a: &[Value], sc: &Scope) -> R<Value> {
+        let (r, node, shape) = one_shape(a.first(), "path", "path(@body)")?;
+        self.outside_copy(r, sc)?;
+        let own = shape.geometry.to_sk();
+        let place = r.record.parent_world.inner_node(node).outer(crate::place::inverse(&self.view(sc).flat()));
+        let points = geom::vertices(&own).into_iter().flatten().collect();
+        Ok(Value::Path(Rc::new(PathVal { own, seam: r.record.seam, place, points })))
     }
 
     /// `at:@body.neck`: the anchor's position in the current local frame, the same point
@@ -6426,6 +6426,18 @@ pub(crate) fn numbers(v: &Value) -> Option<Vec<f64>> {
             (_, Some((a, b, c))) => Some(vec![a, b, c]),
             _ => v.items()?.iter().map(Value::num).collect(),
         },
+    }
+}
+
+fn one_shape<'a>(v: Option<&'a Value>, verb: &str, example: &str) -> R<(&'a RefVal, &'a Node, &'a Shape)> {
+    let Some(Value::Ref(r)) = v else {
+        return Err(fail("E0320", format!("`{verb}` needs a node reference")).fix(format!("write `{example}`")));
+    };
+    let node = r.record.node.as_ref().filter(|_| r.artboard.is_none() && r.extent == Extent::Visual);
+    match node {
+        Some(node @ Node { kind: NodeKind::Shape(shape), .. }) => Ok((r, node, shape)),
+        _ => Err(fail("E0320", format!("`{verb}` reads one shape's contour"))
+            .fix(format!("write `{example}`, naming one shape"))),
     }
 }
 
