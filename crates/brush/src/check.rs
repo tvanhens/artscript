@@ -67,6 +67,10 @@ pub(crate) struct Lower<'c> {
     lib: &'c dyn Library,
     src: &'c BrushSource<'c>,
     helpers: Vec<Helper<'c>>,
+    called: BTreeSet<&'c str>,
+    /// Set while lowering a helper nothing calls, over made-up number arguments: a type fault
+    /// there is an artifact of the guess and is dropped.
+    probing: bool,
     lets: Vec<String>,
     blocks: Vec<Vec<Stmt>>,
     next: u32,
@@ -86,6 +90,8 @@ impl<'c> Lower<'c> {
             lib,
             src,
             helpers: Vec::new(),
+            called: BTreeSet::new(),
+            probing: false,
             lets: Vec::new(),
             blocks: vec![Vec::new()],
             next: 0,
@@ -198,6 +204,9 @@ impl<'c> Lower<'c> {
                 }
             }
         }
+        if !saw_sksl {
+            self.probe_uncalled();
+        }
         if out.is_none() && !saw_sksl {
             self.site = self.at(self.src.span);
             self.report(
@@ -224,6 +233,25 @@ impl<'c> Lower<'c> {
         Ok(Shader::new(body, self.reads))
     }
 
+    /// Lowers each helper no line called, so its faults that need no types are reported too.
+    /// Its IR, reads, and salts are dropped.
+    fn probe_uncalled(&mut self) {
+        let (reads, salts) = (self.reads.clone(), self.salts.clone());
+        self.probing = true;
+        for h in self.helpers.clone() {
+            if self.called.contains(h.name) {
+                continue;
+            }
+            self.site = self.at(self.src.span);
+            let _ = self.block(|s| {
+                let vals = h.params.iter().map(|_| s.emit(Ty::Num, Op::Num(0.0))).collect();
+                s.enter(Callee::Helper(h), vals)
+            });
+        }
+        self.probing = false;
+        (self.reads, self.salts) = (reads, salts);
+    }
+
     fn report_at(&mut self, code: &'static str, at: Site, message: String, fix: Option<String>) -> Poisoned {
         self.diags.push(Diag { code, at, message, notes: Vec::new(), fix });
         Poisoned
@@ -235,6 +263,9 @@ impl<'c> Lower<'c> {
     }
 
     fn mismatch(&mut self, message: String, fix: Option<String>) -> Poisoned {
+        if self.probing {
+            return Poisoned;
+        }
         match self.stack.last() {
             Some(fr) => {
                 let note = format!("in fn `{}` ({}:{})", fr.name, fr.site.file, fr.site.span.line);
@@ -576,6 +607,13 @@ impl<'c> Lower<'c> {
         for a in args {
             vals.push(self.expr(a, env)?);
         }
+        self.enter(callee, vals)
+    }
+
+    fn enter(&mut self, callee: Callee<'c>, vals: Vec<Val>) -> Lowered {
+        if let Callee::Helper(h) = &callee {
+            self.called.insert(h.name);
+        }
         let (key, name, site, params, body, kind) = match &callee {
             Callee::Helper(h) => (
                 FnKey { file: self.src.file.to_string(), scope: Some(self.src.name.to_string()), name: h.name.to_string() },
@@ -637,7 +675,9 @@ impl<'c> Lower<'c> {
                 i += 1;
             }
         }
-        self.ck.types.insert(memo, r.ok().map(|v| v.ty));
+        if !self.probing {
+            self.ck.types.insert(memo, r.ok().map(|v| v.ty));
+        }
         r
     }
 

@@ -233,3 +233,29 @@ fn a_fn_over_the_loop_budget_in_one_brush_is_sound_in_another_outside_a_loop() {
     assert!(ds.iter().any(|d| d.message.contains("at most 256 items")), "{ds:#?}");
     assert!(got[1].1.is_ok(), "`b` runs 20 items: {:#?}", got[1].1.as_ref().err());
 }
+
+#[test]
+fn a_helper_nothing_calls_reports_its_type_independent_faults_once_at_its_line() {
+    let ds = errors(
+        "brush b\n  fn h(x) = x * zz\n  fn k(x) = m.nope + x\n  fn u(x) = polar(x 1)\n  fn c(x) = x + yy\n  fn g(p) = fbm(p)\n  fn w(x) = c(x) + v(x)\n  fn v(x) = x * vv\n  out m.paint.rgb * c(1)\n",
+    );
+    let got: Vec<(u32, &str)> = ds.iter().map(|d| (d.at.span.line, d.message.as_str())).collect();
+    assert_eq!(
+        got,
+        [
+            (2, "unknown name `zz`"),
+            (3, "`m` has no field `nope`"),
+            (4, "`polar` is not available in a body"),
+            (5, "unknown name `yy`"),
+            (8, "unknown name `vv`"),
+        ],
+        "{ds:#?}"
+    );
+}
+
+#[test]
+fn a_helper_is_callable_from_any_line_and_a_let_only_below_it() {
+    ok("brush b\n  let k = f(2)\n  fn f(x) = g(x)\n  fn g(x) = x*m.px\n  out m.paint.rgb*k\n");
+    let ds = errors("brush b\n  let k = j*2\n  let j = 1\n  out m.paint.rgb*k\n");
+    assert_eq!((ds[0].at.span.line, ds[0].message.as_str()), (2, "unknown name `j`"), "{ds:#?}");
+}
