@@ -3,25 +3,13 @@
 
 mod common;
 
-use std::sync::Arc;
 
-use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
+use ramose_brush::UniformValue;
 use ramose_geom::ToIr;
 use ramose_ir::{Cap, Fill, Join, Knot, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Stage, Stroke};
 use skia_safe::Path;
 use ramose_render::{Backend, gpu_available, render_png};
-use common::{color, frame, framed, pixel, red, scene, solid};
-
-fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
-    let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
-    let program = Program::assemble(MainKind::Ribbon, &params, body);
-    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    Stage {
-        program: Arc::new(program),
-        uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
-        seed,
-    }
-}
+use common::{IDENTITY, color, frame, framed, pixel, red, scene, solid, stage};
 
 fn knot(s: f32, half_width: f32, pressure: f32, angle: f32, tilt: f32) -> Knot {
     Knot { s, half_width, pressure, angle, tilt, velocity: 1.0 }
@@ -56,7 +44,6 @@ fn line(x0: f32, y: f32, x1: f32) -> Path {
     b.detach()
 }
 
-const IDENTITY: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n";
 const INK: [u8; 4] = [20, 40, 200, 255];
 
 fn ink() -> Paint {
@@ -65,7 +52,7 @@ fn ink() -> Paint {
 
 #[test]
 fn a_ribbon_covers_its_half_width_with_round_caps_and_renders_the_same_bytes_twice() {
-    let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, vec![knot(0.0, 4.0, 1.0, 0.0, 0.0), knot(60.0, 4.0, 1.0, 0.0, 0.0)], ink(), vec![stage(IDENTITY, &[], &[], 3)], 0.0);
+    let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, vec![knot(0.0, 4.0, 1.0, 0.0, 0.0), knot(60.0, 4.0, 1.0, 0.0, 0.0)], ink(), vec![stage(IDENTITY, &[], 3)], 0.0);
     let s = scene(80.0, 80.0, vec![node]);
     let png = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
     assert_eq!(png, render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap());
@@ -85,9 +72,9 @@ fn a_ribbon_covers_its_half_width_with_round_caps_and_renders_the_same_bytes_twi
 
 #[test]
 fn the_channels_s_and_half_width_reach_the_body_from_the_knots() {
-    let body = "float4 shade(Mark m) { return float4(m.pressure, m.angle / 360, m.u, cover(m.edge, m)); }\n";
+    let body = "brush b\n  out m.pressure,m.angle/360,m.s/m.size.x\n";
     let knots = vec![knot(0.0, 1.0, 0.0, 90.0, 0.0), knot(60.0, 4.0, 1.0, 90.0, 0.0)];
-    let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
+    let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], 1)], 0.0);
     let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let quarter = pixel(&png, 25, 40);
     let three_quarters = pixel(&png, 55, 40);
@@ -101,13 +88,8 @@ fn the_channels_s_and_half_width_reach_the_body_from_the_knots() {
 
 #[test]
 fn a_later_stage_reads_the_previous_stage_and_coverages_multiply() {
-    let first = stage("float4 shade(Mark m) { return float4(0, 0, 1, cover(m.edge, m) * .5); }\n", &[], &[], 1);
-    let second = stage(
-        "float4 shade(Mark m) { return float4(m.paint.rgb * k, 1); }\n",
-        &[("k", UniformKind::Float)],
-        &[("k", UniformValue::Float(0.5))],
-        2,
-    );
+    let first = stage("brush b\n  out 0,0,1 cover:cover(m.edge)*.5\n", &[], 1);
+    let second = stage("brush b k:1\n  out m.paint.rgb*k cover:1\n", &[UniformValue::Float(0.5)], 2);
     let knots = vec![knot(0.0, 4.0, 1.0, 0.0, 0.0), knot(60.0, 4.0, 1.0, 0.0, 0.0)];
     let node = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![first, second], 0.0);
     let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
@@ -119,10 +101,10 @@ fn a_later_stage_reads_the_previous_stage_and_coverages_multiply() {
 
 #[test]
 fn reach_lets_the_body_paint_past_the_edge_and_the_cut_follows_it() {
-    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 3, m)); }\n";
+    let body = "brush b\n  out m.paint.rgb cover:cover(m.edge+3)\n";
     let knots = vec![knot(0.0, 2.0, 1.0, 0.0, 0.0), knot(60.0, 2.0, 1.0, 0.0, 0.0)];
-    let with = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots.clone(), ink(), vec![stage(body, &[], &[], 1)], 3.0);
-    let without = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
+    let with = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots.clone(), ink(), vec![stage(body, &[], 1)], 3.0);
+    let without = ribbon(line(10.0, 40.0, 70.0), 60.0, false, knots, ink(), vec![stage(body, &[], 1)], 0.0);
     let with = render_png(&scene(80.0, 80.0, vec![with]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     let without = render_png(&scene(80.0, 80.0, vec![without]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&with, 40, 36), INK, "3.5 px off a 2 px half width is within reach 3");
@@ -134,7 +116,7 @@ fn reach_lets_the_body_paint_past_the_edge_and_the_cut_follows_it() {
 fn a_closed_contour_outlines_a_rect_and_leaves_its_middle_empty() {
     let rect = skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0);
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(160.0, 3.0, 1.0, 0.0, 0.0)];
-    let node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], 1)], 0.0);
     let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_eq!(pixel(&png, 40, 20), INK, "on the top edge");
     assert_eq!(pixel(&png, 20, 40), INK, "on the left edge");
@@ -147,14 +129,10 @@ fn a_closed_contour_outlines_a_rect_and_leaves_its_middle_empty() {
 
 #[test]
 fn a_brushed_fill_and_a_brushed_stroke_share_one_node() {
-    let area = {
-        let program = Program::assemble(MainKind::Area, &[], IDENTITY);
-        ramose_brush::check(&program).unwrap();
-        Stage { program: Arc::new(program), uniforms: vec![], seed: 5 }
-    };
+    let area = stage(IDENTITY, &[], 5);
     let rect = skia_safe::Rect::from_xywh(20.0, 20.0, 40.0, 40.0);
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(160.0, 3.0, 1.0, 0.0, 0.0)];
-    let mut node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let mut node = ribbon(Path::rect(rect, None), 160.0, true, knots, ink(), vec![stage(IDENTITY, &[], 1)], 0.0);
     if let NodeKind::Shape(shape) = &mut node.kind {
         shape.fill = Some(Fill { paint: Paint::Solid(red()), marks: vec![ramose_ir::AreaMark { stage: area, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }] });
     }
@@ -168,14 +146,14 @@ fn gpu_output_is_within_a_few_levels_of_cpu_and_repeatable() {
     if !gpu_available() {
         return;
     }
-    let body = "float4 shade(Mark m) {\n  float n = fbm(float2(m.s / 9, m.v * 3) + seeded(m), 3);\n  return float4(m.paint.rgb * (.7 + .6 * n), cover(m.edge - n * 2, m) * (.5 + .5 * m.pressure));\n}\n";
+    let body = "brush b\n  let n = fbm(m.s/9,m.d/(m.size.y/2)*3 oct:3)\n  out m.paint.rgb*(.7+.6*n) cover:cover(m.edge-n*2)*(.5+.5*m.pressure)\n";
     let mut b = skia_safe::PathBuilder::new();
     b.move_to((10.0, 20.0));
     b.cubic_to((40.0, 70.0), (50.0, 10.0), (70.0, 60.0));
     let path = b.detach();
     let len = skia_safe::ContourMeasureIter::new(&path, false, None).next().unwrap().length();
     let knots = vec![knot(0.0, 2.0, 0.3, 0.0, 0.0), knot(len * 0.5, 6.0, 1.0, 0.0, 0.0), knot(len, 3.0, 0.6, 0.0, 0.0)];
-    let node = ribbon(path, len, false, knots, ink(), vec![stage(body, &[], &[], 9)], 2.0);
+    let node = ribbon(path, len, false, knots, ink(), vec![stage(body, &[], 9)], 2.0);
     let s = scene(80.0, 80.0, vec![node]);
     let cpu = render_png(&s, &framed(&s, 1.0), Backend::Cpu).unwrap();
     let gpu = render_png(&s, &framed(&s, 1.0), Backend::Gpu).unwrap();
@@ -195,7 +173,7 @@ fn gpu_output_is_within_a_few_levels_of_cpu_and_repeatable() {
     assert!(worst <= 16, "worst channel difference {worst}");
 }
 
-const NORMAL_AS_COLOR: &str = "float4 shade(Mark m) { return float4(m.normal * .5 + .5, 0, cover(m.edge, m)); }\n";
+const NORMAL_AS_COLOR: &str = "brush b\n  out m.edge_normal*.5+.5,0\n";
 
 fn assert_normal(png: &[u8], at: (i32, i32), want: [f32; 2]) {
     let p = pixel(png, at.0, at.1);
@@ -208,7 +186,7 @@ fn assert_normal(png: &[u8], at: (i32, i32), want: [f32; 2]) {
 fn the_normal_points_away_from_the_spine_whatever_the_taper() {
     for hw_end in [6.0, 10.0] {
         let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, hw_end, 1.0, 0.0, 0.0)];
-        let node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
+        let node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], 1)], 0.0);
         let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
         assert_normal(&png, (40, 36), [0.0, -1.0]);
         assert_normal(&png, (40, 45), [0.0, 1.0]);
@@ -221,7 +199,7 @@ fn the_normal_points_away_from_the_spine_whatever_the_taper() {
 #[test]
 fn the_normal_is_in_the_local_frame_of_a_rotated_stroke() {
     let knots = vec![knot(0.0, 6.0, 1.0, 0.0, 0.0), knot(60.0, 6.0, 1.0, 0.0, 0.0)];
-    let mut node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], &[], 1)], 0.0);
+    let mut node = ribbon(line(10.0, 40.5, 70.0), 60.0, false, knots, ink(), vec![stage(NORMAL_AS_COLOR, &[], 1)], 0.0);
     node.transform = skia_safe::Matrix::rotate_deg_pivot(90.0, (40.0, 40.0)).to_ir();
     let png = render_png(&scene(80.0, 80.0, vec![node]), &frame(80.0, 80.0, 1.0), Backend::Cpu).unwrap();
     assert_normal(&png, (43, 40), [0.0, -1.0]);
@@ -237,7 +215,7 @@ fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
     b.line_to((190.0, 36.0));
     b.line_to((10.0, 36.0));
     let knots = vec![knot(0.0, 12.0, 1.0, 0.0, 0.0), knot(180.0, 12.0, 1.0, 0.0, 0.0), knot(186.0, 1.0, 1.0, 0.0, 0.0), knot(366.0, 1.0, 1.0, 0.0, 0.0)];
-    let node = ribbon(b.detach(), 366.0, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let node = ribbon(b.detach(), 366.0, false, knots, ink(), vec![stage(IDENTITY, &[], 1)], 0.0);
     let png = render_png(&scene(200.0, 60.0, vec![node]), &frame(200.0, 60.0, 1.0), Backend::Cpu).unwrap();
     for y in 19..42 {
         assert_eq!(pixel(&png, 100, y), INK, "y {y}: inside the wide leg's half width of 12, whichever leg is nearer");
@@ -248,9 +226,9 @@ fn a_thin_leg_of_the_spine_does_not_carve_a_wide_leg_it_passes_near() {
 
 #[test]
 fn s_stays_exact_80000_px_along_a_stroke() {
-    let body = "float4 shade(Mark m) { return float4(fract(m.s / 128), 0, 0, cover(m.edge, m)); }\n";
+    let body = "brush b\n  out fract(m.s/128),0,0\n";
     let knots = vec![knot(0.0, 3.0, 1.0, 0.0, 0.0), knot(80128.0, 3.0, 1.0, 0.0, 0.0)];
-    let node = ribbon(line(-80000.0, 20.0, 128.0), 80128.0, false, knots, ink(), vec![stage(body, &[], &[], 1)], 0.0);
+    let node = ribbon(line(-80000.0, 20.0, 128.0), 80128.0, false, knots, ink(), vec![stage(body, &[], 1)], 0.0);
     let png = render_png(&scene(128.0, 40.0, vec![node]), &frame(128.0, 40.0, 1.0), Backend::Cpu).unwrap();
     for x in 0..127 {
         let want = (x as f32 + 0.5) / 128.0 * 255.0;
@@ -269,7 +247,7 @@ fn a_strip_that_holds_more_length_than_the_field_encodes_is_an_error() {
     let path = b.detach();
     let len = skia_safe::ContourMeasureIter::new(&path, false, None).next().unwrap().length();
     let knots = vec![knot(0.0, 1.0, 1.0, 0.0, 0.0), knot(len, 1.0, 1.0, 0.0, 0.0)];
-    let node = ribbon(path, len, false, knots, ink(), vec![stage(IDENTITY, &[], &[], 1)], 0.0);
+    let node = ribbon(path, len, false, knots, ink(), vec![stage(IDENTITY, &[], 1)], 0.0);
     let err = render_png(&scene(128.0, 40.0, vec![node]), &frame(128.0, 40.0, 1.0), Backend::Cpu).unwrap_err();
     let message = format!("{err:?}");
     assert!(message.contains("more than the ribbon field encodes"), "{message}");

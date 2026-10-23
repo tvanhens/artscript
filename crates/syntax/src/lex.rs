@@ -35,9 +35,8 @@ pub(crate) enum Tok {
     Size(SizePart, SizePart, Option<SizePart>),
     Hex(String),
     Str(String),
-    /// A `"""..."""` string: the dedented text and where its line 1, column 1 sits in the file.
-    /// Text, then where body line 1 and body line 2 start in the file.
-    Raw(String, Span, Span),
+    /// A `"""..."""` string, dedented.
+    Raw(String),
     Ref(Vec<String>),
     Plus,
     Minus,
@@ -642,24 +641,14 @@ impl<'a> Scanner<'a> {
                 self.bump();
                 self.bump();
                 self.bump();
-                let (text, indent, newline_first) = dedent_raw(raw);
-                // Without a leading newline the first body line starts after the delimiter and
-                // later lines at column 1; `fmt` writes the newline-first form, where every
-                // body line starts at the common indent.
-                let rest = Span { line: span.line + 1 + u32::from(newline_first), col: indent as u32 + 1 };
-                let body = if newline_first {
-                    Span { line: span.line + 1, col: rest.col }
-                } else {
-                    Span { line: span.line, col: span.col + 3 + indent as u32 }
-                };
-                Tok::Raw(text, body, rest)
+                Tok::Raw(dedent_raw(raw))
             } else {
                 self.errors.push(
                     Diagnostic::error("E0101", span, "unterminated raw string")
                         .with_fix("close the raw string with `\"\"\"`"),
                 );
                 self.i = self.src.len();
-                Tok::Raw(String::new(), span, span)
+                Tok::Raw(String::new())
             }
         } else {
             self.bump();
@@ -735,14 +724,9 @@ fn is_ident_cont(c: char) -> bool {
     c.is_ascii_alphanumeric() || c == '_'
 }
 
-/// The body without its leading newline, closer indent, and common indent, plus that indent
-/// and whether the leading newline was there.
-fn dedent_raw(s: &str) -> (String, usize, bool) {
-    let mut body = s;
-    let newline_first = body.starts_with('\n');
-    if let Some(rest) = body.strip_prefix('\n') {
-        body = rest;
-    }
+/// The body without its leading newline, closer indent, and common indent.
+fn dedent_raw(s: &str) -> String {
+    let mut body = s.strip_prefix('\n').unwrap_or(s);
     // Spaces between the last newline and the closing delimiter are the closer's indent.
     if let Some(nl) = body.rfind('\n')
         && body[nl + 1..].chars().all(|c| c == ' ')
@@ -750,7 +734,7 @@ fn dedent_raw(s: &str) -> (String, usize, bool) {
         body = &body[..nl];
     }
     if body.is_empty() {
-        return (String::new(), 0, newline_first);
+        return String::new();
     }
     let lines: Vec<&str> = body.split('\n').collect();
     let min = lines
@@ -759,7 +743,7 @@ fn dedent_raw(s: &str) -> (String, usize, bool) {
         .map(|l| l.chars().take_while(|c| *c == ' ').count())
         .min()
         .unwrap_or(0);
-    let text = lines
+    lines
         .iter()
         .map(|l| {
             if l.is_empty() {
@@ -769,6 +753,5 @@ fn dedent_raw(s: &str) -> (String, usize, bool) {
             }
         })
         .collect::<Vec<_>>()
-        .join("\n");
-    (text, min, newline_first)
+        .join("\n")
 }

@@ -21,7 +21,7 @@ When the user runs `$ramose:ramose` in Codex or `/ramose` in Claude Code with a 
    - `shapes` the shape table, contour position, keys any node takes, paint keys (fill, stroke, taper, blur, jitter, brush, stamp, pressure, angle, tilt)
    - `structure` layer and group, clipping by nesting, inside/outside, mask, fx, finish
    - `fields` noise fields, fbm, ridged, field fills and masks, seeds
-   - `brushes` brush declarations, SkSL bodies, the Mark, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
+   - `brushes` brush declarations, the body language, the sample m, brush: on fills, strokes and outlines, channels, stacks, seeds, std/brushes
    - `stamps` stamp declarations, the block and its bound names, spacing and count, stamp: on a node, sets and references, seeds, std/stamps
    - `warp` corners and cylinder, stacks, order of application, the warped box, raster-only
    - `components` def and entry parameters, size box, slots, patches, let/if/each, style

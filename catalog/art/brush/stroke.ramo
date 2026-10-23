@@ -29,13 +29,9 @@ use std/brushes { bristle dry }
 
 # Stripes 3 units apart, rotated by the angle channel, fading as tilt rises.
 brush hatch
-  sksl """
-  float4 shade(Mark m) {
-    float2 q = rot(m.uv, m.angle);
-    float line = step(.5, fract(q.y / 3));
-    return float4(m.paint.rgb, cover(m.edge, m) * mix(.2, 1, line) * mix(1, .25, m.tilt));
-  }
-  """
+  let q = rot(m.uv m.angle)
+  let stripe = step(.5 fract(q.y/3))
+  out m.paint.rgb cover:cover(m.edge)*lerp(.2 1 stripe)*lerp(1 .25 m.tilt)
 
 each i, s in [.3 .6 .95]
   curve 12,20+i*32 90,10+i*32 170,30+i*32 244,20+i*32 stroke:p.ink,8 brush:bristle(strength:s) name:strength

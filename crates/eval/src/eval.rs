@@ -466,6 +466,7 @@ pub(crate) struct Evaluator<'a> {
     style_hits: Vec<StyleHit>,
     pub(crate) accept_family: bool,
     pub(crate) active_fns: Vec<Rc<FnDef>>,
+    pub(crate) shading: ramose_brush::Checker,
     patch_order: u32,
     unstable_calls: BTreeSet<(String, u32, u32)>,
     pub time: f64,
@@ -1033,6 +1034,7 @@ impl<'a> Evaluator<'a> {
             parsed: HashMap::new(),
             loading: Vec::new(),
             diags: Vec::new(),
+            shading: ramose_brush::Checker::default(),
             artboard: job.artboard.rect().to_sk(),
             background: None,
             check: None,
@@ -1241,6 +1243,11 @@ impl<'a> Evaluator<'a> {
             }
         }
         for item in &parsed.items {
+            if let Item::Decl(Decl { kind: DeclKind::Brush { .. }, .. }) = item {
+                // A body calls only the fns above it, so a cycle among them is reported and its
+                // fns are lost before the body is checked, and the body's call stays quiet.
+                self.check_fn_cycles(&module, &parsed);
+            }
             if let Err(f) = self.declare(&module, item, entry) {
                 self.report(f, file, item.span(), "");
             }
@@ -1444,9 +1451,7 @@ impl<'a> Evaluator<'a> {
                 module.anims.borrow_mut().insert(name.clone(), anim);
                 Ok(())
             }
-            DeclKind::Brush { name, params, sksl } => {
-                self.declare_brush(module, name, params, sksl.as_ref(), decl.span)
-            }
+            DeclKind::Brush { name, params, body } => self.declare_brush(module, name, params, body, decl.span),
             DeclKind::Stamp { name, params, body } => self.declare_stamp(module, name, params, body, decl.span),
             DeclKind::Light { .. } => Err(
                 fail("E0390", "light (Phase 2) is not yet implemented in v0.1")

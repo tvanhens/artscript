@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use ramose_syntax::ast::{
-    BinOp, CheckKind, DeclKind, Draw, DrawBody, DrawItem, Expr, File, Item, Mask, SceneKind, Span,
+    BinOp, BodyLineKind, CheckKind, DeclKind, Draw, DrawBody, DrawItem, Expr, File, Item, Mask, SceneKind, Span,
     UnOp,
 };
 use ramose_syntax::{format, format_source, parse};
@@ -117,7 +117,7 @@ fn doc_fixtures_parse_and_round_trip() {
         ("mvp_eye.ramo", "\"palette/dusk\"", "\"fff\""),
         ("mvp_hero.ramo", "\"chars/hero.svg\"", "\"arm_r\""),
         ("mvp_water.ramo", "\"water\"", "\"ripple\""),
-        ("mvp_brush.ramo", "\"scuff\"", "float4 shade"),
+        ("mvp_brush.ramo", "\"scuff\"", "\"cover\""),
         ("mvp_light.ramo", "\"sun\"", "\"ambient\""),
         ("mvp_body.ramo", "\"body\"", "\"torso\""),
         ("mvp_tunic.ramo", "\"tunic\"", "\"torso\""),
@@ -1375,18 +1375,53 @@ fn fmt_keeps_the_parens_the_parser_needs() {
 }
 
 #[test]
-fn a_brush_keeps_where_its_body_starts() {
-    let src = "brush dry strength:.5 dir:0\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return m.paint;\n    }\n  \"\"\"\n";
+fn a_brush_body_is_let_fn_and_out_lines_and_round_trips() {
+    let src = "brush dry strength:.5 dir:0\n  fn run(row hair) = fract(m.s/(m.size.x*(.5+.9*hash(row,3.7)))+hair)\n  let band = 16*scale\n  let hit = max([each y in -1..2 -> hash2(floor(m.uv)+(0,y)).x])\n  out m.paint.rgb*band cover:cover(m.edge)*hit\n";
     let file = must_parse(src);
-    let Some(DeclKind::Brush { name, params, sksl: Some(block) }) = file.decls().next().map(|d| &d.kind) else {
+    let Some(DeclKind::Brush { name, params, body }) = file.decls().next().map(|d| &d.kind) else {
         panic!("{file:?}");
     };
     assert_eq!(name, "dry");
     assert_eq!(params.len(), 2);
-    assert_eq!(block.span, Span { line: 2, col: 3 });
-    assert_eq!(block.body, Span { line: 3, col: 5 });
-    assert_eq!(block.text, "float4 shade(Mark m) {\n  return m.paint;\n}");
+    assert_eq!(body.len(), 4);
+    assert!(matches!(&body[0].kind, BodyLineKind::Fn { name, params, .. } if name == "run" && params == &["row", "hair"]));
+    assert_eq!(body[0].span, Span { line: 2, col: 3 });
+    assert!(matches!(&body[1].kind, BodyLineKind::Let { name, .. } if name == "band"));
+    assert!(matches!(&body[2].kind, BodyLineKind::Let { value: Expr::Call { func, .. }, .. } if func == "max"));
+    let BodyLineKind::Out { rgb: Expr::Binary(BinOp::Mul, ..), cover: Some(cover) } = &body[3].kind else {
+        panic!("{:?}", body[3]);
+    };
+    assert_eq!((cover.key.as_str(), cover.span), ("cover", Span { line: 5, col: 24 }));
+    assert_eq!(format(&file), src);
     round_trip_source(src);
+    let src = "brush plain\n  out m.paint.rgb\n";
+    assert_eq!(format(&must_parse(src)), src);
+}
+
+#[test]
+fn a_leftover_sksl_block_parses_and_prints_back() {
+    let src = "brush dry strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return m.paint;\n    }\n  \"\"\"\n";
+    let file = must_parse(src);
+    let Some(DeclKind::Brush { body, .. }) = file.decls().next().map(|d| &d.kind) else {
+        panic!("{file:?}");
+    };
+    assert!(matches!(&body[0].kind, BodyLineKind::Sksl { text } if text == "float4 shade(Mark m) {\n  return m.paint;\n}"));
+    assert_eq!(body[0].span, Span { line: 2, col: 3 });
+    round_trip_source(src);
+}
+
+#[test]
+fn a_brush_body_rejects_other_lines_at_their_own_span() {
+    let e = one_error("brush b\n  rect 4\n  out m.paint.rgb\n");
+    assert_eq!((e.code.as_str(), e.span.line), ("E0101", 2), "{e:?}");
+    assert!(e.message.contains("`let`, `fn`, and `out`"), "{e:?}");
+    let e = one_error("brush b\n  out m.paint.rgb 1\n");
+    assert!(e.message.contains("one rgb value"), "{e:?}");
+    let e = one_error("brush b\n  out m.paint.rgb alpha:1\n");
+    assert!(e.message.contains("takes no `alpha:`"), "{e:?}");
+    assert_eq!((e.span.line, e.span.col), (2, 19), "{e:?}");
+    let e = one_error("brush b\n  let k = 1\n    rect 4\n  out m.paint.rgb\n");
+    assert_eq!(e.span.line, 3, "{e:?}");
 }
 
 #[test]

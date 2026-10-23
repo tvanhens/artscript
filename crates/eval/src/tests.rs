@@ -720,11 +720,13 @@ fn atan2_is_degrees_and_mod_is_floored() {
         "@artboard 400x40\n@target t.png\n\
          circle 1 at:atan2(1 1),mod(-1 3) name:q\n\
          circle 1 at:atan2(0 -1),mod(-7 4) name:h\n\
-         circle 1 at:mod(7 4),mod(5.5 2) name:p\n",
+         circle 1 at:mod(7 4),mod(5.5 2) name:p\n\
+         circle 1 at:mod(5 -3)+10,mod(-5 -3)+10 name:n\n",
     );
     near(at(node(&s, "q")), (45.0, 2.0));
     near(at(node(&s, "h")), (180.0, 1.0));
     near(at(node(&s, "p")), (3.0, 1.5));
+    near(at(node(&s, "n")), (9.0, 8.0));
 }
 
 #[test]
@@ -7127,7 +7129,7 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
 
 #[test]
 fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
-    let brush = ("lib/brushes.ramo", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
+    let brush = ("lib/brushes.ramo", "brush dry\n  out m.paint.rgb\n");
     let stamp = ("lib/garden.ramo", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
     let blot = ("lib/d.ramo", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
     let none: &[(&str, &str)] = &[];
@@ -8574,4 +8576,9 @@ fn a_def_takes_a_path_parameter() {
     assert!(ok.diagnostics.is_empty(), "{}", show(&ok.diagnostics));
     let bad = run_with(&format!("{src}ticks track:4\n"), &[]);
     assert!(bad.diagnostics.iter().any(|d| d.message.contains("a path")), "{}", show(&bad.diagnostics));
+}
+
+#[test]
+fn a_default_that_maps_a_vector_through_unary_math_takes_a_vector() {
+    scene("@artboard 40x40\n@target t.png\ndef dot off:floor(10.5,20.5) r:rad(90)\n  circle r*4 at:off\ndot off:(30,30) r:1\ndot\n");
 }

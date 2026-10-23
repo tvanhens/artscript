@@ -1,306 +1,32 @@
-//! The brush shading contract, in one place: the SkSL prelude every brush body is compiled
-//! with, the `Mark` struct and helpers an author may use, source assembly with a line map back
-//! to the author's body, compile checking, the compiled-effect memo, and the seed reduction.
-//!
-//! A body is assembled under two frames. The shader frame runs the stage as a runtime shader
-//! over the slot's field, with `m.below` transparent. The blender frame runs it as a runtime
-//! blender whose `dst` is the backdrop, so `m.below` is what is already drawn under the pixel;
-//! render uses it for every stage of a stack in which some stage reads `below`. The paint shader
-//! of such a draw is [`ENCODE`], which writes the device pixel into the color for the frame to
-//! decode, since a blender has no coordinate of its own.
-//!
-//! Eval validates a brush declaration through [`check`] and [`check_blender`], and render runs
-//! it through [`effect`] or [`blender`]. All go through [`Program::assemble`], so the text they
-//! see is identical.
-//!
-//! The hash, noise, `psin`, dither and 8-bit snap in the prelude are the CPU/GPU parity
-//! contract: every intermediate of the lattice hash is an integer below 2^24, remainders are
-//! divide-free, trig never calls the GPU's fast `sin`, and the output is snapped to 8-bit levels
-//! after an in-shader dither so the two backends agree on whole levels. Do not edit those
-//! functions without rerunning the parity comparison.
+//! The brush shading language, in one crate: its vocabulary ([`lang`]), the checker that turns a
+//! parsed body into the typed IR ([`ir`]), the SkSL backend that prints the IR under the shader
+//! and blender frames, and the seed reduction. Eval checks a `brush` declaration through
+//! [`Checker::check`] and, with the `skia` feature, compiles it once through [`verify`]. Render
+//! compiles the same text through [`effect`] and binds every body uniform through
+//! [`Shader::bind`].
 
+use std::collections::{BTreeMap, BTreeSet};
+use std::rc::Rc;
 use std::sync::Arc;
+
+use ramose_syntax::ast::{BodyLine, Expr, Span};
+
+mod check;
+pub mod ir;
+pub mod lang;
+mod sksl;
 
 #[cfg(feature = "skia")]
 mod compile;
 #[cfg(feature = "skia")]
-pub use compile::{blender, check, check_blender, effect, rejects_param_name};
+pub use compile::{effect, verify};
+pub use sksl::{DECODE, ENCODE, HASH};
 
-/// The exact lattice hash: `hcore` takes an integer point and returns 0..1, bit-identical on
-/// CPU and GPU. Render dithers content paints with it, so both dithers share one hash.
-macro_rules! hash_sksl {
-    () => {
-        r#"// Exact hashes: the input is quantized to 1/16 and every intermediate is an integer below
-// 2.62e6 (1e5 in mod289). A remainder by multiplying with a rounded reciprocal plus half a step stays exact
-// in that range under any rounding mode or FMA, and costs no divide or branch.
-float modh(float x) { return x - 1613 * floor(x * 0.000619962802 + 0.000309981401); }
-float3 mod289(float3 x) { return x - 289 * floor(x * 0.00346020761 + 0.00173010381); }
-float hcore(float2 q) {
-    float a = modh(q.x); float b = modh(q.y);
-    float t = modh(a * 1597 + b);
-    t = modh(t * t + a + 11);
-    t = modh(t * t + b + 7);
-    t = modh(t * t + a * 3 + 1);
-    return t / 1613;
-}
-"#
-    };
-}
-
-pub const HASH: &str = hash_sksl!();
-
-/// Reads the device pixel back out of the color [`ENCODE`] wrote into `src`.
-macro_rules! decode_sksl {
-    () => {
-        r#"// The device pixel a blender frame runs at, decoded from the color `ENCODE` wrote into `src`.
-float2 u_decode(half4 s) {
-    float3 v = floor(float3(s.rgb) * 2048 + 0.5);
-    float hx = floor(v.z / 32);
-    return float2(v.x + hx * 2048, v.y + (v.z - hx * 32) * 2048) + 0.5;
-}
-"#
-    };
-}
-
-/// The paint shader of a blender-frame draw. It writes the device pixel into the color in
-/// 11-bit steps, which are exact in half precision, with alpha 1 so it stays a valid
-/// premultiplied color, and `u_decode` in the prelude reads it back.
-pub const ENCODE: &str = "half4 main(float2 c) { float2 q = floor(c); float2 hi = floor(q / 2048); float2 lo = q - hi * 2048; return half4(lo.x / 2048, lo.y / 2048, (hi.x * 32 + hi.y) / 2048, 1); }\n";
-
-/// The decoder, for a blender outside this crate that binds the same paint shader.
-pub const DECODE: &str = decode_sksl!();
-
-/// Uniforms the runtime binds, `struct Mark`, and the helpers. Author bodies follow this text.
-/// `u_prev` is a shader under the shader frame and a blender under the blender frame. That one
-/// line is the only difference, so both preludes have the same line count and one line map
-/// serves both.
-macro_rules! prelude_sksl {
-    ($prev:literal) => {
-        concat!(
-            "\nuniform ",
-            $prev,
-            r#" u_prev;
-uniform shader u_sdf;
-uniform float3x3 u_dtl;
-uniform float4 u_paint;
-uniform float u_base;
-uniform float u_last;
-uniform float u_seed;
-uniform float2 u_seedo;
-uniform float u_px;
-uniform float2 u_sdfo;
-uniform float4 u_frame;
-uniform float3 u_dir;
-uniform shader u_field;
-uniform shader u_chan;
-uniform shader u_norm;
-uniform float2 u_fieldo;
-uniform float2 u_rib;
-uniform float u_s0;
-uniform float2 u_dito;
-
-struct Mark {
-    float2 p; float2 dev; float u; float s; float v; float d; float len; float width;
-    float pressure; float angle; float tilt; float velocity;
-    float edge; float2 normal; float2 uv; float seed; float4 paint; float4 below; float px;
-};
-
-"#,
-            hash_sksl!(),
-            r#"float hash12(float2 p) { return hcore(floor(p * 16 + 0.5)); }
-float2 hash22(float2 p) {
-    float2 q = floor(p * 16 + 0.5);
-    return float2(hcore(q), hcore(q + float2(1373, 2741)));
-}
-float vnoise(float2 p) {
-    float2 i = floor(p); float2 f = fract(p); float2 w = f * f * (3 - 2 * f);
-    return mix(mix(hash12(i), hash12(i + float2(1, 0)), w.x),
-               mix(hash12(i + float2(0, 1)), hash12(i + float2(1, 1)), w.x), w.y);
-}
-// x*34+1 and the product are reduced separately so every remainder input stays below 1e5.
-float3 permute3(float3 x) { x = mod289(x); return mod289(mod289(x * 34 + 1) * x); }
-float simplex(float2 v) {
-    const float4 C = float4(0.211324865405187, 0.366025403784439, -0.577350269189626, 0.024390243902439);
-    float2 i = floor(v + dot(v, C.yy));
-    float2 x0 = v - i + dot(i, C.xx);
-    float2 i1 = (x0.x > x0.y) ? float2(1.0, 0.0) : float2(0.0, 1.0);
-    float4 x12 = x0.xyxy + C.xxzz;
-    x12.xy -= i1;
-    i = mod289(i.xyy).xy;
-    float3 p = permute3(permute3(i.y + float3(0.0, i1.y, 1.0)) + i.x + float3(0.0, i1.x, 1.0));
-    float3 m = max(0.5 - float3(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), 0.0);
-    m = m * m; m = m * m;
-    float3 x = 2.0 * fract(p * C.www) - 1.0;
-    float3 h = abs(x) - 0.5;
-    float3 ox = floor(x + 0.5);
-    float3 a0 = x - ox;
-    m *= 1.79284291400159 - 0.85373472095314 * (a0 * a0 + h * h);
-    float3 g;
-    g.x = a0.x * x0.x + h.x * x0.y;
-    g.yz = a0.yz * x12.xz + h.yz * x12.yw;
-    return 0.5 + 65.0 * dot(m, g);
-}
-float worley(float2 p) {
-    float2 i = floor(p); float2 f = fract(p); float d = 8.0;
-    for (int y = -1; y <= 1; y++) {
-        for (int x = -1; x <= 1; x++) {
-            float2 o = float2(float(x), float(y));
-            float2 r = o + hash22(i + o) - f;
-            d = min(d, dot(r, r));
-        }
-    }
-    return sqrt(d);
-}
-float fbm(float2 p, float oct) {
-    float s = 0; float a = .5; float n = 0;
-    for (int i = 0; i < 8; i++) {
-        if (float(i) >= oct) { break; }
-        s += a * simplex(p); n += a; p = p * 2.03 + float2(17.1, 9.2); a *= .5;
-    }
-    return s / n;
-}
-// Polynomial sine on a reduced angle, so the GPU's fast sin/cos is never used.
-float psin(float turns) {
-    float t = turns - floor(turns + 0.5);
-    t = t > 0.25 ? 0.5 - t : (t < -0.25 ? -0.5 - t : t);
-    float x = t * 6.283185307; float x2 = x * x;
-    return x * (1 + x2 * (-1.0 / 6 + x2 * (1.0 / 120 + x2 * (-1.0 / 5040 + x2 * (1.0 / 362880 - x2 / 39916800)))));
-}
-float2 rot(float2 p, float deg) {
-    float tr = deg * (1.0 / 360); float c = psin(tr + 0.25); float s = psin(tr);
-    return float2(c * p.x - s * p.y, s * p.x + c * p.y);
-}
-float2 seeded(Mark m) { return u_seedo; }
-// Signed distance (local units, + inside) to coverage, antialiased over one pixel.
-float cover(float d, Mark m) { return saturate(d / m.px + 0.5); }
-"#,
-            decode_sksl!(),
-            r#"// The stage's output: coverage times the paint's alpha, premultiplied, dithered on the last
-// stage only, and snapped to 8-bit levels.
-half4 u_pack(float4 o, Mark m, float2 c) {
-    float k = saturate(o.a) * m.paint.a;
-    float3 rgb = o.rgb;
-    if (u_last > 0.5) {
-        // Exact per-pixel dither: Skia's CPU and GPU dithers differ, this one is bit-identical.
-        // It is anchored at `u_dito`, the device pixel of local (0,0), so a copy dithers alike.
-        rgb += (hcore(floor(c) - u_dito) - 0.5) / 255;
-    }
-    // Snap to 8-bit levels so the GPU's half-float color path cannot round across a tie.
-    float4 lv = floor(float4(saturate(rgb) * k, k) * 255 + 0.5);
-    return half4(lv / 255);
-}
-"#
-        )
-    };
-}
-
-const PRELUDE: &str = prelude_sksl!("shader");
-const PRELUDE_BLEND: &str = prelude_sksl!("blender");
-
-/// The shader frame's tail, after the author's body so it can call `shade`. `u_base` set reads
-/// the base paint (or the previous stage) from `u_prev`, snapped to 8-bit levels first so a
-/// half-float child read gives the same levels as a float one. A shader has no backdrop, so
-/// `m.below` is transparent.
-const FINISH: &str = r#"
-half4 u_finish(Mark m, float2 c) {
-    m.seed = u_seed; m.px = u_px;
-    m.paint = u_paint; m.below = float4(0);
-    if (u_base > 0.5) {
-        float4 pv = floor(float4(u_prev.eval(c)) * 255 + 0.5);
-        m.paint = float4(pv.a > 0 ? pv.rgb / pv.a : float3(0), pv.a / 255);
-    }
-    return u_pack(shade(m), m, c);
-}
-"#;
-
-/// The blender frame's tail. `dst` is the backdrop and is the same for every stage of a stack:
-/// the previous stage is a child blender evaluated over it, and `m.below` is it as straight
-/// rgba at 8-bit levels. The output is the stage's own premultiplied color, not composited.
-const FINISH_BLEND: &str = r#"
-half4 u_finish(Mark m, float2 c, half4 src, half4 dst) {
-    m.seed = u_seed; m.px = u_px;
-    m.paint = u_paint;
-    if (u_base > 0.5) {
-        float4 pv = floor(float4(u_prev.eval(src, dst)) * 255 + 0.5);
-        m.paint = float4(pv.a > 0 ? pv.rgb / pv.a : float3(0), pv.a / 255);
-    }
-    float4 bv = floor(float4(dst) * 255 + 0.5);
-    m.below = float4(bv.a > 0 ? bv.rgb / bv.a : float3(0), bv.a / 255);
-    return u_pack(shade(m), m, c);
-}
-"#;
-
-/// The Mark of an area body. The signed distance comes from a device-aligned field, one texel
-/// per device pixel, so `u_sdf.eval(c - u_sdfo)` is an exact texel read on both backends.
-const AREA_MARK: &str = r#"
-Mark u_mark(float2 c) {
-    float2 p = (u_dtl * float3(c, 1)).xy;
-    float4 e = u_sdf.eval(c - u_sdfo);
-    Mark m;
-    m.dev = c; m.p = p;
-    float2 q0 = p - u_frame.xy;
-    float2 r = float2(u_dir.y * q0.x + u_dir.z * q0.y, -u_dir.z * q0.x + u_dir.y * q0.y);
-    m.uv = r; m.s = r.x + u_frame.z * .5; m.d = r.y;
-    m.len = u_frame.z; m.width = u_frame.w; m.u = m.s / m.len; m.v = r.y / (m.width * .5);
-    m.pressure = 1; m.angle = u_dir.x; m.tilt = 0; m.velocity = 1;
-    m.edge = e.r * u_px; m.normal = e.gb;
-    return m;
-}
-"#;
-
-const AREA_MAIN: &str = "half4 main(float2 c) { return u_finish(u_mark(c), c); }\n";
-
-const AREA_MAIN_BLEND: &str =
-    "half4 main(half4 src, half4 dst) { float2 c = u_decode(src); return u_finish(u_mark(c), c, src, dst); }\n";
-
-/// The Mark of a ribbon body, or false past the ribbon's reach. `u_field` is a device-aligned
-/// field, one texel per device pixel: arc length `s` to the spine in two half-float channels
-/// (whole chunks of [`S_CHUNK`] device pixels past `u_s0` chunks, then the rest), the signed
-/// offset `d` across it, and the half width there, all in device pixels. A negative rest marks
-/// a pixel past the ribbon's reach. `u_chan` holds pressure, angle, tilt and velocity at the
-/// same texel, and `u_norm` the unit direction in local units from the spine to the texel, which
-/// is the normal of the edge on a stroke whatever its taper. `u_rib` is the contour's length in
-/// local units and 1 when it is closed. Past the end of an open contour `s` keeps running, so
-/// `edge` rounds the cap.
-const RIBBON_MARK: &str = r#"
-bool u_mark(float2 c, out Mark m) {
-    float4 g = u_field.eval(c - u_fieldo);
-    if (g.g < 0) { return false; }
-    float4 ch = u_chan.eval(c - u_fieldo);
-    m.dev = c; m.p = (u_dtl * float3(c, 1)).xy;
-    m.s = ((g.r + u_s0) * 32 + g.g) * u_px; m.d = g.b * u_px;
-    float hw = max(g.a * u_px, 1e-6);
-    m.len = u_rib.x; m.u = m.s / m.len; m.width = 2 * hw; m.v = m.d / hw;
-    m.pressure = ch.x; m.angle = ch.y; m.tilt = ch.z; m.velocity = ch.w;
-    float over = u_rib.y > 0.5 ? 0 : (m.s < 0 ? m.s : max(m.s - m.len, 0));
-    m.edge = hw - length(float2(over, m.d));
-    m.normal = u_norm.eval(c - u_fieldo).xy;
-    m.uv = float2(m.s, m.d);
-    return true;
-}
-"#;
-
-const RIBBON_MAIN: &str = "half4 main(float2 c) { Mark m; if (!u_mark(c, m)) { return half4(0); } return u_finish(m, c); }\n";
-
-const RIBBON_MAIN_BLEND: &str = "half4 main(half4 src, half4 dst) { float2 c = u_decode(src); Mark m; if (!u_mark(c, m)) { return half4(0); } return u_finish(m, c, src, dst); }\n";
+use lang::{Field, Surface, Ty};
 
 /// Device pixels per whole-chunk step of the ribbon field's `s` channel. The rest channel then
 /// stays below this, where a half float resolves 1/64 of a pixel.
 pub const S_CHUNK: f32 = 32.0;
-
-/// Fields of `struct Mark`, in declaration order. A docs test asserts `docs/topics/brushes.md`
-/// names every one.
-pub const MARK_FIELDS: &[&str] = &[
-    "p", "dev", "u", "s", "v", "d", "len", "width", "pressure", "angle", "tilt", "velocity",
-    "edge", "normal", "uv", "seed", "paint", "below", "px",
-];
-
-/// Functions an author body may call. Same docs test.
-pub const HELPERS: &[&str] =
-    &["hash12", "hash22", "vnoise", "simplex", "worley", "fbm", "rot", "seeded", "cover"];
-
-/// Identifier prefix the runtime owns. A body or a param that uses it is rejected by eval.
-pub const RESERVED_PREFIX: &str = "u_";
 
 /// Placement keys a brush declaration or call may set. Every other head key is a uniform.
 pub const PLACEMENT_KEYS: &[&str] = &["dir", "reach", "on"];
@@ -311,37 +37,31 @@ pub enum MainKind {
     Ribbon,
 }
 
+/// How a stage runs: as a runtime shader over the slot's field, or as a runtime blender whose
+/// `dst` is the backdrop. Render picks the blender for every stage of a stack in which some
+/// stage reads `m.below`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum UniformKind {
-    Float,
-    Float2,
-    /// Straight rgba.
-    Float4,
-}
-
-impl UniformKind {
-    pub fn sksl(self) -> &'static str {
-        match self {
-            UniformKind::Float => "float",
-            UniformKind::Float2 => "float2",
-            UniformKind::Float4 => "float4",
-        }
-    }
+pub enum Frame {
+    Shader,
+    Blender,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum UniformValue {
     Float(f32),
     Float2([f32; 2]),
+    Float3([f32; 3]),
+    /// Straight rgba.
     Float4([f32; 4]),
 }
 
 impl UniformValue {
-    pub fn kind(&self) -> UniformKind {
+    pub fn ty(&self) -> Ty {
         match self {
-            UniformValue::Float(_) => UniformKind::Float,
-            UniformValue::Float2(_) => UniformKind::Float2,
-            UniformValue::Float4(_) => UniformKind::Float4,
+            UniformValue::Float(_) => Ty::Num,
+            UniformValue::Float2(_) => Ty::Vec2,
+            UniformValue::Float3(_) => Ty::Vec3,
+            UniformValue::Float4(_) => Ty::Color,
         }
     }
 
@@ -349,136 +69,178 @@ impl UniformValue {
         match self {
             UniformValue::Float(v) => std::slice::from_ref(v),
             UniformValue::Float2(v) => v,
+            UniformValue::Float3(v) => v,
             UniformValue::Float4(v) => v,
         }
     }
 }
 
-/// Assembled source under each frame: prelude, one `uniform` line per param, the author's body,
-/// the frame's finish, the kind's Mark and the frame's main. The body sits at the same line in
-/// both, so one line map serves them. Equality and hashing are by text, which is also the
-/// compile memo key.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Program {
-    source: Arc<str>,
-    blend: Arc<str>,
-    reads_below: bool,
-    /// Assembled line of the first `uniform` param line; params follow one per line.
-    params_at: u32,
-    params: u32,
-    /// Assembled line of body line 1.
-    body_at: u32,
-    body_lines: u32,
+/// Where something was written: a project-relative file and a span in it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Site {
+    pub file: String,
+    pub span: Span,
 }
 
-/// Where an assembled-source line came from.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Origin {
-    /// 1-based line in the author's body, and a 0-based column in that line when Skia gave one.
-    Body { line: u32, col: Option<u32> },
-    /// The `i`th declared param's `uniform` line.
-    Param(usize),
-    /// The prelude or the main, or no line at all: the body as a whole is at fault.
-    Frame,
+/// A fault the checker found. `code` is `E0360` inside a body or a fn it calls and `E0363` for
+/// a parameter.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Diag {
+    pub code: &'static str,
+    pub at: Site,
+    pub message: String,
+    pub notes: Vec<String>,
+    pub fix: Option<String>,
 }
 
-impl Program {
-    /// Deterministic: the same inputs give the same text. Params are emitted in the given order.
-    pub fn assemble(kind: MainKind, params: &[(String, UniformKind)], body: &str) -> Program {
-        let (mark, main, main_blend) = match kind {
-            MainKind::Area => (AREA_MARK, AREA_MAIN, AREA_MAIN_BLEND),
-            MainKind::Ribbon => (RIBBON_MARK, RIBBON_MAIN, RIBBON_MAIN_BLEND),
-        };
-        let (source, params_at, body_at) = frame(PRELUDE, params, body, &[FINISH, mark, main]);
-        let (blend, _, _) = frame(PRELUDE_BLEND, params, body, &[FINISH_BLEND, mark, main_blend]);
-        Program {
-            source: source.into(),
-            blend: blend.into(),
-            reads_below: reads_below(body),
-            params_at,
-            params: params.len() as u32,
-            body_at,
-            body_lines: body.split('\n').count() as u32,
-        }
+/// The first read of each field of `m`, for the notes of the errors at a use the body cannot
+/// run at. The default coverage is not a read.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reads {
+    first: BTreeMap<Field, Site>,
+}
+
+impl Reads {
+    fn record(&mut self, field: Field, site: &Site) {
+        self.first.entry(field).or_insert_with(|| site.clone());
     }
 
-    /// The shader frame.
-    pub fn source(&self) -> &Arc<str> {
-        &self.source
+    /// The widest surface requirement over every read; `Any` when the body reads nothing.
+    pub fn surface(&self) -> Surface {
+        self.first.keys().map(|f| f.surface()).max().unwrap_or(Surface::Any)
     }
 
-    /// The blender frame.
-    pub fn blend_source(&self) -> &Arc<str> {
-        &self.blend
+    pub fn below(&self) -> Option<&Site> {
+        self.first.get(&Field::Below)
+    }
+
+    /// The first read that makes the body 2D-only: a 2D extra, or `below`.
+    pub fn two_d(&self) -> Option<(Field, &Site)> {
+        self.first.iter().find(|(f, _)| f.surface() >= Surface::TwoD).map(|(f, s)| (*f, s))
+    }
+}
+
+/// A brush parameter after eval evaluated its default. The type comes from the default.
+#[derive(Clone, Debug)]
+pub struct Param {
+    pub name: String,
+    pub ty: Ty,
+    pub span: Span,
+}
+
+/// One `brush` declaration as the checker reads it.
+pub struct BrushSource<'a> {
+    pub file: &'a str,
+    pub name: &'a str,
+    /// The `brush` line: where a missing `out` and a backend's internal error are reported.
+    pub span: Span,
+    pub params: &'a [Param],
+    pub lines: &'a [BodyLine],
+}
+
+/// A top-level `fn`. Eval's fn definition is this type, so a body and `values` read one
+/// definition.
+#[derive(Clone, Debug)]
+pub struct TopFn {
+    pub name: String,
+    pub params: Vec<String>,
+    pub body: Expr,
+    /// The module whose names the body resolves in.
+    pub module: String,
+    pub span: Span,
+}
+
+/// What a name means at a module's top level, as far as a body cares.
+pub enum Global {
+    Fn(Rc<TopFn>),
+    /// A palette, a `let`, a def, and so on. A body cannot read it; the text names it.
+    Other(&'static str),
+    /// A name whose declaration failed and was already reported. A use of it fails quietly.
+    Lost,
+}
+
+/// Eval's module scope. `file` is the module the name is looked up in, so a top-level fn
+/// resolves its own names in its own file, imports included.
+pub trait Library {
+    fn lookup(&self, file: &str, name: &str) -> Option<Global>;
+}
+
+/// Build-wide checker state, so a fault in a fn is reported once however many brushes call it.
+/// One per build, owned by the evaluator. Lookups only, so its maps never decide output order.
+#[derive(Default)]
+pub struct Checker {
+    /// Keyed by the trip count of the loops around the call too, since a fn's loops fit the
+    /// budget only under so many.
+    types: BTreeMap<(check::FnKey, Vec<Ty>, u32), Option<Ty>>,
+    reported: BTreeSet<(check::FnKey, String, Span, String)>,
+}
+
+impl Checker {
+    /// Checks one body and builds its [`Shader`]. Diags are in line order. An `Err` can be empty
+    /// when every fault is in a fn that an earlier brush already reported.
+    pub fn check(&mut self, src: &BrushSource<'_>, lib: &dyn Library) -> Result<Shader, Vec<Diag>> {
+        check::Lower::new(self, lib, src).run()
+    }
+}
+
+/// A checked brush body plus its printed SkSL `shade` function. Immutable, and shared by every
+/// stage that uses the brush.
+#[derive(Debug)]
+pub struct Shader {
+    body: ir::Body,
+    reads: Reads,
+    sksl: Arc<str>,
+    names: Vec<String>,
+}
+
+impl Shader {
+    fn new(body: ir::Body, reads: Reads) -> Shader {
+        let sksl = sksl::print(&body);
+        let mut names = vec!["u_seed".to_string(), "u_seedo".to_string()];
+        names.extend((0..body.salts.len()).map(|i| format!("u_salt{i}")));
+        names.extend(body.params.iter().map(|(p, _)| format!("p_{p}")));
+        Shader { body, reads, sksl: sksl.into(), names }
+    }
+
+    pub fn body(&self) -> &ir::Body {
+        &self.body
+    }
+
+    pub fn reads(&self) -> &Reads {
+        &self.reads
     }
 
     /// Whether the body reads `m.below`. Every stage of a stack with such a stage runs under
     /// the blender frame.
     pub fn reads_below(&self) -> bool {
-        self.reads_below
+        self.reads.below().is_some()
     }
 
-    /// Maps a 1-based assembled line and Skia's caret column to the author's text.
-    pub fn origin_of(&self, line: Option<u32>, col: Option<u32>) -> Origin {
-        let Some(line) = line else { return Origin::Frame };
-        if line >= self.body_at && line < self.body_at + self.body_lines {
-            return Origin::Body { line: line - self.body_at + 1, col };
-        }
-        if line >= self.params_at && line < self.params_at + self.params {
-            return Origin::Param((line - self.params_at) as usize);
-        }
-        Origin::Frame
+    /// The printed `shade` function with its uniform lines.
+    pub fn sksl(&self) -> &Arc<str> {
+        &self.sksl
+    }
+
+    /// Every uniform the body's own text declares, with its value for a stage with `seed` and
+    /// the parameter `values` (in `body().params` order): `u_seed`, `u_seedo`, each `u_salt{i}`,
+    /// and `p_{name}`. Render binds what this yields and never spells a body name itself.
+    pub fn bind<'a>(&'a self, seed: u32, values: &'a [UniformValue]) -> impl Iterator<Item = (&'a str, UniformValue)> + 'a {
+        assert_eq!(values.len(), self.body.params.len(), "one value per parameter");
+        let seeds = Seeds::from(seed);
+        let fixed = [UniformValue::Float(seeds.seed), UniformValue::Float2(seeds.offset)];
+        let salts = self.body.salts.iter().map(move |k| UniformValue::Float2(Seeds::salted(seed, *k)));
+        self.names.iter().map(String::as_str).zip(fixed.into_iter().chain(salts).chain(values.iter().copied()))
+    }
+
+    /// Parses and checks one `brush` declaration whose head defaults are literals, with no
+    /// library. For tests and fuzzing.
+    pub fn from_text(src: &str) -> Result<Shader, Vec<Diag>> {
+        check::from_text(src)
     }
 }
 
-/// One frame's text, with the assembled line of the first param and of body line 1.
-fn frame(prelude: &str, params: &[(String, UniformKind)], body: &str, tail: &[&str]) -> (String, u32, u32) {
-    let mut src = String::from(prelude);
-    let params_at = lines_before_next(&src);
-    for (name, kind) in params {
-        src.push_str(&format!("uniform {} {name};\n", kind.sksl()));
-    }
-    let body_at = lines_before_next(&src);
-    src.push_str(body);
-    if !body.ends_with('\n') {
-        src.push('\n');
-    }
-    for part in tail {
-        src.push_str(part);
-    }
-    (src, params_at, body_at)
-}
-
-/// The 1-based line number the next appended character lands on.
-fn lines_before_next(src: &str) -> u32 {
-    src.matches('\n').count() as u32 + 1
-}
-
-/// Whether `body` has a `.below` field access outside comments. A body that defines its own
-/// struct with that field counts too, which only costs it the blender frame.
-fn reads_below(body: &str) -> bool {
-    let text = blank_comments(body);
-    let mut rest = text.as_str();
-    while let Some(i) = rest.find("below") {
-        let after = &rest[i + "below".len()..];
-        let glued = after.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
-        if rest[..i].trim_end().ends_with('.') && !glued {
-            return true;
-        }
-        rest = after;
-    }
-    false
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SkslError {
-    pub origin: Origin,
-    pub message: String,
-}
-
-
-/// The prelude's seed uniforms. `seed` has 256 values and `offset` 61 x 59, so hash inputs stay
-/// small enough for the exact integer hash. Two brushes in one scene can share a pattern.
+/// The stage seeds. `seed` has 256 values and `offset` 61 x 59, so hash inputs stay small
+/// enough for the exact integer hash. Two brushes in one scene can share a pattern.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Seeds {
     pub seed: f32,
@@ -494,150 +256,23 @@ impl From<u32> for Seeds {
     }
 }
 
-/// The first use of each identifier in `text` that starts with [`RESERVED_PREFIX`], in order,
-/// with its body line and column. Comments are skipped.
-pub fn reserved_identifiers(text: &str) -> Vec<(String, Origin)> {
-    let mut out: Vec<(String, Origin)> = Vec::new();
-    for (i, line) in blank_comments(text).lines().enumerate() {
-        let mut rest = line;
-        while let Some(start) = rest.find(|c: char| c.is_ascii_alphabetic() || c == '_') {
-            let after = &rest[start..];
-            let end = after
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                .unwrap_or(after.len());
-            let word = &after[..end];
-            let glued = rest[..start].ends_with(|c: char| c.is_ascii_digit());
-            if !glued && word.starts_with(RESERVED_PREFIX) && !out.iter().any(|(w, _)| w == word) {
-                let col = line[..line.len() - after.len()].chars().count() as u32;
-                out.push((word.to_string(), Origin::Body { line: i as u32 + 1, col: Some(col) }));
-            }
-            rest = &after[end..];
-        }
+impl Seeds {
+    /// The offset for `salt:k`: the stage seed mixed with `k` by an integer hash (murmur3's
+    /// finalizer), then reduced as `From<u32>` does. Pure integer code, so every build agrees.
+    pub fn salted(seed: u32, salt: u32) -> [f32; 2] {
+        let mut h = seed ^ salt.wrapping_mul(0x9e37_79b9);
+        h ^= h >> 16;
+        h = h.wrapping_mul(0x85eb_ca6b);
+        h ^= h >> 13;
+        h = h.wrapping_mul(0xc2b2_ae35);
+        h ^= h >> 16;
+        Seeds::from(h).offset
     }
-    out
-}
-
-/// `text` with every `//` and `/* */` comment turned into spaces, lines and columns kept.
-fn blank_comments(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut chars = text.chars().peekable();
-    while let Some(c) = chars.next() {
-        let block = match (c, chars.peek()) {
-            ('/', Some('/')) => false,
-            ('/', Some('*')) => true,
-            _ => {
-                out.push(c);
-                continue;
-            }
-        };
-        out.push(' ');
-        if block {
-            chars.next();
-            out.push(' ');
-        }
-        let mut prev = ' ';
-        while let Some(&n) = chars.peek() {
-            if !block && n == '\n' {
-                break;
-            }
-            chars.next();
-            out.push(if n == '\n' { '\n' } else { ' ' });
-            if block && prev == '*' && n == '/' {
-                break;
-            }
-            prev = n;
-        }
-    }
-    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    const OK_BODY: &str = "float4 shade(Mark m) {\n  return float4(m.paint.rgb, cover(m.edge, m) * strength);\n}\n";
-
-    fn params() -> Vec<(String, UniformKind)> {
-        vec![("strength".into(), UniformKind::Float), ("tint".into(), UniformKind::Float4)]
-    }
-
-    const BELOW_BODY: &str = "float4 shade(Mark m) {\n  return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * strength), cover(m.edge, m));\n}\n";
-
-    #[test]
-    fn a_sound_body_compiles_under_both_mains_and_both_frames() {
-        for kind in [MainKind::Area, MainKind::Ribbon] {
-            for body in [OK_BODY, BELOW_BODY] {
-                let p = Program::assemble(kind, &params(), body);
-                assert_eq!(check(&p), Ok(()), "{kind:?}");
-                assert_eq!(check_blender(&p), Ok(()), "{kind:?}");
-                assert!(effect(&p).is_ok());
-                assert!(blender(&p).is_ok());
-            }
-        }
-    }
-
-    #[test]
-    fn an_error_maps_to_its_body_line_and_column_under_both_frames() {
-        let body = "float4 shade(Mark m) {\n  float n = fbmx(m.uv, 3);\n  return float4(m.paint.rgb, n);\n}\n";
-        let p = Program::assemble(MainKind::Area, &params(), body);
-        for errs in [check(&p).unwrap_err(), check_blender(&p).unwrap_err()] {
-            assert_eq!(errs.len(), 2, "{errs:?}");
-            assert_eq!(errs[0].origin, Origin::Body { line: 2, col: Some(12) });
-            assert_eq!(errs[0].message, "unknown identifier 'fbmx'");
-            assert_eq!(errs[1].origin, Origin::Body { line: 3, col: Some(29) });
-        }
-    }
-
-    #[test]
-    fn a_body_reads_below_through_a_field_access_outside_comments() {
-        let reads = |body: &str| Program::assemble(MainKind::Area, &[], body).reads_below();
-        assert!(reads(BELOW_BODY));
-        assert!(reads("float4 shade(Mark m) { return m . below; }"));
-        assert!(!reads(OK_BODY));
-        assert!(!reads("float4 shade(Mark m) { // m.below\n /* m.below */ float below = 1; return float4(below); }"));
-        assert!(!reads("float4 shade(Mark m) { return float4(m.belowx); }"));
-    }
-
-    #[test]
-    fn a_tab_in_the_body_does_not_shift_the_column() {
-        let body = "float4 shade(Mark m) {\n\treturn float4(m.paint.rgb, nn);\n}\nfloat g() {\n  \t\tx return 1; }\n";
-        let errs = check(&Program::assemble(MainKind::Area, &[], body)).unwrap_err();
-        assert_eq!(errs[0].origin, Origin::Body { line: 2, col: Some(28) }, "{errs:?}");
-        assert_eq!(errs[1].origin, Origin::Body { line: 5, col: Some(4) }, "{errs:?}");
-    }
-
-    #[test]
-    fn a_missing_shade_is_a_frame_error() {
-        let p = Program::assemble(MainKind::Area, &[], "float f(float x) { return x; }\n");
-        let errs = check(&p).unwrap_err();
-        assert_eq!(errs.len(), 1, "only the first frame error: {errs:?}");
-        assert_eq!(errs[0].origin, Origin::Frame);
-        assert!(errs[0].message.contains("shade"), "{errs:?}");
-    }
-
-    #[test]
-    fn a_param_that_breaks_its_uniform_line_maps_to_the_param() {
-        let p = Program::assemble(
-            MainKind::Area,
-            &[("float".into(), UniformKind::Float), ("ok".into(), UniformKind::Float)],
-            OK_BODY,
-        );
-        let errs = check(&p).unwrap_err();
-        assert!(errs.iter().any(|e| e.origin == Origin::Param(0)), "{errs:?}");
-    }
-
-    #[test]
-    fn the_prelude_declares_every_listed_field_and_helper() {
-        let decl = PRELUDE.split("struct Mark {").nth(1).unwrap().split("};").next().unwrap();
-        for f in MARK_FIELDS {
-            assert!(decl.contains(&format!(" {f};")), "Mark has no field {f}");
-        }
-        assert_eq!(decl.matches(';').count(), MARK_FIELDS.len(), "MARK_FIELDS is out of date");
-        for h in HELPERS {
-            assert!(PRELUDE.contains(&format!(" {h}(")), "prelude has no helper {h}");
-        }
-        assert_eq!(PRELUDE.lines().count(), PRELUDE_BLEND.lines().count(), "the frames share one line map");
-    }
 
     #[test]
     fn seeds_reduce_as_the_contract_says() {
@@ -646,16 +281,24 @@ mod tests {
     }
 
     #[test]
-    fn reserved_identifiers_are_found_in_a_body_outside_comments() {
-        let at = |line, col| Origin::Body { line, col: Some(col) };
-        assert_eq!(
-            reserved_identifiers("float u_x = 1; u_x + u_y; au_z 2u_w"),
-            vec![("u_x".to_string(), at(1, 6)), ("u_y".to_string(), at(1, 21))]
-        );
-        assert_eq!(
-            reserved_identifiers("// u_prev is the base\n/*/ u_a\n u_b */ float k;\n  float q = u_seed;"),
-            vec![("u_seed".to_string(), at(4, 12))]
-        );
-        assert!(reserved_identifiers(OK_BODY).is_empty());
+    fn a_salt_gives_another_offset_in_range() {
+        let plain = Seeds::from(257).offset;
+        let salted = Seeds::salted(257, 1);
+        assert_ne!(plain, salted);
+        assert_ne!(salted, Seeds::salted(257, 2));
+        assert!(salted[0] < 61.0 && salted[1] < 59.0);
+        assert_eq!(salted, Seeds::salted(257, 1), "pure");
+    }
+
+    #[test]
+    fn bind_yields_every_body_uniform_in_declaration_order() {
+        let s = Shader::from_text("brush b strength:1 tint:#ff0000\n  let n = value(m.uv salt:7) + simplex(m.uv salt:2)\n  out m.paint.rgb cover:cover(m.edge) * strength * n\n").unwrap_or_else(|d| panic!("{d:?}"));
+        let bound: Vec<(&str, UniformValue)> = s.bind(257, &[UniformValue::Float(0.5), UniformValue::Float4([1.0, 0.0, 0.0, 1.0])]).collect();
+        let names: Vec<&str> = bound.iter().map(|(n, _)| *n).collect();
+        assert_eq!(names, ["u_seed", "u_seedo", "u_salt0", "u_salt1", "p_strength", "p_tint"]);
+        assert_eq!(bound[0].1, UniformValue::Float(1.0));
+        assert_eq!(bound[1].1, UniformValue::Float2([13.0, 4.0]));
+        assert_eq!(bound[2].1, UniformValue::Float2(Seeds::salted(257, 2)), "salts are sorted");
+        assert_eq!(bound[4].1, UniformValue::Float(0.5));
     }
 }

@@ -6,29 +6,28 @@ mod common;
 
 use std::sync::Arc;
 
-use ramose_brush::{MainKind, Program, UniformKind};
+use ramose_brush::Shader;
 use ramose_geom::ToIr;
 use ramose_ir::{AreaMark, Clip, EffectOp, Fill, Mask, MaskSource, NodeKind, Paint, Ribbon, RibbonContour, RibbonMark, Sides, Stage, Stroke};
 use skia_safe::Path;
 use ramose_render::{Backend, RenderError, gpu_available, raster_only_features, render_png, render_svg};
-use common::{color, effect, frame, framed, pixel, red, scene, solid, stamp};
+use common::{IDENTITY, color, effect, frame, framed, pixel, red, scene, solid, stamp};
 
 /// Mixes the paint halfway toward the backdrop, weighted by the backdrop's alpha, so a pixel
 /// over nothing stays the paint and a pixel over an opaque color is the mean of the two.
-const HALF_BELOW: &str = "float4 shade(Mark m) { return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * .5), cover(m.edge, m)); }\n";
+const HALF_BELOW: &str = "brush b\n  out lerp(m.paint.rgb m.below.rgb m.below.a*.5)\n";
 /// Returns the backdrop itself, so the draw changes no pixel over an opaque backdrop.
-const BELOW: &str = "float4 shade(Mark m) { return float4(m.below.rgb, m.below.a * cover(m.edge, m)); }\n";
+const BELOW: &str = "brush b\n  out m.below.rgb cover:m.below.a*cover(m.edge)\n";
 /// Reads nothing beneath it.
-const PLAIN: &str = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n";
+const PLAIN: &str = IDENTITY;
 
-fn stage(kind: MainKind, body: &str, seed: u32) -> Stage {
-    let program = Program::assemble(kind, &[] as &[(String, UniformKind)], body);
-    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    Stage { program: Arc::new(program), uniforms: vec![], seed }
+fn stage(body: &str, seed: u32) -> Stage {
+    let shader = Shader::from_text(body).unwrap_or_else(|e| panic!("{e:?}"));
+    Stage { shader: Arc::new(shader), uniforms: vec![], seed }
 }
 
 fn area(body: &str, seed: u32) -> AreaMark {
-    AreaMark { stage: stage(MainKind::Area, body, seed), dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }
+    AreaMark { stage: stage(body, seed), dir_deg: 0.0, cos_sin: [1.0, 0.0], reach: 0.0 }
 }
 
 const SQUARE: skia_safe::Rect = skia_safe::Rect { left: 20.0, top: 20.0, right: 60.0, bottom: 60.0 };
@@ -59,7 +58,7 @@ fn ribbon(body: &str, half_width: f32) -> Ribbon {
     let len = 160.0;
     let knot = |s: f32| ramose_ir::Knot { s, half_width, pressure: 1.0, angle: 0.0, tilt: 0.0, velocity: 1.0 };
     Ribbon {
-        marks: vec![RibbonMark { stage: stage(MainKind::Ribbon, body, 9), reach: 0.0 }],
+        marks: vec![RibbonMark { stage: stage(body, 9), reach: 0.0 }],
         contours: vec![RibbonContour { len, closed: true, knots: vec![knot(0.0), knot(len)] }],
         taper: [0.0, 0.0],
     }
@@ -192,7 +191,7 @@ fn a_mask_and_a_clip_keep_the_paint_only_where_they_keep_it() {
 
 #[test]
 fn every_stage_of_a_stack_sees_the_same_backdrop() {
-    let both = brushed("a", blue(), vec![area(HALF_BELOW, 1), area("float4 shade(Mark m) { return float4(mix(m.paint.rgb, m.below.rgb, .5), 1); }\n", 2)]);
+    let both = brushed("a", blue(), vec![area(HALF_BELOW, 1), area("brush b\n  out lerp(m.paint.rgb m.below.rgb .5) cover:1\n", 2)]);
     let png = render(vec![backdrop(), both]);
     let first = mix(blue(), gold(), 0.5);
     assert_rgb(pixel(&png, 40, 40), mix(color(first[0], first[1], first[2], 255), gold(), 0.5), "stage 2 mixes stage 1's color with the gold, not with stage 1 over the gold");

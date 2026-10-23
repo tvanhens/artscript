@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOp, CheckKind, Decl, DeclKind, DefItem, Draw, DrawItem, Expr, File, Fx, Item, Mask, Named,
-    Patch, Scene, SceneKind, Span, Swatch, SwatchKind, UnOp,
+    BinOp, BodyLineKind, CheckKind, Decl, DeclKind, DefItem, Draw, DrawItem, Expr, File, Fx, Item,
+    Mask, Named, Patch, Scene, SceneKind, Span, Swatch, SwatchKind, UnOp,
 };
 use crate::lex::{self, Comment};
 
@@ -129,10 +129,26 @@ impl<'a> Printer<'a> {
             DeclKind::Light { name, named } => {
                 self.emit(line, 0, &join_head("light", name, &[], named));
             }
-            DeclKind::Brush { name, params, sksl } => {
+            DeclKind::Brush { name, params, body } => {
                 self.emit(line, 0, &join_head("brush", name, &[], params));
-                if let Some(block) = sksl {
-                    self.raw_block(1, &block.text);
+                for l in body {
+                    match &l.kind {
+                        BodyLineKind::Let { name, value } => {
+                            self.emit(l.span.line, 1, &format!("let {name} = {}", fmt_expr(value)));
+                        }
+                        BodyLineKind::Fn { name, params, body } => {
+                            self.emit(l.span.line, 1, &format!("fn {name}({}) = {}", params.join(" "), fmt_expr(body)));
+                        }
+                        BodyLineKind::Out { rgb, cover } => {
+                            let mut text = format!("out {}", fmt_expr(rgb));
+                            if let Some(c) = cover {
+                                text.push(' ');
+                                text.push_str(&fmt_named(c));
+                            }
+                            self.emit(l.span.line, 1, &text);
+                        }
+                        BodyLineKind::Sksl { text } => self.raw_block(1, text),
+                    }
                 }
             }
             DeclKind::Anim {

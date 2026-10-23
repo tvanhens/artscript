@@ -145,7 +145,7 @@ impl Fill {
 
     /// Whether a stage reads `m.below`, the pixels already drawn under the node.
     pub fn reads_below(&self) -> bool {
-        self.marks.iter().any(|m| m.stage.program.reads_below())
+        self.marks.iter().any(|m| m.stage.shader.reads_below())
     }
 }
 
@@ -161,14 +161,14 @@ pub struct AreaMark {
     pub reach: f32,
 }
 
-/// One compiled-checkable brush program with its uniform values and seed.
+/// One checked brush body with its parameter values and seed.
 #[derive(Clone, Debug)]
 pub struct Stage {
-    /// The assembled program eval checked. Render compiles the same text.
-    pub program: Arc<ramose_brush::Program>,
-    /// Author uniforms in declaration order, by name.
-    pub uniforms: Vec<(String, UniformValue)>,
-    /// The site seed, reduced to 32 bits. Render derives the shader's seed uniforms from it.
+    /// The body eval checked. Render compiles its printed text under the frame it needs.
+    pub shader: Arc<ramose_brush::Shader>,
+    /// Parameter values in the body's declaration order.
+    pub uniforms: Vec<UniformValue>,
+    /// The site seed, reduced to 32 bits. The body's seed uniforms derive from it.
     pub seed: u32,
 }
 
@@ -221,7 +221,7 @@ pub fn ribbon_reach(marks: &[RibbonMark]) -> f32 {
 
 /// Whether a stage of `marks` reads `m.below`.
 pub fn ribbon_reads_below(marks: &[RibbonMark]) -> bool {
-    marks.iter().any(|m| m.stage.program.reads_below())
+    marks.iter().any(|m| m.stage.shader.reads_below())
 }
 
 /// One brush stage over a stroke. `m.s` and `m.d` are the arc length and signed offset of the

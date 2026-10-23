@@ -19,12 +19,8 @@ use std/brushes { dry chip }
 
 # A tooth 6 units past the ring every 12 units along the contour.
 brush spur reach:6
-  sksl """
-  float4 shade(Mark m) {
-    float tooth = step(.6, fract(m.s / 12));
-    return float4(m.paint.rgb, cover(m.edge + tooth * 6, m));
-  }
-  """
+  let tooth = step(.6 fract(m.s/12))
+  out m.paint.rgb cover:cover(m.edge+tooth*6)
 
 rect 48 at:32,40 fill:p.gold.2 name:plain
   fx outline 4 color:p.ink

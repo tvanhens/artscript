@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use ramose_brush::{MainKind, Program, UniformKind, UniformValue};
+use ramose_brush::{Shader, UniformValue};
 use ramose_geom::ToIr;
 use ramose_ir::{
     AreaMark, Blend, Color, Effect, EffectInput, EffectOp, Fill, Framing, Node, NodeKind, Paint, Rect, Scene, Shape,
@@ -109,16 +109,12 @@ pub fn with_stamps(host: &mut Node, stamps: Vec<Node>, children: Vec<Node>) {
     }
 }
 
-pub fn stage(body: &str, params: &[(&str, UniformKind)], uniforms: &[(&str, UniformValue)], seed: u32) -> Stage {
-    let params: Vec<(String, UniformKind)> = params.iter().map(|(n, k)| (n.to_string(), *k)).collect();
-    let program = Program::assemble(MainKind::Area, &params, body);
-    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    Stage {
-        program: Arc::new(program),
-        uniforms: uniforms.iter().map(|(n, v)| (n.to_string(), *v)).collect(),
-        seed,
-    }
+pub fn stage(src: &str, uniforms: &[UniformValue], seed: u32) -> Stage {
+    let shader = Shader::from_text(src).unwrap_or_else(|e| panic!("{e:?}"));
+    Stage { shader: Arc::new(shader), uniforms: uniforms.to_vec(), seed }
 }
+
+pub const IDENTITY: &str = "brush b\n  out m.paint.rgb\n";
 
 pub fn mark(stage: Stage, reach: f32) -> AreaMark {
     AreaMark { stage, dir_deg: 0.0, cos_sin: [1.0, 0.0], reach }

@@ -26,18 +26,10 @@
 @target brush/below.png
 
 brush smudge k:.5
-  sksl """
-  float4 shade(Mark m) {
-    return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * k), cover(m.edge, m));
-  }
-  """
+  out lerp(m.paint.rgb m.below.rgb m.below.a*k)
 
 brush dim
-  sksl """
-  float4 shade(Mark m) {
-    return float4(m.paint.rgb * .6, cover(m.edge, m));
-  }
-  """
+  out m.paint.rgb*.6
 
 rect 48 at:40,32 fill:p.gold.2
 rect 48 at:64,32 fill:p.blue.2 brush:smudge name:over_gold
