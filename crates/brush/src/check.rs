@@ -394,6 +394,7 @@ impl<'c> Lower<'c> {
         }
         match self.lib.lookup(&module, name) {
             Some(Global::Fn(_)) => Err(self.report(format!("`{name}` is a function"), Some(format!("call it: `{name}(...)`")))),
+            Some(Global::Lost) => Err(Poisoned),
             Some(Global::Other(what)) => Err(self.report(
                 format!("`{name}` is {what}, which a body cannot read"),
                 Some(format!("pass it in as a parameter, as in `{name}:{name}` in the brush head")),
@@ -595,6 +596,7 @@ impl<'c> Lower<'c> {
                 self.instantiate(Callee::Top(f), args, env)
             }
             Some(Global::Other(what)) => Err(self.report(format!("`{func}` is {what}, not a function"), None)),
+            Some(Global::Lost) => Err(Poisoned),
             None => match lang::values_only(func) {
                 Some(hint) => Err(self.report(format!("`{func}` is not available in a body"), Some(hint.into()))),
                 None => Err(self.report(format!("unknown function `{func}`"), None)),

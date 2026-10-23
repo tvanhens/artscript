@@ -204,6 +204,9 @@ struct ModuleLib<'a> {
 impl Library for ModuleLib<'_> {
     fn lookup(&self, file: &str, name: &str) -> Option<Global> {
         let module = if file == self.own.path { self.own } else { self.loaded.get(file)? };
+        if module.lost(name) {
+            return Some(Global::Lost);
+        }
         Some(match module.global(name)? {
             Value::Fn(f) => Global::Fn(f),
             Value::Palette(_) | Value::Color(_) | Value::Ramp(_) => Global::Other("a palette value"),

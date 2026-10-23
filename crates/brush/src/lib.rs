@@ -155,6 +155,8 @@ pub enum Global {
     Fn(Rc<TopFn>),
     /// A palette, a `let`, a def, and so on. A body cannot read it; the text names it.
     Other(&'static str),
+    /// A name whose declaration failed and was already reported. A use of it fails quietly.
+    Lost,
 }
 
 /// Eval's module scope. `file` is the module the name is looked up in, so a top-level fn

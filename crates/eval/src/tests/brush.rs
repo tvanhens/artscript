@@ -552,6 +552,24 @@ fn a_body_calls_a_top_level_fn_above_it_and_a_type_fault_inside_names_the_fn() {
 }
 
 #[test]
+fn a_fn_a_body_calls_that_already_failed_is_reported_once_and_the_brush_adds_nothing() {
+    let scene = "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n";
+    for (lib, want) in [
+        ("fn f(x) = f(x)\nbrush b\n  out m.paint.rgb cover:f(m.edge)\n", vec![("E0325", "lib/b.ramo", 1)]),
+        (
+            "fn f(x) = g(x)\nfn g(x) = f(x)\nbrush b\n  out m.paint.rgb cover:f(m.edge)\n",
+            vec![("E0325", "lib/b.ramo", 1), ("E0325", "lib/b.ramo", 2)],
+        ),
+        ("fn f(x) = g(x)\nlet g = f\nbrush b\n  out m.paint.rgb cover:f(m.edge)\n", vec![("E0360", "lib/b.ramo", 1)]),
+        ("fn f(x) = @a.w * x\nbrush b\n  out m.paint.rgb cover:f(m.edge)\n", vec![("E0324", "lib/b.ramo", 1)]),
+    ] {
+        let ds = errors(scene, &[("lib/b.ramo", lib)]);
+        let got: Vec<(&str, &str, u32)> = ds.iter().map(|d| (d.code.as_str(), d.file.as_str(), d.span.line)).collect();
+        assert_eq!(got, want, "{}", show(&ds));
+    }
+}
+
+#[test]
 fn a_fn_fault_that_needs_no_types_is_reported_once_at_the_fn_for_every_caller() {
     let scene = "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:[b c] name:a\n";
     let lib = "fn soft(x) = polar(x 1)\nbrush b\n  out m.paint.rgb cover:soft(m.edge)\nbrush c\n  out m.paint.rgb cover:soft(m.edge)\n";

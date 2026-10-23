@@ -1243,6 +1243,11 @@ impl<'a> Evaluator<'a> {
             }
         }
         for item in &parsed.items {
+            if let Item::Decl(Decl { kind: DeclKind::Brush { .. }, .. }) = item {
+                // A body calls only the fns above it, so a cycle among them is reported and its
+                // fns are lost before the body is checked, and the body's call stays quiet.
+                self.check_fn_cycles(&module, &parsed);
+            }
             if let Err(f) = self.declare(&module, item, entry) {
                 self.report(f, file, item.span(), "");
             }
