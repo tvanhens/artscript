@@ -4,7 +4,7 @@ use ramose_geom::{NodeGeom, ShapeGeom, WarpGeom};
 use ramose_ir::{Axis, MaskSource, Node, NodeKind, WarpStage};
 use skia_safe::{Matrix, Rect};
 use ramose_syntax::ast::{
-    BinOp, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
+    BinOp, BodyLineKind, Decl, DeclKind, DefItem, DrawItem, Expr, File, Fx, Item, Mask, Named, Scene, SceneKind,
     Span, SwatchKind,
 };
 use ramose_syntax::{Diagnostic, Severity};
@@ -196,8 +196,21 @@ fn file_exprs(file: &File, skip_palettes: bool) -> Exprs<'_> {
                 named(params, &mut out);
                 body.iter().for_each(|fx| fx_exprs(fx, &mut out));
             }
-            DeclKind::Param { params } | DeclKind::Brush { params, .. } | DeclKind::Rule { params, .. } => {
-                named(params, &mut out)
+            DeclKind::Param { params } | DeclKind::Rule { params, .. } => named(params, &mut out),
+            DeclKind::Brush { params, body, .. } => {
+                named(params, &mut out);
+                for line in body {
+                    match &line.kind {
+                        BodyLineKind::Let { value: e, .. } | BodyLineKind::Fn { body: e, .. } => out.push((e, line.span)),
+                        BodyLineKind::Out { rgb, cover } => {
+                            out.push((rgb, line.span));
+                            if let Some(c) = cover {
+                                out.push((&c.value, c.span));
+                            }
+                        }
+                        BodyLineKind::Sksl { .. } => {}
+                    }
+                }
             }
             DeclKind::Fn { body, .. } => out.push((body, d.span)),
             DeclKind::Def { params, body, .. } | DeclKind::Stamp { params, body, .. } => {

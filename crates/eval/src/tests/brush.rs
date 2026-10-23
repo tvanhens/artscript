@@ -806,3 +806,20 @@ fn a_named_argument_fault_in_an_imported_fn_is_reported_once_in_the_fns_file() {
     assert_eq!((ds[0].file.as_str(), col(&ds[0])), ("lib/fns.ramo", (1, 25)), "{}", ds[0]);
     assert!(ds[0].message.contains("`oct:`"), "{}", ds[0]);
 }
+
+#[test]
+fn an_import_a_body_calls_is_used() {
+    let linted = "[project]\nout = \"out\"\nlib = [\"lib\"]\n\n[lint]\nraw-color = \"off\"\n";
+    let files: BTreeMap<String, String> = [
+        ("lib/fns.ramo".to_string(), "fn sq(x) = x*x\nfn tw(x) = x*2\nfn hf(x) = x/2\nfn id(x) = x\nfn un(x) = x\n".to_string()),
+        (
+            "art/t.ramo".to_string(),
+            "@artboard 100x100\n@target t.png\nuse fns { sq tw hf id un }\nbrush b\n  let k = sq(2)\n  fn f(x) = tw(x)\n  out m.paint.rgb*id(k) cover:hf(f(m.edge))\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n".to_string(),
+        ),
+    ]
+    .into();
+    let p = Project::from_sources(linted, files).unwrap();
+    let ev = evaluate(&p, &plan(&p).jobs[0]);
+    let unused: Vec<&str> = ev.diagnostics.iter().filter(|d| d.code == "L0103").map(|d| d.message.as_str()).collect();
+    assert_eq!(unused, ["imported `un` is never used"], "{}", show(&ev.diagnostics));
+}
