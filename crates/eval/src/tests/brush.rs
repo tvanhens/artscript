@@ -788,3 +788,11 @@ fn an_outline_brush_that_reads_below_is_e0362_at_the_key() {
     );
     assert!(d.message.contains("stage 2 of `brush:` (`smudge`)"), "{d}");
 }
+
+#[test]
+fn a_three_component_parameter_binds_and_a_call_may_replace_it() {
+    let lib = ("lib/b.ramo", "brush b tt:1,2,3\n  out tt / 4\n");
+    let s = ok("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:30,50 fill:#ff0000 brush:b name:a\nrect 40x40 at:70,50 fill:#ff0000 brush:b(tt:4,4,4) name:c\n", &[lib]);
+    assert_eq!(marks(&s, "a")[0].stage.uniforms[0], UniformValue::Float3([1.0, 2.0, 3.0]));
+    assert_eq!(marks(&s, "c")[0].stage.uniforms[0], UniformValue::Float3([4.0, 4.0, 4.0]));
+}

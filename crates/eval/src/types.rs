@@ -793,7 +793,7 @@ impl Outlines {
         for p in &d.params {
             match ty_of(&p.value, r, &params) {
                 Ok(ty) => {
-                    if d.sort == Sort::Brush && !matches!(ty.kind(), Kind::Number | Kind::Vector | Kind::Color) {
+                    if d.sort == Sort::Brush && !matches!(ty.kind(), Kind::Number | Kind::Vector | Kind::Vector3 | Kind::Color) {
                         let msg = format!("`{}` of `{}` must default to a number, color or vector, got {}", p.key, d.name, ty.kind());
                         self.report(fail("E0363", msg).fix(format!("write `{}:.5`", p.key)), &r.file, p.span);
                     }
