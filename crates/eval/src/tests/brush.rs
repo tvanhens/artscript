@@ -13,12 +13,8 @@ use super::{check_with, diag, node, project, run_with, shape, show};
 
 const DRY: &str = "\
 brush dry strength:.5 scale:1 dir:0
-  sksl \"\"\"
-    float4 shade(Mark m) {
-      float n = fbm(m.uv / (20 * scale) + seeded(m), 2);
-      return float4(m.paint.rgb * (.8 + .4 * n), cover(m.edge, m) * step(strength * .5, n));
-    }
-  \"\"\"
+  let n = fbm(m.uv/(20*scale) oct:2)
+  out m.paint.rgb*(.8+.4*n) cover:cover(m.edge)*step(strength*.5 n)
 ";
 
 const LIB: (&str, &str) = ("lib/brushes.ramo", DRY);
@@ -61,18 +57,18 @@ fn a_brush_declares_a_value_and_a_fill_gets_one_mark_per_stage() {
     );
     let a = marks(&s, "a");
     assert_eq!(a.len(), 1);
-    assert_eq!(a[0].stage.uniforms[0], ("strength".into(), UniformValue::Float(0.5)));
+    assert_eq!(a[0].stage.uniforms[0], UniformValue::Float(0.5));
     assert_eq!(a[0].dir_deg, 0.0);
     assert_eq!(a[0].reach, 0.0);
     let b = marks(&s, "b");
     assert_eq!(b.len(), 2);
-    assert_eq!(b[0].stage.uniforms[0].1, UniformValue::Float(0.5));
-    assert_eq!(b[1].stage.uniforms[0].1, UniformValue::Float(0.9));
+    assert_eq!(b[0].stage.uniforms[0], UniformValue::Float(0.5));
+    assert_eq!(b[1].stage.uniforms[0], UniformValue::Float(0.9));
     assert_eq!(b[1].dir_deg, 90.0);
     assert!(b[1].cos_sin[0].abs() < 1e-6 && (b[1].cos_sin[1] - 1.0).abs() < 1e-6);
     assert_eq!(b[1].reach, 3.0);
     assert_eq!(shape(&s, "b").mark_reach(), 3.0);
-    assert!(std::sync::Arc::ptr_eq(&b[0].stage.program, &b[1].stage.program), "one program per declaration");
+    assert!(std::sync::Arc::ptr_eq(&b[0].stage.shader, &b[1].stage.shader), "one shader per declaration");
     let sb = seeds(&s, "b");
     assert_ne!(sb[0], sb[1], "stages decorrelate");
     assert_ne!(seeds(&s, "a")[0], sb[0], "nodes decorrelate");
@@ -319,10 +315,10 @@ fn a_def_takes_a_brush_parameter_and_recalls_it_with_overrides() {
         "@artboard 100x100\n@target t.png\nuse brushes { dry }\nuse stone\nstone at:30,50 name:a\nstone at:70,50 brush:dry(strength:.9) name:b\nlayer back brush:dry(dir:45)\n  stone at:50,80 brush:none name:c\n",
         &[LIB, stone],
     );
-    assert_eq!(marks(&s, "a.base")[0].stage.uniforms[0].1, UniformValue::Float(0.5));
-    assert_eq!(marks(&s, "a.base.core")[0].stage.uniforms[1].1, UniformValue::Float(0.5));
-    assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
-    assert_eq!(marks(&s, "b.base.core")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
+    assert_eq!(marks(&s, "a.base")[0].stage.uniforms[0], UniformValue::Float(0.5));
+    assert_eq!(marks(&s, "a.base.core")[0].stage.uniforms[1], UniformValue::Float(0.5));
+    assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0], UniformValue::Float(0.9));
+    assert_eq!(marks(&s, "b.base.core")[0].stage.uniforms[0], UniformValue::Float(0.9));
     assert_eq!(marks(&s, "c.base").len(), 0, "brush:none passed as the param clears it");
     let d = first("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 tool:3 name:a\n", &[LIB, stone], "E0321");
     assert!(d.message.contains("no parameter `tool`"), "{d}");
@@ -356,7 +352,7 @@ fn an_optional_brush_parameter_typed_by_a_declaration_checks_calls_and_binds_non
     );
     let s = ok("@artboard 100x100\n@target t.png\nuse brushes { dry }\nuse stone\nstone at:30,50 name:a\nstone at:70,50 brush:dry name:b\n", &[LIB, stone]);
     assert!(marks(&s, "a.base").is_empty(), "the default is none");
-    assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0].1, UniformValue::Float(0.9));
+    assert_eq!(marks(&s, "b.base")[0].stage.uniforms[0], UniformValue::Float(0.9));
     let d = first("@artboard 100x100\n@target t.png\nuse stone\nstone at:30,50 brush:4 name:a\n", &[LIB, stone], "E0320");
     assert!(d.message.contains("`brush` of `stone` expects a brush, got a number"), "{d}");
     let bad = ("lib/stone.ramo", "use brushes { dry }\ndef stone size:20 brush:none(dry)\n  rect size fill:#ff0000 brush:brush(scal:.5) name:base\n");
@@ -382,87 +378,93 @@ fn brush_on_a_boolean_operand_is_e0321() {
 }
 
 #[test]
-fn sksl_errors_land_on_the_body_line_and_column_in_the_library() {
-    let bad = (
-        "lib/bad.ramo",
-        "brush bad strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      float n = fbmx(m.uv, 3);\n      return float4(m.paint.rgb, n);\n    }\n  \"\"\"\n",
-    );
+fn body_errors_land_on_their_line_and_column_in_the_library() {
+    let bad = ("lib/bad.ramo", "brush bad strength:.5\n  let n = fbmx(m.uv oct:3)\n  let q = m.nope\n  out m.paint.rgb cover:n\n");
     let ds = errors("@artboard 100x100\n@target t.png\nuse bad { bad }\nrect 40x40 at:50,50 fill:#ff0000 brush:bad name:a\n", &[bad]);
-    let sksl: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E0360").collect();
-    assert_eq!(sksl.len(), 2, "{}", show(&ds));
-    assert_eq!(sksl[0].file, "lib/bad.ramo");
-    assert_eq!((sksl[0].span.line, sksl[0].span.col), (4, 17), "{}", sksl[0]);
-    assert!(sksl[0].message.contains("unknown identifier 'fbmx'"), "{}", sksl[0]);
-    assert_eq!((sksl[1].span.line, sksl[1].span.col), (5, 34), "{}", sksl[1]);
+    let body: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E0360").collect();
+    assert_eq!(body.len(), 2, "{}", show(&ds));
+    assert_eq!(body[0].file, "lib/bad.ramo");
+    assert_eq!(col(body[0]), (2, 3), "{}", body[0]);
+    assert!(body[0].message.contains("unknown function `fbmx`"), "{}", body[0]);
+    assert_eq!(col(body[1]), (3, 3), "{}", body[1]);
+    assert!(body[1].message.contains("`m` has no field `nope`"), "{}", body[1]);
     assert!(ds.iter().all(|d| d.code == "E0360"), "the use site stays quiet: {}", show(&ds));
 }
 
 #[test]
 fn calling_a_lost_brush_stays_quiet_at_every_use_site() {
-    let bad = (
-        "lib/house.ramo",
-        "brush bad a:1\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, zz); }\n  \"\"\"\nlet wall = bad(a:2)\n",
-    );
+    let bad = ("lib/house.ramo", "brush bad a:1\n  out m.paint.rgb cover:zz\nlet wall = bad(a:2)\n");
     let ds = errors(
         "@artboard 100x100\n@target t.png\nuse house { bad wall }\nrect 20x20 at:20,20 fill:#ff0000 brush:bad name:a\nrect 20x20 at:50,20 fill:#ff0000 brush:bad(a:3) name:b\nrect 20x20 at:80,20 fill:#ff0000 brush:wall name:c\nlet w = bad(a:2)\n",
         &[bad],
     );
-    assert_eq!(ds.len(), 1, "only the SkSL error: {}", show(&ds));
+    assert_eq!(ds.len(), 1, "only the body error: {}", show(&ds));
     assert_eq!((ds[0].code.as_str(), ds[0].file.as_str()), ("E0360", "lib/house.ramo"), "{}", ds[0]);
+    assert_eq!(col(&ds[0]), (2, 19), "the `cover:` argument: {}", ds[0]);
 }
 
 #[test]
-fn a_frame_error_lands_on_the_sksl_keyword_and_an_unused_brush_is_still_checked() {
-    let bad = ("lib/bad.ramo", "brush bad strength:.5\n  sksl \"\"\"\n    float f(float x) { return x; }\n  \"\"\"\n");
-    let ds = errors("@artboard 100x100\n@target t.png\nuse bad\nrect 40x40 at:50,50 fill:#ff0000 name:a\n", &[bad]);
+fn a_leftover_sksl_block_is_one_e0360_at_the_keyword_and_an_unused_brush_is_still_checked() {
+    for lib in [
+        "brush bad strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n",
+        "brush bad strength:.5\n  sksl \"\"\"float4 shade(Mark m) { return m.paint; }\"\"\"\n",
+    ] {
+        let ds = errors("@artboard 100x100\n@target t.png\nuse bad\nrect 40x40 at:50,50 fill:#ff0000 name:a\n", &[("lib/bad.ramo", lib)]);
+        assert_eq!(ds.len(), 1, "no second error for the missing `out`: {}", show(&ds));
+        let d = &ds[0];
+        assert_eq!((d.code.as_str(), d.file.as_str(), d.span.line, d.span.col), ("E0360", "lib/bad.ramo", 2, 3), "{d}");
+        assert!(d.message.contains("not SkSL"), "{d}");
+    }
+}
+
+#[test]
+fn a_body_without_out_is_e0360_at_the_brush_line() {
+    let ds = errors("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[("lib/b.ramo", "# the house brush\nbrush b strength:.5\n  let n = 1\n")]);
     assert_eq!(ds.len(), 1, "{}", show(&ds));
-    let d = &ds[0];
-    assert_eq!((d.code.as_str(), d.file.as_str(), d.span.line, d.span.col), ("E0360", "lib/bad.ramo", 2, 3), "{d}");
-    assert!(d.message.contains("shade"), "{d}");
+    assert_eq!((ds[0].code.as_str(), ds[0].file.as_str(), ds[0].span.line), ("E0360", "lib/b.ramo", 2), "{}", ds[0]);
+    assert!(ds[0].message.contains("no `out` line"), "{}", ds[0]);
 }
 
 #[test]
-fn malformed_declarations_are_e0363_at_their_key() {
+fn malformed_heads_are_e0363_at_their_key() {
     let cases = [
-        ("brush b strength:.5\n", 1, "no `sksl` block"),
-        ("brush b edge:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `edge`"),
-        ("brush b normal:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `normal`"),
-        ("brush b u_x:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "cannot be named `u_x`"),
-        ("brush b word:left\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n", 1, "must default to a number, color or vector"),
-        ("brush b strength:.5\n  sksl \"\"\"\n    float4 shade(Mark m) { float u_k = 1; return m.paint; }\n  \"\"\"\n", 3, "`u_k` is reserved"),
+        ("brush b edge:.5\n  out m.paint.rgb\n", "cannot be named `edge`"),
+        ("brush b normal:.5\n  out m.paint.rgb\n", "cannot be named `normal`"),
+        ("brush b m:.5\n  out m.paint.rgb\n", "cannot be named `m`"),
+        ("brush b word:left\n  out m.paint.rgb\n", "must default to a number, color or vector"),
     ];
-    for (lib, line, msg) in cases {
+    for (lib, msg) in cases {
         let ds = errors("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[("lib/b.ramo", lib)]);
         let d = ds.iter().find(|d| d.code == "E0363").unwrap_or_else(|| panic!("{lib}: {}", show(&ds)));
         assert!(d.message.contains(msg), "{lib}: {d}");
-        assert_eq!((d.file.as_str(), d.span.line), ("lib/b.ramo", line), "{lib}: {d}");
+        assert_eq!((d.file.as_str(), col(d)), ("lib/b.ramo", (1, 9)), "{lib}: {d}");
         assert!(ds.iter().all(|d| d.code == "E0363" || d.code == "E0214"), "{lib}: {}", show(&ds));
     }
 }
 
 #[test]
-fn a_reserved_name_lands_on_its_own_line_and_column_and_the_compile_errors_still_show() {
-    let lib = (
-        "lib/b.ramo",
-        "brush b strength:.5\n  sksl \"\"\"\n    // u_prev is the base\n    float4 shade(Mark m) {\n      float n = fbmx(m.uv, 3);\n      float q = u_seed;\n      return float4(m.paint.rgb, n);\n    }\n  \"\"\"\n",
-    );
+fn a_let_named_for_a_field_is_e0360_at_its_line_and_the_rest_of_the_body_is_still_checked() {
+    let lib = ("lib/b.ramo", "brush b strength:.5\n  let edge = m.edge - 1\n  let n = fbmx(m.uv)\n  out m.paint.rgb cover:cover(edge)\n");
     let ds = errors("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
-    let reserved: Vec<&Diagnostic> = ds.iter().filter(|d| d.code == "E0363").collect();
-    assert_eq!(reserved.len(), 1, "a comment is not a use: {}", show(&ds));
-    assert!(reserved[0].message.contains("`u_seed`"), "{}", reserved[0]);
-    assert_eq!((reserved[0].span.line, reserved[0].span.col), (6, 17), "{}", reserved[0]);
-    assert!(ds.iter().any(|d| d.code == "E0360" && d.message.contains("fbmx") && d.span.line == 5), "{}", show(&ds));
+    let got: Vec<(u32, u32, &str)> = ds.iter().map(|d| (d.span.line, d.span.col, d.code.as_str())).collect();
+    assert_eq!(got, [(2, 3, "E0360"), (3, 3, "E0360")], "{}", show(&ds));
+    assert!(ds[0].message.contains("a `let` cannot be named `edge`: it is a field of `m`"), "{}", ds[0]);
 }
 
 #[test]
-fn every_param_named_for_an_sksl_word_is_e0363_at_its_key() {
-    let lib = ("lib/b.ramo", "brush b strength:.5 flat:1 half:2 sin:3 ok:4\n  sksl \"\"\"\n    float4 shade(Mark m) { return m.paint; }\n  \"\"\"\n");
+fn every_param_named_for_a_field_or_builtin_is_e0363_at_its_key_and_sksl_words_are_free() {
+    let lib = ("lib/b.ramo", "brush b strength:.5 edge:1 half:2 sin:3 float:4\n  out m.paint.rgb*half*float\n");
     let ds = errors("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
     let got: Vec<(u32, u32, bool)> =
-        ds.iter().map(|d| (d.span.line, d.span.col, d.code == "E0363" && d.message.contains("SkSL reserves"))).collect();
-    assert_eq!(got, [(1, 21, true), (1, 28, true), (1, 35, true)], "{}", show(&ds));
-    assert!(ds[0].message.contains("`flat`"), "{}", ds[0]);
+        ds.iter().map(|d| (d.span.line, d.span.col, d.code == "E0363" && d.message.contains("cannot be named"))).collect();
+    assert_eq!(got, [(1, 21, true), (1, 35, true)], "{}", show(&ds));
+    assert!(ds[0].message.contains("`edge`: it is a field of `m`"), "{}", ds[0]);
+    assert!(ds[1].message.contains("`sin`: it is a builtin"), "{}", ds[1]);
     assert_eq!(ds[0].fix.as_deref(), Some("rename the parameter"), "{}", ds[0]);
+    ok(
+        "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n",
+        &[("lib/b.ramo", "brush b half:2 float:4 shade:1 u_seed:1\n  out m.paint.rgb*half*float*shade*u_seed\n")],
+    );
 }
 
 #[test]
@@ -534,37 +536,32 @@ fn an_unnamed_brushed_node_gets_the_positional_seed_lint() {
 }
 
 #[test]
-fn a_same_line_sksl_body_maps_later_lines_to_their_own_column() {
+fn a_body_calls_a_top_level_fn_above_it_and_a_type_fault_inside_names_the_fn() {
     let scene = "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n";
-    let at = |lib: &str, code: &str, needle: &str| {
-        let ds = errors(scene, &[("lib/b.ramo", lib)]);
-        let d = ds.iter().find(|d| d.code == code && d.message.contains(needle)).unwrap_or_else(|| panic!("{lib}: {}", show(&ds)));
-        (d.span.line, d.span.col)
-    };
-    let same = "brush b\n  sksl \"\"\"float4 shade(Mark m) {\n    return float4(m.paint.rgb, bogus);\n  }\"\"\"\n";
-    assert_eq!(at(same, "E0360", "bogus"), (3, 32));
-    let same = "brush b\n  sksl \"\"\"float4 shade(Mark m) {\n    float u_k = 1;\n    return m.paint;\n  }\"\"\"\n";
-    assert_eq!(at(same, "E0363", "u_k"), (3, 11));
-    let first = "brush b\n  sksl \"\"\"float4 shade(Mark m) { float u_k = 1; return m.paint; }\"\"\"\n";
-    assert_eq!(at(first, "E0363", "u_k"), (2, 40));
-    let newline = "brush b\n  sksl \"\"\"\n    float4 shade(Mark m) {\n      return float4(m.paint.rgb, bogus);\n    }\n  \"\"\"\n";
-    assert_eq!(at(newline, "E0360", "bogus"), (4, 34));
+    let lib = "fn soft(x k) = smoothstep(0 k x)\nbrush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\n";
+    ok(scene, &[("lib/b.ramo", lib)]);
+    // `dot` on two numbers is a type fault in the fn body: it lands at the call in the brush,
+    // with a note naming the fn, so a fn that other code uses with other types stays clean.
+    let lib = "fn soft(x k) = dot(x k)\nbrush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\n";
+    let ds = errors(scene, &[("lib/b.ramo", lib)]);
+    assert_eq!(ds.len(), 1, "{}", show(&ds));
+    assert_eq!((ds[0].code.as_str(), col(&ds[0])), ("E0360", (3, 19)), "the `cover:` argument: {}", ds[0]);
+    assert!(ds[0].notes.iter().any(|n| n.contains("in fn `soft` (lib/b.ramo:1)")), "{}", ds[0]);
+    // A fn declared below the brush is not in scope yet, as for a `let`.
+    let lib = "brush b k:.5\n  out m.paint.rgb cover:soft(m.edge k)\nfn soft(x k) = smoothstep(0 k x)\n";
+    let d = first(scene, &[("lib/b.ramo", lib)], "E0360");
+    assert!(d.message.contains("unknown function `soft`"), "{d}");
+    assert_eq!(col(&d), (2, 19), "{d}");
 }
 
 #[test]
-fn the_frame_owns_only_u_names_so_a_body_may_define_finish() {
-    let lib = (
-        "lib/b.ramo",
-        "brush b\n  sksl \"\"\"\n  half4 finish(Mark m, float2 c) { return half4(1); }\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n",
-    );
-    ok("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib]);
-    let lib = (
-        "lib/b.ramo",
-        "brush b\n  sksl \"\"\"\n  half4 u_finish(Mark m, float2 c) { return half4(1); }\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n",
-    );
-    let d = first("@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:b name:a\n", &[lib], "E0363");
-    assert!(d.message.contains("`u_finish`"), "{d}");
-    assert_eq!(col(&d), (3, 9), "{d}");
+fn a_fn_fault_that_needs_no_types_is_reported_once_at_the_fn_for_every_caller() {
+    let scene = "@artboard 100x100\n@target t.png\nuse b\nrect 40x40 at:50,50 fill:#ff0000 brush:[b c] name:a\n";
+    let lib = "fn soft(x) = polar(x 1)\nbrush b\n  out m.paint.rgb cover:soft(m.edge)\nbrush c\n  out m.paint.rgb cover:soft(m.edge)\n";
+    let ds = errors(scene, &[("lib/b.ramo", lib)]);
+    assert_eq!(ds.len(), 1, "{}", show(&ds));
+    assert_eq!((ds[0].code.as_str(), col(&ds[0])), ("E0360", (1, 1)), "{}", ds[0]);
+    assert!(ds[0].message.contains("`polar` is not available in a body"), "{}", ds[0]);
 }
 
 #[test]
@@ -603,7 +600,7 @@ fn a_paths_on_curve_vertices_are_its_knots() {
     assert!((at(total) - 0.2).abs() < 1e-3, "Z closes back to the first vertex's value");
 }
 
-const SOLID: &str = "brush solid\n  sksl \"\"\"\n  float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n";
+const SOLID: &str = "brush solid\n  out m.paint.rgb\n";
 
 /// The image of `src` on the CPU, as a pixel reader `(x, y) -> rgba`.
 fn pixels(src: &str) -> impl Fn(i32, i32) -> [u8; 4] + use<> {
@@ -746,18 +743,14 @@ fn a_finish_brushes_its_outlines_from_its_parameters_and_seeds_each_line_apart()
     );
     let rings = outline_brushes(&s, "a");
     assert_eq!(rings.len(), 2);
-    assert_eq!(rings[0][0].stage.uniforms[0], ("strength".to_string(), UniformValue::Float(0.9)));
+    assert_eq!(rings[0][0].stage.uniforms[0], UniformValue::Float(0.9));
     assert_ne!(rings[0][0].stage.seed, rings[1][0].stage.seed, "two outlines in one finish seed apart");
-    assert_eq!(outline_brushes(&s, "b")[0][0].stage.uniforms[0], ("strength".to_string(), UniformValue::Float(0.5)));
+    assert_eq!(outline_brushes(&s, "b")[0][0].stage.uniforms[0], UniformValue::Float(0.5));
 }
 
 const SMUDGE: &str = "\
 brush smudge k:.5
-  sksl \"\"\"
-    float4 shade(Mark m) {
-      return float4(mix(m.paint.rgb, m.below.rgb, m.below.a * k), cover(m.edge, m));
-    }
-  \"\"\"
+  out lerp(m.paint.rgb m.below.rgb m.below.a*k)
 ";
 
 const SMUDGE_LIB: (&str, &str) = ("lib/brushes.ramo", SMUDGE);
@@ -769,10 +762,10 @@ fn a_brush_that_reads_below_marks_its_stages_and_runs_in_a_stack_with_one_that_d
          rect 40x40 at:50,50 fill:#ff0000 stroke:#000000,3 brush:[dry smudge] name:b\n",
         &[("lib/brushes.ramo", &format!("{DRY}{SMUDGE}"))],
     );
-    assert!(marks(&s, "a")[0].stage.program.reads_below());
+    assert!(marks(&s, "a")[0].stage.shader.reads_below());
     assert!(shape(&s, "a").reads_below());
     let b = marks(&s, "b");
-    assert!(!b[0].stage.program.reads_below() && b[1].stage.program.reads_below());
+    assert!(!b[0].stage.shader.reads_below() && b[1].stage.shader.reads_below());
     assert!(ribbon(&s, "b").reads_below());
 }
 

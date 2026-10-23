@@ -7127,7 +7127,7 @@ fn a_curve_item_that_is_not_a_point_still_names_the_points_it_needs() {
 
 #[test]
 fn a_seed_that_is_not_a_number_is_e0320_at_its_line() {
-    let brush = ("lib/brushes.ramo", "brush dry\n  sksl \"\"\"\n    float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n  \"\"\"\n");
+    let brush = ("lib/brushes.ramo", "brush dry\n  out m.paint.rgb\n");
     let stamp = ("lib/garden.ramo", "stamp dots spacing:5\n  circle 1 fill:#000000\n");
     let blot = ("lib/d.ramo", "def blot\n  rect 10x10 fill:#000000 name:fill\n");
     let none: &[(&str, &str)] = &[];

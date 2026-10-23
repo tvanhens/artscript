@@ -337,14 +337,13 @@ fn a_warped_group_isolates_its_children_s_blend_modes() {
 
 #[test]
 fn a_brushed_fill_renders_through_a_warp() {
-    const IDENTITY: &str =
-        "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge, m)); }\n";
+    use common::IDENTITY;
     let square = Path::rect(Rect::new(20.0, 20.0, 60.0, 60.0), None);
     let node = brushed(
         "a",
         square,
         Paint::Solid(red()),
-        vec![mark(stage(IDENTITY, &[], &[], 1), 0.0)],
+        vec![mark(stage(IDENTITY, &[], 1), 0.0)],
     );
     let node = warped(
         node,

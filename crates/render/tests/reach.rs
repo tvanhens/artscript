@@ -285,10 +285,9 @@ fn the_outer_extent_holds_miter_joins_and_square_caps() {
 
 #[test]
 fn a_brushed_outline_grows_the_outer_extent_by_its_reach() {
-    let body = "float4 shade(Mark m) { return float4(m.paint.rgb, cover(m.edge + 5, m)); }\n";
-    let program = ramose_brush::Program::assemble(ramose_brush::MainKind::Ribbon, &[], body);
-    ramose_brush::check(&program).unwrap_or_else(|e| panic!("{e:?}"));
-    let stage = ramose_ir::Stage { program: std::sync::Arc::new(program), uniforms: vec![], seed: 1 };
+    let body = "brush b\n  out m.paint.rgb cover:cover(m.edge+5)\n";
+    let shader = ramose_brush::Shader::from_text(body).unwrap_or_else(|e| panic!("{e:?}"));
+    let stage = ramose_ir::Stage { shader: std::sync::Arc::new(shader), uniforms: vec![], seed: 1 };
     let brushed = with(EffectOp::Outline {
         width: 3.0,
         color: color(0, 0, 0, 255),
