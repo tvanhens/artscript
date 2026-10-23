@@ -613,7 +613,8 @@ impl<'c> Lower<'c> {
             return Err(Poisoned);
         }
         let tys: Vec<Ty> = vals.iter().map(|v| v.ty).collect();
-        if let Some(None) = self.ck.types.get(&(key.clone(), tys.clone())) {
+        let memo = (key.clone(), tys, self.trips);
+        if let Some(None) = self.ck.types.get(&memo) {
             return Err(Poisoned);
         }
         let frame_env = Env {
@@ -636,7 +637,7 @@ impl<'c> Lower<'c> {
                 i += 1;
             }
         }
-        self.ck.types.insert((key, tys), r.ok().map(|v| v.ty));
+        self.ck.types.insert(memo, r.ok().map(|v| v.ty));
         r
     }
 

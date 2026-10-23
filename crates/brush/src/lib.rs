@@ -167,7 +167,9 @@ pub trait Library {
 /// One per build, owned by the evaluator. Lookups only, so its maps never decide output order.
 #[derive(Default)]
 pub struct Checker {
-    types: BTreeMap<(check::FnKey, Vec<Ty>), Option<Ty>>,
+    /// Keyed by the trip count of the loops around the call too, since a fn's loops fit the
+    /// budget only under so many.
+    types: BTreeMap<(check::FnKey, Vec<Ty>, u32), Option<Ty>>,
     reported: BTreeSet<(check::FnKey, String, Span, String)>,
 }
 

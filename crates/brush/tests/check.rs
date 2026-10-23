@@ -184,3 +184,52 @@ fn a_body_that_reads_below_says_so_and_one_that_does_not_does_not() {
     assert!(ok("brush b\n  out m.below.rgb\n").reads_below());
     assert!(!ok("brush b\n  out m.paint.rgb\n").reads_below());
 }
+
+struct Fns(Vec<std::rc::Rc<ramose_brush::TopFn>>);
+
+impl ramose_brush::Library for Fns {
+    fn lookup(&self, _file: &str, name: &str) -> Option<ramose_brush::Global> {
+        self.0.iter().find(|f| f.name == name).cloned().map(ramose_brush::Global::Fn)
+    }
+}
+
+/// Checks every brush of `src` in order with one build-wide checker, as eval does.
+fn check_all(src: &str) -> Vec<(String, Result<Shader, Vec<Diag>>)> {
+    use ramose_syntax::ast::DeclKind;
+    let file = ramose_syntax::parse(src).unwrap_or_else(|e| panic!("{e:?}"));
+    let fns = Fns(
+        file.decls()
+            .filter_map(|d| match &d.kind {
+                DeclKind::Fn { name, params, body } => Some(std::rc::Rc::new(ramose_brush::TopFn {
+                    name: name.clone(),
+                    params: params.clone(),
+                    body: body.clone(),
+                    module: "lib/fns.ramo".into(),
+                    span: d.span,
+                })),
+                _ => None,
+            })
+            .collect(),
+    );
+    let mut ck = ramose_brush::Checker::default();
+    file.decls()
+        .filter_map(|d| match &d.kind {
+            DeclKind::Brush { name, body, .. } => Some((name, body, d.span)),
+            _ => None,
+        })
+        .map(|(name, lines, span)| {
+            let src = ramose_brush::BrushSource { file: "art/t.ramo", name, span, params: &[], lines };
+            (name.clone(), ck.check(&src, &fns))
+        })
+        .collect()
+}
+
+#[test]
+fn a_fn_over_the_loop_budget_in_one_brush_is_sound_in_another_outside_a_loop() {
+    let got = check_all(
+        "fn g(x) = sum([each i in 0..20 -> x])\nbrush a\n  out m.paint.rgb cover:max([each j in 0..20 -> g(j)])\nbrush b\n  out m.paint.rgb cover:g(1)/20\n",
+    );
+    let ds = got[0].1.as_ref().err().unwrap_or_else(|| panic!("`a` checked clean"));
+    assert!(ds.iter().any(|d| d.message.contains("at most 256 items")), "{ds:#?}");
+    assert!(got[1].1.is_ok(), "`b` runs 20 items: {:#?}", got[1].1.as_ref().err());
+}
