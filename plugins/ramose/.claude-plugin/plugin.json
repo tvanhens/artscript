@@ -1,8 +1,11 @@
 {
   "name": "ramose",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Draw, edit, and export sprites, icons, and animated GIFs with the ramose CLI.",
-  "author": { "name": "Tyler van Hensbergen", "url": "https://github.com/tvanhens" },
+  "author": {
+    "name": "Tyler van Hensbergen",
+    "url": "https://github.com/tvanhens"
+  },
   "homepage": "https://github.com/tvanhens/ramose#readme",
   "repository": "https://github.com/tvanhens/ramose",
   "license": "BUSL-1.1"
