@@ -796,3 +796,13 @@ fn a_three_component_parameter_binds_and_a_call_may_replace_it() {
     assert_eq!(marks(&s, "a")[0].stage.uniforms[0], UniformValue::Float3([1.0, 2.0, 3.0]));
     assert_eq!(marks(&s, "c")[0].stage.uniforms[0], UniformValue::Float3([4.0, 4.0, 4.0]));
 }
+
+#[test]
+fn a_named_argument_fault_in_an_imported_fn_is_reported_once_in_the_fns_file() {
+    let fns = ("lib/fns.ramo", "fn g(p) = fbm((p.x,p.y) oct:9)\n");
+    let scene = "@artboard 100x100\n@target t.png\nuse fns { g }\nbrush b\n  out m.paint.rgb cover:g(m.uv)\nbrush c\n  out m.paint.rgb cover:g(m.position)\nrect 40x40 at:50,50 fill:#ff0000 brush:[b c] name:a\n";
+    let ds: Vec<Diagnostic> = errors(scene, &[fns]).into_iter().filter(|d| d.code == "E0360").collect();
+    assert_eq!(ds.len(), 1, "{}", show(&ds));
+    assert_eq!((ds[0].file.as_str(), col(&ds[0])), ("lib/fns.ramo", (1, 25)), "{}", ds[0]);
+    assert!(ds[0].message.contains("`oct:`"), "{}", ds[0]);
+}

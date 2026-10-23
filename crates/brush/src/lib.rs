@@ -168,7 +168,7 @@ pub trait Library {
 #[derive(Default)]
 pub struct Checker {
     types: BTreeMap<(check::FnKey, Vec<Ty>), Option<Ty>>,
-    reported: BTreeSet<(check::FnKey, String)>,
+    reported: BTreeSet<(check::FnKey, String, Span, String)>,
 }
 
 impl Checker {

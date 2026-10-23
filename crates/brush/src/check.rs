@@ -103,6 +103,11 @@ impl<'c> Lower<'c> {
         Site { file: self.src.file.to_string(), span }
     }
 
+    /// A span inside the text being lowered: the body, or the fn whose frame is open.
+    fn here(&self, span: Span) -> Site {
+        Site { file: self.site.file.clone(), span }
+    }
+
     pub(crate) fn run(mut self) -> Result<Shader, Vec<Diag>> {
         for p in self.src.params {
             if let Some(what) = lang::taken(&p.name) {
@@ -520,7 +525,7 @@ impl<'c> Lower<'c> {
         match named.first() {
             None => Ok(()),
             Some(n) => {
-                let at = self.at(n.span);
+                let at = self.here(n.span);
                 Err(self.report_at("E0360", at, format!("`{func}` takes no `{}:`", n.key), Some("remove the named argument".into())))
             }
         }
@@ -616,14 +621,16 @@ impl<'c> Lower<'c> {
             names: params.iter().cloned().zip(vals.iter().map(|v| Ok(Val { konst: None, ..*v }))).collect(),
         };
         let before = self.diags.len();
-        self.stack.push(Frame { key: key.clone(), name, site: site.clone(), call: self.site.clone() });
-        let caller_site = std::mem::replace(&mut self.site, site.clone());
+        let call = self.site.clone();
+        self.stack.push(Frame { key: key.clone(), name, site: site.clone(), call: call.clone() });
+        self.site = site;
         let r = self.expr(body, &frame_env);
-        self.site = caller_site;
+        self.site = call.clone();
         self.stack.pop();
         let mut i = before;
         while i < self.diags.len() {
-            if self.diags[i].at == site && !self.ck.reported.insert((key.clone(), self.diags[i].message.clone())) {
+            let d = &self.diags[i];
+            if d.at != call && !self.ck.reported.insert((key.clone(), d.at.file.clone(), d.at.span, d.message.clone())) {
                 self.diags.remove(i);
             } else {
                 i += 1;
@@ -727,7 +734,7 @@ impl<'c> Lower<'c> {
         let mut seed = None;
         let mut oct = 4u8;
         for n in named {
-            let at = self.at(n.span);
+            let at = self.here(n.span);
             match n.key.as_str() {
                 "salt" | "seed" => {
                     if seed.is_some() {
