@@ -21,6 +21,9 @@
 
 use std::sync::Arc;
 
+pub mod ir;
+pub mod lang;
+
 #[cfg(feature = "skia")]
 mod compile;
 #[cfg(feature = "skia")]
